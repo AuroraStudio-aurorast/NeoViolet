@@ -197,5 +197,7 @@ func (m *Model) adjustVolume(delta float64) {
 
 func (m *Model) updatePlaybackState() tea.Cmd {
 	m.Audio.UpdatePosition()
+	m.Audio.UpdateLyricIndex()
+	m.Audio.AdvanceLyricScroll(m.UI.Width - 6)
 	return m.Components.ProgressBar.SetPercent(m.Audio.Progress)
 }

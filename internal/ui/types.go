@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	
 	"neoviolet/internal/audio"
+	"neoviolet/internal/lyrics"
 )
 
 // Mode represents the current input mode
@@ -112,6 +113,11 @@ type AudioState struct {
 	Duration    time.Duration
 	Elapsed     time.Duration
 	IsPlaying   bool
+	Lyrics      *lyrics.LyricsData
+	LyricIndex  int
+	LyricScrollOffset int
+	lyricScrollTick   int
+	lastLyricIndex    int
 }
 
 type UIState struct {

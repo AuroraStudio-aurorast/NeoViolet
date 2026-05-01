@@ -7,6 +7,8 @@ import (
 
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
+
+	"neoviolet/internal/lyrics"
 )
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -126,6 +128,18 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		m.Error.Set(fmt.Sprintf("Failed to start playback: %v", err), 180)
 	} else {
 		m.Audio.IsPlaying = true
+	}
+
+	// Load LRC lyrics if available
+	lrcPath := lyrics.FindLRC(msg.Path)
+	if lrcPath != "" {
+		data, err := lyrics.ParseFile(lrcPath)
+		if err != nil {
+			m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
+		} else {
+			m.Audio.Lyrics = data
+			m.Audio.LyricIndex = -1
+		}
 	}
 
 	return m, nil

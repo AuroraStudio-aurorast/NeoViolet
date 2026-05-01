@@ -8,12 +8,29 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+const (
+	minWidth  = 68
+	minHeight = 17
+)
+
 func renderMainView(m *Model) tea.View {
 	if m.Loading {
 		loadingStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("57")).
 			Bold(true)
 		return tea.NewView(loadingStyle.Render("Loading..."))
+	}
+
+	if m.UI.Width < minWidth || m.UI.Height < minHeight {
+		warnStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Bold(true).
+			Width(m.UI.Width).
+			Height(m.UI.Height).
+			Align(lipgloss.Center, lipgloss.Center)
+		msg := fmt.Sprintf("Terminal too small (%dx%d), resize to at least %dx%d",
+			m.UI.Width, m.UI.Height, minWidth, minHeight)
+		return tea.NewView(warnStyle.Render(msg))
 	}
 
 	header := renderTabs(m)
@@ -68,7 +85,7 @@ func renderContent(m *Model) string {
 	)
 
 	return contentStyle.
-		Width(m.UI.Width - 2).
+		Width(m.UI.Width).
 		Height(m.UI.Height - 10).
 		Render(content)
 }
@@ -86,8 +103,16 @@ func renderFooter(m *Model) string {
 		songLine = fmt.Sprintf("%s  No audio loaded", Icons.Music)
 	}
 
-	progressBar := m.Components.ProgressBar.ViewAs(m.Audio.Progress)
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
+
+	// Set progress bar width based on available space
+	timeWidth := lipgloss.Width(timeDisplay)
+	pbWidth := m.UI.Width - 4 - timeWidth - 1
+	if pbWidth < 10 {
+		pbWidth = 10
+	}
+	m.Components.ProgressBar.SetWidth(pbWidth)
+	progressBar := m.Components.ProgressBar.ViewAs(m.Audio.Progress)
 
 	// Combine progress bar and time display on one line
 	progressLine := lipgloss.JoinHorizontal(lipgloss.Center,
@@ -105,12 +130,56 @@ func renderFooter(m *Model) string {
 		volumeBar,
 	)
 
-	// Combine all three lines vertically, then put them in one border
-	content := lipgloss.JoinVertical(lipgloss.Top,
-		songLine,
-		progressLine,
-		volumeLine,
-	)
+	// Current lyric line with marquee scroll
+	var lyricLine string
+	if m.Audio.Lyrics != nil && m.Audio.LyricIndex >= 0 && m.Audio.LyricIndex < len(m.Audio.Lyrics.Lines) {
+		lyricLine = m.Audio.Lyrics.Lines[m.Audio.LyricIndex].Text
+	}
+	lyricStyle := lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("141"))
+	maxWidth := m.UI.Width - 6
+
+	lyricRow := ""
+	if lyricLine != "" {
+		runes := []rune(lyricLine)
+		displayWidth := lipgloss.Width(lyricLine)
+		if displayWidth > maxWidth {
+			start := m.Audio.LyricScrollOffset
+			// Find rune index corresponding to display offset
+			runeStart := 0
+			for i, w := 0, 0; i < len(runes) && w < start; i++ {
+				w += lipgloss.Width(string(runes[i]))
+				runeStart = i + 1
+			}
+			if runeStart >= len(runes) {
+				runeStart = 0
+			}
+			// Accumulate runes up to maxWidth display cells
+			runeEnd := runeStart
+			for w := 0; runeEnd < len(runes); runeEnd++ {
+				cw := lipgloss.Width(string(runes[runeEnd]))
+				if w+cw > maxWidth {
+					break
+				}
+				w += cw
+			}
+			visible := string(runes[runeStart:runeEnd])
+			// Pad to exact display width
+			padWidth := maxWidth - lipgloss.Width(visible)
+			if padWidth > 0 {
+				visible += fmt.Sprintf("%*s", padWidth, "")
+			}
+			lyricRow = lyricStyle.Width(maxWidth).Render(visible)
+		} else {
+			lyricRow = lyricStyle.Width(maxWidth).Render(lyricLine)
+		}
+	}
+
+	// Combine all lines vertically
+	elements := []string{songLine, progressLine, volumeLine}
+	if lyricLine != "" {
+		elements = append(elements, lyricRow)
+	}
+	content := lipgloss.JoinVertical(lipgloss.Top, elements...)
 
 	return footerStyle.Width(m.UI.Width).Render(content)
 }
