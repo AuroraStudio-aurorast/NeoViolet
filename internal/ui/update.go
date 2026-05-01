@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
@@ -16,8 +17,6 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleResize(m, msg)
 	case tea.KeyPressMsg:
 		return handleKeyPress(m, msg)
-	case tea.MouseMsg:
-		return handleMouse(m, msg)
 	case progress.FrameMsg:
 		return handleProgressFrame(m, msg)
 	case VolumeMsg:
@@ -26,30 +25,33 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleSeek(m, msg)
 	case ErrorMsg:
 		return handleError(m, msg)
+	case AudioLoadedMsg:
+		return handleAudioLoaded(m, msg)
 	default:
 		return m, nil
 	}
 }
 
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
-	m.updatePlaybackState()
+	cmd := m.updatePlaybackState()
 	m.Error.Tick()
 
-	return m, tea.Tick(time.Second/30, func(t time.Time) tea.Msg {
+	return m, tea.Batch(cmd, tea.Tick(time.Second/30, func(t time.Time) tea.Msg {
 		return TickMsg{}
-	})
+	}))
 }
 
 func handleResize(m *Model, msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.UI.Width = msg.Width
 	m.UI.Height = msg.Height
-	
-	// Recalculate tab width based on available space
+
 	m.UI.tabWidth = (msg.Width - 4) / len(m.UI.Tabs)
 	if m.UI.tabWidth > 20 {
 		m.UI.tabWidth = 20
 	}
-	
+
+	m.Components.CommandInput.SetWidth(msg.Width - 1)
+
 	return m, nil
 }
 
@@ -97,6 +99,34 @@ func handleSeek(m *Model, msg SeekMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
+	m.Loading = false
 	m.Error.Set(msg.Message, msg.Timer)
+	return m, nil
+}
+
+func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
+	m.Loading = false
+	m.Audio.Player = msg.Player
+	m.Audio.Duration = msg.Player.Duration()
+
+	if msg.Player.Title() != "" {
+		m.Audio.CurrentSong = msg.Player.Title()
+	} else {
+		m.Audio.CurrentSong = filepath.Base(msg.Path)
+	}
+	if msg.Player.Artist() != "" {
+		m.Audio.Artist = msg.Player.Artist()
+	} else {
+		m.Audio.Artist = "Unknown Artist"
+	}
+
+	msg.Player.SetVolume(m.Audio.Volume)
+
+	if err := msg.Player.Play(); err != nil {
+		m.Error.Set(fmt.Sprintf("Failed to start playback: %v", err), 180)
+	} else {
+		m.Audio.IsPlaying = true
+	}
+
 	return m, nil
 }

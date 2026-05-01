@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
@@ -10,6 +11,20 @@ import (
 )
 
 func main() {
+	fallbackIcon := flag.Bool("fallback-icon", false, "use non-NerdFont icons")
+	emoji := flag.Bool("emoji", false, "use emoji icons instead of NerdFont")
+	flag.Parse()
+
+	// Support flags after positional args (flag package stops at first non-flag)
+	for _, arg := range os.Args[1:] {
+		switch arg {
+		case "--fallback-icon", "-fallback-icon":
+			*fallbackIcon = true
+		case "--emoji", "-emoji":
+			*emoji = true
+		}
+	}
+
 	if err := logger.Init(); err != nil {
 		println("Logger init failed:", err.Error())
 		os.Exit(1)
@@ -17,11 +32,12 @@ func main() {
 	defer logger.Close()
 
 	var filePath string
-	if len(os.Args) > 1 {
-		filePath = os.Args[1]
+	args := flag.Args()
+	if len(args) > 0 {
+		filePath = args[0]
 	}
 
-	m, err := tea.NewProgram(neoviolet.NewModel(filePath)).Run()
+	m, err := tea.NewProgram(neoviolet.NewModel(filePath, *fallbackIcon, *emoji)).Run()
 	if err != nil {
 		logger.Error("Program error", "err", err)
 		os.Exit(1)

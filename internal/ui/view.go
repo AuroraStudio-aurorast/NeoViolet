@@ -9,6 +9,13 @@ import (
 )
 
 func renderMainView(m *Model) tea.View {
+	if m.Loading {
+		loadingStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("57")).
+			Bold(true)
+		return tea.NewView(loadingStyle.Render("Loading..."))
+	}
+
 	header := renderTabs(m)
 	content := renderContent(m)
 	footer := renderFooter(m)
@@ -22,16 +29,21 @@ func renderMainView(m *Model) tea.View {
 		header + "\n" + content + "\n" + footer + "\n" + help,
 	))
 	view.AltScreen = true
-	view.MouseMode = tea.MouseModeAllMotion
 
 	return view
 }
 
 func renderTabs(m *Model) string {
+	tabIcons := []string{Icons.Home, Icons.Playlist, Icons.Effects, Icons.Settings}
 	var tabs []string
 
 	for i, name := range m.UI.Tabs {
-		tabContent := " " + name + " "
+		prefix := tabIcons[i]
+		tabContent := " " + prefix
+		if prefix != "" {
+			tabContent += " "
+		}
+		tabContent += name + " "
 		if i == m.UI.ActiveTab {
 			tabs = append(tabs, activeTabStyle.Width(m.UI.tabWidth).Render(tabContent))
 		} else {
@@ -62,16 +74,21 @@ func renderContent(m *Model) string {
 }
 
 func renderFooter(m *Model) string {
-	icon := "▶"
+	icon := Icons.Play
 	if m.Audio.IsPlaying {
-		icon = "⏸"
+		icon = Icons.Pause
 	}
 
-	songLine := fmt.Sprintf("%s  %s - %s", icon, m.Audio.CurrentSong, m.Audio.Artist)
+	var songLine string
+	if m.Audio.Player != nil {
+		songLine = fmt.Sprintf("%s  %s - %s", icon, m.Audio.CurrentSong, m.Audio.Artist)
+	} else {
+		songLine = fmt.Sprintf("%s  No audio loaded", Icons.Music)
+	}
 
 	progressBar := m.Components.ProgressBar.ViewAs(m.Audio.Progress)
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
-	
+
 	// Combine progress bar and time display on one line
 	progressLine := lipgloss.JoinHorizontal(lipgloss.Center,
 		progressBar,
@@ -79,9 +96,9 @@ func renderFooter(m *Model) string {
 		footerTextStyle.Render(timeDisplay),
 	)
 
-	volumeLabel := footerTextStyle.Render("VOL ")
+	volumeLabel := footerTextStyle.Render(Icons.Volume + " ")
 	volumeBar := m.Components.VolumeBar.ViewAs(m.Audio.Volume)
-	
+
 	// Combine volume label and bar on one line
 	volumeLine := lipgloss.JoinHorizontal(lipgloss.Left,
 		volumeLabel,
@@ -113,7 +130,7 @@ func renderHelp(m *Model) string {
 		inputStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("57")).
 			Bold(true)
-		return inputStyle.Render(":" + m.Components.CommandInput.View())
+		return inputStyle.Render(Icons.Command + m.Components.CommandInput.View())
 	}
 
 	if m.Error.Message != "" && m.Error.Visible {

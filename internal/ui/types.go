@@ -161,6 +161,8 @@ type Model struct {
 	Error          *ErrorState
 	QuitConfirm    bool
 	ExitCode       int
+	Loading        bool
+	pendingPath    string
 	CommandHistory []string
 	historyIndex   int
 }

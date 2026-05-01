@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/help"
@@ -14,6 +13,14 @@ import (
 
 	"neoviolet/internal/audio"
 )
+
+func loadAudio(filePath string) tea.Msg {
+	player := audio.NewPlayer()
+	if err := player.Open(filePath); err != nil {
+		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180}
+	}
+	return AudioLoadedMsg{Player: player, Path: filePath}
+}
 
 // Global key bindings
 var keys = KeyMap{
@@ -79,7 +86,14 @@ var keys = KeyMap{
 	),
 }
 
-func NewModel(filePath string) *Model {
+func NewModel(filePath string, fallbackIcon bool, emoji bool) *Model {
+	switch {
+	case emoji:
+		Icons = EmojiIcons
+	case fallbackIcon:
+		Icons = FallbackIcons
+	}
+
 	pb := progress.New(
 		progress.WithColors(
 			lipgloss.Color("#DA70D6"),
@@ -116,10 +130,10 @@ func NewModel(filePath string) *Model {
 		UI: &UIState{
 			Mode:     ModeNormal,
 			Focus:    FocusTabBar,
-			Tabs:     []string{"Library", "Queue", "Settings"},
-			Width:    80, // Default width
-			Height:   24, // Default height
-			tabWidth: 20, // Default tab width
+			Tabs:     []string{"Home", "Playlists", "Effects", "Settings"},
+			Width:    80,
+			Height:   24,
+			tabWidth: 20,
 		},
 		Components: &ComponentState{
 			ProgressBar:  pb,
@@ -127,35 +141,12 @@ func NewModel(filePath string) *Model {
 			Help:         h,
 			CommandInput: ti,
 		},
-		Error: &ErrorState{},
+		Error:       &ErrorState{},
+		Loading:     filePath != "",
+		pendingPath: filePath,
 	}
 
-	// Initialize with audio file if provided
-	if filePath != "" {
-		player := audio.NewPlayer()
-		if err := player.Open(filePath); err != nil {
-			m.Error.Set(fmt.Sprintf("Failed to open audio file: %v", err), 180)
-		} else {
-			m.Audio.Player = player
-			m.Audio.Duration = player.Duration()
-			m.Components.ProgressBar.SetPercent(0)
-
-			if player.Title() != "" {
-				m.Audio.CurrentSong = player.Title()
-			} else {
-				m.Audio.CurrentSong = filepath.Base(filePath)
-			}
-
-			if player.Artist() != "" {
-				m.Audio.Artist = player.Artist()
-			} else {
-				m.Audio.Artist = "Unknown Artist"
-			}
-
-			// Apply stored volume to the new player
-			player.SetVolume(m.Audio.Volume)
-		}
-	}
+	ti.SetWidth(m.UI.Width - 1)
 
 	return m
 }
@@ -163,16 +154,16 @@ func NewModel(filePath string) *Model {
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{}
 
-	// Add blink command for text input
 	if blinkCmd, ok := textinput.Blink().(tea.Cmd); ok {
 		cmds = append(cmds, blinkCmd)
 	}
 
-	// Start playback if player exists
-	if m.Audio.Player != nil {
-		if err := m.Audio.Player.Play(); err != nil {
-			m.Error.Set(fmt.Sprintf("Failed to start playback: %v", err), 180)
-		}
+	if m.pendingPath != "" {
+		path := m.pendingPath
+		m.pendingPath = ""
+		cmds = append(cmds, func() tea.Msg {
+			return loadAudio(path)
+		})
 	}
 
 	cmds = append(cmds, tea.Tick(time.Second/30, func(t time.Time) tea.Msg {
@@ -204,7 +195,7 @@ func (m *Model) adjustVolume(delta float64) {
 	m.Components.VolumeBar.SetPercent(m.Audio.Volume)
 }
 
-func (m *Model) updatePlaybackState() {
+func (m *Model) updatePlaybackState() tea.Cmd {
 	m.Audio.UpdatePosition()
-	m.Components.ProgressBar.SetPercent(m.Audio.Progress)
+	return m.Components.ProgressBar.SetPercent(m.Audio.Progress)
 }
