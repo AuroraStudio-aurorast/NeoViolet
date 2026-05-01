@@ -134,9 +134,7 @@ func NewModel(filePath string) *Model {
 	if filePath != "" {
 		player := audio.NewPlayer()
 		if err := player.Open(filePath); err != nil {
-			m.Error.Message = fmt.Sprintf("Failed to open audio file: %v", err)
-			m.Error.Timer = 180
-			m.Error.Visible = true
+			m.Error.Set(fmt.Sprintf("Failed to open audio file: %v", err), 180)
 		} else {
 			m.Audio.Player = player
 			m.Audio.Duration = player.Duration()
@@ -173,9 +171,7 @@ func (m *Model) Init() tea.Cmd {
 	// Start playback if player exists
 	if m.Audio.Player != nil {
 		if err := m.Audio.Player.Play(); err != nil {
-			m.Error.Message = fmt.Sprintf("Failed to start playback: %v", err)
-			m.Error.Timer = 180
-			m.Error.Visible = true
+			m.Error.Set(fmt.Sprintf("Failed to start playback: %v", err), 180)
 		}
 	}
 
@@ -196,68 +192,19 @@ func (m *Model) View() tea.View {
 
 // Helper methods
 func (m *Model) togglePlayback() {
-	if m.Audio.Player == nil {
-		return
-	}
-
-	if m.Audio.Player.IsPlaying() {
-		m.Audio.Player.Pause()
-		m.Audio.IsPlaying = false
-	} else {
-		m.Audio.Player.Play()
-		m.Audio.IsPlaying = true
-	}
+	m.Audio.TogglePlayback()
 }
 
 func (m *Model) cleanup() {
-	if m.Audio.Player != nil {
-		m.Audio.Player.Close()
-		m.Audio.Player = nil
-	}
+	m.Audio.Close()
 }
 
 func (m *Model) adjustVolume(delta float64) {
-	// Update Model's volume regardless of Player existence
-	m.Audio.Volume += delta
-	if m.Audio.Volume > 1.0 {
-		m.Audio.Volume = 1.0
-	}
-	if m.Audio.Volume < 0 {
-		m.Audio.Volume = 0
-	}
-
-	// Apply volume to Player if it exists
-	if m.Audio.Player != nil {
-		m.Audio.Player.SetVolume(m.Audio.Volume)
-	}
-
-	// Update volume bar
+	m.Audio.AdjustVolume(delta)
 	m.Components.VolumeBar.SetPercent(m.Audio.Volume)
 }
 
 func (m *Model) updatePlaybackState() {
-	if m.Audio.Player != nil {
-		pos := m.Audio.Player.Position()
-		duration := m.Audio.Player.Duration()
-
-		m.Audio.Elapsed = pos
-
-		if duration > 0 && m.Audio.Duration != duration {
-			m.Audio.Duration = duration
-		}
-
-		if m.Audio.Duration > 0 {
-			m.Audio.Progress = float64(pos) / float64(m.Audio.Duration)
-			if m.Audio.Progress > 1.0 {
-				m.Audio.Progress = 1.0
-			}
-			if m.Audio.Progress < 0 {
-				m.Audio.Progress = 0
-			}
-		} else {
-			m.Audio.Progress = 0
-		}
-
-		m.Components.ProgressBar.SetPercent(m.Audio.Progress)
-	}
+	m.Audio.UpdatePosition()
+	m.Components.ProgressBar.SetPercent(m.Audio.Progress)
 }

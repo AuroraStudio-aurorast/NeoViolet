@@ -137,6 +137,22 @@ type ErrorState struct {
 	Visible bool
 }
 
+func (e *ErrorState) Set(msg string, timer int) {
+	e.Message = msg
+	e.Timer = timer
+	e.Visible = true
+}
+
+func (e *ErrorState) Tick() {
+	if e.Visible && e.Timer > 0 {
+		e.Timer--
+		if e.Timer <= 0 {
+			e.Visible = false
+			e.Message = ""
+		}
+	}
+}
+
 // Model represents the main application state
 type Model struct {
 	Audio          *AudioState

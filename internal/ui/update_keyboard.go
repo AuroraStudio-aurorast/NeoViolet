@@ -105,23 +105,10 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		m.UI.ActiveTab = (m.UI.ActiveTab - 1 + len(m.UI.Tabs)) % len(m.UI.Tabs)
 		return m, nil
 	case "ctrl+f", "right", "Right":
-		if m.Audio.Player != nil {
-			currentPos := m.Audio.Player.Position()
-			newPos := currentPos + 5*time.Second
-			if newPos < m.Audio.Duration {
-				m.Audio.Player.Seek(newPos)
-			}
-		}
+		m.Audio.SeekRelative(5 * time.Second)
 		return m, nil
 	case "ctrl+b", "left", "Left":
-		if m.Audio.Player != nil {
-			currentPos := m.Audio.Player.Position()
-			newPos := currentPos - 5*time.Second
-			if newPos < 0 {
-				newPos = 0
-			}
-			m.Audio.Player.Seek(newPos)
-		}
+		m.Audio.SeekRelative(-5 * time.Second)
 		return m, nil
 	case "ctrl+c", "ctrl+C":
 		m.cleanup()
@@ -179,16 +166,12 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 
 	case "vol":
 		if arg == "" {
-			m.Error.Message = "Usage: vol <0.0-1.0>"
-			m.Error.Timer = 90
-			m.Error.Visible = true
+			m.Error.Set("Usage: vol <0.0-1.0>", 90)
 			return m, nil
 		}
 		vol, err := strconv.ParseFloat(arg, 64)
 		if err != nil || vol < 0 || vol > 1.0 {
-			m.Error.Message = "Volume must be 0.0-1.0"
-			m.Error.Timer = 90
-			m.Error.Visible = true
+			m.Error.Set("Volume must be 0.0-1.0", 90)
 			return m, nil
 		}
 		vol = math.Round(vol*100) / 100
@@ -201,35 +184,21 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 
 	case "seek":
 		if m.Audio.Player == nil {
-			m.Error.Message = "No audio loaded"
-			m.Error.Timer = 90
-			m.Error.Visible = true
+			m.Error.Set("No audio loaded", 90)
 			return m, nil
 		}
 		if arg == "" {
-			m.Error.Message = "Usage: seek <seconds>, seek <mm:ss>, seek <hh:mm:ss>, seek +<offset>, seek -<offset>"
-			m.Error.Timer = 90
-			m.Error.Visible = true
+			m.Error.Set("Usage: seek <seconds>, seek <mm:ss>, seek <hh:mm:ss>, seek +<offset>, seek -<offset>", 90)
 			return m, nil
 		}
 
 		if strings.HasPrefix(arg, "+") || strings.HasPrefix(arg, "-") {
 			rel, err := strconv.ParseFloat(arg, 64)
 			if err != nil {
-				m.Error.Message = "Invalid seek offset"
-				m.Error.Timer = 90
-				m.Error.Visible = true
+				m.Error.Set("Invalid seek offset", 90)
 				return m, nil
 			}
-			currentPos := m.Audio.Player.Position()
-			newPos := currentPos + time.Duration(rel*float64(time.Second))
-			if newPos < 0 {
-				newPos = 0
-			}
-			if m.Audio.Duration > 0 && newPos > m.Audio.Duration {
-				newPos = m.Audio.Duration
-			}
-			m.Audio.Player.Seek(newPos)
+			m.Audio.SeekRelative(time.Duration(rel * float64(time.Second)))
 		} else if strings.Contains(arg, ":") {
 			parts := strings.Split(arg, ":")
 			var totalSeconds int
@@ -238,9 +207,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 				mins, err1 := strconv.Atoi(parts[0])
 				secs, err2 := strconv.Atoi(parts[1])
 				if err1 != nil || err2 != nil || secs < 0 || secs >= 60 {
-					m.Error.Message = "Invalid time, use <mm>:<ss> where ss < 60"
-					m.Error.Timer = 90
-					m.Error.Visible = true
+					m.Error.Set("Invalid time, use <mm>:<ss> where ss < 60", 90)
 					return m, nil
 				}
 				if mins < 0 {
@@ -252,9 +219,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 				mins, err2 := strconv.Atoi(parts[1])
 				secs, err3 := strconv.Atoi(parts[2])
 				if err1 != nil || err2 != nil || err3 != nil || mins < 0 || mins >= 60 || secs < 0 || secs >= 60 {
-					m.Error.Message = "Invalid time, use <hh>:<mm>:<ss> where mm, ss < 60"
-					m.Error.Timer = 90
-					m.Error.Visible = true
+					m.Error.Set("Invalid time, use <hh>:<mm>:<ss> where mm, ss < 60", 90)
 					return m, nil
 				}
 				if hours < 0 {
@@ -262,22 +227,18 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 				}
 				totalSeconds = hours*3600 + mins*60 + secs
 			default:
-				m.Error.Message = "Invalid time format, use <mm>:<ss> or <hh>:<mm>:<ss>"
-				m.Error.Timer = 90
-				m.Error.Visible = true
+				m.Error.Set("Invalid time format, use <mm>:<ss> or <hh>:<mm>:<ss>", 90)
 				return m, nil
 			}
 			newPos := time.Duration(totalSeconds) * time.Second
 			if m.Audio.Duration > 0 && newPos > m.Audio.Duration {
 				newPos = m.Audio.Duration
 			}
-			m.Audio.Player.Seek(newPos)
+			m.Audio.SeekPlayer(newPos)
 		} else {
 			seconds, err := strconv.ParseFloat(arg, 64)
 			if err != nil {
-				m.Error.Message = "Invalid seek position"
-				m.Error.Timer = 90
-				m.Error.Visible = true
+				m.Error.Set("Invalid seek position", 90)
 				return m, nil
 			}
 			newPos := time.Duration(seconds * float64(time.Second))
@@ -287,14 +248,12 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 			if m.Audio.Duration > 0 && newPos > m.Audio.Duration {
 				newPos = m.Audio.Duration
 			}
-			m.Audio.Player.Seek(newPos)
+			m.Audio.SeekPlayer(newPos)
 		}
 		return m, nil
 
 	default:
-		m.Error.Message = fmt.Sprintf("Unknown command: %s", cmdText)
-		m.Error.Timer = 90
-		m.Error.Visible = true
+		m.Error.Set(fmt.Sprintf("Unknown command: %s", cmdText), 90)
 		return m, nil
 	}
 }

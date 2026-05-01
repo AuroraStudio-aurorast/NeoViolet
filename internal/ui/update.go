@@ -33,14 +33,7 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	m.updatePlaybackState()
-
-	if m.Error.Visible && m.Error.Timer > 0 {
-		m.Error.Timer--
-		if m.Error.Timer <= 0 {
-			m.Error.Visible = false
-			m.Error.Message = ""
-		}
-	}
+	m.Error.Tick()
 
 	return m, tea.Tick(time.Second/30, func(t time.Time) tea.Msg {
 		return TickMsg{}
@@ -68,14 +61,11 @@ func handleProgressFrame(m *Model, msg progress.FrameMsg) (tea.Model, tea.Cmd) {
 
 func handleVolume(m *Model, msg VolumeMsg) (tea.Model, tea.Cmd) {
 	if msg.Delta != 0 {
-		m.adjustVolume(msg.Delta)
+		m.Audio.AdjustVolume(msg.Delta)
 	} else if msg.Level >= 0 && msg.Level <= 1.0 {
-		m.Audio.Volume = msg.Level
-		if m.Audio.Player != nil {
-			m.Audio.Player.SetVolume(m.Audio.Volume)
-		}
-		m.Components.VolumeBar.SetPercent(m.Audio.Volume)
+		m.Audio.SetVolume(msg.Level)
 	}
+	m.Components.VolumeBar.SetPercent(m.Audio.Volume)
 	return m, nil
 }
 
@@ -83,7 +73,7 @@ func handleSeek(m *Model, msg SeekMsg) (tea.Model, tea.Cmd) {
 	if m.Audio.Player == nil {
 		return m, nil
 	}
-	
+
 	currentPos := m.Audio.Player.Position()
 	var newPos time.Duration
 	if msg.Relative {
@@ -91,26 +81,22 @@ func handleSeek(m *Model, msg SeekMsg) (tea.Model, tea.Cmd) {
 	} else {
 		newPos = msg.Position
 	}
-	
+
 	if newPos < 0 {
 		newPos = 0
 	}
 	if newPos > m.Audio.Duration {
 		newPos = m.Audio.Duration
 	}
-	
-	if err := m.Audio.Player.Seek(newPos); err != nil {
-		m.Error.Message = fmt.Sprintf("Seek failed: %v", err)
-		m.Error.Timer = 120
-		m.Error.Visible = true
+
+	if err := m.Audio.SeekPlayer(newPos); err != nil {
+		m.Error.Set(fmt.Sprintf("Seek failed: %v", err), 120)
 	}
-	
+
 	return m, nil
 }
 
 func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
-	m.Error.Message = msg.Message
-	m.Error.Timer = msg.Timer
-	m.Error.Visible = true
+	m.Error.Set(msg.Message, msg.Timer)
 	return m, nil
 }

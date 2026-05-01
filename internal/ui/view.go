@@ -63,7 +63,7 @@ func renderContent(m *Model) string {
 
 func renderFooter(m *Model) string {
 	icon := "▶"
-	if m.Audio.Player != nil && m.Audio.Player.IsPlaying() {
+	if m.Audio.IsPlaying {
 		icon = "⏸"
 	}
 
