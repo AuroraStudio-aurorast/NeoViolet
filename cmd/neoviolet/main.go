@@ -8,6 +8,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	neoviolet "github.com/AuroraStudio-aurorast/neoviolet/internal/ui"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/ui/wizard"
 )
 
 func main() {
@@ -16,6 +17,19 @@ func main() {
 		os.Exit(1)
 	}
 	defer logger.Close()
+
+	if !config.ConfigExists() {
+		logger.Info("First run detected, launching setup wizard")
+		wizardCfg, err := wizard.Run()
+		if err != nil {
+			logger.Warn("Wizard error, using defaults", "err", err)
+		}
+		if wizardCfg != nil {
+			if saveErr := wizardCfg.Save(); saveErr != nil {
+				logger.Warn("Failed to save wizard config", "err", saveErr)
+			}
+		}
+	}
 
 	cfg, err := config.Load()
 	if err != nil {

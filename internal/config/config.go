@@ -48,7 +48,7 @@ type Config struct {
 	Error          ErrorConfig          `json:"error"`
 }
 
-func defaultConfig() Config {
+func DefaultConfig() Config {
 	return Config{
 		IconTheme:     "nerd",
 		DefaultVolume: 1.0,
@@ -77,6 +77,19 @@ func defaultConfig() Config {
 			Duration: 90,
 		},
 	}
+}
+
+func defaultConfig() Config {
+	return DefaultConfig()
+}
+
+func ConfigExists() bool {
+	path, err := configPath()
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(path)
+	return err == nil
 }
 
 func configPath() (string, error) {
