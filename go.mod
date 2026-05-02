@@ -1,4 +1,4 @@
-module neoviolet
+module github.com/AuroraStudio-aurorast/neoviolet
 
 go 1.26.1
 
@@ -6,12 +6,12 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.4
 	charm.land/lipgloss/v2 v2.0.3
+	charm.land/log/v2 v2.0.0
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/gopxl/beep/v2 v2.1.1
 )
 
 require (
-	charm.land/log/v2 v2.0.0 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
@@ -29,6 +29,7 @@ require (
 	github.com/ebitengine/oto/v3 v3.4.0 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
 	github.com/jfreymuth/oggvorbis v1.0.5 // indirect

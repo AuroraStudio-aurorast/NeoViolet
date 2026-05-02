@@ -23,10 +23,3 @@ type LyricsData struct {
 	Lines   []LyricLine
 	Path    string
 }
-
-type TimestampGroup struct {
-	IsMeta    bool
-	MetaKey   string
-	MetaValue string
-	Time      time.Duration
-}

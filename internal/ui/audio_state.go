@@ -4,6 +4,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 func (a *AudioState) TogglePlayback() {
@@ -11,9 +13,11 @@ func (a *AudioState) TogglePlayback() {
 		return
 	}
 	if a.Player.IsPlaying() {
+		logger.Debug("TogglePlayback: pause")
 		a.Player.Pause()
 		a.IsPlaying = false
 	} else {
+		logger.Debug("TogglePlayback: play")
 		a.Player.Play()
 		a.IsPlaying = true
 	}
@@ -21,32 +25,33 @@ func (a *AudioState) TogglePlayback() {
 
 func (a *AudioState) Close() {
 	if a.Player != nil {
+		logger.Debug("AudioState.Close")
 		a.Player.Close()
 		a.Player = nil
 	}
 }
 
+func clampVolume(v float64) float64 {
+	if v > 1.0 {
+		return 1.0
+	}
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
 func (a *AudioState) AdjustVolume(delta float64) {
-	a.Volume += delta
-	if a.Volume > 1.0 {
-		a.Volume = 1.0
-	}
-	if a.Volume < 0 {
-		a.Volume = 0
-	}
+	a.Volume = clampVolume(a.Volume + delta)
+	logger.Debug("AdjustVolume", "delta", delta, "newVolume", a.Volume)
 	if a.Player != nil {
 		a.Player.SetVolume(a.Volume)
 	}
 }
 
 func (a *AudioState) SetVolume(vol float64) {
-	a.Volume = vol
-	if a.Volume > 1.0 {
-		a.Volume = 1.0
-	}
-	if a.Volume < 0 {
-		a.Volume = 0
-	}
+	a.Volume = clampVolume(vol)
+	logger.Debug("SetVolume", "volume", a.Volume)
 	if a.Player != nil {
 		a.Player.SetVolume(a.Volume)
 	}
@@ -80,6 +85,7 @@ func (a *AudioState) SeekPlayer(pos time.Duration) error {
 	if a.Player == nil {
 		return nil
 	}
+	logger.Debug("SeekPlayer", "position", pos)
 	return a.Player.Seek(pos)
 }
 
@@ -95,6 +101,7 @@ func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
 	if a.Duration > 0 && newPos > a.Duration {
 		newPos = a.Duration
 	}
+	logger.Debug("SeekRelative", "delta", delta, "from", current, "to", newPos)
 	a.Player.Seek(newPos)
 	return newPos
 }

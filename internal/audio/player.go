@@ -11,10 +11,24 @@ import (
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/speaker"
+	"github.com/jpodeszfa/go-meltysynth/meltysynth"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 var initSpeakerOnce sync.Once
 var initSpeakerErr error
+var speakerSampleRate beep.SampleRate
+
+func ensureSpeakerInit(sampleRate beep.SampleRate) error {
+	initSpeakerOnce.Do(func() {
+		initSpeakerErr = speaker.Init(sampleRate, sampleRate.N(time.Second/10))
+		if initSpeakerErr == nil {
+			speakerSampleRate = sampleRate
+		}
+	})
+	return initSpeakerErr
+}
 
 type Player struct {
 	mu           sync.Mutex
@@ -33,6 +47,8 @@ type Player struct {
 	tagReader    *MetadataReader
 	midiPlayer   *MidiPlayer
 	sfPath       string
+	cachedSF     *meltysynth.SoundFont
+	cachedSFPath string
 }
 
 func NewPlayer() *Player {
@@ -49,13 +65,6 @@ func NewPlayerWithDeps(decoder *FormatDecoder, tagReader *MetadataReader) *Playe
 	}
 }
 
-func ensureSpeakerInit(sampleRate beep.SampleRate) error {
-	initSpeakerOnce.Do(func() {
-		initSpeakerErr = speaker.Init(sampleRate, sampleRate.N(time.Second/10))
-	})
-	return initSpeakerErr
-}
-
 func (p *Player) SetSoundfontPath(sfPath string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -63,6 +72,8 @@ func (p *Player) SetSoundfontPath(sfPath string) {
 }
 
 func (p *Player) Open(path string) error {
+	logger.Debug("Player.Open", "path", path)
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -73,6 +84,7 @@ func (p *Player) Open(path string) error {
 	ext, detectErr := p.decoder.DetectFormatByMagic(detectFile)
 	detectFile.Close()
 	if detectErr == nil && ext == ".mid" {
+		logger.Info("Detected MIDI file", "path", path)
 		return p.openMIDI(path)
 	}
 
@@ -101,6 +113,8 @@ func (p *Player) Open(path string) error {
 		file.Close()
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
+
+	logger.Info("Audio file opened", "path", path, "format", format.SampleRate)
 
 	p.streamer = streamer
 	p.format = format
@@ -132,11 +146,6 @@ func (p *Player) applyLinearVolumeLocked() {
 		return
 	}
 
-	p.mu.Unlock()
-	defer p.mu.Lock()
-
-	speaker.Lock()
-	defer speaker.Unlock()
 	if p.linearVolume <= 0.0 {
 		p.volume.Silent = true
 		p.volume.Volume = 0
@@ -152,6 +161,7 @@ func (p *Player) Play() error {
 	defer p.mu.Unlock()
 
 	if p.midiPlayer != nil {
+		logger.Debug("MIDI play")
 		return p.playMIDI()
 	}
 
@@ -168,6 +178,7 @@ func (p *Player) Play() error {
 		p.isPlaying = false
 	}
 
+	logger.Debug("Audio play/resume")
 	speaker.Play(p.volume)
 	p.isPlaying = true
 	p.isPaused = false
@@ -179,6 +190,7 @@ func (p *Player) Pause() {
 	defer p.mu.Unlock()
 
 	if p.midiPlayer != nil {
+		logger.Debug("MIDI pause")
 		p.midiPlayer.Pause()
 		p.isPaused = true
 		return
@@ -187,6 +199,7 @@ func (p *Player) Pause() {
 	if p.ctrl == nil {
 		return
 	}
+	logger.Debug("Audio pause")
 	speaker.Lock()
 	p.ctrl.Paused = true
 	speaker.Unlock()
@@ -197,9 +210,17 @@ func (p *Player) Resume() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.midiPlayer != nil {
+		logger.Debug("MIDI resume")
+		p.midiPlayer.Play()
+		p.isPaused = false
+		return
+	}
+
 	if p.ctrl == nil {
 		return
 	}
+	logger.Debug("Audio resume")
 	speaker.Lock()
 	p.ctrl.Paused = false
 	speaker.Unlock()
@@ -211,12 +232,14 @@ func (p *Player) Stop() {
 	defer p.mu.Unlock()
 
 	if p.midiPlayer != nil {
+		logger.Debug("MIDI stop")
 		p.midiPlayer.Stop()
 		p.isPlaying = false
 		p.isPaused = true
 		return
 	}
 
+	logger.Debug("Audio stop")
 	speaker.Clear()
 	p.isPlaying = false
 	p.isPaused = true
@@ -243,6 +266,7 @@ func (p *Player) Seek(position time.Duration) error {
 	defer p.mu.Unlock()
 
 	if p.midiPlayer != nil {
+		logger.Debug("MIDI seek", "position", position)
 		return p.midiPlayer.Seek(position)
 	}
 
@@ -260,41 +284,12 @@ func (p *Player) Seek(position time.Duration) error {
 	}
 
 	wasPlaying := p.isPlaying && !p.isPaused
-	oldLinearVolume := p.linearVolume
 
-	if p.file != nil {
-		p.file.Close()
-	}
 	speaker.Clear()
 
-	file, err := os.Open(p.path)
-	if err != nil {
-		return fmt.Errorf("reopen for seek: %w", err)
-	}
-
-	newStreamer, newFormat, err := p.decoder.Decode(file, p.path)
-	if err != nil {
-		file.Close()
-		return fmt.Errorf("decode for seek: %w", err)
-	}
-
-	if newFormat.SampleRate != p.format.SampleRate {
-		if err := ensureSpeakerInit(newFormat.SampleRate); err != nil {
-			newStreamer.Close()
-			file.Close()
-			return fmt.Errorf("speaker reinit failed: %w", err)
-		}
-	}
-
-	if err := newStreamer.Seek(targetSamples); err != nil {
-		newStreamer.Close()
-		file.Close()
+	if err := p.streamer.Seek(targetSamples); err != nil {
 		return fmt.Errorf("seek to %v: %w", position, err)
 	}
-
-	p.streamer = newStreamer
-	p.format = newFormat
-	p.file = file
 
 	p.ctrl = &beep.Ctrl{
 		Streamer: p.streamer,
@@ -305,7 +300,6 @@ func (p *Player) Seek(position time.Duration) error {
 		Base:     2,
 		Silent:   false,
 	}
-	p.linearVolume = oldLinearVolume
 	p.applyLinearVolumeLocked()
 
 	if wasPlaying {
@@ -334,6 +328,11 @@ func (p *Player) SetVolume(vol float64) {
 		vol = 1
 	}
 	p.linearVolume = vol
+
+	if p.midiPlayer != nil {
+		p.midiPlayer.SetVolume(vol)
+	}
+	logger.Debug("Volume set", "volume", vol)
 	p.applyLinearVolumeLocked()
 }
 
@@ -378,9 +377,11 @@ func (p *Player) Close() error {
 	defer p.mu.Unlock()
 
 	if p.midiPlayer != nil {
+		logger.Debug("Player.Close (MIDI)")
 		return p.midiPlayer.Close()
 	}
 
+	logger.Debug("Player.Close (audio)")
 	speaker.Clear()
 	if p.file != nil {
 		p.file.Close()
@@ -427,6 +428,7 @@ func (e *UnsupportedFormatError) Error() string {
 }
 
 func (p *Player) openMIDI(path string) error {
+	logger.Info("Opening MIDI", "path", path, "sfPath", p.sfPath)
 	if p.sfPath == "" {
 		return fmt.Errorf("soundfont_path not configured for MIDI playback")
 	}
@@ -445,21 +447,33 @@ func (p *Player) openMIDI(path string) error {
 		p.midiPlayer = nil
 	}
 
-	if err := ensureSpeakerInit(midiSampleRate); err != nil {
+	sr := speakerSampleRate
+	if sr == 0 {
+		sr = 44100
+	}
+	if err := ensureSpeakerInit(sr); err != nil {
 		return fmt.Errorf("speaker init: %w", err)
 	}
 
-	mp, err := NewMidiPlayer(path, p.sfPath)
+	var cachedSF *meltysynth.SoundFont
+	if p.cachedSF != nil && p.cachedSFPath == p.sfPath {
+		cachedSF = p.cachedSF
+	}
+
+	mp, sf, err := NewMidiPlayer(path, p.sfPath, cachedSF, speakerSampleRate)
 	if err != nil {
 		return err
 	}
+	p.cachedSF = sf
+	p.cachedSFPath = p.sfPath
 
 	p.midiPlayer = mp
 	p.path = path
 	p.isPaused = true
 	p.isPlaying = false
 
-	// Extract title from path (last component without extension)
+	mp.SetVolume(p.linearVolume)
+
 	p.title = path
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '/' || path[i] == '\\' {
@@ -483,11 +497,14 @@ func (p *Player) playMIDI() error {
 		return fmt.Errorf("no MIDI player")
 	}
 
+	if !p.isPlaying {
+		logger.Info("MIDI playback start")
+		speaker.Play(p.midiPlayer)
+	}
+
 	speaker.Lock()
 	p.midiPlayer.Play()
 	speaker.Unlock()
-
-	speaker.Play(p.midiPlayer)
 
 	p.isPlaying = true
 	p.isPaused = false

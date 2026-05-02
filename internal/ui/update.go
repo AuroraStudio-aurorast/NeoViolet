@@ -8,7 +8,8 @@ import (
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 
-	"neoviolet/internal/lyrics"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -69,6 +70,7 @@ func handleVolume(m *Model, msg VolumeMsg) (tea.Model, tea.Cmd) {
 	} else if msg.Level >= 0 && msg.Level <= 1.0 {
 		m.Audio.SetVolume(msg.Level)
 	}
+	logger.Debug("Volume", "newVolume", m.Audio.Volume)
 	m.Components.VolumeBar.SetPercent(m.Audio.Volume)
 	return m, nil
 }
@@ -93,6 +95,7 @@ func handleSeek(m *Model, msg SeekMsg) (tea.Model, tea.Cmd) {
 		newPos = m.Audio.Duration
 	}
 
+	logger.Debug("Seek", "from", currentPos, "to", newPos)
 	if err := m.Audio.SeekPlayer(newPos); err != nil {
 		m.Error.Set(fmt.Sprintf("Seek failed: %v", err), 120)
 	}
@@ -113,8 +116,10 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 
 	if msg.Player.Title() != "" {
 		m.Audio.CurrentSong = msg.Player.Title()
+		logger.Info("Audio loaded", "title", msg.Player.Title(), "artist", msg.Player.Artist())
 	} else {
 		m.Audio.CurrentSong = filepath.Base(msg.Path)
+		logger.Info("Audio loaded (no tags)", "file", filepath.Base(msg.Path))
 	}
 	if msg.Player.Artist() != "" {
 		m.Audio.Artist = msg.Player.Artist()
@@ -131,14 +136,16 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Load LRC lyrics if available
-	lrcPath := lyrics.FindLRC(msg.Path)
-	if lrcPath != "" {
-		data, err := lyrics.ParseFile(lrcPath)
-		if err != nil {
-			m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
-		} else {
-			m.Audio.Lyrics = data
-			m.Audio.LyricIndex = -1
+	if m.Config.Lyrics.Enabled {
+		lrcPath := lyrics.FindLRC(msg.Path)
+		if lrcPath != "" {
+			data, err := lyrics.ParseFile(lrcPath)
+			if err != nil {
+				m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
+			} else {
+				m.Audio.Lyrics = data
+				m.Audio.LyricIndex = -1
+			}
 		}
 	}
 

@@ -1,0 +1,79 @@
+[ti:Lyrics Test]
+[ar:Test Artist]
+[al:Test Album]
+[au:Test Author]
+[by:LRC Tester]
+[offset:+300]
+
+; Standard timestamps with millisecond precision
+[00:00.00]This is the first line of the song.
+[00:01.72]Here comes the second line more words.
+[00:04.28]A third line to complete the verse.
+[00:06.16]The chorus begins right about now
+[00:07.82]Singing la la la la la la la
+[00:09.54]This is the final line of the test song.
+[00:12.36]Fading away slowly.
+; Short timestamp without milliseconds (parsed as [00:13])
+[00:13]End of track.
+
+; Offset override: subsequent timestamps use -100ms offset
+[offset:-100]
+
+; Multilingual merge: four languages share the same timestamp
+[00:15.24]This is the first multilingual line.
+[00:15.24]这是第一句多语言歌词。
+[00:15.24]이것은 첫 번째 다국어 가사입니다.
+[00:15.24]これが最初の多言語歌詞です。
+
+[00:17.56]Hello.
+[00:17.56]你好！
+[00:17.56]안녕하세요!
+[00:17.56]こんにちは！
+
+[00:18.20]Shared text free timestamps.
+
+; Extended bracket format: language tags in timestamps
+[00:20.28]English only.
+[00:20.28]中文
+[00:20.28]한국어
+[00:20.28]日本語
+
+; Four-languages merge at the same timestamp
+[00:21.36]English text.
+[00:21.36:zh]中文文本
+[00:21.36:kr]한국어 텍스트
+[00:21.36:jp]日本語テキスト
+
+; Separated same timestamps: A and B share timestamp, middle line differs
+[00:22.60]Bilingual A
+[00:23.70]Bilingual B
+[00:22.60]Bilingual 2 (separated by other lines)
+
+[00:24.98]Separated by other lines.
+[00:26.88]Bilingual A2.
+[00:26.88]이중 언어 B
+[00:26.88]バイリンガルC
+
+; Special characters handling
+[00:28.20]Punctuation: !@#$%^&*()_+{}:"<>?
+[00:28.20]Emoji test: 😊🎶🎤🔥
+
+; Word-level timestamps (embedded in <> brackets)
+<00:29.22>Word <00:29.50>sync <00:29.80>the lyrics
+
+[00:30.20]Test file complete.
+
+; Lines below this point extend beyond the audio duration and exist
+; solely to exercise LRC parser features.
+
+; Multiple timestamps on one line — produces three entries
+[00:32.00][00:32.30][00:32.60]Shared text across three timestamps
+; Whitespace-only line (space padding retained)
+[00:33.00]     
+; Empty text line (timestamp with no content)
+[00:34.00]
+
+; Three consecutive lines at the same timestamp — merge test
+[00:35.00]First repetition
+[00:35.00]Second repetition
+[00:35.00]Third repetition

@@ -11,16 +11,19 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"neoviolet/internal/audio"
-	"neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 func loadAudio(filePath, sfPath string) tea.Msg {
+	logger.Info("Loading audio file", "path", filePath)
 	player := audio.NewPlayer()
 	if sfPath != "" {
 		player.SetSoundfontPath(sfPath)
 	}
 	if err := player.Open(filePath); err != nil {
+		logger.Error("Failed to load audio", "path", filePath, "err", err)
 		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180}
 	}
 	return AudioLoadedMsg{Player: player, Path: filePath}
@@ -73,7 +76,7 @@ var keys = KeyMap{
 		key.WithHelp("ctrl+c", "quit"),
 	),
 	Command: key.NewBinding(
-		key.WithKeys(":"),
+		key.WithKeys(":", "/"),
 		key.WithHelp(":", "command mode"),
 	),
 	NormalMode: key.NewBinding(
@@ -94,13 +97,15 @@ func NewModel(filePath string, cfg *config.Config) *Model {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
+
+	var activeIcons IconSet
 	switch cfg.IconTheme {
 	case "emoji":
-		Icons = EmojiIcons
+		activeIcons = EmojiIcons
 	case "fallback":
-		Icons = FallbackIcons
+		activeIcons = FallbackIcons
 	default:
-		Icons = NerdIcons
+		activeIcons = NerdIcons
 	}
 
 	pbOpts := []progress.Option{
@@ -164,11 +169,14 @@ func NewModel(filePath string, cfg *config.Config) *Model {
 			Help:         h,
 			CommandInput: ti,
 		},
-		Config: cfg,
+		Config:      cfg,
+		Icons:       activeIcons,
 		Error:       &ErrorState{},
 		Loading:     filePath != "",
 		pendingPath: filePath,
 	}
+
+	logger.Info("Model created", "iconTheme", cfg.IconTheme, "tickRate", cfg.TickRate)
 
 	ti.SetWidth(m.UI.Width - 1)
 
@@ -212,6 +220,7 @@ func (m *Model) togglePlayback() {
 }
 
 func (m *Model) cleanup() {
+	logger.Debug("Cleanup: closing player")
 	m.Audio.Close()
 }
 

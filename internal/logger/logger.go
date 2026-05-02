@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	logger *log.Logger
+	logger  *log.Logger
 	logFile *os.File
 )
 
@@ -39,50 +39,54 @@ func Close() error {
 	return nil
 }
 
+func l() *log.Logger {
+	return logger
+}
+
 func Debug(msg string, keyvals ...any) {
-	if logger == nil {
+	if l() == nil {
 		return
 	}
 	logger.Debug(msg, keyvals...)
 }
 
 func Info(msg string, keyvals ...any) {
-	if logger == nil {
+	if l() == nil {
 		return
 	}
 	logger.Info(msg, keyvals...)
 }
 
 func Warn(msg string, keyvals ...any) {
-	if logger == nil {
+	if l() == nil {
 		return
 	}
 	logger.Warn(msg, keyvals...)
 }
 
 func Error(msg string, keyvals ...any) {
-	if logger == nil {
+	if l() == nil {
 		return
 	}
 	logger.Error(msg, keyvals...)
 }
 
 func Fatal(msg string, keyvals ...any) {
-	if logger == nil {
+	if l() == nil {
 		return
 	}
 	logger.Fatal(msg, keyvals...)
 }
 
 func Printf(format string, args ...any) {
-	if logger == nil {
+	if l() == nil {
 		return
 	}
 	logger.Printf(format, args...)
 }
 
 func With(keyvals ...any) *log.Logger {
-	if logger == nil {
+	if l() == nil {
 		return &log.Logger{}
 	}
 	return logger.With(keyvals...)

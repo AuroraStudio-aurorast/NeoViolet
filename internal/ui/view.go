@@ -9,28 +9,23 @@ import (
 )
 
 const (
-	minWidth  = 68
-	minHeight = 17
+	minWidth      = 68
+	minHeight     = 17
+	tabsHeight    = 3
+	footerHeight  = 6
+	helpHeight    = 1
+	contentOffset = tabsHeight + footerHeight + helpHeight
 )
 
 func renderMainView(m *Model) tea.View {
 	if m.Loading {
-		loadingStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("57")).
-			Bold(true)
 		return tea.NewView(loadingStyle.Render("Loading..."))
 	}
 
 	if m.UI.Width < minWidth || m.UI.Height < minHeight {
-		warnStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
-			Bold(true).
-			Width(m.UI.Width).
-			Height(m.UI.Height).
-			Align(lipgloss.Center, lipgloss.Center)
 		msg := fmt.Sprintf("Terminal too small (%dx%d), resize to at least %dx%d",
 			m.UI.Width, m.UI.Height, minWidth, minHeight)
-		return tea.NewView(warnStyle.Render(msg))
+		return tea.NewView(warnStyle.Width(m.UI.Width).Height(m.UI.Height).Align(lipgloss.Center, lipgloss.Center).Render(msg))
 	}
 
 	header := renderTabs(m)
@@ -47,11 +42,22 @@ func renderMainView(m *Model) tea.View {
 	))
 	view.AltScreen = true
 
+	if m.Audio.CurrentSong != "" {
+		song := m.Audio.CurrentSong
+		if m.Audio.Artist != "" && m.Audio.Artist != "Unknown Artist" {
+			view.WindowTitle = "NeoViolet | " + song + " - " + m.Audio.Artist
+		} else {
+			view.WindowTitle = "NeoViolet | " + song
+		}
+	} else {
+		view.WindowTitle = "NeoViolet"
+	}
+
 	return view
 }
 
 func renderTabs(m *Model) string {
-	tabIcons := []string{Icons.Home, Icons.Playlist, Icons.Effects, Icons.Settings}
+	tabIcons := []string{m.Icons.Home, m.Icons.Playlist, m.Icons.Effects, m.Icons.Settings}
 	var tabs []string
 
 	for i, name := range m.UI.Tabs {
@@ -86,21 +92,26 @@ func renderContent(m *Model) string {
 
 	return contentStyle.
 		Width(m.UI.Width).
-		Height(m.UI.Height - 10).
+		Height(m.UI.Height - contentOffset).
 		Render(content)
 }
 
 func renderFooter(m *Model) string {
-	icon := Icons.Play
+	icon := m.Icons.Play
 	if m.Audio.IsPlaying {
-		icon = Icons.Pause
+		icon = m.Icons.Pause
 	}
 
 	var songLine string
 	if m.Audio.Player != nil {
-		songLine = fmt.Sprintf("%s  %s - %s", icon, m.Audio.CurrentSong, m.Audio.Artist)
+		artist := m.Audio.Artist
+		if artist == "" || artist == "Unknown Artist" {
+			songLine = fmt.Sprintf("%s  %s", icon, m.Audio.CurrentSong)
+		} else {
+			songLine = fmt.Sprintf("%s  %s - %s", icon, m.Audio.CurrentSong, artist)
+		}
 	} else {
-		songLine = fmt.Sprintf("%s  No audio loaded", Icons.Music)
+		songLine = fmt.Sprintf("%s  No audio loaded", m.Icons.Music)
 	}
 
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
@@ -121,7 +132,7 @@ func renderFooter(m *Model) string {
 		footerTextStyle.Render(timeDisplay),
 	)
 
-	volumeLabel := footerTextStyle.Render(Icons.Volume + " ")
+	volumeLabel := footerTextStyle.Render(m.Icons.Volume + " ")
 	volumeBar := m.Components.VolumeBar.ViewAs(m.Audio.Volume)
 
 	// Combine volume label and bar on one line
@@ -135,7 +146,6 @@ func renderFooter(m *Model) string {
 	if m.Audio.Lyrics != nil && m.Audio.LyricIndex >= 0 && m.Audio.LyricIndex < len(m.Audio.Lyrics.Lines) {
 		lyricLine = m.Audio.Lyrics.Lines[m.Audio.LyricIndex].Text
 	}
-	lyricStyle := lipgloss.NewStyle().Italic(true).Foreground(lipgloss.Color("141"))
 	maxWidth := m.UI.Width - 6
 
 	lyricRow := ""
@@ -196,16 +206,10 @@ func formatDuration(d time.Duration) string {
 
 func renderHelp(m *Model) string {
 	if m.UI.Mode == ModeCommand {
-		inputStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("57")).
-			Bold(true)
-		return inputStyle.Render(Icons.Command + m.Components.CommandInput.View())
+		return inputStyle.Render(m.Icons.Command + m.Components.CommandInput.View())
 	}
 
 	if m.Error.Message != "" && m.Error.Visible {
-		errorStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
-			Background(lipgloss.Color("236"))
 		return errorStyle.Width(m.UI.Width).Render(" " + m.Error.Message)
 	}
 

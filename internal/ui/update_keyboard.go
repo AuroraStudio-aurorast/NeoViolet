@@ -7,8 +7,75 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
+
+// fullwidthRune maps fullwidth Unicode characters to their ASCII equivalents.
+func fullwidthRune(r rune) rune {
+	switch r {
+	case '：', '；':
+		return ':'
+	case '［':
+		return '['
+	case '］':
+		return ']'
+	case '／':
+		return '/'
+	case '－':
+		return '-'
+	case '＋':
+		return '+'
+	case '＝':
+		return '='
+	case '＞':
+		return '>'
+	case '＜':
+		return '<'
+	case '？':
+		return '?'
+	case '＇':
+		return '\''
+	case '＂':
+		return '"'
+	case '＾':
+		return '^'
+	case '～':
+		return '~'
+	case '＿':
+		return '_'
+	case '＠':
+		return '@'
+	case '＃':
+		return '#'
+	case '％':
+		return '%'
+	case '＆':
+		return '&'
+	case '＊':
+		return '*'
+	case '（':
+		return '('
+	case '）':
+		return ')'
+	}
+	return r
+}
+
+// normalizedKey wraps a key string so that key.Matches sees a normalized version
+// with fullwidth characters mapped to ASCII.
+type normalizedKey struct{ raw string }
+
+func (k normalizedKey) String() string {
+	return strings.Map(fullwidthRune, k.raw)
+}
+
+// normMatch is like key.Matches but normalizes fullwidth characters first.
+func normMatch(msg tea.KeyPressMsg, b ...key.Binding) bool {
+	return key.Matches(normalizedKey{msg.String()}, b...)
+}
 
 func handleKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.UI.Mode == ModeCommand {
@@ -18,102 +85,120 @@ func handleKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	switch key {
-	case "enter":
-		return executeCommand(m)
-	case "escape", "esc":
+		switch {
+	case normMatch(msg, keys.Quit):
+		m.cleanup()
+		return m, tea.Quit
+
+	case normMatch(msg, keys.NormalMode):
 		m.UI.Mode = ModeNormal
 		m.Components.CommandInput.Reset()
 		m.Components.CommandInput.Blur()
 		m.historyIndex = len(m.CommandHistory)
 		return m, nil
-	case "ctrl+c", "ctrl+C", "ctrl+d", "ctrl+D":
-		m.cleanup()
-		return m, tea.Quit
-	case "up":
-		if len(m.CommandHistory) == 0 {
-			return m, nil
-		}
-		if m.historyIndex > 0 {
-			m.historyIndex--
-		}
-		m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
-		m.Components.CommandInput.CursorEnd()
-		return m, nil
-	case "down":
-		if m.historyIndex >= len(m.CommandHistory)-1 {
-			m.historyIndex = len(m.CommandHistory)
-			m.Components.CommandInput.Reset()
-			return m, nil
-		}
-		m.historyIndex++
-		m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
-		m.Components.CommandInput.CursorEnd()
-		return m, nil
+
 	default:
-		m.historyIndex = len(m.CommandHistory)
-		var cmd tea.Cmd
-		m.Components.CommandInput, cmd = m.Components.CommandInput.Update(msg)
-		return m, cmd
+		keyStr := msg.String()
+		switch keyStr {
+		case "enter":
+			return executeCommand(m)
+		case "up":
+			if len(m.CommandHistory) == 0 {
+				return m, nil
+			}
+			if m.historyIndex > 0 {
+				m.historyIndex--
+			}
+			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
+			m.Components.CommandInput.CursorEnd()
+			return m, nil
+		case "down":
+			if m.historyIndex >= len(m.CommandHistory)-1 {
+				m.historyIndex = len(m.CommandHistory)
+				m.Components.CommandInput.Reset()
+				return m, nil
+			}
+			m.historyIndex++
+			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
+			m.Components.CommandInput.CursorEnd()
+			return m, nil
+		default:
+			m.historyIndex = len(m.CommandHistory)
+			var cmd tea.Cmd
+			m.Components.CommandInput, cmd = m.Components.CommandInput.Update(msg)
+			return m, cmd
+		}
 	}
 }
 
 func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-	
-	switch key {
-	case "q", "Q":
-		if m.QuitConfirm {
-			m.cleanup()
-			return m, tea.Quit
-		}
-		m.QuitConfirm = true
-		return m, nil
-	case "esc", "Escape":
+	switch {
+	case 	normMatch(msg, keys.Quit):
+		m.cleanup()
+		return m, tea.Quit
+
+	case 	normMatch(msg, keys.NormalMode):
 		m.QuitConfirm = false
 		return m, nil
-	case " ", "space":
+
+	case 	normMatch(msg, keys.Play), 	normMatch(msg, keys.Pause):
 		m.togglePlayback()
 		return m, nil
-	case ":", "/":
+
+	case 	normMatch(msg, keys.Command):
 		m.UI.Mode = ModeCommand
 		cmd := m.Components.CommandInput.Focus()
 		return m, cmd
-	case "+", "=":
+
+	case 	normMatch(msg, keys.VolumeUp):
 		m.adjustVolume(m.Config.VolumeStep)
 		return m, nil
-	case "-", "_":
+
+	case 	normMatch(msg, keys.VolumeDown):
 		m.adjustVolume(-m.Config.VolumeStep)
 		return m, nil
-	case ">", "l", "L":
-		// Next track placeholder
+
+	case 	normMatch(msg, keys.Next):
 		return m, nil
-	case "<", "h", "H":
-		// Previous track placeholder
+
+	case 	normMatch(msg, keys.Prev):
 		return m, nil
-	case "tab", "Tab":
+
+	case 	normMatch(msg, keys.EnterTab):
 		m.UI.Focus = FocusContent
 		return m, nil
-	case "enter", "Enter":
+
+	case 	normMatch(msg, keys.EnterFooter):
 		m.UI.Focus = FocusFooter
 		return m, nil
-	case "]", "n", "N":
+
+	case 	normMatch(msg, keys.TabNext):
 		m.UI.ActiveTab = (m.UI.ActiveTab + 1) % len(m.UI.Tabs)
 		return m, nil
-	case "[", "p", "P":
+
+	case 	normMatch(msg, keys.TabPrev):
 		m.UI.ActiveTab = (m.UI.ActiveTab - 1 + len(m.UI.Tabs)) % len(m.UI.Tabs)
 		return m, nil
-	case "ctrl+f", "right", "Right":
+
+	case 	normMatch(msg, keys.SeekForward):
 		m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
-	case "ctrl+b", "left", "Left":
+
+	case 	normMatch(msg, keys.SeekBackward):
 		m.Audio.SeekRelative(-time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
-	case "ctrl+c", "ctrl+C":
-		m.cleanup()
-		return m, tea.Quit
+
 	default:
+		// Quit with single 'q' press (double-tap to confirm)
+		keyStr := msg.String()
+		if keyStr == "q" || keyStr == "Q" {
+			if m.QuitConfirm {
+				m.cleanup()
+				return m, tea.Quit
+			}
+			m.QuitConfirm = true
+			return m, nil
+		}
 		return m, nil
 	}
 }
@@ -122,6 +207,8 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	cmdText := m.Components.CommandInput.Value()
 	m.Components.CommandInput.Reset()
 	m.UI.Mode = ModeNormal
+
+	logger.Info("Command executed", "cmd", cmdText)
 
 	// Save command to history: move to top if exists, cap at 50
 	if cmdText != "" {

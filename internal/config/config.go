@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 type LyricsConfig struct {
@@ -13,15 +15,15 @@ type LyricsConfig struct {
 }
 
 type ProgressBarConfig struct {
-	Fill            []string `json:"fill"`
-	Scaled          bool     `json:"scaled"`
-	ShowPercentage  bool     `json:"show_percentage"`
+	Fill           []string `json:"fill"`
+	Scaled         bool     `json:"scaled"`
+	ShowPercentage bool     `json:"show_percentage"`
 }
 
 type VolumeBarConfig struct {
-	Width           int      `json:"width"`
-	ShowPercentage  bool     `json:"show_percentage"`
-	Fill            []string `json:"fill"`
+	Width          int      `json:"width"`
+	ShowPercentage bool     `json:"show_percentage"`
+	Fill           []string `json:"fill"`
 }
 
 type CommandHistoryConfig struct {
@@ -33,37 +35,27 @@ type ErrorConfig struct {
 }
 
 type Config struct {
-	IconTheme     string              `json:"icon_theme"`
-	DefaultVolume float64             `json:"default_volume"`
-	VolumeStep    float64             `json:"volume_step"`
-	SeekStep      int                 `json:"seek_step"`
-	TickRate      int                 `json:"tick_rate"`
-	PlaybackDevice string             `json:"playback_device"`
-	SampleRate    int                 `json:"sample_rate"`
-	BufferSize    int                 `json:"buffer_size"`
-	Crossfade     int                 `json:"crossfade"`
-	ReplayGain    bool                `json:"replay_gain"`
-	SoundfontPath string              `json:"soundfont_path"`
-	Lyrics        LyricsConfig        `json:"lyrics"`
-	ProgressBar   ProgressBarConfig    `json:"progress_bar"`
-	VolumeBar     VolumeBarConfig     `json:"volume_bar"`
+	IconTheme      string               `json:"icon_theme"`
+	DefaultVolume  float64              `json:"default_volume"`
+	VolumeStep     float64              `json:"volume_step"`
+	SeekStep       int                  `json:"seek_step"`
+	TickRate       int                  `json:"tick_rate"`
+	SoundfontPath  string               `json:"soundfont_path"`
+	Lyrics         LyricsConfig         `json:"lyrics"`
+	ProgressBar    ProgressBarConfig    `json:"progress_bar"`
+	VolumeBar      VolumeBarConfig      `json:"volume_bar"`
 	CommandHistory CommandHistoryConfig `json:"command_history"`
-	Error         ErrorConfig         `json:"error"`
+	Error          ErrorConfig          `json:"error"`
 }
 
 func defaultConfig() Config {
 	return Config{
-		IconTheme:      "nerd",
-		DefaultVolume:  1.0,
-		VolumeStep:     0.1,
-		SeekStep:       5,
-		TickRate:       30,
-		PlaybackDevice: "default",
-		SampleRate:     44100,
-		BufferSize:     100,
-		Crossfade:      0,
-		ReplayGain:     false,
-		SoundfontPath:  "",
+		IconTheme:     "nerd",
+		DefaultVolume: 1.0,
+		VolumeStep:    0.1,
+		SeekStep:      5,
+		TickRate:      30,
+		SoundfontPath: "",
 		Lyrics: LyricsConfig{
 			Enabled:     true,
 			ScrollSpeed: 6,
@@ -74,9 +66,9 @@ func defaultConfig() Config {
 			Fill:           []string{"▰", "▱"},
 		},
 		ProgressBar: ProgressBarConfig{
-			Scaled:          true,
-			ShowPercentage:  false,
-			Fill:            []string{"▮", "▯"},
+			Scaled:         true,
+			ShowPercentage: false,
+			Fill:           []string{"▮", "▯"},
 		},
 		CommandHistory: CommandHistoryConfig{
 			Max: 50,
@@ -108,6 +100,7 @@ func Load() (*Config, error) {
 			if saveErr := cfg.Save(); saveErr != nil {
 				return &cfg, nil
 			}
+			logger.Info("Config created", "path", path)
 			return &cfg, nil
 		}
 		return &cfg, fmt.Errorf("read config: %w", err)
@@ -115,6 +108,7 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return &cfg, fmt.Errorf("parse config: %w", err)
 	}
+	logger.Info("Config loaded", "path", path, "iconTheme", cfg.IconTheme)
 	return &cfg, nil
 }
 

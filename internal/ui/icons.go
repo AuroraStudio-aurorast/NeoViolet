@@ -59,5 +59,3 @@ var EmojiIcons = IconSet{
 	Search:   "\U0001f50d",
 	Music:    "\U0001f3b5",
 }
-
-var Icons = NerdIcons

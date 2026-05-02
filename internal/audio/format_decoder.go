@@ -11,6 +11,8 @@ import (
 	"github.com/gopxl/beep/v2/mp3"
 	"github.com/gopxl/beep/v2/vorbis"
 	"github.com/gopxl/beep/v2/wav"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 type FormatDecoder struct{}
@@ -37,18 +39,25 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 
 	switch {
 	case n >= 3 && string(buffer[0:3]) == "ID3":
+		logger.Debug("Detected format: MP3 (ID3)", "path", file.Name())
 		return ".mp3", nil
 	case n >= 2 && buffer[0] == 0xFF && (buffer[1]&0xE0) == 0xE0:
+		logger.Debug("Detected format: MP3 (sync)", "path", file.Name())
 		return ".mp3", nil
 	case n >= 12 && string(buffer[0:4]) == "RIFF" && string(buffer[8:12]) == "WAVE":
+		logger.Debug("Detected format: WAV", "path", file.Name())
 		return ".wav", nil
 	case n >= 4 && string(buffer[0:4]) == "fLaC":
+		logger.Debug("Detected format: FLAC", "path", file.Name())
 		return ".flac", nil
 	case n >= 4 && string(buffer[0:4]) == "OggS":
+		logger.Debug("Detected format: OGG", "path", file.Name())
 		return ".ogg", nil
 	case n >= 4 && string(buffer[0:4]) == "MThd":
+		logger.Debug("Detected format: MIDI", "path", file.Name())
 		return ".mid", nil
 	default:
+		logger.Debug("Unknown audio format", "path", file.Name())
 		return "", fmt.Errorf("unknown audio format")
 	}
 }

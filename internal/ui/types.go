@@ -8,11 +8,10 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/textinput"
-	tea "charm.land/bubbletea/v2"
-	
-	"neoviolet/internal/audio"
-	"neoviolet/internal/config"
-	"neoviolet/internal/lyrics"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
 // Mode represents the current input mode
@@ -35,53 +34,50 @@ const (
 // Custom message types for BubbleTea architecture
 type (
 	TickMsg struct{}
-	
+
 	PlaybackUpdateMsg struct {
 		Progress float64
 		Elapsed  time.Duration
 	}
-	
+
 	ErrorMsg struct {
 		Message string
 		Timer   int
 	}
-	
+
 	AudioLoadedMsg struct {
 		Player audio.AudioPlayer
 		Path   string
 	}
-	
+
 	VolumeMsg struct {
 		Level float64
 		Delta float64
 	}
-	
+
 	SeekMsg struct {
 		Position time.Duration
 		Relative bool
 	}
 )
 
-// Re-export window size message for unified handling
-type WindowSizeMsg = tea.WindowSizeMsg
-
 // KeyMap defines all keyboard shortcuts
 type KeyMap struct {
-	TabNext    key.Binding
-	TabPrev    key.Binding
-	Play       key.Binding
-	Pause      key.Binding
-	Next       key.Binding
-	Prev       key.Binding
-	VolumeUp   key.Binding
-	VolumeDown key.Binding
+	TabNext      key.Binding
+	TabPrev      key.Binding
+	Play         key.Binding
+	Pause        key.Binding
+	Next         key.Binding
+	Prev         key.Binding
+	VolumeUp     key.Binding
+	VolumeDown   key.Binding
 	SeekForward  key.Binding
 	SeekBackward key.Binding
-	Quit       key.Binding
-	Command    key.Binding
-	NormalMode key.Binding
-	EnterTab   key.Binding
-	EnterFooter key.Binding
+	Quit         key.Binding
+	Command      key.Binding
+	NormalMode   key.Binding
+	EnterTab     key.Binding
+	EnterFooter  key.Binding
 }
 
 // ShortHelp returns the key bindings shown in the short help
@@ -106,16 +102,16 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 
 // Sub-structs for separated responsibilities
 type AudioState struct {
-	Player      audio.AudioPlayer
-	CurrentSong string
-	Artist      string
-	Progress    float64
-	Volume      float64
-	Duration    time.Duration
-	Elapsed     time.Duration
-	IsPlaying   bool
-	Lyrics      *lyrics.LyricsData
-	LyricIndex  int
+	Player            audio.AudioPlayer
+	CurrentSong       string
+	Artist            string
+	Progress          float64
+	Volume            float64
+	Duration          time.Duration
+	Elapsed           time.Duration
+	IsPlaying         bool
+	Lyrics            *lyrics.LyricsData
+	LyricIndex        int
 	LyricScrollOffset int
 	lyricScrollTick   int
 	lastLyricIndex    int
@@ -167,6 +163,7 @@ type Model struct {
 	Components     *ComponentState
 	Error          *ErrorState
 	Config         *config.Config
+	Icons          IconSet
 	QuitConfirm    bool
 	ExitCode       int
 	Loading        bool

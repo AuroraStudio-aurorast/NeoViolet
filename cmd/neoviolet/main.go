@@ -5,9 +5,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"neoviolet/internal/config"
-	"neoviolet/internal/logger"
-	neoviolet "neoviolet/internal/ui"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	neoviolet "github.com/AuroraStudio-aurorast/neoviolet/internal/ui"
 )
 
 func main() {
