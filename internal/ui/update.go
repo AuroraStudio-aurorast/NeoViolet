@@ -38,7 +38,7 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
 	m.Error.Tick()
 
-	return m, tea.Batch(cmd, tea.Tick(time.Second/30, func(t time.Time) tea.Msg {
+	return m, tea.Batch(cmd, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(t time.Time) tea.Msg {
 		return TickMsg{}
 	}))
 }

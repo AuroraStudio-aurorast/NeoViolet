@@ -114,7 +114,7 @@ func (a *AudioState) UpdateLyricIndex() {
 	a.LyricIndex = newIdx
 }
 
-func (a *AudioState) AdvanceLyricScroll(maxWidth int) {
+func (a *AudioState) AdvanceLyricScroll(scrollSpeed int, maxWidth int) {
 	if a.Lyrics == nil || a.LyricIndex < 0 {
 		return
 	}
@@ -124,7 +124,7 @@ func (a *AudioState) AdvanceLyricScroll(maxWidth int) {
 		return
 	}
 	a.lyricScrollTick++
-	if a.lyricScrollTick < 6 {
+	if a.lyricScrollTick < scrollSpeed {
 		return
 	}
 	a.lyricScrollTick = 0

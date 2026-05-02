@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	
 	"neoviolet/internal/audio"
+	"neoviolet/internal/config"
 	"neoviolet/internal/lyrics"
 )
 
@@ -165,6 +166,7 @@ type Model struct {
 	UI             *UIState
 	Components     *ComponentState
 	Error          *ErrorState
+	Config         *config.Config
 	QuitConfirm    bool
 	ExitCode       int
 	Loading        bool

@@ -12,10 +12,14 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"neoviolet/internal/audio"
+	"neoviolet/internal/config"
 )
 
-func loadAudio(filePath string) tea.Msg {
+func loadAudio(filePath, sfPath string) tea.Msg {
 	player := audio.NewPlayer()
+	if sfPath != "" {
+		player.SetSoundfontPath(sfPath)
+	}
 	if err := player.Open(filePath); err != nil {
 		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180}
 	}
@@ -86,33 +90,52 @@ var keys = KeyMap{
 	),
 }
 
-func NewModel(filePath string, fallbackIcon bool, emoji bool) *Model {
-	switch {
-	case emoji:
+func NewModel(filePath string, cfg *config.Config) *Model {
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	switch cfg.IconTheme {
+	case "emoji":
 		Icons = EmojiIcons
-	case fallbackIcon:
+	case "fallback":
 		Icons = FallbackIcons
+	default:
+		Icons = NerdIcons
 	}
 
-	pb := progress.New(
+	pbOpts := []progress.Option{
 		progress.WithColors(
 			lipgloss.Color("#DA70D6"),
 			lipgloss.Color("#8A2BE2"),
 		),
-		progress.WithScaled(true),
-		progress.WithoutPercentage(),
-	)
-	pb.SetWidth(60)
+		progress.WithFillCharacters([]rune(cfg.ProgressBar.Fill[0])[0], []rune(cfg.ProgressBar.Fill[1])[0]),
+		progress.WithScaled(cfg.ProgressBar.Scaled),
+	}
+	if !cfg.ProgressBar.ShowPercentage {
+		pbOpts = append(pbOpts, progress.WithoutPercentage())
+	}
+	pb := progress.New(pbOpts...)
 
 	vb := progress.New(
 		progress.WithColors(
 			lipgloss.Color("#00FF00"),
 			lipgloss.Color("#FF0000"),
 		),
-		progress.WithFillCharacters('▰', '▱'),
+		progress.WithFillCharacters([]rune(cfg.VolumeBar.Fill[0])[0], []rune(cfg.VolumeBar.Fill[1])[0]),
 		progress.WithScaled(false),
 	)
-	vb.SetWidth(16)
+	if !cfg.VolumeBar.ShowPercentage {
+		vb = progress.New(
+			progress.WithColors(
+				lipgloss.Color("#00FF00"),
+				lipgloss.Color("#FF0000"),
+			),
+			progress.WithFillCharacters([]rune(cfg.VolumeBar.Fill[0])[0], []rune(cfg.VolumeBar.Fill[1])[0]),
+			progress.WithScaled(false),
+			progress.WithoutPercentage(),
+		)
+	}
+	vb.SetWidth(cfg.VolumeBar.Width)
 
 	h := help.New()
 	h.ShowAll = false
@@ -125,7 +148,7 @@ func NewModel(filePath string, fallbackIcon bool, emoji bool) *Model {
 
 	m := &Model{
 		Audio: &AudioState{
-			Volume: 1.0,
+			Volume: cfg.DefaultVolume,
 		},
 		UI: &UIState{
 			Mode:     ModeNormal,
@@ -141,6 +164,7 @@ func NewModel(filePath string, fallbackIcon bool, emoji bool) *Model {
 			Help:         h,
 			CommandInput: ti,
 		},
+		Config: cfg,
 		Error:       &ErrorState{},
 		Loading:     filePath != "",
 		pendingPath: filePath,
@@ -160,13 +184,14 @@ func (m *Model) Init() tea.Cmd {
 
 	if m.pendingPath != "" {
 		path := m.pendingPath
+		sfPath := m.Config.SoundfontPath
 		m.pendingPath = ""
 		cmds = append(cmds, func() tea.Msg {
-			return loadAudio(path)
+			return loadAudio(path, sfPath)
 		})
 	}
 
-	cmds = append(cmds, tea.Tick(time.Second/30, func(t time.Time) tea.Msg {
+	cmds = append(cmds, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(t time.Time) tea.Msg {
 		return TickMsg{}
 	}))
 
@@ -198,6 +223,6 @@ func (m *Model) adjustVolume(delta float64) {
 func (m *Model) updatePlaybackState() tea.Cmd {
 	m.Audio.UpdatePosition()
 	m.Audio.UpdateLyricIndex()
-	m.Audio.AdvanceLyricScroll(m.UI.Width - 6)
+	m.Audio.AdvanceLyricScroll(m.Config.Lyrics.ScrollSpeed, m.UI.Width-6)
 	return m.Components.ProgressBar.SetPercent(m.Audio.Progress)
 }

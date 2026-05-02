@@ -46,6 +46,8 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		return ".flac", nil
 	case n >= 4 && string(buffer[0:4]) == "OggS":
 		return ".ogg", nil
+	case n >= 4 && string(buffer[0:4]) == "MThd":
+		return ".mid", nil
 	default:
 		return "", fmt.Errorf("unknown audio format")
 	}
@@ -81,5 +83,5 @@ func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekClos
 }
 
 func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga"}
+	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid"}
 }

@@ -81,10 +81,10 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		cmd := m.Components.CommandInput.Focus()
 		return m, cmd
 	case "+", "=":
-		m.adjustVolume(0.1)
+		m.adjustVolume(m.Config.VolumeStep)
 		return m, nil
 	case "-", "_":
-		m.adjustVolume(-0.1)
+		m.adjustVolume(-m.Config.VolumeStep)
 		return m, nil
 	case ">", "l", "L":
 		// Next track placeholder
@@ -105,10 +105,10 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		m.UI.ActiveTab = (m.UI.ActiveTab - 1 + len(m.UI.Tabs)) % len(m.UI.Tabs)
 		return m, nil
 	case "ctrl+f", "right", "Right":
-		m.Audio.SeekRelative(5 * time.Second)
+		m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
 	case "ctrl+b", "left", "Left":
-		m.Audio.SeekRelative(-5 * time.Second)
+		m.Audio.SeekRelative(-time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
 	case "ctrl+c", "ctrl+C":
 		m.cleanup()
@@ -132,7 +132,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.CommandHistory = append(m.CommandHistory, cmdText)
-		if len(m.CommandHistory) > 50 {
+		if len(m.CommandHistory) > m.Config.CommandHistory.Max {
 			m.CommandHistory = m.CommandHistory[1:]
 		}
 	}
@@ -166,12 +166,12 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 
 	case "vol":
 		if arg == "" {
-			m.Error.Set("Usage: vol <0.0-1.0>", 90)
+			m.Error.Set("Usage: vol <0.0-1.0>", m.Config.Error.Duration)
 			return m, nil
 		}
 		vol, err := strconv.ParseFloat(arg, 64)
 		if err != nil || vol < 0 || vol > 1.0 {
-			m.Error.Set("Volume must be 0.0-1.0", 90)
+			m.Error.Set("Volume must be 0.0-1.0", m.Config.Error.Duration)
 			return m, nil
 		}
 		vol = math.Round(vol*100) / 100
@@ -184,18 +184,18 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 
 	case "seek":
 		if m.Audio.Player == nil {
-			m.Error.Set("No audio loaded", 90)
+			m.Error.Set("No audio loaded", m.Config.Error.Duration)
 			return m, nil
 		}
 		if arg == "" {
-			m.Error.Set("Usage: seek <seconds>, seek <mm:ss>, seek <hh:mm:ss>, seek +<offset>, seek -<offset>", 90)
+			m.Error.Set("Usage: seek <seconds>, seek <mm:ss>, seek <hh:mm:ss>, seek +<offset>, seek -<offset>", m.Config.Error.Duration)
 			return m, nil
 		}
 
 		if strings.HasPrefix(arg, "+") || strings.HasPrefix(arg, "-") {
 			rel, err := strconv.ParseFloat(arg, 64)
 			if err != nil {
-				m.Error.Set("Invalid seek offset", 90)
+				m.Error.Set("Invalid seek offset", m.Config.Error.Duration)
 				return m, nil
 			}
 			m.Audio.SeekRelative(time.Duration(rel * float64(time.Second)))
@@ -207,7 +207,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 				mins, err1 := strconv.Atoi(parts[0])
 				secs, err2 := strconv.Atoi(parts[1])
 				if err1 != nil || err2 != nil || secs < 0 || secs >= 60 {
-					m.Error.Set("Invalid time, use <mm>:<ss> where ss < 60", 90)
+					m.Error.Set("Invalid time, use <mm>:<ss> where ss < 60", m.Config.Error.Duration)
 					return m, nil
 				}
 				if mins < 0 {
@@ -219,7 +219,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 				mins, err2 := strconv.Atoi(parts[1])
 				secs, err3 := strconv.Atoi(parts[2])
 				if err1 != nil || err2 != nil || err3 != nil || mins < 0 || mins >= 60 || secs < 0 || secs >= 60 {
-					m.Error.Set("Invalid time, use <hh>:<mm>:<ss> where mm, ss < 60", 90)
+					m.Error.Set("Invalid time, use <hh>:<mm>:<ss> where mm, ss < 60", m.Config.Error.Duration)
 					return m, nil
 				}
 				if hours < 0 {
@@ -227,7 +227,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 				}
 				totalSeconds = hours*3600 + mins*60 + secs
 			default:
-				m.Error.Set("Invalid time format, use <mm>:<ss> or <hh>:<mm>:<ss>", 90)
+				m.Error.Set("Invalid time format, use <mm>:<ss> or <hh>:<mm>:<ss>", m.Config.Error.Duration)
 				return m, nil
 			}
 			newPos := time.Duration(totalSeconds) * time.Second
@@ -238,7 +238,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 		} else {
 			seconds, err := strconv.ParseFloat(arg, 64)
 			if err != nil {
-				m.Error.Set("Invalid seek position", 90)
+				m.Error.Set("Invalid seek position", m.Config.Error.Duration)
 				return m, nil
 			}
 			newPos := time.Duration(seconds * float64(time.Second))
@@ -253,7 +253,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	default:
-		m.Error.Set(fmt.Sprintf("Unknown command: %s", cmdText), 90)
+		m.Error.Set(fmt.Sprintf("Unknown command: %s", cmdText), m.Config.Error.Duration)
 		return m, nil
 	}
 }

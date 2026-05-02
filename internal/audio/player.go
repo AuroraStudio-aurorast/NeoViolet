@@ -31,6 +31,8 @@ type Player struct {
 	artist       string
 	decoder      *FormatDecoder
 	tagReader    *MetadataReader
+	midiPlayer   *MidiPlayer
+	sfPath       string
 }
 
 func NewPlayer() *Player {
@@ -54,9 +56,25 @@ func ensureSpeakerInit(sampleRate beep.SampleRate) error {
 	return initSpeakerErr
 }
 
+func (p *Player) SetSoundfontPath(sfPath string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.sfPath = sfPath
+}
+
 func (p *Player) Open(path string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	detectFile, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open file: %w", err)
+	}
+	ext, detectErr := p.decoder.DetectFormatByMagic(detectFile)
+	detectFile.Close()
+	if detectErr == nil && ext == ".mid" {
+		return p.openMIDI(path)
+	}
 
 	if p.isPlaying {
 		speaker.Clear()
@@ -133,6 +151,10 @@ func (p *Player) Play() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.midiPlayer != nil {
+		return p.playMIDI()
+	}
+
 	if p.streamer == nil || p.volume == nil {
 		return fmt.Errorf("player not initialized")
 	}
@@ -155,6 +177,12 @@ func (p *Player) Play() error {
 func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.midiPlayer != nil {
+		p.midiPlayer.Pause()
+		p.isPaused = true
+		return
+	}
 
 	if p.ctrl == nil {
 		return
@@ -182,12 +210,27 @@ func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.midiPlayer != nil {
+		p.midiPlayer.Stop()
+		p.isPlaying = false
+		p.isPaused = true
+		return
+	}
+
 	speaker.Clear()
 	p.isPlaying = false
 	p.isPaused = true
 }
 
 func (p *Player) Toggle() {
+	if p.midiPlayer != nil {
+		if p.isPaused || !p.isPlaying {
+			p.Play()
+		} else {
+			p.Pause()
+		}
+		return
+	}
 	if p.isPaused || !p.isPlaying {
 		p.Play()
 	} else {
@@ -198,6 +241,10 @@ func (p *Player) Toggle() {
 func (p *Player) Seek(position time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.midiPlayer != nil {
+		return p.midiPlayer.Seek(position)
+	}
 
 	if p.streamer == nil || p.path == "" {
 		return nil
@@ -305,6 +352,9 @@ func (p *Player) IsPlaying() bool {
 func (p *Player) Duration() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.midiPlayer != nil {
+		return p.midiPlayer.Duration()
+	}
 	if p.streamer == nil {
 		return 0
 	}
@@ -314,6 +364,9 @@ func (p *Player) Duration() time.Duration {
 func (p *Player) Position() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.midiPlayer != nil {
+		return p.midiPlayer.Position()
+	}
 	if p.streamer == nil {
 		return 0
 	}
@@ -323,6 +376,10 @@ func (p *Player) Position() time.Duration {
 func (p *Player) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	if p.midiPlayer != nil {
+		return p.midiPlayer.Close()
+	}
 
 	speaker.Clear()
 	if p.file != nil {
@@ -367,4 +424,72 @@ type UnsupportedFormatError struct{}
 
 func (e *UnsupportedFormatError) Error() string {
 	return "unsupported audio format"
+}
+
+func (p *Player) openMIDI(path string) error {
+	if p.sfPath == "" {
+		return fmt.Errorf("soundfont_path not configured for MIDI playback")
+	}
+
+	if p.isPlaying {
+		speaker.Clear()
+		p.isPlaying = false
+	}
+	if p.streamer != nil {
+		if p.file != nil {
+			p.file.Close()
+		}
+	}
+	if p.midiPlayer != nil {
+		p.midiPlayer.Close()
+		p.midiPlayer = nil
+	}
+
+	if err := ensureSpeakerInit(midiSampleRate); err != nil {
+		return fmt.Errorf("speaker init: %w", err)
+	}
+
+	mp, err := NewMidiPlayer(path, p.sfPath)
+	if err != nil {
+		return err
+	}
+
+	p.midiPlayer = mp
+	p.path = path
+	p.isPaused = true
+	p.isPlaying = false
+
+	// Extract title from path (last component without extension)
+	p.title = path
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' || path[i] == '\\' {
+			p.title = path[i+1:]
+			break
+		}
+	}
+	for i := len(p.title) - 1; i >= 0; i-- {
+		if p.title[i] == '.' {
+			p.title = p.title[:i]
+			break
+		}
+	}
+	p.artist = "MIDI"
+
+	return nil
+}
+
+func (p *Player) playMIDI() error {
+	if p.midiPlayer == nil {
+		return fmt.Errorf("no MIDI player")
+	}
+
+	speaker.Lock()
+	p.midiPlayer.Play()
+	speaker.Unlock()
+
+	speaker.Play(p.midiPlayer)
+
+	p.isPlaying = true
+	p.isPaused = false
+	return nil
 }
