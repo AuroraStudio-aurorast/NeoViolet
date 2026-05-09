@@ -81,8 +81,7 @@ type KeyMap struct {
 	Quit         key.Binding
 	Command      key.Binding
 	NormalMode   key.Binding
-	EnterTab     key.Binding
-	EnterFooter  key.Binding
+	CycleFocus   key.Binding
 }
 
 // ShortHelp returns the key bindings shown in the short help
@@ -98,7 +97,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 // FullHelp returns the key bindings shown in the full help
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
-		{k.TabNext, k.TabPrev, k.EnterTab, k.EnterFooter},
+		{k.CycleFocus, k.TabNext, k.TabPrev},
 		{k.Play, k.Pause, k.Next, k.Prev},
 		{k.VolumeUp, k.VolumeDown, k.SeekForward, k.SeekBackward},
 		{k.Quit, k.Command, k.NormalMode},
@@ -123,13 +122,14 @@ type AudioState struct {
 }
 
 type UIState struct {
-	ActiveTab int
-	Tabs      []string
-	Mode      Mode
-	Focus     Focus
-	Width     int
-	Height    int
-	tabWidth  int
+	ActiveTab   int
+	Tabs        []string
+	Mode        Mode
+	Focus       Focus
+	SavedFocus  Focus
+	Width       int
+	Height      int
+	tabWidth    int
 }
 
 type ComponentState struct {

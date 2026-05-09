@@ -92,6 +92,7 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 
 	case normMatch(msg, keys.NormalMode):
 		m.UI.Mode = ModeNormal
+		m.UI.Focus = m.UI.SavedFocus
 		m.Components.CommandInput.Reset()
 		m.Components.CommandInput.Blur()
 		m.historyIndex = len(m.CommandHistory)
@@ -132,81 +133,104 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 }
 
 func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	keyStr := msg.String()
+
+	// ─── Tier 1: Always-global keys ───
 	switch {
-	case 	normMatch(msg, keys.Quit):
+	case normMatch(msg, keys.Quit):
 		m.cleanup()
 		return m, tea.Quit
 
-	case 	normMatch(msg, keys.NormalMode):
+	case normMatch(msg, keys.NormalMode):
 		m.QuitConfirm = false
 		return m, nil
 
-	case 	normMatch(msg, keys.Play), 	normMatch(msg, keys.Pause):
+	case normMatch(msg, keys.Play), normMatch(msg, keys.Pause):
 		m.togglePlayback()
 		return m, nil
 
-	case 	normMatch(msg, keys.Command):
+	case normMatch(msg, keys.Command):
+		m.UI.SavedFocus = m.UI.Focus
 		m.UI.Mode = ModeCommand
 		cmd := m.Components.CommandInput.Focus()
 		return m, cmd
 
-	case 	normMatch(msg, keys.VolumeUp):
-		m.adjustVolume(m.Config.VolumeStep)
+	case normMatch(msg, keys.CycleFocus):
+		m.UI.Focus = (m.UI.Focus + 1) % 3
 		return m, nil
 
-	case 	normMatch(msg, keys.VolumeDown):
-		m.adjustVolume(-m.Config.VolumeStep)
-		return m, nil
-
-	case 	normMatch(msg, keys.Next):
-		return m, nil
-
-	case 	normMatch(msg, keys.Prev):
-		return m, nil
-
-	case 	normMatch(msg, keys.EnterTab):
-		m.UI.Focus = FocusContent
-		return m, nil
-
-	case 	normMatch(msg, keys.EnterFooter):
-		m.UI.Focus = FocusFooter
-		return m, nil
-
-	case 	normMatch(msg, keys.TabNext):
+	case normMatch(msg, keys.TabNext):
 		m.UI.ActiveTab = (m.UI.ActiveTab + 1) % len(m.UI.Tabs)
 		return m, nil
 
-	case 	normMatch(msg, keys.TabPrev):
+	case normMatch(msg, keys.TabPrev):
 		m.UI.ActiveTab = (m.UI.ActiveTab - 1 + len(m.UI.Tabs)) % len(m.UI.Tabs)
 		return m, nil
 
-	case 	normMatch(msg, keys.SeekForward):
+	case normMatch(msg, keys.Next):
+		return m, nil
+
+	case normMatch(msg, keys.Prev):
+		return m, nil
+
+	case keyStr == "ctrl+f":
 		m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
 
-	case 	normMatch(msg, keys.SeekBackward):
+	case keyStr == "ctrl+b":
 		m.Audio.SeekRelative(-time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
+	}
 
-	default:
-		// Quit with single 'q' press (double-tap to confirm)
-		keyStr := msg.String()
-		if keyStr == "q" || keyStr == "Q" {
-			if m.QuitConfirm {
-				m.cleanup()
-				return m, tea.Quit
-			}
-			m.QuitConfirm = true
+	// ─── Tier 2: Focus-aware keys ───
+	switch m.UI.Focus {
+	case FocusTabBar:
+		if keyStr == "left" {
+			m.UI.ActiveTab = (m.UI.ActiveTab - 1 + len(m.UI.Tabs)) % len(m.UI.Tabs)
 			return m, nil
 		}
+		if keyStr == "right" {
+			m.UI.ActiveTab = (m.UI.ActiveTab + 1) % len(m.UI.Tabs)
+			return m, nil
+		}
+
+	case FocusContent:
+		// No focus-specific keys yet
+
+	case FocusFooter:
+		switch {
+		case keyStr == "left":
+			m.Audio.SeekRelative(-time.Duration(m.Config.SeekStep) * time.Second)
+			return m, nil
+		case keyStr == "right":
+			m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)
+			return m, nil
+		case normMatch(msg, keys.VolumeUp):
+			m.adjustVolume(m.Config.VolumeStep)
+			return m, nil
+		case normMatch(msg, keys.VolumeDown):
+			m.adjustVolume(-m.Config.VolumeStep)
+			return m, nil
+		}
+	}
+
+	// ─── Tier 3: Fallback quit confirmation ───
+	if keyStr == "q" || keyStr == "Q" {
+		if m.QuitConfirm {
+			m.cleanup()
+			return m, tea.Quit
+		}
+		m.QuitConfirm = true
 		return m, nil
 	}
+	return m, nil
 }
 
 func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	cmdText := m.Components.CommandInput.Value()
 	m.Components.CommandInput.Reset()
 	m.UI.Mode = ModeNormal
+	m.UI.Focus = m.UI.SavedFocus
 
 	logger.Info("Command executed", "cmd", cmdText)
 

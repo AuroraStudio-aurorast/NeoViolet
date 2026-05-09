@@ -84,13 +84,9 @@ var keys = KeyMap{
 		key.WithKeys("esc"),
 		key.WithHelp("esc", "normal mode"),
 	),
-	EnterTab: key.NewBinding(
+	CycleFocus: key.NewBinding(
 		key.WithKeys("tab"),
-		key.WithHelp("tab", "focus tab"),
-	),
-	EnterFooter: key.NewBinding(
-		key.WithKeys("enter"),
-		key.WithHelp("enter", "focus footer"),
+		key.WithHelp("tab", "cycle focus"),
 	),
 }
 
@@ -152,17 +148,23 @@ func NewModel(filePath string, cfg *config.Config) *Model {
 	ti.EchoMode = textinput.EchoNormal
 	ti.CharLimit = 100
 
+	initialFocus := FocusTabBar
+	if filePath != "" {
+		initialFocus = FocusFooter
+	}
+
 	m := &Model{
 		Audio: &AudioState{
 			Volume: cfg.DefaultVolume,
 		},
 		UI: &UIState{
-			Mode:     ModeNormal,
-			Focus:    FocusTabBar,
-			Tabs:     []string{"Home", "Playlists", "Effects", "Settings"},
-			Width:    80,
-			Height:   24,
-			tabWidth: 20,
+			Mode:       ModeNormal,
+			Focus:      initialFocus,
+			SavedFocus: initialFocus,
+			Tabs:       []string{"Home", "Playlists", "Effects", "Settings"},
+			Width:      80,
+			Height:     24,
+			tabWidth:   20,
 		},
 		Components: &ComponentState{
 			ProgressBar:  pb,
