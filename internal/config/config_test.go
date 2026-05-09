@@ -26,6 +26,8 @@ func TestDefaultConfig(t *testing.T) {
 		{"ProgressBar.ShowPercentage", cfg.ProgressBar.ShowPercentage, false},
 		{"CommandHistory.Max", cfg.CommandHistory.Max, 50},
 		{"Error.Duration", cfg.Error.Duration, 90},
+		{"Accent.AutoAccent", *cfg.Accent.AutoAccent, true},
+		{"Accent.IsEnabled", cfg.Accent.IsEnabled(), true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

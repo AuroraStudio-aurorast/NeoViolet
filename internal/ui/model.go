@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
@@ -234,4 +235,43 @@ func (m *Model) updatePlaybackState() tea.Cmd {
 	m.Audio.UpdateLyricIndex()
 	m.Audio.AdvanceLyricScroll(m.Config.Lyrics.ScrollSpeed, m.UI.Width-6)
 	return m.Components.ProgressBar.SetPercent(m.Audio.Progress)
+}
+
+func loadAccentCmd(player audio.AudioPlayer) tea.Cmd {
+	return func() tea.Msg {
+		img := player.CoverImage()
+		if img == nil {
+			return AccentApplyMsg{Accent: nil}
+		}
+		a, err := accent.FromImage(img)
+		if err != nil {
+			logger.Debug("Failed to extract accent", "err", err)
+			return AccentApplyMsg{Accent: nil}
+		}
+		return AccentApplyMsg{Accent: &a}
+	}
+}
+
+func (m *Model) rebuildProgressBar() {
+	cfg := m.Config
+	progressA := lipgloss.Color("#DA70D6")
+	progressB := lipgloss.Color("#8A2BE2")
+
+	if m.Accent != nil {
+		progressA = lipgloss.Color(m.Accent.HexProgressA())
+		progressB = lipgloss.Color(m.Accent.HexProgressB())
+	}
+
+	pbOpts := []progress.Option{
+		progress.WithColors(progressA, progressB),
+		progress.WithFillCharacters([]rune(cfg.ProgressBar.Fill[0])[0], []rune(cfg.ProgressBar.Fill[1])[0]),
+	}
+	if cfg.ProgressBar.Scaled {
+		pbOpts = append(pbOpts, progress.WithScaled(true))
+	}
+	if !cfg.ProgressBar.ShowPercentage {
+		pbOpts = append(pbOpts, progress.WithoutPercentage())
+	}
+
+	m.Components.ProgressBar = progress.New(pbOpts...)
 }

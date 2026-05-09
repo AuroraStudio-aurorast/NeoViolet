@@ -34,6 +34,17 @@ type ErrorConfig struct {
 	Duration int `json:"duration"`
 }
 
+type AccentConfig struct {
+	AutoAccent *bool `json:"auto_accent"`
+}
+
+func (a AccentConfig) IsEnabled() bool {
+	if a.AutoAccent == nil {
+		return true
+	}
+	return *a.AutoAccent
+}
+
 type Config struct {
 	IconTheme      string               `json:"icon_theme"`
 	DefaultVolume  float64              `json:"default_volume"`
@@ -46,7 +57,10 @@ type Config struct {
 	VolumeBar      VolumeBarConfig      `json:"volume_bar"`
 	CommandHistory CommandHistoryConfig `json:"command_history"`
 	Error          ErrorConfig          `json:"error"`
+	Accent         AccentConfig         `json:"accent"`
 }
+
+func boolPtr(v bool) *bool { return &v }
 
 func DefaultConfig() Config {
 	return Config{
@@ -75,6 +89,9 @@ func DefaultConfig() Config {
 		},
 		Error: ErrorConfig{
 			Duration: 90,
+		},
+		Accent: AccentConfig{
+			AutoAccent: boolPtr(true),
 		},
 	}
 }

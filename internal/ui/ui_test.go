@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image"
 	"testing"
 	"time"
 
@@ -45,6 +46,7 @@ func (m *mockPlayer) Format() beep.Format {
 func (m *mockPlayer) Path() string   { return "" }
 func (m *mockPlayer) Title() string  { return "" }
 func (m *mockPlayer) Artist() string { return "" }
+func (m *mockPlayer) CoverImage() image.Image { return nil }
 
 func TestAudioState_UpdatePosition(t *testing.T) {
 	mp := &mockPlayer{position: 30 * time.Second, duration: 120 * time.Second}

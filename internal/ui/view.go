@@ -68,7 +68,8 @@ func renderTabs(m *Model) string {
 		}
 		tabContent += name + " "
 		if i == m.UI.ActiveTab {
-			tabs = append(tabs, activeTabStyle.Width(m.UI.tabWidth).Render(tabContent))
+			accented := activeTabStyle.Copy().BorderForeground(lipgloss.Color(accentOrDefault(m.Accent, "57")))
+			tabs = append(tabs, accented.Width(m.UI.tabWidth).Render(tabContent))
 		} else {
 			tabs = append(tabs, tabStyle.Width(m.UI.tabWidth).Render(tabContent))
 		}
@@ -178,9 +179,13 @@ func renderFooter(m *Model) string {
 			if padWidth > 0 {
 				visible += fmt.Sprintf("%*s", padWidth, "")
 			}
-			lyricRow = lyricStyle.Width(maxWidth).Render(visible)
+			lyricRow = lyricStyle.Copy().
+				Foreground(lipgloss.Color(accentOrDefault(m.Accent, "141"))).
+				Width(maxWidth).Render(visible)
 		} else {
-			lyricRow = lyricStyle.Width(maxWidth).Render(lyricLine)
+			lyricRow = lyricStyle.Copy().
+				Foreground(lipgloss.Color(accentOrDefault(m.Accent, "141"))).
+				Width(maxWidth).Render(lyricLine)
 		}
 	}
 

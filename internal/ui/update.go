@@ -30,6 +30,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleError(m, msg)
 	case AudioLoadedMsg:
 		return handleAudioLoaded(m, msg)
+	case AccentApplyMsg:
+		return handleAccentApply(m, msg)
 	default:
 		return m, nil
 	}
@@ -149,5 +151,14 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if m.Config.Accent.IsEnabled() {
+		return m, loadAccentCmd(msg.Player)
+	}
+	return m, nil
+}
+
+func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {
+	m.Accent = msg.Accent
+	m.rebuildProgressBar()
 	return m, nil
 }

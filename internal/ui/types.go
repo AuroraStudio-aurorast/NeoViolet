@@ -9,6 +9,7 @@ import (
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/textinput"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
@@ -58,6 +59,10 @@ type (
 	SeekMsg struct {
 		Position time.Duration
 		Relative bool
+	}
+
+	AccentApplyMsg struct {
+		Accent *accent.Accent
 	}
 )
 
@@ -164,6 +169,7 @@ type Model struct {
 	Error          *ErrorState
 	Config         *config.Config
 	Icons          IconSet
+	Accent         *accent.Accent
 	QuitConfirm    bool
 	ExitCode       int
 	Loading        bool

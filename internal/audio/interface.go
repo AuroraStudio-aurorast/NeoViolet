@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"image"
 	"time"
 
 	"github.com/gopxl/beep/v2"
@@ -23,4 +24,5 @@ type AudioPlayer interface {
 	Path() string
 	Title() string
 	Artist() string
+	CoverImage() image.Image
 }

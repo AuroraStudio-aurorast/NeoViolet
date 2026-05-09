@@ -1,6 +1,17 @@
 package ui
 
-import "charm.land/lipgloss/v2"
+import (
+	"charm.land/lipgloss/v2"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
+)
+
+func accentOrDefault(a *accent.Accent, fallback string) string {
+	if a == nil {
+		return fallback
+	}
+	return a.HexMain()
+}
 
 var (
 	// Tab styling

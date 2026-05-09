@@ -2,6 +2,7 @@ package audio
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"math"
 	"os"
@@ -43,6 +44,7 @@ type Player struct {
 	linearVolume float64
 	title        string
 	artist       string
+	coverImage   image.Image
 	decoder      *FormatDecoder
 	tagReader    *MetadataReader
 	midiPlayer   *MidiPlayer
@@ -417,6 +419,12 @@ func (p *Player) Artist() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.artist
+}
+
+func (p *Player) CoverImage() image.Image {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.coverImage
 }
 
 var ErrUnsupportedFormat = &UnsupportedFormatError{}
