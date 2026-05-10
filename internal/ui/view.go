@@ -17,6 +17,8 @@ const (
 	contentOffset = tabsHeight + footerHeight + helpHeight
 )
 
+var appLayoutStyle = lipgloss.NewStyle()
+
 func renderMainView(m *Model) tea.View {
 	if m.Loading {
 		return tea.NewView(loadingStyle.Render("Loading..."))
@@ -33,7 +35,7 @@ func renderMainView(m *Model) tea.View {
 	footer := renderFooter(m)
 	help := renderHelp(m)
 
-	layout := lipgloss.NewStyle().
+	layout := appLayoutStyle.
 		Width(m.UI.Width).
 		Height(m.UI.Height)
 
@@ -123,6 +125,7 @@ func renderFooter(m *Model) string {
 	} else {
 		songLine = fmt.Sprintf("%s  No audio loaded", m.Icons.Music)
 	}
+	songLine = truncateLine(songLine, m.UI.Width-4)
 
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
 
@@ -221,6 +224,22 @@ func formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%d:%02d:%02d", h, m, s)
 	}
 	return fmt.Sprintf("%d:%02d", m, s)
+}
+
+func truncateLine(s string, maxWidth int) string {
+	if lipgloss.Width(s) <= maxWidth {
+		return s
+	}
+	runes := []rune(s)
+	width := 0
+	for i, r := range runes {
+		cw := lipgloss.Width(string(r))
+		if width+cw > maxWidth-1 {
+			return string(runes[:i]) + "…"
+		}
+		width += cw
+	}
+	return s
 }
 
 func renderHelp(m *Model) string {

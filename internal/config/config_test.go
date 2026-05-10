@@ -6,7 +6,7 @@ import (
 )
 
 func TestDefaultConfig(t *testing.T) {
-	cfg := defaultConfig()
+	cfg := DefaultConfig()
 	tests := []struct {
 		name string
 		got  any
@@ -32,14 +32,14 @@ func TestDefaultConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.got != tt.want {
-				t.Errorf("defaultConfig().%s = %v, want %v", tt.name, tt.got, tt.want)
+				t.Errorf("DefaultConfig().%s = %v, want %v", tt.name, tt.got, tt.want)
 			}
 		})
 	}
 }
 
 func TestConfigJSONRoundTrip(t *testing.T) {
-	cfg := defaultConfig()
+	cfg := DefaultConfig()
 	cfg.IconTheme = "emoji"
 	cfg.DefaultVolume = 0.5
 
@@ -62,7 +62,7 @@ func TestConfigJSONRoundTrip(t *testing.T) {
 }
 
 func TestConfigJSONRoundTrip_Fill(t *testing.T) {
-	cfg := defaultConfig()
+	cfg := DefaultConfig()
 	cfg.ProgressBar.Fill = []string{"a", "b"}
 	cfg.VolumeBar.Fill = []string{"x", "y"}
 
@@ -86,7 +86,7 @@ func TestConfigJSONRoundTrip_Fill(t *testing.T) {
 
 func TestConfigJSONRoundTrip_ZeroValues(t *testing.T) {
 	// Verify that zero-value fields survive marshal/unmarshal
-	data, err := json.Marshal(defaultConfig())
+	data, err := json.Marshal(DefaultConfig())
 	if err != nil {
 		t.Fatalf("Marshal error: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestLoadInvalidJSON(t *testing.T) {
 	// Load should return default config on parse error, not panic
 	// This tests the error path in Load() since we can't easily
 	// create a real broken config file here
-	cfg := defaultConfig()
+	cfg := DefaultConfig()
 	err := json.Unmarshal([]byte("{invalid"), &cfg)
 	if err == nil {
 		t.Error("expected unmarshal error for invalid JSON")

@@ -46,8 +46,8 @@ func main() {
 		logger.Error("Program error", "err", err)
 		os.Exit(1)
 	}
-	if m != nil && m.(*neoviolet.Model).ExitCode != 0 {
-		os.Exit(m.(*neoviolet.Model).ExitCode)
+	if model, ok := m.(*neoviolet.Model); ok && model.ExitCode != 0 {
+		os.Exit(model.ExitCode)
 	}
 	logger.Info("Program exited")
 }

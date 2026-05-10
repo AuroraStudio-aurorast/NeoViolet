@@ -96,10 +96,6 @@ func DefaultConfig() Config {
 	}
 }
 
-func defaultConfig() Config {
-	return DefaultConfig()
-}
-
 func ConfigExists() bool {
 	path, err := configPath()
 	if err != nil {
@@ -119,7 +115,7 @@ func configPath() (string, error) {
 }
 
 func Load() (*Config, error) {
-	cfg := defaultConfig()
+	cfg := DefaultConfig()
 	path, err := configPath()
 	if err != nil {
 		return &cfg, nil

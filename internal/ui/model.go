@@ -275,5 +275,7 @@ func (m *Model) rebuildProgressBar() {
 		pbOpts = append(pbOpts, progress.WithoutPercentage())
 	}
 
-	m.Components.ProgressBar = progress.New(pbOpts...)
+	pb := progress.New(pbOpts...)
+	pb.SetPercent(m.Audio.Progress)
+	m.Components.ProgressBar = pb
 }

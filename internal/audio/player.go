@@ -6,6 +6,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -482,19 +483,7 @@ func (p *Player) openMIDI(path string) error {
 
 	mp.SetVolume(p.linearVolume)
 
-	p.title = path
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '/' || path[i] == '\\' {
-			p.title = path[i+1:]
-			break
-		}
-	}
-	for i := len(p.title) - 1; i >= 0; i-- {
-		if p.title[i] == '.' {
-			p.title = p.title[:i]
-			break
-		}
-	}
+	p.title = filepath.Base(path)
 	p.artist = "MIDI"
 
 	return nil

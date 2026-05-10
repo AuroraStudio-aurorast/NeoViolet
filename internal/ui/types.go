@@ -117,19 +117,19 @@ type AudioState struct {
 	Lyrics            *lyrics.LyricsData
 	LyricIndex        int
 	LyricScrollOffset int
-	lyricScrollTick   int
-	lastLyricIndex    int
+	LyricScrollTick   int
+	LastLyricIndex    int
 }
 
 type UIState struct {
-	ActiveTab   int
-	Tabs        []string
-	Mode        Mode
-	Focus       Focus
-	SavedFocus  Focus
-	Width       int
-	Height      int
-	tabWidth    int
+	ActiveTab  int
+	Tabs       []string
+	Mode       Mode
+	Focus      Focus
+	SavedFocus Focus
+	Width      int
+	Height     int
+	tabWidth   int
 }
 
 type ComponentState struct {

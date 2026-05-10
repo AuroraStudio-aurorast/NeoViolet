@@ -13,6 +13,13 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
+var (
+	seekFwdChordKey = key.NewBinding(key.WithKeys("ctrl+f"))
+	seekBwdChordKey = key.NewBinding(key.WithKeys("ctrl+b"))
+	arrowLeftKey    = key.NewBinding(key.WithKeys("left"))
+	arrowRightKey   = key.NewBinding(key.WithKeys("right"))
+)
+
 // fullwidthRune maps fullwidth Unicode characters to their ASCII equivalents.
 func fullwidthRune(r rune) rune {
 	switch r {
@@ -85,7 +92,7 @@ func handleKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-		switch {
+	switch {
 	case normMatch(msg, keys.Quit):
 		m.cleanup()
 		return m, tea.Quit
@@ -173,11 +180,11 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	case normMatch(msg, keys.Prev):
 		return m, nil
 
-	case keyStr == "ctrl+f":
+	case normMatch(msg, seekFwdChordKey):
 		m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
 
-	case keyStr == "ctrl+b":
+	case normMatch(msg, seekBwdChordKey):
 		m.Audio.SeekRelative(-time.Duration(m.Config.SeekStep) * time.Second)
 		return m, nil
 	}
@@ -185,11 +192,11 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	// ─── Tier 2: Focus-aware keys ───
 	switch m.UI.Focus {
 	case FocusTabBar:
-		if keyStr == "left" {
+		if normMatch(msg, arrowLeftKey) {
 			m.UI.ActiveTab = (m.UI.ActiveTab - 1 + len(m.UI.Tabs)) % len(m.UI.Tabs)
 			return m, nil
 		}
-		if keyStr == "right" {
+		if normMatch(msg, arrowRightKey) {
 			m.UI.ActiveTab = (m.UI.ActiveTab + 1) % len(m.UI.Tabs)
 			return m, nil
 		}
@@ -199,10 +206,10 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 
 	case FocusFooter:
 		switch {
-		case keyStr == "left":
+		case normMatch(msg, arrowLeftKey):
 			m.Audio.SeekRelative(-time.Duration(m.Config.SeekStep) * time.Second)
 			return m, nil
-		case keyStr == "right":
+		case normMatch(msg, arrowRightKey):
 			m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)
 			return m, nil
 		case normMatch(msg, keys.VolumeUp):

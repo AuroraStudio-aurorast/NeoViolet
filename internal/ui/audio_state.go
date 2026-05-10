@@ -113,10 +113,10 @@ func (a *AudioState) UpdateLyricIndex() {
 		return
 	}
 	newIdx := a.Lyrics.CurrentLine(a.Elapsed)
-	if newIdx != a.lastLyricIndex {
-		a.lastLyricIndex = newIdx
+	if newIdx != a.LastLyricIndex {
+		a.LastLyricIndex = newIdx
 		a.LyricScrollOffset = 0
-		a.lyricScrollTick = 0
+		a.LyricScrollTick = 0
 	}
 	a.LyricIndex = newIdx
 }
@@ -130,11 +130,11 @@ func (a *AudioState) AdvanceLyricScroll(scrollSpeed int, maxWidth int) {
 	if displayWidth <= maxWidth {
 		return
 	}
-	a.lyricScrollTick++
-	if a.lyricScrollTick < scrollSpeed {
+	a.LyricScrollTick++
+	if a.LyricScrollTick < scrollSpeed {
 		return
 	}
-	a.lyricScrollTick = 0
+	a.LyricScrollTick = 0
 	a.LyricScrollOffset++
 	if a.LyricScrollOffset > displayWidth-maxWidth+10 {
 		a.LyricScrollOffset = 0
