@@ -14,6 +14,7 @@ import (
 	"github.com/gotracker/playback/mixing"
 	"github.com/gotracker/playback/mixing/sampling"
 	"github.com/gotracker/playback/output"
+	"github.com/gotracker/playback/player/feature"
 	"github.com/gotracker/playback/player/machine"
 	"github.com/gotracker/playback/player/machine/settings"
 	"github.com/gotracker/playback/player/sampler"
@@ -27,9 +28,10 @@ const trackerBlockSize = 512
 type TrackerPlayer struct {
 	mu sync.Mutex
 
-	machine    machine.MachineTicker
-	songData   song.Data
-	sampleRate beep.SampleRate
+	machine      machine.MachineTicker
+	songData     song.Data
+	userSettings settings.UserSettings
+	sampleRate   beep.SampleRate
 
 	premixBuf    []byte
 	mixer        mixing.Mixer
@@ -67,13 +69,14 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 	defer file.Close()
 
 	songFmtKey := formatKeyFromExt(ext)
-	songData, songFmt, err := format.LoadFromReader(songFmtKey, file, nil)
+	feats := []feature.Feature{feature.IgnoreUnknownEffect{Enabled: true}}
+	songData, songFmt, err := format.LoadFromReader(songFmtKey, file, feats)
 	if err != nil {
 		return nil, fmt.Errorf("load tracker module: %w", err)
 	}
 
 	var us settings.UserSettings
-	songFmt.ConvertFeaturesToSettings(&us, nil)
+	songFmt.ConvertFeaturesToSettings(&us, feats)
 
 	mach, err := machine.NewMachine(songData, us)
 	if err != nil {
@@ -82,6 +85,7 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 
 	tp := &TrackerPlayer{
 		songData:       songData,
+		userSettings:   us,
 		sampleRate:     sampleRate,
 		premixBuf:      make([]byte, trackerBlockSize*4),
 		mixer:          mixing.Mixer{Channels: 2},
@@ -151,7 +155,7 @@ func (p *TrackerPlayer) handleSeek(samples [][2]float64, vs float64, elapsed *ti
 	p.seeking = false
 	p.mu.Unlock()
 
-	newMach, err := machine.NewMachine(p.songData, settings.UserSettings{})
+	newMach, err := machine.NewMachine(p.songData, p.userSettings)
 	if err != nil {
 		p.mu.Lock()
 		p.finished = true
@@ -175,7 +179,7 @@ func (p *TrackerPlayer) handleSeek(samples [][2]float64, vs float64, elapsed *ti
 			p.seeking = false
 			p.mu.Unlock()
 			var err error
-			newMach, err = machine.NewMachine(p.songData, settings.UserSettings{})
+			newMach, err = machine.NewMachine(p.songData, p.userSettings)
 			if err != nil {
 				p.mu.Lock()
 				p.finished = true
