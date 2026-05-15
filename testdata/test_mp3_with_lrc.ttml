@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+    xmlns:itunes="http://music.apple.com/lyric-ttml-internal"
+    xml:lang="en"
+    itunes:timing="Word">
+  <head>
+    <metadata>
+      <ttm:agent type="person" xml:id="v1"/>
+      <ttm:title>Lyrics Test</ttm:title>
+    </metadata>
+  </head>
+  <body dur="0:35.000">
+    <div begin="0.000" end="0:35.000" xml:lang="en">
+      <p begin="0.000" end="1.720" itunes:key="L1" ttm:agent="v1">
+        <span begin="0.000" end="0.283">This</span>
+        <span begin="0.283" end="0.460">is</span>
+        <span begin="0.460" end="0.614">the</span>
+        <span begin="0.614" end="0.874">first</span>
+        <span begin="0.874" end="1.112">line</span>
+        <span begin="1.112" end="1.396">of</span>
+        <span begin="1.396" end="1.458">the</span>
+        <span begin="1.458" end="1.720">song.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">这是歌曲的第一行。</span>
+      </p>
+      <p begin="1.720" end="4.280" itunes:key="L2" ttm:agent="v1">
+        <span begin="1.720" end="2.010">Here</span>
+        <span begin="2.010" end="2.370">comes</span>
+        <span begin="2.370" end="2.510">the</span>
+        <span begin="2.510" end="2.860">second</span>
+        <span begin="2.860" end="3.200">line</span>
+        <span begin="3.200" end="3.680">more</span>
+        <span begin="3.680" end="4.280">words.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">第二行来了更多词。</span>
+      </p>
+      <p begin="4.280" end="6.160" itunes:key="L3" ttm:agent="v1">
+        <span begin="4.280" end="4.425">A</span>
+        <span begin="4.425" end="4.758">third</span>
+        <span begin="4.758" end="5.088">line</span>
+        <span begin="5.088" end="5.258">to</span>
+        <span begin="5.258" end="5.738">complete</span>
+        <span begin="5.738" end="5.878">the</span>
+        <span begin="5.878" end="6.160">verse.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">第三行完成这节。</span>
+      </p>
+      <p begin="6.160" end="7.820" itunes:key="L4" ttm:agent="v1">
+        <span begin="6.160" end="6.350">The</span>
+        <span begin="6.350" end="6.800">chorus</span>
+        <span begin="6.800" end="7.150">begins</span>
+        <span begin="7.150" end="7.300">right</span>
+        <span begin="7.300" end="7.500">about</span>
+        <span begin="7.500" end="7.820">now</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">副歌现在开始</span>
+      </p>
+      <p begin="7.820" end="9.540" itunes:key="L5" ttm:agent="v1">
+        <span begin="7.820" end="8.150">Singing</span>
+        <span begin="8.150" end="8.500">la</span>
+        <span begin="8.500" end="8.850">la</span>
+        <span begin="8.850" end="9.200">la</span>
+        <span begin="9.200" end="9.540">la</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">唱着啦啦啦啦</span>
+      </p>
+      <p begin="9.540" end="12.360" itunes:key="L6" ttm:agent="v1">
+        <span begin="9.540" end="9.790">This</span>
+        <span begin="9.790" end="9.930">is</span>
+        <span begin="9.930" end="10.077">the</span>
+        <span begin="10.077" end="10.420">final</span>
+        <span begin="10.420" end="10.660">line</span>
+        <span begin="10.660" end="10.800">of</span>
+        <span begin="10.800" end="10.943">the</span>
+        <span begin="10.943" end="11.200">test</span>
+        <span begin="11.200" end="12.360">song.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">这是测试歌曲的最后一行。</span>
+      </p>
+      <p begin="12.360" end="13.000" itunes:key="L7" ttm:agent="v1">
+        <span begin="12.360" end="12.700">Fading</span>
+        <span begin="12.700" end="12.880">away</span>
+        <span begin="12.880" end="13.000">slowly.</span>
+      </p>
+      <p begin="13.000" end="13.500" itunes:key="L8" ttm:agent="v1">
+        <span begin="13.000" end="13.500">End of track.</span>
+      </p>
+      <p begin="15.240" end="17.560" itunes:key="L9" ttm:agent="v1">
+        <span begin="15.240" end="15.500">This</span>
+        <span begin="15.500" end="15.640">is</span>
+        <span begin="15.640" end="15.790">the</span>
+        <span begin="15.790" end="15.980">first</span>
+        <span begin="15.980" end="16.400">multilingual</span>
+        <span begin="16.400" end="17.560">line.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">这是第一句多语言歌词。</span>
+        <span ttm:role="x-translation" xml:lang="ko">이것은 첫 번째 다국어 가사입니다.</span>
+        <span ttm:role="x-translation" xml:lang="ja">これが最初の多言語歌詞です。</span>
+      </p>
+      <p begin="17.560" end="18.200" itunes:key="L10" ttm:agent="v1">
+        <span begin="17.560" end="18.200">Hello.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">你好！</span>
+        <span ttm:role="x-translation" xml:lang="ko">안녕하세요!</span>
+        <span ttm:role="x-translation" xml:lang="ja">こんにちは！</span>
+      </p>
+      <p begin="18.200" end="20.280" itunes:key="L11" ttm:agent="v1">
+        <span begin="18.200" end="20.280">Shared text free timestamps.</span>
+      </p>
+      <p begin="20.280" end="21.360" itunes:key="L12" ttm:agent="v1">
+        <span begin="20.280" end="20.720">English</span>
+        <span begin="20.720" end="21.360">only.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">中文</span>
+        <span ttm:role="x-translation" xml:lang="ko">한국어</span>
+        <span ttm:role="x-translation" xml:lang="ja">日本語</span>
+      </p>
+      <p begin="21.360" end="22.600" itunes:key="L13" ttm:agent="v1">
+        <span begin="21.360" end="21.680">English</span>
+        <span begin="21.680" end="22.600">text.</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">中文文本</span>
+        <span ttm:role="x-translation" xml:lang="ko">한국어 텍스트</span>
+        <span ttm:role="x-translation" xml:lang="ja">日本語テキスト</span>
+      </p>
+      <p begin="22.600" end="23.700" itunes:key="L14" ttm:agent="v1">
+        <span begin="22.600" end="23.700">Bilingual A</span>
+      </p>
+      <p begin="23.700" end="24.980" itunes:key="L15" ttm:agent="v1">
+        <span begin="23.700" end="24.980">Bilingual B</span>
+      </p>
+      <p begin="24.980" end="26.880" itunes:key="L16" ttm:agent="v1">
+        <span begin="24.980" end="26.880">Separated by other lines.</span>
+      </p>
+      <p begin="26.880" end="28.200" itunes:key="L17" ttm:agent="v1">
+        <span begin="26.880" end="28.200">Bilingual A2.</span>
+        <span ttm:role="x-translation" xml:lang="ko">이중 언어 B</span>
+        <span ttm:role="x-translation" xml:lang="ja">バイリンガルC</span>
+      </p>
+      <p begin="28.200" end="29.220" itunes:key="L18" ttm:agent="v1">
+        <span begin="28.200" end="28.550">Punctuation:</span>
+        <span begin="28.550" end="29.220">!@#$%^&amp;*()_+{}:&quot;&lt;&gt;?</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">Emoji test: 😊🎶🎤🔥</span>
+      </p>
+      <p begin="29.220" end="30.200" itunes:key="L19" ttm:agent="v1">
+        <span begin="29.220" end="29.500">Word</span>
+        <span begin="29.500" end="29.800">sync</span>
+        <span begin="29.800" end="29.860">the</span>
+        <span begin="29.860" end="30.200">lyrics</span>
+      </p>
+      <p begin="30.200" end="30.800" itunes:key="L20" ttm:agent="v1">
+        <span begin="30.200" end="30.480">Test</span>
+        <span begin="30.480" end="30.620">file</span>
+        <span begin="30.620" end="30.800">complete.</span>
+      </p>
+      <p begin="32.000" end="32.600" itunes:key="L21" ttm:agent="v1">
+        <span begin="32.000" end="32.150">Shared</span>
+        <span begin="32.150" end="32.350">text</span>
+        <span begin="32.350" end="32.600">timestamp</span>
+      </p>
+      <p begin="35.000" end="35.600" itunes:key="L22" ttm:agent="v1">
+        <span begin="35.000" end="35.170">First</span>
+        <span begin="35.170" end="35.380">repetition</span>
+        <span begin="35.380" end="35.600">line</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">第一遍</span>
+        <span ttm:role="x-translation" xml:lang="ja">最初の繰り返し</span>
+      </p>
+    </div>
+  </body>
+</tt>
