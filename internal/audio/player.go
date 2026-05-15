@@ -504,7 +504,7 @@ func (p *Player) openSynthetic(path, ext string) error {
 	switch ext {
 	case ".mid":
 		return p.openMIDISynth(path, sr)
-	case ".mod", ".xm", ".s3m", ".it":
+	case ".mod", ".xm", ".s3m", ".it", ".mptm":
 		return p.openTrackerSynth(path, ext, sr)
 	default:
 		return fmt.Errorf("unknown synthetic format: %s", ext)
