@@ -1,13 +1,11 @@
 package wizard
 
 import (
-	"fmt"
 	"os"
-	"strconv"
-	"strings"
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/lucasb-eyer/go-colorful"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
@@ -50,7 +48,8 @@ var logoLines = []string{
 }
 
 func logoGradient() string {
-	start, end := "#c77dff", "#5a00b3"
+	start, _ := colorful.Hex("#c77dff")
+	end, _ := colorful.Hex("#5a00b3")
 	n := len(logoLines)
 	var out string
 	for i, line := range logoLines {
@@ -59,31 +58,11 @@ func logoGradient() string {
 			continue
 		}
 		t := float64(i) / float64(n-1)
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(lerpHex(start, end, t))).Bold(true)
+		c := start.BlendHcl(end, t)
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex())).Bold(true)
 		out += style.Render(line) + "\n"
 	}
 	return out
-}
-
-func lerpHex(a, b string, t float64) string {
-	ar, ag, ab := parseHex(a)
-	br, bg, bb := parseHex(b)
-	return fmt.Sprintf("#%02x%02x%02x",
-		int(float64(ar)+float64(br-ar)*t+0.5),
-		int(float64(ag)+float64(bg-ag)*t+0.5),
-		int(float64(ab)+float64(bb-ab)*t+0.5),
-	)
-}
-
-func parseHex(s string) (int, int, int) {
-	s = strings.TrimPrefix(s, "#")
-	if len(s) == 3 {
-		s = string([]byte{s[0], s[0], s[1], s[1], s[2], s[2]})
-	}
-	r, _ := strconv.ParseInt(s[0:2], 16, 0)
-	g, _ := strconv.ParseInt(s[2:4], 16, 0)
-	b, _ := strconv.ParseInt(s[4:6], 16, 0)
-	return int(r), int(g), int(b)
 }
 
 func Run() (*config.Config, error) {

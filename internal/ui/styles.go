@@ -13,6 +13,13 @@ func accentOrDefault(a *accent.Accent, fallback string) string {
 	return a.HexMain()
 }
 
+func accentFocusOrDefault(a *accent.Accent, fallback string) string {
+	if a == nil {
+		return fallback
+	}
+	return a.HexFocus()
+}
+
 var (
 	// Tab styling
 	tabStyle = lipgloss.NewStyle().

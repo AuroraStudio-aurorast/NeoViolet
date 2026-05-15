@@ -11,6 +11,7 @@ import (
 
 type Accent struct {
 	Main      colorful.Color
+	Focus     colorful.Color
 	ProgressA colorful.Color
 	ProgressB colorful.Color
 	Lyric     colorful.Color
@@ -22,6 +23,7 @@ func (a Accent) IsDark() bool {
 }
 
 func (a Accent) HexMain() string      { return a.Main.Hex() }
+func (a Accent) HexFocus() string     { return a.Focus.Hex() }
 func (a Accent) HexProgressA() string { return a.ProgressA.Hex() }
 func (a Accent) HexProgressB() string { return a.ProgressB.Hex() }
 func (a Accent) HexLyric() string     { return a.Lyric.Hex() }
@@ -97,6 +99,10 @@ func derive(seed colorful.Color) Accent {
 	main := liftToVisible(seed)
 	h, chroma, l := main.Hcl()
 
+	fL := math.Min(l*1.45, 0.92)
+	fC := math.Min(chroma*1.2, 0.55)
+	f := colorful.Hcl(h, fC, fL)
+
 	paL := math.Min(l*1.25, 0.88)
 	paC := math.Min(chroma*1.1, 0.5)
 	pa := colorful.Hcl(h, paC, paL)
@@ -111,6 +117,7 @@ func derive(seed colorful.Color) Accent {
 
 	return Accent{
 		Main:      main,
+		Focus:     f,
 		ProgressA: pa,
 		ProgressB: pb,
 		Lyric:     ly,
