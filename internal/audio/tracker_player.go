@@ -64,7 +64,11 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 	defer file.Close()
 
 	songFmtKey := formatKeyFromExt(ext)
-	feats := []feature.Feature{feature.IgnoreUnknownEffect{Enabled: true}}
+	feats := []feature.Feature{
+		feature.UseNativeSampleFormat(true),
+		feature.IgnoreUnknownEffect{Enabled: true},
+		feature.SongLoop{Count: 0},
+	}
 	songData, songFmt, err := format.LoadFromReader(songFmtKey, file, feats)
 	if err != nil {
 		return nil, fmt.Errorf("load tracker module: %w", err)
@@ -232,8 +236,14 @@ func (p *TrackerPlayer) fillSamples(samples [][2]float64, vs float64, elapsed *t
 			return
 		}
 
-		if p.renderPos >= len(p.renderSamples) {
+		for p.renderPos >= len(p.renderSamples) {
 			p.renderOneTick()
+			if p.finished {
+				for j := i; j < len(samples); j++ {
+					samples[j] = [2]float64{}
+				}
+				return
+			}
 		}
 
 		s := p.renderSamples[p.renderPos]
@@ -250,8 +260,6 @@ func (p *TrackerPlayer) renderOneTick() {
 	if errors.Is(err, song.ErrStopSong) {
 		p.finished = true
 		p.isPlaying = false
-		p.renderSamples = nil
-		p.renderPos = 0
 		return
 	}
 
@@ -296,6 +304,8 @@ func (p *TrackerPlayer) Stop() {
 	p.finished = false
 	p.seeking = false
 	p.elapsed = 0
+	p.renderSamples = nil
+	p.renderPos = 0
 }
 
 func (p *TrackerPlayer) Toggle() {
