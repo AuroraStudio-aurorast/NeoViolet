@@ -34,7 +34,12 @@ require (
 	github.com/ebitengine/oto/v3 v3.4.0 // indirect
 	github.com/ebitengine/purego v0.9.0 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
+	github.com/gotracker/goaudiofile v1.0.16 // indirect
+	github.com/gotracker/opl2 v1.0.2 // indirect
+	github.com/gotracker/playback v1.5.0 // indirect
 	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
+	github.com/heucuva/comparison v1.0.0 // indirect
+	github.com/heucuva/optional v0.0.1 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
 	github.com/jfreymuth/oggvorbis v1.0.5 // indirect
 	github.com/jfreymuth/vorbis v1.0.2 // indirect
@@ -49,7 +54,7 @@ require (
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
-	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
+	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 )

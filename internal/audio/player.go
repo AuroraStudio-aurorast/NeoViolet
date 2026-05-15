@@ -86,9 +86,9 @@ func (p *Player) Open(path string) error {
 	}
 	ext, detectErr := p.decoder.DetectFormatByMagic(detectFile)
 	detectFile.Close()
-	if detectErr == nil && ext == ".mid" {
-		logger.Info("Detected MIDI file", "path", path)
-		return p.openMIDI(path)
+	if detectErr == nil && isSyntheticFormat(ext) {
+		logger.Info("Detected synthetic format", "path", path, "ext", ext)
+		return p.openSynthetic(path, ext)
 	}
 
 	if p.isPlaying {
@@ -448,11 +448,20 @@ func (e *UnsupportedFormatError) Error() string {
 	return "unsupported audio format"
 }
 
-func (p *Player) openMIDI(path string) error {
-	logger.Info("Opening MIDI", "path", path, "sfPath", p.sfPath)
-	if p.sfPath == "" {
-		return fmt.Errorf("soundfont_path not configured for MIDI playback")
-	}
+var syntheticFormats = map[string]bool{
+	".mid": true,
+	".mod": true,
+	".xm":  true,
+	".s3m": true,
+	".it":  true,
+}
+
+func isSyntheticFormat(ext string) bool {
+	return syntheticFormats[ext]
+}
+
+func (p *Player) openSynthetic(path, ext string) error {
+	logger.Info("Opening synthetic", "path", path, "ext", ext)
 
 	if p.isPlaying {
 		speaker.Clear()
@@ -476,12 +485,27 @@ func (p *Player) openMIDI(path string) error {
 		return fmt.Errorf("speaker init: %w", err)
 	}
 
+	switch ext {
+	case ".mid":
+		return p.openMIDISynth(path, sr)
+	case ".mod", ".xm", ".s3m", ".it":
+		return p.openTrackerSynth(path, ext, sr)
+	default:
+		return fmt.Errorf("unknown synthetic format: %s", ext)
+	}
+}
+
+func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
+	if p.sfPath == "" {
+		return fmt.Errorf("soundfont_path not configured for MIDI playback")
+	}
+
 	var cachedSF *meltysynth.SoundFont
 	if p.cachedSF != nil && p.cachedSFPath == p.sfPath {
 		cachedSF = p.cachedSF
 	}
 
-	mp, sf, err := NewMidiPlayer(path, p.sfPath, cachedSF, speakerSampleRate)
+	mp, sf, err := NewMidiPlayer(path, p.sfPath, cachedSF, sr)
 	if err != nil {
 		return err
 	}
@@ -493,6 +517,22 @@ func (p *Player) openMIDI(path string) error {
 	mp.SetVolume(p.linearVolume)
 
 	p.synthCtrl = mp
+	p.path = path
+	p.isPaused = true
+	p.isPlaying = false
+
+	return nil
+}
+
+func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
+	tp, err := NewTrackerPlayer(path, ext, sr)
+	if err != nil {
+		return err
+	}
+
+	tp.SetVolume(p.linearVolume)
+
+	p.synthCtrl = tp
 	p.path = path
 	p.isPaused = true
 	p.isPlaying = false
