@@ -83,8 +83,13 @@ const testLRC = `[ti:LRC Comprehensive Test - Special Chars 🎵]
 ; End
 [00:30.00]Test file complete.`
 
+func parseLRC(s string) (*LyricsData, error) {
+	var p lrcParser
+	return p.Parse(strings.NewReader(s), "")
+}
+
 func TestParse_Metadata(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -106,7 +111,7 @@ func TestParse_Metadata(t *testing.T) {
 }
 
 func TestParse_StandardTimestamp(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -124,7 +129,7 @@ func TestParse_StandardTimestamp(t *testing.T) {
 }
 
 func TestParse_ShortTimestamp(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -135,7 +140,7 @@ func TestParse_ShortTimestamp(t *testing.T) {
 }
 
 func TestParse_MultiTimestamp(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -153,7 +158,7 @@ func TestParse_MultiTimestamp(t *testing.T) {
 }
 
 func TestParse_EmptyText(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -171,7 +176,7 @@ func TestParse_EmptyText(t *testing.T) {
 }
 
 func TestParse_SpecialChars(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -198,7 +203,7 @@ func TestParse_SpecialChars(t *testing.T) {
 }
 
 func TestParse_CommentIgnored(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -216,7 +221,7 @@ func TestParse_CommentIgnored(t *testing.T) {
 }
 
 func TestParse_ThreeTimestamps(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -234,7 +239,7 @@ func TestParse_ThreeTimestamps(t *testing.T) {
 }
 
 func TestParse_OffsetOverride(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -255,7 +260,7 @@ func TestParse_OffsetOverride(t *testing.T) {
 }
 
 func TestParse_WordLevel(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -277,7 +282,7 @@ func TestParse_WordLevel(t *testing.T) {
 }
 
 func TestParse_OutOfOrder(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -291,7 +296,7 @@ func TestParse_OutOfOrder(t *testing.T) {
 }
 
 func TestParse_MultilingualMerge(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -313,7 +318,7 @@ func TestParse_MultilingualMerge(t *testing.T) {
 }
 
 func TestParse_ThreeRepetitions(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -333,7 +338,7 @@ func TestParse_ThreeRepetitions(t *testing.T) {
 }
 
 func TestParse_FourLanguages(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -354,7 +359,7 @@ func TestParse_FourLanguages(t *testing.T) {
 }
 
 func TestParse_SeparatedSameTimestamp(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -379,7 +384,7 @@ func TestParse_SeparatedSameTimestamp(t *testing.T) {
 }
 
 func TestParse_ExtendedBracket(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -426,7 +431,7 @@ func TestParse_ExtendedBracket(t *testing.T) {
 }
 
 func TestParse_EmptyTimestampText(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -444,7 +449,7 @@ func TestParse_EmptyTimestampText(t *testing.T) {
 }
 
 func TestParse_FinalLine(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -462,13 +467,13 @@ func TestParse_FinalLine(t *testing.T) {
 
 func TestParse_InvalidLine_Rejects(t *testing.T) {
 	invalid := "[00:00.00]valid\nthis is not valid lrc at all\n[00:01.00]also valid"
-	_, err := Parse(strings.NewReader(invalid), "")
+	_, err := parseLRC(invalid)
 	if err != nil {
 		t.Fatalf("unexpected error for mixed content: %v", err)
 	}
 }
 
-func TestFindLRC(t *testing.T) {
+func TestSidecarPathDerivation(t *testing.T) {
 	ext := ".mp3"
 	path := "/some/path/song.mp3"
 	lrcPath := path[:len(path)-len(ext)] + ".lrc"
@@ -508,7 +513,7 @@ func TestCurrentLine(t *testing.T) {
 }
 
 func TestParse_WhitespaceText(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -526,14 +531,14 @@ func TestParse_WhitespaceText(t *testing.T) {
 }
 
 func TestParse_EmptyFile(t *testing.T) {
-	_, err := Parse(strings.NewReader(""), "")
+	_, err := parseLRC("")
 	if err == nil {
 		t.Error("expected error for empty file")
 	}
 }
 
 func TestParse_OnlyComments(t *testing.T) {
-	_, err := Parse(strings.NewReader("; comment 1\n; comment 2\n"), "")
+	_, err := parseLRC("; comment 1\n; comment 2\n")
 	if err == nil {
 		t.Error("expected error for comments-only file")
 	}
@@ -547,7 +552,7 @@ func TestCurrentLine_Empty(t *testing.T) {
 }
 
 func TestParse_FourLanguageExtendedBracketMerge(t *testing.T) {
-	d, err := Parse(strings.NewReader(testLRC), "")
+	d, err := parseLRC(testLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}

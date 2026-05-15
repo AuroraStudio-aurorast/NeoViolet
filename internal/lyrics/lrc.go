@@ -18,7 +18,13 @@ var (
 	wordTagRe = regexp.MustCompile(`<(\d+:\d+(?:\.\d+)?)>([^<]*)`)
 )
 
-func FindLRC(audioPath string) string {
+func init() {
+	RegisterParser("lrc", &lrcParser{})
+}
+
+type lrcParser struct{}
+
+func (p *lrcParser) FindSidecar(audioPath string) string {
 	ext := filepath.Ext(audioPath)
 	lrcPath := audioPath[:len(audioPath)-len(ext)] + ".lrc"
 	if _, err := os.Stat(lrcPath); err == nil {
@@ -27,16 +33,17 @@ func FindLRC(audioPath string) string {
 	return ""
 }
 
-func ParseFile(path string) (*LyricsData, error) {
+func lrcParseFile(path string) (*LyricsData, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open lyrics file: %w", err)
 	}
 	defer f.Close()
-	return Parse(f, path)
+	var p lrcParser
+	return p.Parse(f, path)
 }
 
-func Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 	data, err := io.ReadAll(r)
 	if err != nil {
 		return nil, fmt.Errorf("read lyrics: %w", err)
@@ -45,30 +52,21 @@ func Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 	lyrics := &LyricsData{Path: sourcePath}
 	var lines []LyricLine
 	offset := 0
-	lineNum := 0
 
-	raw := string(data)
-	for _, line := range strings.Split(raw, "\n") {
-		lineNum++
+	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimRight(line, "\r\n\t ")
 
-		// Skip empty or whitespace-only lines
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
 
-		// Comment lines
 		if strings.HasPrefix(line, ";") {
 			continue
 		}
 
-		// Extract all [xxx] groups
 		groups := bracketRe.FindAllStringSubmatch(line, -1)
-
-		// Extract text outside brackets
 		text := bracketRe.ReplaceAllString(line, "")
 
-		// Check for word-level timestamps (<mm:ss.xx>) even without bracket tags
 		wordMatches := wordTagRe.FindAllStringSubmatch(text, -1)
 		hasWordTags := len(wordMatches) > 0
 
@@ -76,7 +74,6 @@ func Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 			continue
 		}
 
-		// Process each group
 		var timestamps []time.Duration
 		isValidLine := false
 
@@ -114,7 +111,6 @@ func Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 				}
 
 			default:
-				// Unknown bracket content - try parsing as timestamp
 				if t, err := parseTimestamp(content); err == nil {
 					timestamps = append(timestamps, t)
 					isValidLine = true
@@ -126,7 +122,6 @@ func Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 			continue
 		}
 
-		// Process word-level timestamps in text
 		var words []WordFragment
 		wordMatches = wordTagRe.FindAllStringSubmatch(text, -1)
 		if len(wordMatches) > 0 {
@@ -147,12 +142,10 @@ func Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 			text = fullText.String()
 		}
 
-		// If no bracket timestamps but has word tags, use first word tag time
 		if len(timestamps) == 0 && len(words) > 0 {
 			timestamps = append(timestamps, words[0].Time)
 		}
 
-		// Apply offset and create lyric lines
 		for _, ts := range timestamps {
 			adjusted := ts + time.Duration(offset)*time.Millisecond
 			if adjusted < 0 {
@@ -180,10 +173,8 @@ func Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		return nil, fmt.Errorf("no valid lyric lines found")
 	}
 
-	// Merge lines with same timestamp (bilingual support)
 	lines = mergeSameTimestamp(lines)
 
-	// Sort by time
 	sort.SliceStable(lines, func(i, j int) bool {
 		return lines[i].Time < lines[j].Time
 	})
@@ -200,7 +191,6 @@ func isTimestamp(s string) bool {
 	if _, err := strconv.Atoi(parts[0]); err != nil {
 		return false
 	}
-	// Seconds part might have extra content after the number (e.g. "28.00:en")
 	secStr := parts[1]
 	extraParts := strings.SplitN(secStr, ":", 2)
 	if _, err := strconv.ParseFloat(extraParts[0], 64); err != nil {
@@ -222,7 +212,6 @@ func parseTimestamp(s string) (time.Duration, error) {
 	if err != nil {
 		return 0, fmt.Errorf("invalid minutes: %s", parts[0])
 	}
-	// Seconds part may have extra content after the number (e.g. "28.00:en")
 	secStr := strings.SplitN(parts[1], ":", 2)[0]
 	secFloat, err := strconv.ParseFloat(secStr, 64)
 	if err != nil {
