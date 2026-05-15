@@ -59,8 +59,10 @@ type ttmlParagraph struct {
 }
 
 type ttmlSpan struct {
-	Begin string `xml:"begin,attr"`
-	Text  string `xml:",chardata"`
+	Begin   string `xml:"begin,attr"`
+	Text    string `xml:",chardata"`
+	Role    string `xml:"http://www.w3.org/ns/ttml#metadata role,attr"`
+	XMLLang string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
 }
 
 func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
@@ -107,6 +109,9 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 		fullText := strings.Builder{}
 
 		for _, span := range para.Spans {
+			if span.Role == "x-translation" {
+				continue
+			}
 			spanBegin, spanErr := parseTTMLTime(span.Begin, tickRate, frameRate, frameRateMul, subFrameRate)
 			if spanErr == nil {
 				words = append(words, WordFragment{Time: spanBegin, Text: span.Text})
@@ -168,12 +173,20 @@ func parseTTMLTime(s string, tickRate, frameRate, frameRateMul, subFrameRate int
 		return 0, nil
 	}
 
-	// Offset-time: number + unit
 	if isOffsetTime(s) {
 		return parseOffsetTime(s)
 	}
 
-	// Clock-time: HH:MM:SS.mmm or HH:MM:SS:ff
+	if !strings.Contains(s, ":") {
+		secFloat, err := strconv.ParseFloat(strings.ReplaceAll(s, ",", "."), 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid bare seconds %q: %w", s, err)
+		}
+		ss := int(secFloat)
+		ms := int(math.Round((secFloat - float64(ss)) * 1000))
+		return time.Duration(ss)*time.Second + time.Duration(ms)*time.Millisecond, nil
+	}
+
 	return parseClockTime(s, tickRate, frameRate, frameRateMul, subFrameRate)
 }
 

@@ -285,3 +285,142 @@ func TestTTML_SidecarExtensionPreference(t *testing.T) {
 		t.Errorf("xml path = %q", xmlPath)
 	}
 }
+
+func TestTTML_BareSeconds(t *testing.T) {
+	bareSec := `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body><div>
+    <p begin="39.345" end="43.071">I could never find the right way</p>
+    <p begin="44.085" end="46.505">Have you noticed I've been gone</p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(bareSec)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(d.Lines))
+	}
+
+	if d.Lines[0].Time != 39345*time.Millisecond {
+		t.Errorf("39.345s = %v, want 39345ms", d.Lines[0].Time)
+	}
+	if d.Lines[0].Text != "I could never find the right way" {
+		t.Errorf("line 0 text = %q", d.Lines[0].Text)
+	}
+
+	if d.Lines[1].Time != 44085*time.Millisecond {
+		t.Errorf("44.085s = %v, want 44085ms", d.Lines[1].Time)
+	}
+}
+
+func TestTTML_WordSyncWithTranslation(t *testing.T) {
+	appleStyle := `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+    xmlns:itunes="http://music.apple.com/lyric-ttml-internal" itunes:timing="Word">
+  <body dur="0:10.000">
+    <div begin="0.000" end="0:10.000">
+      <p begin="1.345" end="3.071" itunes:key="L1" ttm:agent="v1">
+        <span begin="1.345" end="1.548">I</span>
+        <span begin="1.548" end="1.938">could</span>
+        <span begin="1.938" end="2.198">find</span>
+        <span begin="2.198" end="2.770">you</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">我找到了你</span>
+      </p>
+      <p begin="4.085" end="6.505" itunes:key="L2" ttm:agent="v1">
+        <span begin="4.085" end="4.510">Hello</span>
+        <span begin="4.510" end="4.953">world</span>
+        <span ttm:role="x-translation" xml:lang="zh-CN">你好世界</span>
+      </p>
+    </div>
+  </body>
+</tt>`
+
+	d, err := parseTTML(appleStyle)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(d.Lines))
+	}
+
+	if d.Lines[0].Text != "Icouldfindyou" {
+		t.Errorf("line 0 text = %q, want 'Icouldfindyou' (no translation)", d.Lines[0].Text)
+	}
+	if strings.Contains(d.Lines[0].Text, "我") {
+		t.Error("translation text leaked into line 0")
+	}
+
+	if len(d.Lines[0].Words) != 4 {
+		t.Fatalf("expected 4 word fragments (not translation), got %d", len(d.Lines[0].Words))
+	}
+	if d.Lines[0].Words[0].Text != "I" || d.Lines[0].Words[0].Time != 1345*time.Millisecond {
+		t.Errorf("word[0] = %q @ %v", d.Lines[0].Words[0].Text, d.Lines[0].Words[0].Time)
+	}
+	if d.Lines[0].Words[3].Text != "you" || d.Lines[0].Words[3].Time != 2198*time.Millisecond {
+		t.Errorf("word[3] = %q @ %v", d.Lines[0].Words[3].Text, d.Lines[0].Words[3].Time)
+	}
+
+	if d.Lines[1].Time != 4085*time.Millisecond {
+		t.Errorf("line 1 time = %v, want 4085ms", d.Lines[1].Time)
+	}
+	if d.Lines[1].Text != "Helloworld" {
+		t.Errorf("line 1 text = %q, want 'Helloworld'", d.Lines[1].Text)
+	}
+}
+
+func TestTTML_PartialClockTime(t *testing.T) {
+	partial := `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body><div>
+    <p begin="1:01.643" end="1:03.071">Trust in me</p>
+    <p begin="2:19.153" end="2:23.083">I'll give them shelter</p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(partial)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(d.Lines))
+	}
+
+	if d.Lines[0].Time != 61643*time.Millisecond {
+		t.Errorf("1:01.643 = %v, want 61643ms", d.Lines[0].Time)
+	}
+	if d.Lines[0].Text != "Trust in me" {
+		t.Errorf("line 0 text = %q", d.Lines[0].Text)
+	}
+
+	if d.Lines[1].Time != 139153*time.Millisecond {
+		t.Errorf("2:19.153 = %v, want 139153ms", d.Lines[1].Time)
+	}
+}
+
+func TestTTML_MixedBareSecondsAndPartial(t *testing.T) {
+	mixed := `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body><div>
+    <p begin="39.345" end="43.071">Bare seconds</p>
+    <p begin="1:01.643" end="1:03.071">Partial clock time</p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(mixed)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 2 {
+		t.Fatalf("expected 2 lines, got %d", len(d.Lines))
+	}
+
+	if d.Lines[0].Time != 39345*time.Millisecond {
+		t.Errorf("39.345 = %v, want 39345ms", d.Lines[0].Time)
+	}
+	if d.Lines[1].Time != 61643*time.Millisecond {
+		t.Errorf("1:01.643 = %v, want 61643ms", d.Lines[1].Time)
+	}
+}
