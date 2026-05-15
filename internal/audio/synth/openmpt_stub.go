@@ -31,4 +31,4 @@ func (p *OpenmptPlayer) Title() string                           { return "" }
 func (p *OpenmptPlayer) Artist() string                          { return "" }
 func (p *OpenmptPlayer) CoverImage() image.Image                 { return nil }
 func (p *OpenmptPlayer) Format() beep.Format                     { return beep.Format{} }
-func (p *OpenmptPlayer) Streamer() Streamer                 { return nil }
+func (p *OpenmptPlayer) Streamer() Streamer                      { return nil }

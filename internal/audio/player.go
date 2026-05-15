@@ -36,21 +36,21 @@ func ensureSpeakerInit(sampleRate beep.SampleRate) error {
 }
 
 type Player struct {
-	mu           sync.Mutex
-	streamer     beep.StreamSeekCloser
-	ctrl         *beep.Ctrl
-	volume       *effects.Volume
-	format       beep.Format
-	isPaused     bool
-	isPlaying    bool
-	file         io.Closer
-	path         string
-	linearVolume float64
-	title        string
-	artist       string
-	coverImage   image.Image
-	decoder      *format.FormatDecoder
-	tagReader    *format.MetadataReader
+	mu             sync.Mutex
+	streamer       beep.StreamSeekCloser
+	ctrl           *beep.Ctrl
+	volume         *effects.Volume
+	format         beep.Format
+	isPaused       bool
+	isPlaying      bool
+	file           io.Closer
+	path           string
+	linearVolume   float64
+	title          string
+	artist         string
+	coverImage     image.Image
+	decoder        *format.FormatDecoder
+	tagReader      *format.MetadataReader
 	synthCtrl      synth.Controller
 	sfPath         string
 	cachedSF       *meltysynth.SoundFont

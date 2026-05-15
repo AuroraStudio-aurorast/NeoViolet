@@ -34,13 +34,13 @@ func (p *ttmlParser) FindSidecar(audioPath string) string {
 }
 
 type ttmlTT struct {
-	XMLName xml.Name `xml:"tt"`
-	Body    ttmlBody `xml:"body"`
-	TickRate    int `xml:"http://www.w3.org/ns/ttml#parameter tickRate,attr"`
-	FrameRate   int `xml:"http://www.w3.org/ns/ttml#parameter frameRate,attr"`
-	FrameRateMul int `xml:"http://www.w3.org/ns/ttml#parameter frameRateMultiplier,attr"`
-	SubFrameRate int `xml:"http://www.w3.org/ns/ttml#parameter subFrameRate,attr"`
-	XMLLang      string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
+	XMLName      xml.Name `xml:"tt"`
+	Body         ttmlBody `xml:"body"`
+	TickRate     int      `xml:"http://www.w3.org/ns/ttml#parameter tickRate,attr"`
+	FrameRate    int      `xml:"http://www.w3.org/ns/ttml#parameter frameRate,attr"`
+	FrameRateMul int      `xml:"http://www.w3.org/ns/ttml#parameter frameRateMultiplier,attr"`
+	SubFrameRate int      `xml:"http://www.w3.org/ns/ttml#parameter subFrameRate,attr"`
+	XMLLang      string   `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
 	tickRate     int
 }
 
@@ -54,10 +54,10 @@ type ttmlDiv struct {
 }
 
 type ttmlParagraph struct {
-	Begin string       `xml:"begin,attr"`
-	End   string       `xml:"end,attr"`
-	Spans []ttmlSpan   `xml:"span"`
-	Text  string       `xml:",chardata"`
+	Begin string     `xml:"begin,attr"`
+	End   string     `xml:"end,attr"`
+	Spans []ttmlSpan `xml:"span"`
+	Text  string     `xml:",chardata"`
 }
 
 type ttmlSpan struct {
