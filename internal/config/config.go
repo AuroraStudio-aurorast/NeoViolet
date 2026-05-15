@@ -10,8 +10,9 @@ import (
 )
 
 type LyricsConfig struct {
-	Enabled     bool `json:"enabled"`
-	ScrollSpeed int  `json:"scroll_speed"`
+	Enabled        bool     `json:"enabled"`
+	ScrollSpeed    int      `json:"scroll_speed"`
+	FormatPriority []string `json:"format_priority"`
 }
 
 type ProgressBarConfig struct {
@@ -73,8 +74,9 @@ func DefaultConfig() Config {
 		SoundfontPath:  "",
 		TrackerBackend: "auto",
 		Lyrics: LyricsConfig{
-			Enabled:     true,
-			ScrollSpeed: 6,
+			Enabled:        true,
+			ScrollSpeed:    6,
+			FormatPriority: []string{"lrc", "ttml"},
 		},
 		VolumeBar: VolumeBarConfig{
 			Width:          16,

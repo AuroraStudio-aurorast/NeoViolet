@@ -137,17 +137,13 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		m.Audio.IsPlaying = true
 	}
 
-	// Load LRC lyrics if available
 	if m.Config.Lyrics.Enabled {
-		lrcPath := lyrics.FindLRC(msg.Path)
-		if lrcPath != "" {
-			data, err := lyrics.ParseFile(lrcPath)
-			if err != nil {
-				m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
-			} else {
-				m.Audio.Lyrics = data
-				m.Audio.LyricIndex = -1
-			}
+		data, err := lyrics.FindAndParse(msg.Path, m.Config.Lyrics.FormatPriority)
+		if err != nil {
+			m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
+		} else if data != nil {
+			m.Audio.Lyrics = data
+			m.Audio.LyricIndex = -1
 		}
 	}
 
