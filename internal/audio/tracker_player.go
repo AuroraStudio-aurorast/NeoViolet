@@ -23,8 +23,6 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
-const trackerBlockSize = 512
-
 type TrackerPlayer struct {
 	mu sync.Mutex
 
@@ -33,15 +31,12 @@ type TrackerPlayer struct {
 	userSettings settings.UserSettings
 	sampleRate   beep.SampleRate
 
-	premixBuf    []byte
-	mixer        mixing.Mixer
-	sampler      *sampler.Sampler
+	mixer          mixing.Mixer
+	sampler        *sampler.Sampler
 	receivedPremix chan *output.PremixData
 
-	renderBufL []float64
-	renderBufR []float64
-	renderPos  int
-	renderLen  int
+	renderSamples [][2]float64
+	renderPos     int
 
 	seekTarget int
 	seeking    bool
@@ -87,11 +82,8 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 		songData:       songData,
 		userSettings:   us,
 		sampleRate:     sampleRate,
-		premixBuf:      make([]byte, trackerBlockSize*4),
 		mixer:          mixing.Mixer{Channels: 2},
 		receivedPremix: make(chan *output.PremixData, 1),
-		renderBufL:     make([]float64, trackerBlockSize),
-		renderBufR:     make([]float64, trackerBlockSize),
 		isPaused:       true,
 		volumeScale:    1.0,
 	}
@@ -109,7 +101,7 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 	tp.sampler = out
 
 	dryMachine, _ := machine.NewMachine(songData, us)
-	tp.duration = computeDuration(dryMachine, out, sampleRate)
+	tp.duration = computeDuration(dryMachine, sampleRate)
 
 	tp.machine = mach
 	return tp, nil
@@ -209,8 +201,8 @@ func (p *TrackerPlayer) handleSeek(samples [][2]float64, vs float64, elapsed *ti
 	p.mu.Lock()
 	p.machine = newMach
 	p.sampler = newOut
+	p.renderSamples = nil
 	p.renderPos = 0
-	p.renderLen = 0
 	if p.seeking || p.isPaused {
 		p.mu.Unlock()
 		for i := range samples {
@@ -240,29 +232,26 @@ func (p *TrackerPlayer) fillSamples(samples [][2]float64, vs float64, elapsed *t
 			return
 		}
 
-		if p.renderPos >= p.renderLen {
-			p.renderOneChunk()
+		if p.renderPos >= len(p.renderSamples) {
+			p.renderOneTick()
 		}
 
-		l := p.renderBufL[p.renderPos] * vs
-		r := p.renderBufR[p.renderPos] * vs
+		s := p.renderSamples[p.renderPos]
 		p.renderPos++
 
-		samples[i][0] = softClip(l)
-		samples[i][1] = softClip(r)
+		samples[i][0] = softClip(s[0] * vs)
+		samples[i][1] = softClip(s[1] * vs)
 		*elapsed += time.Second / time.Duration(p.sampleRate)
 	}
 }
 
-func (p *TrackerPlayer) renderOneChunk() {
+func (p *TrackerPlayer) renderOneTick() {
 	err := p.machine.Tick(p.sampler)
 	if errors.Is(err, song.ErrStopSong) {
-		for j := range p.renderBufL {
-			p.renderBufL[j] = 0
-			p.renderBufR[j] = 0
-		}
+		p.finished = true
+		p.isPlaying = false
+		p.renderSamples = nil
 		p.renderPos = 0
-		p.renderLen = trackerBlockSize
 		return
 	}
 
@@ -270,22 +259,13 @@ func (p *TrackerPlayer) renderOneChunk() {
 	data := p.mixer.Flatten(premix.SamplesLen, premix.Data, premix.MixerVolume, sampling.Format16BitLESigned)
 
 	sampleCount := len(data) / 4
-	for j := 0; j < sampleCount && j < trackerBlockSize; j++ {
+	p.renderSamples = make([][2]float64, sampleCount)
+	for j := 0; j < sampleCount; j++ {
 		off := j * 4
-		l := float64(int16(binary.LittleEndian.Uint16(data[off:off+2]))) / 32768.0
-		r := float64(int16(binary.LittleEndian.Uint16(data[off+2:off+4]))) / 32768.0
-		p.renderBufL[j] = l
-		p.renderBufR[j] = r
-	}
-	for j := sampleCount; j < trackerBlockSize; j++ {
-		p.renderBufL[j] = 0
-		p.renderBufR[j] = 0
+		p.renderSamples[j][0] = float64(int16(binary.LittleEndian.Uint16(data[off:off+2]))) / 32768.0
+		p.renderSamples[j][1] = float64(int16(binary.LittleEndian.Uint16(data[off+2:off+4]))) / 32768.0
 	}
 	p.renderPos = 0
-	p.renderLen = sampleCount
-	if p.renderLen > trackerBlockSize {
-		p.renderLen = trackerBlockSize
-	}
 }
 
 func (p *TrackerPlayer) Err() error { return nil }
@@ -441,7 +421,7 @@ func formatDisplayName(key string) string {
 	}
 }
 
-func computeDuration(mach machine.MachineTicker, out *sampler.Sampler, sampleRate beep.SampleRate) time.Duration {
+func computeDuration(mach machine.MachineTicker, sampleRate beep.SampleRate) time.Duration {
 	ch := make(chan *output.PremixData, 1)
 	tempOut := sampler.NewSampler(int(sampleRate), 2, 1.0, func(premix *output.PremixData) {
 		ch <- premix
