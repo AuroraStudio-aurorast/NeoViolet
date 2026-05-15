@@ -409,7 +409,7 @@ func formatKeyFromExt(ext string) string {
 		return "xm"
 	case ".s3m":
 		return "s3m"
-	case ".it":
+	case ".it", ".mptm":
 		return "it"
 	default:
 		return ext[1:]

@@ -126,5 +126,5 @@ func isMODSignature(sig string) bool {
 }
 
 func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it"}
+	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it", ".mptm"}
 }

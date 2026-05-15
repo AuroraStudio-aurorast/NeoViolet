@@ -93,9 +93,17 @@ func (p *Player) Open(path string) error {
 	}
 	ext, detectErr := p.decoder.DetectFormatByMagic(detectFile)
 	detectFile.Close()
-	if detectErr == nil && isSyntheticFormat(ext) {
-		logger.Info("Detected synthetic format", "path", path, "ext", ext)
-		return p.openSynthetic(path, ext)
+
+	synthExt := ext
+	if detectErr != nil {
+		synthExt = filepath.Ext(path)
+	} else if filepath.Ext(path) == ".mptm" {
+		synthExt = ".mptm"
+	}
+
+	if isSyntheticFormat(synthExt) {
+		logger.Info("Detected synthetic format", "path", path, "ext", synthExt)
+		return p.openSynthetic(path, synthExt)
 	}
 
 	if p.isPlaying {
@@ -456,11 +464,12 @@ func (e *UnsupportedFormatError) Error() string {
 }
 
 var syntheticFormats = map[string]bool{
-	".mid": true,
-	".mod": true,
-	".xm":  true,
-	".s3m": true,
-	".it":  true,
+	".mid":  true,
+	".mod":  true,
+	".xm":   true,
+	".s3m":  true,
+	".it":   true,
+	".mptm": true,
 }
 
 func isSyntheticFormat(ext string) bool {
@@ -534,6 +543,19 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 	var ctrl SynthController
 	var err error
+
+	if ext == ".mptm" {
+		ctrl, err = NewOpenmptPlayer(path, sr)
+		if err != nil {
+			return fmt.Errorf("mptm format requires libopenmpt: %w", err)
+		}
+		ctrl.SetVolume(p.linearVolume)
+		p.synthCtrl = ctrl
+		p.path = path
+		p.isPaused = true
+		p.isPlaying = false
+		return nil
+	}
 
 	backend := p.trackerBackend
 	if backend == "" {
