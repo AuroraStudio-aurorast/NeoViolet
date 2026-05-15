@@ -1,4 +1,4 @@
-package audio
+package synth
 
 import (
 	"image"
@@ -7,12 +7,12 @@ import (
 	"github.com/gopxl/beep/v2"
 )
 
-type SynthStreamer interface {
+type Streamer interface {
 	beep.Streamer
 	Format() beep.Format
 }
 
-type SynthController interface {
+type Controller interface {
 	Play() error
 	Pause()
 	Stop()
@@ -25,5 +25,5 @@ type SynthController interface {
 	Title() string
 	Artist() string
 	CoverImage() image.Image
-	Streamer() SynthStreamer
+	Streamer() Streamer
 }

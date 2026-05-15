@@ -1,4 +1,4 @@
-package audio
+package format
 
 import (
 	"fmt"
@@ -127,4 +127,12 @@ func isMODSignature(sig string) bool {
 
 func (fd *FormatDecoder) SupportedFormats() []string {
 	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it", ".mptm"}
+}
+
+var ErrUnsupportedFormat = &UnsupportedFormatError{}
+
+type UnsupportedFormatError struct{}
+
+func (e *UnsupportedFormatError) Error() string {
+	return "unsupported audio format"
 }

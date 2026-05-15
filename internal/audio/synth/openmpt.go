@@ -1,6 +1,6 @@
 //go:build openmpt
 
-package audio
+package synth
 
 /*
 #cgo pkg-config: libopenmpt
@@ -249,7 +249,7 @@ func (p *OpenmptPlayer) Format() beep.Format {
 	return beep.Format{SampleRate: beep.SampleRate(p.sampleRate), NumChannels: 2, Precision: 4}
 }
 
-func (p *OpenmptPlayer) Streamer() SynthStreamer { return p }
+func (p *OpenmptPlayer) Streamer() Streamer { return p }
 
 func (p *OpenmptPlayer) Title() string {
 	p.mu.Lock()

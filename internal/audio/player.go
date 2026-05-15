@@ -15,6 +15,9 @@ import (
 	"github.com/gopxl/beep/v2/speaker"
 	"github.com/jpodeszfa/go-meltysynth/meltysynth"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/cover"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
@@ -46,9 +49,9 @@ type Player struct {
 	title        string
 	artist       string
 	coverImage   image.Image
-	decoder      *FormatDecoder
-	tagReader    *MetadataReader
-	synthCtrl      SynthController
+	decoder      *format.FormatDecoder
+	tagReader    *format.MetadataReader
+	synthCtrl      synth.Controller
 	sfPath         string
 	cachedSF       *meltysynth.SoundFont
 	cachedSFPath   string
@@ -56,10 +59,10 @@ type Player struct {
 }
 
 func NewPlayer() *Player {
-	return NewPlayerWithDeps(NewFormatDecoder(), NewMetadataReader())
+	return NewPlayerWithDeps(format.NewFormatDecoder(), format.NewMetadataReader())
 }
 
-func NewPlayerWithDeps(decoder *FormatDecoder, tagReader *MetadataReader) *Player {
+func NewPlayerWithDeps(decoder *format.FormatDecoder, tagReader *format.MetadataReader) *Player {
 	return &Player{
 		isPaused:     true,
 		isPlaying:    false,
@@ -171,6 +174,17 @@ func (p *Player) applyLinearVolumeLocked() {
 		p.volume.Silent = false
 		exponent := math.Log2(p.linearVolume)
 		p.volume.Volume = exponent
+	}
+}
+
+func (p *Player) readTags(path string) {
+	metadata := p.tagReader.Read(path)
+	p.title = metadata.Title
+	p.artist = metadata.Artist
+
+	img, err := cover.ExtractFromFile(path)
+	if err == nil {
+		p.coverImage = img
 	}
 }
 
@@ -455,14 +469,6 @@ func (p *Player) Format() beep.Format {
 	return p.format
 }
 
-var ErrUnsupportedFormat = &UnsupportedFormatError{}
-
-type UnsupportedFormatError struct{}
-
-func (e *UnsupportedFormatError) Error() string {
-	return "unsupported audio format"
-}
-
 var syntheticFormats = map[string]bool{
 	".mid":  true,
 	".mod":  true,
@@ -521,7 +527,7 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 		cachedSF = p.cachedSF
 	}
 
-	mp, sf, err := NewMidiPlayer(path, p.sfPath, cachedSF, sr)
+	mp, sf, err := synth.NewMidiPlayer(path, p.sfPath, cachedSF, sr)
 	if err != nil {
 		return err
 	}
@@ -541,11 +547,11 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 }
 
 func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
-	var ctrl SynthController
+	var ctrl synth.Controller
 	var err error
 
 	if ext == ".mptm" {
-		ctrl, err = NewOpenmptPlayer(path, sr)
+		ctrl, err = synth.NewOpenmptPlayer(path, sr)
 		if err != nil {
 			return fmt.Errorf("mptm format requires libopenmpt: %w", err)
 		}
@@ -564,18 +570,18 @@ func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 
 	switch backend {
 	case "gotracker":
-		ctrl, err = NewTrackerPlayer(path, ext, sr)
+		ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
 	case "openmpt":
-		ctrl, err = NewOpenmptPlayer(path, sr)
+		ctrl, err = synth.NewOpenmptPlayer(path, sr)
 		if err != nil {
 			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
-			ctrl, err = NewTrackerPlayer(path, ext, sr)
+			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
 		}
 	default:
-		ctrl, err = NewOpenmptPlayer(path, sr)
+		ctrl, err = synth.NewOpenmptPlayer(path, sr)
 		if err != nil {
 			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
-			ctrl, err = NewTrackerPlayer(path, ext, sr)
+			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
 		}
 	}
 

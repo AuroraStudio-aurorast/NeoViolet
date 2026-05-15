@@ -1,4 +1,4 @@
-package audio
+package synth
 
 import (
 	"fmt"
@@ -328,7 +328,7 @@ func (p *MidiPlayer) Format() beep.Format {
 	return beep.Format{SampleRate: p.sampleRate, NumChannels: 2, Precision: 4}
 }
 
-func (p *MidiPlayer) Streamer() SynthStreamer { return p }
+func (p *MidiPlayer) Streamer() Streamer { return p }
 
 func (p *MidiPlayer) Path() string { return "" }
 

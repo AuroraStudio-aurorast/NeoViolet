@@ -1,4 +1,4 @@
-package audio
+package synth
 
 import (
 	"encoding/binary"
@@ -363,7 +363,7 @@ func (p *TrackerPlayer) Format() beep.Format {
 	return beep.Format{SampleRate: p.sampleRate, NumChannels: 2, Precision: 4}
 }
 
-func (p *TrackerPlayer) Streamer() SynthStreamer { return p }
+func (p *TrackerPlayer) Streamer() Streamer { return p }
 
 func (p *TrackerPlayer) Title() string {
 	p.mu.Lock()
