@@ -28,7 +28,7 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	}
 	defer file.Seek(originalPos, io.SeekStart)
 
-	buffer := make([]byte, 12)
+	buffer := make([]byte, 1084)
 	n, err := file.Read(buffer)
 	if err != nil && err != io.EOF {
 		return "", err
@@ -38,6 +38,18 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	}
 
 	switch {
+	case n >= 17 && string(buffer[0:17]) == "Extended Module: ":
+		logger.Debug("Detected format: XM", "path", file.Name())
+		return ".xm", nil
+	case n >= 4 && string(buffer[0:4]) == "IMPM":
+		logger.Debug("Detected format: IT", "path", file.Name())
+		return ".it", nil
+	case n >= 48 && string(buffer[44:48]) == "SCRM":
+		logger.Debug("Detected format: S3M", "path", file.Name())
+		return ".s3m", nil
+	case n >= 1084 && isMODSignature(string(buffer[1080:1084])):
+		logger.Debug("Detected format: MOD", "path", file.Name())
+		return ".mod", nil
 	case n >= 3 && string(buffer[0:3]) == "ID3":
 		logger.Debug("Detected format: MP3 (ID3)", "path", file.Name())
 		return ".mp3", nil
@@ -91,6 +103,28 @@ func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekClos
 	return streamer, format, nil
 }
 
+var modSignatures = map[string]bool{
+	"M.K.": true,
+	"M!K!": true,
+	"FLT4": true,
+	"FLT8": true,
+	"4CHN": true,
+	"6CHN": true,
+	"8CHN": true,
+	"16CN": true,
+	"32CN": true,
+	"CD81": true,
+	"OKTA": true,
+	"OCTA": true,
+	"TDZ1": true,
+	"TDZ2": true,
+	"TDZ3": true,
+}
+
+func isMODSignature(sig string) bool {
+	return modSignatures[sig]
+}
+
 func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid"}
+	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it"}
 }

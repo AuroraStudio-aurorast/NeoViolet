@@ -134,7 +134,7 @@ func TestDetectFormatByMagic_empty(t *testing.T) {
 func TestSupportedFormats(t *testing.T) {
 	fd := NewFormatDecoder()
 	formats := fd.SupportedFormats()
-	expected := []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid"}
+	expected := []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it"}
 	if len(formats) != len(expected) {
 		t.Fatalf("SupportedFormats() = %v, want %v", formats, expected)
 	}
