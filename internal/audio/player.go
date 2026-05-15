@@ -48,7 +48,7 @@ type Player struct {
 	coverImage   image.Image
 	decoder      *FormatDecoder
 	tagReader    *MetadataReader
-	midiPlayer   *MidiPlayer
+	synthCtrl    SynthController
 	sfPath       string
 	cachedSF     *meltysynth.SoundFont
 	cachedSFPath string
@@ -163,9 +163,9 @@ func (p *Player) Play() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.midiPlayer != nil {
-		logger.Debug("MIDI play")
-		return p.playMIDI()
+	if p.synthCtrl != nil {
+		logger.Debug("Synth play")
+		return p.playSynthetic()
 	}
 
 	if p.streamer == nil || p.volume == nil {
@@ -192,9 +192,9 @@ func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.midiPlayer != nil {
-		logger.Debug("MIDI pause")
-		p.midiPlayer.Pause()
+	if p.synthCtrl != nil {
+		logger.Debug("Synth pause")
+		p.synthCtrl.Pause()
 		p.isPaused = true
 		return
 	}
@@ -213,9 +213,9 @@ func (p *Player) Resume() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.midiPlayer != nil {
-		logger.Debug("MIDI resume")
-		p.midiPlayer.Play()
+	if p.synthCtrl != nil {
+		logger.Debug("Synth resume")
+		p.synthCtrl.Play()
 		p.isPaused = false
 		return
 	}
@@ -234,9 +234,9 @@ func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.midiPlayer != nil {
-		logger.Debug("MIDI stop")
-		p.midiPlayer.Stop()
+	if p.synthCtrl != nil {
+		logger.Debug("Synth stop")
+		p.synthCtrl.Stop()
 		p.isPlaying = false
 		p.isPaused = true
 		return
@@ -249,7 +249,7 @@ func (p *Player) Stop() {
 }
 
 func (p *Player) Toggle() {
-	if p.midiPlayer != nil {
+	if p.synthCtrl != nil {
 		if p.isPaused || !p.isPlaying {
 			p.Play()
 		} else {
@@ -268,9 +268,9 @@ func (p *Player) Seek(position time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.midiPlayer != nil {
-		logger.Debug("MIDI seek", "position", position)
-		return p.midiPlayer.Seek(position)
+	if p.synthCtrl != nil {
+		logger.Debug("Synth seek", "position", position)
+		return p.synthCtrl.Seek(position)
 	}
 
 	if p.streamer == nil || p.path == "" {
@@ -332,8 +332,8 @@ func (p *Player) SetVolume(vol float64) {
 	}
 	p.linearVolume = vol
 
-	if p.midiPlayer != nil {
-		p.midiPlayer.SetVolume(vol)
+	if p.synthCtrl != nil {
+		p.synthCtrl.SetVolume(vol)
 	}
 	logger.Debug("Volume set", "volume", vol)
 	p.applyLinearVolumeLocked()
@@ -354,8 +354,8 @@ func (p *Player) IsPlaying() bool {
 func (p *Player) Duration() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.midiPlayer != nil {
-		return p.midiPlayer.Duration()
+	if p.synthCtrl != nil {
+		return p.synthCtrl.Duration()
 	}
 	if p.streamer == nil {
 		return 0
@@ -366,8 +366,8 @@ func (p *Player) Duration() time.Duration {
 func (p *Player) Position() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.midiPlayer != nil {
-		return p.midiPlayer.Position()
+	if p.synthCtrl != nil {
+		return p.synthCtrl.Position()
 	}
 	if p.streamer == nil {
 		return 0
@@ -379,9 +379,9 @@ func (p *Player) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.midiPlayer != nil {
-		logger.Debug("Player.Close (MIDI)")
-		return p.midiPlayer.Close()
+	if p.synthCtrl != nil {
+		logger.Debug("Player.Close (synth)")
+		return p.synthCtrl.Close()
 	}
 
 	logger.Debug("Player.Close (audio)")
@@ -398,12 +398,6 @@ func (p *Player) Close() error {
 	return nil
 }
 
-func (p *Player) Format() beep.Format {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.format
-}
-
 func (p *Player) Path() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -413,19 +407,37 @@ func (p *Player) Path() string {
 func (p *Player) Title() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.synthCtrl != nil {
+		return p.synthCtrl.Title()
+	}
 	return p.title
 }
 
 func (p *Player) Artist() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.synthCtrl != nil {
+		return p.synthCtrl.Artist()
+	}
 	return p.artist
 }
 
 func (p *Player) CoverImage() image.Image {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.synthCtrl != nil {
+		return p.synthCtrl.CoverImage()
+	}
 	return p.coverImage
+}
+
+func (p *Player) Format() beep.Format {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.synthCtrl != nil {
+		return p.synthCtrl.Streamer().Format()
+	}
+	return p.format
 }
 
 var ErrUnsupportedFormat = &UnsupportedFormatError{}
@@ -451,9 +463,9 @@ func (p *Player) openMIDI(path string) error {
 			p.file.Close()
 		}
 	}
-	if p.midiPlayer != nil {
-		p.midiPlayer.Close()
-		p.midiPlayer = nil
+	if p.synthCtrl != nil {
+		p.synthCtrl.Close()
+		p.synthCtrl = nil
 	}
 
 	sr := speakerSampleRate
@@ -476,31 +488,30 @@ func (p *Player) openMIDI(path string) error {
 	p.cachedSF = sf
 	p.cachedSFPath = p.sfPath
 
-	p.midiPlayer = mp
+	mp.SetTitle(filepath.Base(path))
+	mp.SetArtist("MIDI")
+	mp.SetVolume(p.linearVolume)
+
+	p.synthCtrl = mp
 	p.path = path
 	p.isPaused = true
 	p.isPlaying = false
 
-	mp.SetVolume(p.linearVolume)
-
-	p.title = filepath.Base(path)
-	p.artist = "MIDI"
-
 	return nil
 }
 
-func (p *Player) playMIDI() error {
-	if p.midiPlayer == nil {
-		return fmt.Errorf("no MIDI player")
+func (p *Player) playSynthetic() error {
+	if p.synthCtrl == nil {
+		return fmt.Errorf("no synth controller")
 	}
 
 	if !p.isPlaying {
-		logger.Info("MIDI playback start")
-		speaker.Play(p.midiPlayer)
+		logger.Info("Synth playback start")
+		speaker.Play(p.synthCtrl.Streamer())
 	}
 
 	speaker.Lock()
-	p.midiPlayer.Play()
+	p.synthCtrl.Play()
 	speaker.Unlock()
 
 	p.isPlaying = true

@@ -2,6 +2,7 @@ package audio
 
 import (
 	"fmt"
+	"image"
 	"math"
 	"os"
 	"sync"
@@ -38,6 +39,9 @@ type MidiPlayer struct {
 	closed      bool
 	finished    bool
 	volumeScale float64
+
+	title  string
+	artist string
 }
 
 func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sampleRate beep.SampleRate) (*MidiPlayer, *meltysynth.SoundFont, error) {
@@ -324,9 +328,35 @@ func (p *MidiPlayer) Format() beep.Format {
 	return beep.Format{SampleRate: p.sampleRate, NumChannels: 2, Precision: 4}
 }
 
+func (p *MidiPlayer) Streamer() SynthStreamer { return p }
+
 func (p *MidiPlayer) Path() string { return "" }
 
-func (p *MidiPlayer) Artist() string { return "" }
+func (p *MidiPlayer) Title() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.title
+}
+
+func (p *MidiPlayer) SetTitle(title string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.title = title
+}
+
+func (p *MidiPlayer) Artist() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.artist
+}
+
+func (p *MidiPlayer) SetArtist(artist string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.artist = artist
+}
+
+func (p *MidiPlayer) CoverImage() image.Image { return nil }
 
 func (p *MidiPlayer) Seek(pos time.Duration) error {
 	p.mu.Lock()
