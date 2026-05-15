@@ -40,6 +40,7 @@ type ttmlTT struct {
 	FrameRate   int `xml:"http://www.w3.org/ns/ttml#parameter frameRate,attr"`
 	FrameRateMul int `xml:"http://www.w3.org/ns/ttml#parameter frameRateMultiplier,attr"`
 	SubFrameRate int `xml:"http://www.w3.org/ns/ttml#parameter subFrameRate,attr"`
+	XMLLang      string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
 	tickRate     int
 }
 
@@ -49,6 +50,7 @@ type ttmlBody struct {
 
 type ttmlDiv struct {
 	Paragraphs []ttmlParagraph `xml:"p"`
+	XMLLang    string          `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
 }
 
 type ttmlParagraph struct {
@@ -79,6 +81,22 @@ func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) 
 
 func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 	tt.resolveRates()
+
+	lang := tt.Body.Div.XMLLang
+	if lang == "" {
+		lang = tt.XMLLang
+	}
+	needsSpace := !isCJKLang(lang)
+
+	// Auto-detect: if no xml:lang, check first rune of first paragraph text
+	if lang == "" {
+		needsSpace = !tt.isCJKContent()
+	}
+
+	// Auto-detect: if no xml:lang, check first rune of first paragraph text
+	if lang == "" {
+		needsSpace = !tt.isCJKContent()
+	}
 
 	tickRate := tt.tickRate
 	if tickRate <= 0 {
@@ -115,6 +133,9 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 			spanBegin, spanErr := parseTTMLTime(span.Begin, tickRate, frameRate, frameRateMul, subFrameRate)
 			if spanErr == nil {
 				words = append(words, WordFragment{Time: spanBegin, Text: span.Text})
+			}
+			if needsSpace && fullText.Len() > 0 {
+				fullText.WriteByte(' ')
 			}
 			fullText.WriteString(span.Text)
 		}
@@ -330,4 +351,46 @@ func parseSecondsDecimal(dur time.Duration, secStr string) (time.Duration, error
 	dur += time.Duration(ss)*time.Second + time.Duration(ms)*time.Millisecond
 
 	return dur, nil
+}
+
+func isCJKLang(lang string) bool {
+	lang = strings.ToLower(lang)
+	for _, prefix := range []string{"zh", "ja", "ko"} {
+		if strings.HasPrefix(lang, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (tt *ttmlTT) isCJKContent() bool {
+	for _, para := range tt.Body.Div.Paragraphs {
+		for _, span := range para.Spans {
+			if span.Role == "x-translation" {
+				continue
+			}
+			for _, r := range span.Text {
+				if isCJKRune(r) {
+					return true
+				}
+				return false
+			}
+		}
+		if strings.TrimSpace(para.Text) != "" {
+			for _, r := range para.Text {
+				if isCJKRune(r) {
+					return true
+				}
+				return false
+			}
+		}
+	}
+	return false
+}
+
+func isCJKRune(r rune) bool {
+	return (r >= 0x4E00 && r <= 0x9FFF) ||
+		(r >= 0x3400 && r <= 0x4DBF) ||
+		(r >= 0x3040 && r <= 0x30FF) ||
+		(r >= 0xAC00 && r <= 0xD7AF)
 }

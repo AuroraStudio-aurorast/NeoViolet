@@ -105,8 +105,8 @@ func TestTTML_WordLevelSync(t *testing.T) {
 	}
 
 	line3 := d.Lines[3]
-	if line3.Text != "wordlevelsync" {
-		t.Errorf("merged span text = %q, want 'wordlevelsync'", line3.Text)
+	if line3.Text != "word level sync" {
+		t.Errorf("merged span text = %q, want 'word level sync'", line3.Text)
 	}
 	if len(line3.Words) != 3 {
 		t.Fatalf("expected 3 word fragments, got %d", len(line3.Words))
@@ -157,7 +157,6 @@ func TestTTML_FramesTime(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(d.Lines))
 	}
 
-	// 00:00:01:15 at 30fps = 1s + 15/30s = 1.5s
 	expected := 1500 * time.Millisecond
 	if d.Lines[0].Time != expected {
 		t.Errorf("frames time = %v, want %v", d.Lines[0].Time, expected)
@@ -346,8 +345,8 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
 		t.Fatalf("expected 2 lines, got %d", len(d.Lines))
 	}
 
-	if d.Lines[0].Text != "Icouldfindyou" {
-		t.Errorf("line 0 text = %q, want 'Icouldfindyou' (no translation)", d.Lines[0].Text)
+	if d.Lines[0].Text != "I could find you" {
+		t.Errorf("line 0 text = %q, want 'I could find you' (no translation)", d.Lines[0].Text)
 	}
 	if strings.Contains(d.Lines[0].Text, "我") {
 		t.Error("translation text leaked into line 0")
@@ -366,8 +365,8 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
 	if d.Lines[1].Time != 4085*time.Millisecond {
 		t.Errorf("line 1 time = %v, want 4085ms", d.Lines[1].Time)
 	}
-	if d.Lines[1].Text != "Helloworld" {
-		t.Errorf("line 1 text = %q, want 'Helloworld'", d.Lines[1].Text)
+	if d.Lines[1].Text != "Hello world" {
+		t.Errorf("line 1 text = %q, want 'Hello world'", d.Lines[1].Text)
 	}
 }
 
@@ -422,5 +421,62 @@ func TestTTML_MixedBareSecondsAndPartial(t *testing.T) {
 	}
 	if d.Lines[1].Time != 61643*time.Millisecond {
 		t.Errorf("1:01.643 = %v, want 61643ms", d.Lines[1].Time)
+	}
+}
+
+func TestTTML_CJKLangNoSpace(t *testing.T) {
+	cjk := `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+    xml:lang="zh-CN">
+  <body><div xml:lang="zh-CN">
+    <p begin="1.345" end="3.071" ttm:agent="v1">
+      <span begin="1.345" end="1.548">我</span>
+      <span begin="1.548" end="1.938">找到</span>
+      <span begin="1.938" end="2.198">了</span>
+      <span begin="2.198" end="2.770">你</span>
+    </p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(cjk)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(d.Lines))
+	}
+
+	if d.Lines[0].Text != "我找到了你" {
+		t.Errorf("CJK text should have no spaces between words, got %q", d.Lines[0].Text)
+	}
+	if len(d.Lines[0].Words) != 4 {
+		t.Fatalf("expected 4 word fragments, got %d", len(d.Lines[0].Words))
+	}
+}
+
+func TestTTML_CJKAutoDetectNoSpace(t *testing.T) {
+	cjkNoLang := `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body><div>
+    <p begin="1.345" end="3.071">
+      <span begin="1.345" end="1.548">我</span>
+      <span begin="1.548" end="1.938">找到</span>
+      <span begin="1.938" end="2.198">了</span>
+      <span begin="2.198" end="2.770">你</span>
+    </p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(cjkNoLang)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(d.Lines))
+	}
+
+	if d.Lines[0].Text != "我找到了你" {
+		t.Errorf("auto-detected CJK should have no spaces, got %q", d.Lines[0].Text)
 	}
 }
