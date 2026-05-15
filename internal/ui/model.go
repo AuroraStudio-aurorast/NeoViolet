@@ -17,12 +17,13 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
-func loadAudio(filePath, sfPath string) tea.Msg {
+func loadAudio(filePath, sfPath, trackerBackend string) tea.Msg {
 	logger.Info("Loading audio file", "path", filePath)
 	player := audio.NewPlayer()
 	if sfPath != "" {
 		player.SetSoundfontPath(sfPath)
 	}
+	player.SetTrackerBackend(trackerBackend)
 	if err := player.Open(filePath); err != nil {
 		logger.Error("Failed to load audio", "path", filePath, "err", err)
 		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180}
@@ -196,9 +197,10 @@ func (m *Model) Init() tea.Cmd {
 	if m.pendingPath != "" {
 		path := m.pendingPath
 		sfPath := m.Config.SoundfontPath
+		backend := m.Config.TrackerBackend
 		m.pendingPath = ""
 		cmds = append(cmds, func() tea.Msg {
-			return loadAudio(path, sfPath)
+			return loadAudio(path, sfPath, backend)
 		})
 	}
 

@@ -52,6 +52,7 @@ type Config struct {
 	SeekStep       int                  `json:"seek_step"`
 	TickRate       int                  `json:"tick_rate"`
 	SoundfontPath  string               `json:"soundfont_path"`
+	TrackerBackend string               `json:"tracker_backend"`
 	Lyrics         LyricsConfig         `json:"lyrics"`
 	ProgressBar    ProgressBarConfig    `json:"progress_bar"`
 	VolumeBar      VolumeBarConfig      `json:"volume_bar"`
@@ -64,12 +65,13 @@ func boolPtr(v bool) *bool { return &v }
 
 func DefaultConfig() Config {
 	return Config{
-		IconTheme:     "nerd",
-		DefaultVolume: 1.0,
-		VolumeStep:    0.1,
-		SeekStep:      5,
-		TickRate:      30,
-		SoundfontPath: "",
+		IconTheme:      "nerd",
+		DefaultVolume:  1.0,
+		VolumeStep:     0.1,
+		SeekStep:       5,
+		TickRate:       30,
+		SoundfontPath:  "",
+		TrackerBackend: "auto",
 		Lyrics: LyricsConfig{
 			Enabled:     true,
 			ScrollSpeed: 6,
@@ -134,6 +136,13 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return &cfg, fmt.Errorf("parse config: %w", err)
 	}
+
+	switch cfg.TrackerBackend {
+	case "auto", "openmpt", "gotracker":
+	default:
+		cfg.TrackerBackend = "auto"
+	}
+
 	logger.Info("Config loaded", "path", path, "iconTheme", cfg.IconTheme)
 	return &cfg, nil
 }

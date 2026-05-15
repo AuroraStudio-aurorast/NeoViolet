@@ -48,10 +48,11 @@ type Player struct {
 	coverImage   image.Image
 	decoder      *FormatDecoder
 	tagReader    *MetadataReader
-	synthCtrl    SynthController
-	sfPath       string
-	cachedSF     *meltysynth.SoundFont
-	cachedSFPath string
+	synthCtrl      SynthController
+	sfPath         string
+	cachedSF       *meltysynth.SoundFont
+	cachedSFPath   string
+	trackerBackend string
 }
 
 func NewPlayer() *Player {
@@ -72,6 +73,12 @@ func (p *Player) SetSoundfontPath(sfPath string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.sfPath = sfPath
+}
+
+func (p *Player) SetTrackerBackend(backend string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.trackerBackend = backend
 }
 
 func (p *Player) Open(path string) error {
@@ -525,14 +532,38 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 }
 
 func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
-	tp, err := NewTrackerPlayer(path, ext, sr)
+	var ctrl SynthController
+	var err error
+
+	backend := p.trackerBackend
+	if backend == "" {
+		backend = "auto"
+	}
+
+	switch backend {
+	case "gotracker":
+		ctrl, err = NewTrackerPlayer(path, ext, sr)
+	case "openmpt":
+		ctrl, err = NewOpenmptPlayer(path, sr)
+		if err != nil {
+			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
+			ctrl, err = NewTrackerPlayer(path, ext, sr)
+		}
+	default:
+		ctrl, err = NewOpenmptPlayer(path, sr)
+		if err != nil {
+			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
+			ctrl, err = NewTrackerPlayer(path, ext, sr)
+		}
+	}
+
 	if err != nil {
 		return err
 	}
 
-	tp.SetVolume(p.linearVolume)
+	ctrl.SetVolume(p.linearVolume)
 
-	p.synthCtrl = tp
+	p.synthCtrl = ctrl
 	p.path = path
 	p.isPaused = true
 	p.isPlaying = false

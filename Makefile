@@ -11,6 +11,18 @@ endif
 BUILD_FLAGS ?= -ldflags="-s -w"
 TEST_FLAGS  ?= -count=1
 
+HAS_OPENMPT := $(shell pkg-config --exists libopenmpt 2>/dev/null && echo 1 || echo 0)
+ifeq ($(HAS_OPENMPT),1)
+	BUILD_FLAGS += -tags openmpt
+	TEST_FLAGS  += -tags openmpt
+endif
+
+HAS_OPENMPT := $(shell pkg-config --exists libopenmpt 2>/dev/null && echo 1 || echo 0)
+ifeq ($(HAS_OPENMPT),1)
+	BUILD_FLAGS += -tags openmpt
+	TEST_FLAGS  += -tags openmpt
+endif
+
 .PHONY: all build build/race build/debug run test test/race test/verbose test/short test/cover clean lint vet tidy install help
 
 all: build
