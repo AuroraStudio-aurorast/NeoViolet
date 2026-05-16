@@ -40,8 +40,12 @@
 
 #### Lyrics File
 
-- `lrc`: Standard synced lyrics file
+- `lrc`: Standard Synced Lyrics File
 - `ttml`: Timed Text Markup Language (W3C standard)
+- `yrc`: NetEase Cloud Music Word-for-Word Lyrics
+- `qrc`: QQ Music Word-for-Word Lyrics
+- `eslrc`: Enhanced Synced Lyrics File
+- `lys`: LYS Lyrics File
 
 ## Build
 
