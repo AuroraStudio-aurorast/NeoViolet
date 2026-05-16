@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/flac"
@@ -127,6 +128,41 @@ func isMODSignature(sig string) bool {
 
 func (fd *FormatDecoder) SupportedFormats() []string {
 	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it", ".mptm"}
+}
+
+func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
+	var streamer beep.StreamSeekCloser
+	var format beep.Format
+	var err error
+
+	formatMime := strings.ToLower(ext)
+
+	switch formatMime {
+	case ".mp3":
+		rc, ok := r.(io.ReadCloser)
+		if !ok {
+			return nil, beep.Format{}, fmt.Errorf("mp3 decode requires io.ReadCloser")
+		}
+		streamer, format, err = mp3.Decode(rc)
+	case ".wav":
+		streamer, format, err = wav.Decode(r)
+	case ".flac":
+		streamer, format, err = flac.Decode(r)
+	case ".ogg", ".oga":
+		rc, ok := r.(io.ReadCloser)
+		if !ok {
+			return nil, beep.Format{}, fmt.Errorf("vorbis decode requires io.ReadCloser")
+		}
+		streamer, format, err = vorbis.Decode(rc)
+	default:
+		return nil, beep.Format{}, ErrUnsupportedFormat
+	}
+
+	if err != nil {
+		return nil, beep.Format{}, fmt.Errorf("decode %s: %w", formatMime, err)
+	}
+
+	return streamer, format, nil
 }
 
 var ErrUnsupportedFormat = &UnsupportedFormatError{}

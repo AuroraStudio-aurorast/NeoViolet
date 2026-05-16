@@ -87,6 +87,10 @@ func (p *Player) SetTrackerBackend(backend string) {
 func (p *Player) Open(path string) error {
 	logger.Debug("Player.Open", "path", path)
 
+	if isURL(path) {
+		return p.openURL(path)
+	}
+
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
