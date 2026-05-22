@@ -104,8 +104,6 @@ func (p *Player) Open(path string) error {
 	synthExt := ext
 	if detectErr != nil {
 		synthExt = filepath.Ext(path)
-	} else if filepath.Ext(path) == ".mptm" {
-		synthExt = ".mptm"
 	}
 
 	if isSyntheticFormat(synthExt) {
@@ -580,19 +578,6 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 	var ctrl synth.Controller
 	var err error
-
-	if ext == ".mptm" {
-		ctrl, err = synth.NewOpenmptPlayer(path, sr)
-		if err != nil {
-			return fmt.Errorf("mptm format requires libopenmpt: %w", err)
-		}
-		ctrl.SetVolume(p.linearVolume)
-		p.synthCtrl = ctrl
-		p.path = path
-		p.isPaused = true
-		p.isPlaying = false
-		return nil
-	}
 
 	backend := p.trackerBackend
 	if backend == "" {
