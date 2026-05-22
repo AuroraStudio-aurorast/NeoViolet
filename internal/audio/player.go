@@ -473,6 +473,7 @@ func (p *Player) Format() beep.Format {
 
 var syntheticFormats = map[string]bool{
 	".mid":  true,
+	".midi": true,
 	".mod":  true,
 	".xm":   true,
 	".s3m":  true,
@@ -537,7 +538,7 @@ func (p *Player) openSynthetic(path, ext string) error {
 	}
 
 	switch ext {
-	case ".mid":
+	case ".mid", ".midi":
 		return p.openMIDISynth(path, sr)
 	case ".mod", ".xm", ".s3m", ".it", ".mptm":
 		return p.openTrackerSynth(path, ext, sr)

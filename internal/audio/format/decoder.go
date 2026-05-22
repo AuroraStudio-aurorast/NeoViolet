@@ -132,7 +132,7 @@ func isMODSignature(sig string) bool {
 }
 
 func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it", ".mptm"}
+	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm"}
 }
 
 func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {

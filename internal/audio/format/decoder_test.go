@@ -99,8 +99,8 @@ func TestDetectFormatByMagic_midi(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if ext != ".mid" {
-		t.Errorf("DetectFormatByMagic = %q, want .mid", ext)
+	if ext != ".mid" && ext != ".midi" {
+		t.Errorf("DetectFormatByMagic = %q, want .mid or .midi", ext)
 	}
 }
 
@@ -134,7 +134,7 @@ func TestDetectFormatByMagic_empty(t *testing.T) {
 func TestSupportedFormats(t *testing.T) {
 	fd := NewFormatDecoder()
 	formats := fd.SupportedFormats()
-	expected := []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".mod", ".xm", ".s3m", ".it", ".mptm"}
+	expected := []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm"}
 	if len(formats) != len(expected) {
 		t.Fatalf("SupportedFormats() = %v, want %v", formats, expected)
 	}
