@@ -127,7 +127,7 @@ jobs:
             ${{ matrix.pkg_prefix }}-libogg
             ${{ matrix.pkg_prefix }}-libvorbis
             ${{ matrix.pkg_prefix }}-zlib
-            ${{ matrix.pkg_prefix }}-libmpg123
+            ${{ matrix.pkg_prefix }}-mpg123
             ${{ matrix.go_pkg }}
             make
             curl
