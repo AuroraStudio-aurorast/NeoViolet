@@ -149,18 +149,27 @@ jobs:
           mkdir -p dist
           cp neoviolet.exe dist/
           BIN_DIR="/${{ matrix.env_prefix }}/bin"
-          EXE="neoviolet.exe"
-          DLL_NAMES=$(objdump -p "$EXE" | grep "DLL Name" | awk '{print $3}' | sort -u)
-          echo "$DLL_NAMES"
-          for dll in $DLL_NAMES; do
-            SRC="${BIN_DIR}/${dll}"
-            if [ -f "$SRC" ]; then
-              cp "$SRC" dist/
-            fi
+          SYSTEM_DLLS="^(KERNEL32|ntdll|USER32|GDI32|ADVAPI32|SHELL32|OLE32|MSVCRT|VCRUNTIME|api-ms-win|ucrtbase|WS2_32|IPHLPAPI|SETUPAPI|CRYPT32|bcrypt|PSAPI|WINMM|VERSION|combase|RPCRT4|SHLWAPI|oleaut32|IMM32|MSCTF|kernel\.appcore|windows\.storage)\.dll$"
+          declare -A seen
+          to_process=("neoviolet.exe")
+          while [ ${#to_process[@]} -gt 0 ]; do
+            current="${to_process[0]}"
+            to_process=("${to_process[@]:1}")
+            deps=$(objdump -p "$current" | grep "DLL Name" | awk '{print $3}' | sort -u)
+            for dll in $deps; do
+              if [[ "$dll" =~ $SYSTEM_DLLS ]] || [ -n "${seen[$dll]}" ]; then
+                continue
+              fi
+              seen["$dll"]=1
+              SRC="${BIN_DIR}/${dll}"
+              if [ -f "$SRC" ]; then
+                cp "$SRC" dist/
+                to_process+=("${BIN_DIR}/${dll}")
+              else
+                echo "Skipping (not found in $BIN_DIR): $dll"
+              fi
+            done
           done
-          if [ -f "${BIN_DIR}/libc++.dll" ] && [ ! -f "dist/libc++.dll" ]; then
-            cp "${BIN_DIR}/libc++.dll" dist/
-          fi
           ls -lh dist/
       - name: Upload artifact
         uses: actions/upload-artifact@v7
