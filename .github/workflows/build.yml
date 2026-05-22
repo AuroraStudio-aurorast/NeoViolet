@@ -25,16 +25,16 @@ jobs:
       matrix:
         include:
           - goarch: amd64
-            runner: ubuntu-20.04
+            runner: ubuntu-latest
             cc: clang
             cxx: clang++
           - goarch: "386"
-            runner: ubuntu-20.04
+            runner: ubuntu-latest
             cc: "clang -m32"
             cxx: "clang++ -m32"
             deps: gcc-multilib g++-multilib
           - goarch: arm64
-            runner: ubuntu-20.04-arm
+            runner: ubuntu-24.04-arm
             cc: clang
             cxx: clang++
     steps:
@@ -71,15 +71,17 @@ jobs:
 
   macos:
     name: macos-${{ matrix.goarch }}
-    runs-on: macos-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - goarch: amd64
-            cc: "clang -arch x86_64"
-            cxx: "clang++ -arch x86_64"
+            runner: macos-15-intel
+            cc: clang
+            cxx: clang++
           - goarch: arm64
+            runner: macos-latest
             cc: clang
             cxx: clang++
     steps:
@@ -95,43 +97,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install pkg-config make
-
-      - name: Cache libopenmpt (amd64)
-        if: matrix.goarch == 'amd64'
-        id: cache-openmpt-macos
-        uses: actions/cache@v5
-        with:
-          path: /tmp/libopenmpt-macos-x86_64
-          key: libopenmpt-${{ env.LIBOPENMPT_VERSION }}-macos-x86_64
-
-      - name: Build libopenmpt from source (amd64)
-        if: matrix.goarch == 'amd64' && steps.cache-openmpt-macos.outputs.cache-hit != 'true'
-        run: |
-          PREFIX=/tmp/libopenmpt-macos-x86_64
-          mkdir -p "$PREFIX"
-
-          cd /tmp
-          curl -fsSL \
-            "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${LIBOPENMPT_VERSION}+release.autotools.tar.gz" \
-            -o libopenmpt.tar.gz
-          tar xzf libopenmpt.tar.gz
-          cd "libopenmpt-${LIBOPENMPT_VERSION}+release.autotools"
-
-          export SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
-          ./configure \
-            --host=x86_64-apple-darwin \
-            --prefix="$PREFIX" \
-            --enable-static --disable-shared \
-            --disable-examples --disable-tests --disable-openmpt123 \
-            CC="clang -arch x86_64" CXX="clang++ -arch x86_64"
-
-          make -j$(sysctl -n hw.ncpu)
-          make install
-
-      - name: Install libopenmpt via Homebrew (arm64)
-        if: matrix.goarch == 'arm64'
-        run: brew install libopenmpt
+          brew install pkg-config make libopenmpt
 
       - name: Build binary
         run: |
@@ -140,11 +106,6 @@ jobs:
           export GOARCH=${{ matrix.goarch }}
           export CC="${{ matrix.cc }}"
           export CXX="${{ matrix.cxx }}"
-
-          if [ "${{ matrix.goarch }}" = "amd64" ]; then
-            export PKG_CONFIG_PATH=/tmp/libopenmpt-macos-x86_64/lib/pkgconfig
-          fi
-
           make build
 
       - name: Upload artifact
