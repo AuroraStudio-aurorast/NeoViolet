@@ -412,7 +412,10 @@ func formatKeyFromExt(ext string) string {
 	case ".it", ".mptm":
 		return "it"
 	default:
-		return ext[1:]
+		if len(ext) > 1 && ext[0] == '.' {
+			return ext[1:]
+		}
+		return ""
 	}
 }
 

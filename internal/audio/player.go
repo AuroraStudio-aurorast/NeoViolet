@@ -480,10 +480,37 @@ var syntheticFormats = map[string]bool{
 	".s3m":  true,
 	".it":   true,
 	".mptm": true,
+	".stm":  true,
+	".nst":  true,
+	".wow":  true,
+	".ult":  true,
+	".669":  true,
+	".mtm":  true,
+	".mdl":  true,
+	".far":  true,
+	".ptm":  true,
+	".okt":  true,
+	".dmf":  true,
+	".dbm":  true,
+	".digi": true,
+	".imf":  true,
+	".j2b":  true,
+	".mo3":  true,
+	".umx":  true,
+	".gdm":  true,
 }
 
 func isSyntheticFormat(ext string) bool {
-	return syntheticFormats[ext]
+	if syntheticFormats[ext] {
+		return true
+	}
+	// Check against libopenmpt's supported extensions (dynamic, avoids stale lists)
+	for _, se := range synth.OpenmptSupportedFormats() {
+		if "."+se == ext {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Player) openSynthetic(path, ext string) error {

@@ -15,12 +15,27 @@ static openmpt_module* create_module(const void* data, size_t size, int* out_err
 		out_err, out_msg, NULL
 	);
 }
+
+static int probe_file_header(const void* data, size_t size, uint64_t filesize) {
+	return openmpt_probe_file_header(
+		OPENMPT_PROBE_FILE_HEADER_FLAGS_DEFAULT,
+		data, size, filesize,
+		openmpt_log_func_silent, NULL,
+		openmpt_error_func_ignore, NULL,
+		NULL, NULL
+	);
+}
+
+static size_t probe_recommended_size(void) {
+	return openmpt_probe_file_header_get_recommended_size();
+}
 */
 import "C"
 import (
 	"fmt"
 	"image"
 	"os"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -29,6 +44,32 @@ import (
 )
 
 const openmptBlockSize = 2048
+
+// OpenmptProbe checks whether libopenmpt can handle a file by probing its header bytes.
+// Returns true if the file is likely supported by libopenmpt.
+func OpenmptProbe(data []byte) bool {
+	if len(data) == 0 {
+		return false
+	}
+	recSize := int(C.probe_recommended_size())
+	bufSize := len(data)
+	if bufSize > recSize {
+		bufSize = recSize
+	}
+	result := C.probe_file_header(unsafe.Pointer(&data[0]), C.size_t(bufSize), C.uint64_t(len(data)))
+	return result == C.OPENMPT_PROBE_FILE_HEADER_RESULT_SUCCESS
+}
+
+// OpenmptSupportedFormats returns the list of file extensions supported by this build of libopenmpt.
+func OpenmptSupportedFormats() []string {
+	exts := C.openmpt_get_supported_extensions()
+	if exts == nil {
+		return nil
+	}
+	s := C.GoString(exts)
+	C.openmpt_free_string(exts)
+	return strings.Split(s, ";")
+}
 
 type OpenmptPlayer struct {
 	mu         sync.Mutex

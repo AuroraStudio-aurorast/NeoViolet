@@ -13,6 +13,7 @@ import (
 	"github.com/gopxl/beep/v2/vorbis"
 	"github.com/gopxl/beep/v2/wav"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
@@ -70,6 +71,10 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: MIDI", "path", file.Name())
 		return ".mid", nil
 	default:
+		if synth.OpenmptProbe(buffer[:n]) {
+			logger.Debug("Detected format: tracker (openmpt probe)", "path", file.Name())
+			return ".mod", nil
+		}
 		logger.Debug("Unknown audio format", "path", file.Name())
 		return "", fmt.Errorf("unknown audio format")
 	}
