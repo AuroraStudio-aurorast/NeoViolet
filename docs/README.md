@@ -25,27 +25,27 @@
 
 #### Audio File
 
-| Format | Description | Backend |
+| Format | Description | Note |
 |--------|-------------|---------|
-| `wav` | Wave | beep |
-| `mp3` | MPEG Layer 3 | beep + go-mp3 |
-| `flac` | Free Lossless Audio Codec | beep + mewkiz/flac |
-| `ogg`, `oga` | OGG Vorbis | beep + jfreymuth/oggvorbis |
-| `mid` | Musical Instrument Digital Interface | meltysynth (requires .sf2) |
-| `mod` | Module Music | gotracker / libopenmpt |
-| `xm` | Extended Module | gotracker / libopenmpt |
-| `it` | Impulse Tracker | gotracker / libopenmpt |
-| `s3m` | ScreamTracker 3 Module | gotracker / libopenmpt |
-| `mptm` | OpenMPT Module Music | libopenmpt only |
+| `wav` | Wave |  |
+| `mp3` | MPEG Layer 3 |  |
+| `flac` | Free Lossless Audio Codec |  |
+| `ogg`, `oga` | OGG Vorbis |  |
+| `mid` | Musical Instrument Digital Interface | requires .sf2 |
+| `mod` | Module Music |  |
+| `xm` | Extended Module |  |
+| `it` | Impulse Tracker |  |
+| `s3m` | ScreamTracker 3 Module |  |
+| [Tracker](https://openmpt.org/features#modules) | More Tracker Module | require libopenmpt |
 
 #### Lyrics File
 
 - `lrc`: Standard Synced Lyrics File
-- `ttml`: Timed Text Markup Language (W3C standard)
-- `yrc`: NetEase Cloud Music Word-for-Word Lyrics
-- `qrc`: QQ Music Word-for-Word Lyrics
-- `eslrc`: Enhanced Synced Lyrics File
-- `lys`: LYS Lyrics File
+- `ttml`: Timed Text Markup Language (W3C standard) [EXPERIMENTAL]
+- `yrc`: NetEase Cloud Music Word-for-Word Lyrics _[EXPERIMENTAL]_
+- `qrc`: QQ Music Word-for-Word Lyrics _[EXPERIMENTAL]_
+- `eslrc`: Enhanced Synced Lyrics File _[EXPERIMENTAL]_
+- `lys`: LYS Lyrics File _[EXPERIMENTAL]_
 
 ## Build
 
@@ -55,7 +55,7 @@
 - **Optional**: `libopenmpt` (for `mptm` format and enhanced tracker playback)
   - macOS: `brew install libopenmpt`
   - Linux: `apt install libopenmpt-dev` (Debian/Ubuntu) / `dnf install libopenmpt-devel` (Fedora) / `pacman -S libopenmpt` (Arch Linux)
-  - Windows: download from [libopenmpt.org](https://lib.openmpt.org/)
+  - Windows: require [MSYS2](https://www.msys2.org/), check out [`mingw-w64-libopenmpt`](https://packages.msys2.org/base/mingw-w64-libopenmpt)
 - **Optional**: SoundFont file (`.sf2`) for MIDI playback
 
 ### Compile
