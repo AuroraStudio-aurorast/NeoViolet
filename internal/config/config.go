@@ -76,7 +76,7 @@ func DefaultConfig() Config {
 		Lyrics: LyricsConfig{
 			Enabled:        true,
 			ScrollSpeed:    6,
-			FormatPriority: []string{"lrc", "ttml", "qrc", "yrc", "eslrc", "lys"},
+			FormatPriority: []string{"embedded", "lrc", "ttml", "qrc", "yrc", "eslrc", "lys"},
 		},
 		VolumeBar: VolumeBarConfig{
 			Width:          16,
