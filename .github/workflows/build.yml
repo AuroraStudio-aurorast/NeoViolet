@@ -17,87 +17,54 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  linux:
-    name: linux-${{ matrix.goarch }}
+  unix:
+    name: ${{ matrix.os }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
     env:
       CGO_ENABLED: 1
-      GOOS: linux
+      GOOS: ${{ matrix.os == 'macos' && 'darwin' || 'linux' }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - goarch: amd64
+          - os: linux
+            goarch: amd64
             runner: ubuntu-latest
             cc: clang
             cxx: clang++
-          - goarch: arm64
+            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev"
+            install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
+          - os: linux
+            goarch: arm64
             runner: ubuntu-24.04-arm
             cc: clang
             cxx: clang++
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: true
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev
-
-      - name: Build binary
-        run: |
-          set -eux
-          export GOARCH=${{ matrix.goarch }}
-          export CC="${{ matrix.cc }}"
-          export CXX="${{ matrix.cxx }}"
-          make build
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: neoviolet-linux-${{ matrix.goarch }}
-          path: neoviolet
-          if-no-files-found: error
-
-  macos:
-    name: macos-${{ matrix.goarch }}
-    runs-on: ${{ matrix.runner }}
-    env:
-      CGO_ENABLED: 1
-      GOOS: darwin
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goarch: amd64
+            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev"
+            install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
+          - os: macos
+            goarch: amd64
             runner: macos-15-intel
             cc: clang
             cxx: clang++
-          - goarch: arm64
+            pkgs: "pkg-config make libopenmpt"
+            install_cmd: "brew update && brew install"
+          - os: macos
+            goarch: arm64
             runner: macos-latest
             cc: clang
             cxx: clang++
+            pkgs: "pkg-config make libopenmpt"
+            install_cmd: "brew update && brew install"
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-
-      - name: Install dependencies
-        run: |
-          brew update
-          brew install pkg-config make libopenmpt
-
+      - name: Install system dependencies
+        run: ${{ matrix.install_cmd }} ${{ matrix.pkgs }}
       - name: Build binary
         run: |
           set -eux
@@ -105,11 +72,10 @@ jobs:
           export CC="${{ matrix.cc }}"
           export CXX="${{ matrix.cxx }}"
           make build
-
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: neoviolet-macos-${{ matrix.goarch }}
+          name: neoviolet-${{ matrix.os }}-${{ matrix.goarch }}
           path: neoviolet
           if-no-files-found: error
 
@@ -125,15 +91,14 @@ jobs:
         include:
           - goarch: amd64
             runner: windows-latest
-            msystem: MINGW64
-            env_prefix: mingw64
-            pkg_prefix: mingw-w64-x86_64
-            compiler_pkg: mingw-w64-x86_64-gcc
-            libopenmpt_pkg: mingw-w64-x86_64-libopenmpt
-            go_pkg: mingw-w64-x86_64-go
-            cc: gcc
-            cxx: g++
-
+            msystem: CLANG64
+            env_prefix: clang64
+            pkg_prefix: mingw-w64-clang-x86_64
+            compiler_pkg: mingw-w64-clang-x86_64-clang
+            libopenmpt_pkg: mingw-w64-clang-x86_64-libopenmpt
+            go_pkg: mingw-w64-clang-x86_64-go
+            cc: clang
+            cxx: clang++
           - goarch: arm64
             runner: windows-11-arm
             msystem: CLANGARM64
@@ -144,15 +109,12 @@ jobs:
             go_pkg: mingw-w64-clang-aarch64-go
             cc: clang
             cxx: clang++
-
     defaults:
       run:
         shell: msys2 {0}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
         with:
@@ -165,29 +127,44 @@ jobs:
             ${{ matrix.pkg_prefix }}-libogg
             ${{ matrix.pkg_prefix }}-libvorbis
             ${{ matrix.pkg_prefix }}-zlib
+            ${{ matrix.pkg_prefix }}-libmpg123
             ${{ matrix.go_pkg }}
             make
             curl
             ca-certificates
           path-type: inherit
-
       - name: Build binary
         run: |
           set -eux
-          # Verify Go installation
           go version
-
           export GOARCH=${{ matrix.goarch }}
           export CC="${{ matrix.cc }}"
           export CXX="${{ matrix.cxx }}"
           export CGO_CFLAGS="$(pkg-config --cflags libopenmpt)"
-          export CGO_LDFLAGS="$(pkg-config --static --libs libopenmpt)"
-
+          export CGO_LDFLAGS="$(pkg-config --libs libopenmpt)"
           make build
-
+      - name: Collect DLLs
+        run: |
+          set -eux
+          mkdir -p dist
+          cp neoviolet.exe dist/
+          BIN_DIR="/${{ matrix.env_prefix }}/bin"
+          EXE="neoviolet.exe"
+          DLL_NAMES=$(objdump -p "$EXE" | grep "DLL Name" | awk '{print $3}' | sort -u)
+          echo "$DLL_NAMES"
+          for dll in $DLL_NAMES; do
+            SRC="${BIN_DIR}/${dll}"
+            if [ -f "$SRC" ]; then
+              cp "$SRC" dist/
+            fi
+          done
+          if [ -f "${BIN_DIR}/libc++.dll" ] && [ ! -f "dist/libc++.dll" ]; then
+            cp "${BIN_DIR}/libc++.dll" dist/
+          fi
+          ls -lh dist/
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: neoviolet-windows-${{ matrix.goarch }}
-          path: neoviolet.exe
+          path: dist/
           if-no-files-found: error
