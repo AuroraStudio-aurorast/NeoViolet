@@ -20,14 +20,14 @@ var (
 	arrowRightKey   = key.NewBinding(key.WithKeys("right"))
 )
 
-// fullwidthRune maps fullwidth Unicode characters to their ASCII equivalents.
+// fullwidthRune maps fullwidth Unicode characters/CJK keyboard to their ASCII equivalents.
 func fullwidthRune(r rune) rune {
 	switch r {
 	case '：', '；':
 		return ':'
-	case '［':
+	case '［', '【', '「':
 		return '['
-	case '］':
+	case '］', '】', '」':
 		return ']'
 	case '／':
 		return '/'
@@ -37,15 +37,15 @@ func fullwidthRune(r rune) rune {
 		return '+'
 	case '＝':
 		return '='
-	case '＞':
+	case '＞', '》':
 		return '>'
-	case '＜':
+	case '＜', '《':
 		return '<'
 	case '？':
 		return '?'
-	case '＇':
+	case '＇', '‘', '’':
 		return '\''
-	case '＂':
+	case '＂', '“', '”':
 		return '"'
 	case '＾':
 		return '^'
