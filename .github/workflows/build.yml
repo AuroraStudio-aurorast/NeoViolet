@@ -28,11 +28,6 @@ jobs:
             runner: ubuntu-latest
             cc: clang
             cxx: clang++
-          - goarch: "386"
-            runner: ubuntu-latest
-            cc: "clang -m32"
-            cxx: "clang++ -m32"
-            deps: gcc-multilib g++-multilib
           - goarch: arm64
             runner: ubuntu-24.04-arm
             cc: clang
@@ -50,7 +45,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq clang llvm-dev pkg-config make libasound2-dev ${{ matrix.deps }}
+          sudo apt-get install -y -qq clang llvm-dev pkg-config make libasound2-dev
           sudo apt-get install -y -qq libopenmpt-dev
 
       - name: Build binary
@@ -127,20 +122,15 @@ jobs:
             pkg_prefix: mingw-w64-x86_64
             compiler_pkg: mingw-w64-x86_64-clang
             libopenmpt_pkg: mingw-w64-x86_64-libopenmpt
+            go_pkg: mingw-w64-x86_64-go
             cc: clang
             cxx: clang++
-          - goarch: "386"
-            msystem: MINGW32
-            pkg_prefix: mingw-w64-i686
-            compiler_pkg: mingw-w64-i686-gcc
-            libopenmpt_pkg: mingw-w64-i686-libopenmpt
-            cc: gcc
-            cxx: g++
           - goarch: arm64
             msystem: CLANGARM64
             pkg_prefix: mingw-w64-clang-aarch64
             compiler_pkg: mingw-w64-clang-aarch64-clang
             libopenmpt_pkg: mingw-w64-clang-aarch64-libopenmpt
+            go_pkg: mingw-w64-clang-aarch64-go
             cc: clang
             cxx: clang++
     defaults:
@@ -149,12 +139,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-
-      - name: Setup Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache: false
 
       - name: Setup MSYS2
         uses: msys2/setup-msys2@v2
@@ -165,27 +149,14 @@ jobs:
             ${{ matrix.compiler_pkg }}
             ${{ matrix.pkg_prefix }}-pkg-config
             ${{ matrix.libopenmpt_pkg }}
+            ${{ matrix.go_pkg }}
             make
             curl
             ca-certificates
-
-      - name: Add Go to PATH for MSYS2
-        run: |
-          if command -v go &> /dev/null; then
-            GOROOT=$(go env GOROOT)
-          else
-            GOROOT=$(find /c/hostedtoolcache/windows/go -maxdepth 2 -type d -name "bin" 2>/dev/null | head -1 | sed 's|/bin||')
-          fi
-          if [ -z "$GOROOT" ]; then
-            echo "Error: Could not locate GOROOT"
-            exit 1
-          fi
-          echo "GOROOT=$GOROOT" >> $GITHUB_ENV
-          echo "PATH=$GOROOT/bin:$PATH" >> $GITHUB_ENV
+          path-type: inherit
 
       - name: Build binary
         run: |
-          export PATH="$GOROOT/bin:$PATH"
           export CGO_ENABLED=1
           export GOOS=windows
           export GOARCH=${{ matrix.goarch }}
