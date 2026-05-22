@@ -10,6 +10,7 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -32,6 +33,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleAudioLoaded(m, msg)
 	case AccentApplyMsg:
 		return handleAccentApply(m, msg)
+	case MediaCtlMsg:
+		return handleMediaCtlCmd(m, msg)
 	default:
 		return m, nil
 	}
@@ -40,6 +43,11 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
 	m.Error.Tick()
+
+	// Push current playback state to OS media control layer (MPRIS on Linux)
+	if m.MediaCtl != nil {
+		m.MediaCtl.Update(m.buildPlayState())
+	}
 
 	return m, tea.Batch(cmd, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(t time.Time) tea.Msg {
 		return TickMsg{}
@@ -150,11 +158,57 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	if m.Config.Accent.IsEnabled() {
 		return m, loadAccentCmd(msg.Player)
 	}
+
+	// Push initial track metadata to OS media control layer
+	if m.MediaCtl != nil {
+		m.MediaCtl.Update(m.buildPlayState())
+	}
+
 	return m, nil
 }
 
 func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {
 	m.Accent = msg.Accent
 	m.rebuildProgressBar()
+	return m, nil
+}
+
+func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
+	if m.Audio.Player == nil {
+		return m, nil
+	}
+
+	switch msg.Command.Type {
+	case mediactl.CmdPlayPause:
+		m.togglePlayback()
+	case mediactl.CmdPlay:
+		if !m.Audio.Player.IsPlaying() {
+			m.Audio.Player.Play()
+			m.Audio.IsPlaying = true
+		}
+	case mediactl.CmdPause:
+		if m.Audio.Player.IsPlaying() {
+			m.Audio.Player.Pause()
+			m.Audio.IsPlaying = false
+		}
+	case mediactl.CmdStop:
+		m.Audio.Player.Pause()
+		m.Audio.IsPlaying = false
+		m.Audio.Player.Seek(0)
+	case mediactl.CmdNext:
+		// No tracklist — skip forward 10s as fallback
+		m.Audio.SeekRelative(10 * time.Second)
+	case mediactl.CmdPrev:
+		m.Audio.SeekRelative(-10 * time.Second)
+	case mediactl.CmdSeek:
+		// MPRIS Seek offset is in microseconds
+		offset := time.Duration(msg.Command.Value) * time.Microsecond
+		m.Audio.SeekRelative(offset)
+	case mediactl.CmdSetPosition:
+		// MPRIS SetPosition is absolute position in microseconds
+		pos := time.Duration(msg.Command.Value) * time.Microsecond
+		m.Audio.SeekPlayer(pos)
+	}
+
 	return m, nil
 }

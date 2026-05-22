@@ -41,13 +41,30 @@ func main() {
 		filePath = os.Args[1]
 	}
 
-	m, err := tea.NewProgram(neoviolet.NewModel(filePath, cfg)).Run()
+	model := neoviolet.NewModel(filePath, cfg)
+	p := tea.NewProgram(model)
+
+	// Bridge OS media control commands (MPRIS on Linux) into BubbleTea messages
+	if model.MediaCtl != nil {
+		go func() {
+			cmdChan, err := model.MediaCtl.Start()
+			if err != nil {
+				logger.Error("mediactl: start failed", "err", err)
+				return
+			}
+			for cmd := range cmdChan {
+				p.Send(neoviolet.MediaCtlMsg{Command: cmd})
+			}
+		}()
+	}
+
+	m, err := p.Run()
 	if err != nil {
 		logger.Error("Program error", "err", err)
 		os.Exit(1)
 	}
-	if model, ok := m.(*neoviolet.Model); ok && model.ExitCode != 0 {
-		os.Exit(model.ExitCode)
+	if m, ok := m.(*neoviolet.Model); ok && m.ExitCode != 0 {
+		os.Exit(m.ExitCode)
 	}
 	logger.Info("Program exited")
 }

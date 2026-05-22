@@ -8,18 +8,25 @@ package mediactl
 
 import "time"
 
-// Command represents a playback command from the OS media control layer.
-type Command int
+// CommandType identifies the kind of media control command.
+type CommandType int
 
 const (
-	CmdPlayPause Command = iota
+	CmdPlayPause  CommandType = iota
 	CmdPlay
 	CmdPause
 	CmdStop
 	CmdNext
 	CmdPrev
-	CmdSeek
+	CmdSeek        // Value: offset in microseconds (relative)
+	CmdSetPosition // Value: target position in microseconds (absolute)
 )
+
+// Command carries a media-control command and optional payload.
+type Command struct {
+	Type  CommandType
+	Value int64 // microseconds for Seek/SetPosition; zero for other commands
+}
 
 // PlayState carries the current playback info pushed to the OS.
 type PlayState struct {

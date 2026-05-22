@@ -13,6 +13,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
 
 // Mode represents the current input mode
@@ -63,6 +64,10 @@ type (
 
 	AccentApplyMsg struct {
 		Accent *accent.Accent
+	}
+
+	MediaCtlMsg struct {
+		Command mediactl.Command
 	}
 )
 
@@ -176,4 +181,7 @@ type Model struct {
 	pendingPath    string
 	CommandHistory []string
 	historyIndex   int
+
+	MediaCtl  mediactl.Controller
+	mediaChan chan mediactl.Command
 }

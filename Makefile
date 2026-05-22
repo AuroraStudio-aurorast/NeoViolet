@@ -83,6 +83,19 @@ clean:
 install:
 	$(GO) install $(BUILD_FLAGS) ./cmd/$(BINARY)
 
+install/desktop:
+	@mkdir -p $(DESTDIR)$(PREFIX)/share/applications
+	cp neoviolet.desktop $(DESTDIR)$(PREFIX)/share/applications/
+	@echo "Install desktop file to $(DESTDIR)$(PREFIX)/share/applications/"
+
+install/icons:
+	@mkdir -p $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
+	@mkdir -p $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps
+	@echo "Place neoviolet.svg in share/icons/hicolor/scalable/apps/"
+	@echo "Place neoviolet.png in share/icons/hicolor/48x48/apps/"
+
+install/all: install install/desktop
+
 # --- Help ---
 
 help:

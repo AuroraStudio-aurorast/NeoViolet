@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=NeoViolet
+Comment=A Terminal Music Player
+Exec=neoviolet %F
+Icon=neoviolet
+Terminal=false
+Categories=Audio;Music;Player;
+StartupNotify=true
+MimeType=audio/x-mod;audio/x-xm;audio/x-s3m;audio/x-it;audio/midi;audio/x-midi;audio/mp3;audio/flac;audio/ogg;audio/x-wav;

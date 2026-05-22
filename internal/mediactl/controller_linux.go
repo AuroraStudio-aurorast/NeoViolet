@@ -37,24 +37,33 @@ func newController() (Controller, error) {
 }
 
 func (c *linuxController) Start() (<-chan Command, error) {
-	conn, err := dbus.ConnectSessionBus()
-	if err != nil {
-		return nil, fmt.Errorf("mediactl: connect session bus: %w", err)
-	}
-	c.conn = conn
-
-	reply, err := conn.RequestName(mprisBusName, dbus.NameFlagDoNotQueue)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("mediactl: request name %s: %w", mprisBusName, err)
-	}
-	if reply != dbus.RequestNameReplyPrimaryOwner {
-		conn.Close()
-		return nil, fmt.Errorf("mediactl: name %s already taken", mprisBusName)
+	if err := c.connect(); err != nil {
+		return nil, err
 	}
 
 	ch := make(chan Command, 8)
 	c.cmdChan = ch
+
+	c.startReconnector()
+
+	return ch, nil
+}
+
+func (c *linuxController) connect() error {
+	conn, err := dbus.ConnectSessionBus()
+	if err != nil {
+		return fmt.Errorf("mediactl: connect session bus: %w", err)
+	}
+
+	reply, err := conn.RequestName(mprisBusName, dbus.NameFlagDoNotQueue)
+	if err != nil {
+		conn.Close()
+		return fmt.Errorf("mediactl: request name %s: %w", mprisBusName, err)
+	}
+	if reply != dbus.RequestNameReplyPrimaryOwner {
+		conn.Close()
+		return fmt.Errorf("mediactl: name %s already taken", mprisBusName)
+	}
 
 	rootObj := &mprisRoot{}
 	playerObj := &mprisPlayerObj{ctrl: c}
@@ -63,7 +72,63 @@ func (c *linuxController) Start() (<-chan Command, error) {
 	conn.Export(playerObj, mprisObjectPath, mprisPlayerIface)
 	conn.Export(playerObj, mprisObjectPath, propsIface)
 
-	return ch, nil
+	c.conn = conn
+	return nil
+}
+
+func (c *linuxController) startReconnector() {
+	go func() {
+		sigCh := make(chan *dbus.Signal, 8)
+		c.conn.Signal(sigCh)
+
+		for {
+			select {
+			case <-c.done:
+				c.conn.RemoveSignal(sigCh)
+				return
+			case sig := <-sigCh:
+				if sig.Name == "org.freedesktop.DBus.Local.Disconnected" {
+					c.mu.Lock()
+					c.conn = nil
+					c.mu.Unlock()
+					c.reconnectLoop()
+					return
+				}
+			}
+		}
+	}()
+}
+
+func (c *linuxController) reconnectLoop() {
+	backoff := 2 * time.Second
+	maxBackoff := 30 * time.Second
+
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-time.After(backoff):
+			c.mu.Lock()
+			if c.closed {
+				c.mu.Unlock()
+				return
+			}
+			c.mu.Unlock()
+
+			if err := c.connect(); err == nil {
+				// Re-export succeeded; restart the signal watcher
+				c.mu.Lock()
+				c.startReconnector()
+				c.mu.Unlock()
+				return
+			}
+
+			backoff *= 2
+			if backoff > maxBackoff {
+				backoff = maxBackoff
+			}
+		}
+	}
 }
 
 func (c *linuxController) Update(state PlayState) {
@@ -75,6 +140,7 @@ func (c *linuxController) Update(state PlayState) {
 	}
 
 	changed := make(map[string]dbus.Variant)
+	seekedSignal := false
 	sameTrack := c.state.Title == state.Title && c.state.Artist == state.Artist
 
 	if !sameTrack {
@@ -90,15 +156,33 @@ func (c *linuxController) Update(state PlayState) {
 		changed["Metadata"] = dbus.MakeVariant(buildMetadata(state, c.trackID))
 	}
 
-	if state.Position != c.state.Position {
+	// Emit Seeked signal when position changes by a meaningful amount
+	// (more than 100ms) from an external source (not MPRIS-initiated seek).
+	posChanged := state.Position != c.state.Position
+	if posChanged {
+		posDelta := state.Position - c.state.Position
+		if posDelta < 0 {
+			posDelta = -posDelta
+		}
+		if posDelta > 100*time.Millisecond {
+			seekedSignal = true
+		}
 		changed["Position"] = dbus.MakeVariant(int64(state.Position / time.Microsecond))
 	}
 
 	c.state = state
 
+	// Emit PropertiesChanged for standard property updates
 	if len(changed) > 0 {
 		c.conn.Emit(mprisObjectPath, "org.freedesktop.DBus.Properties.PropertiesChanged",
 			mprisPlayerIface, changed, []string{})
+	}
+
+	// Emit Seeked signal per MPRIS spec — required when position changes
+	// from non-MPRIS sources (keyboard seek, next-track, etc.)
+	if seekedSignal {
+		c.conn.Emit(mprisObjectPath, "org.mpris.MediaPlayer2.Player.Seeked",
+			int64(state.Position/time.Microsecond))
 	}
 }
 
@@ -129,7 +213,7 @@ func (r *mprisRoot) CanQuit() bool                 { return true }
 func (r *mprisRoot) CanRaise() bool                { return false }
 func (r *mprisRoot) HasTrackList() bool            { return false }
 func (r *mprisRoot) Identity() string              { return "NeoViolet" }
-func (r *mprisRoot) DesktopEntry() string          { return "" }
+func (r *mprisRoot) DesktopEntry() string          { return "neoviolet" }
 func (r *mprisRoot) SupportedUriSchemes() []string { return []string{"file"} }
 func (r *mprisRoot) SupportedMimeTypes() []string  { return nil }
 func (r *mprisRoot) Quit() *dbus.Error             { return nil }
@@ -139,18 +223,18 @@ type mprisPlayerObj struct {
 	ctrl *linuxController
 }
 
-func (o *mprisPlayerObj) Next() *dbus.Error      { o.ctrl.cmdChan <- CmdNext; return nil }
-func (o *mprisPlayerObj) Previous() *dbus.Error  { o.ctrl.cmdChan <- CmdPrev; return nil }
-func (o *mprisPlayerObj) Pause() *dbus.Error     { o.ctrl.cmdChan <- CmdPause; return nil }
-func (o *mprisPlayerObj) PlayPause() *dbus.Error { o.ctrl.cmdChan <- CmdPlayPause; return nil }
-func (o *mprisPlayerObj) Stop() *dbus.Error      { o.ctrl.cmdChan <- CmdStop; return nil }
-func (o *mprisPlayerObj) Play() *dbus.Error      { o.ctrl.cmdChan <- CmdPlay; return nil }
+func (o *mprisPlayerObj) Next() *dbus.Error      { o.ctrl.cmdChan <- Command{Type: CmdNext}; return nil }
+func (o *mprisPlayerObj) Previous() *dbus.Error  { o.ctrl.cmdChan <- Command{Type: CmdPrev}; return nil }
+func (o *mprisPlayerObj) Pause() *dbus.Error     { o.ctrl.cmdChan <- Command{Type: CmdPause}; return nil }
+func (o *mprisPlayerObj) PlayPause() *dbus.Error { o.ctrl.cmdChan <- Command{Type: CmdPlayPause}; return nil }
+func (o *mprisPlayerObj) Stop() *dbus.Error      { o.ctrl.cmdChan <- Command{Type: CmdStop}; return nil }
+func (o *mprisPlayerObj) Play() *dbus.Error      { o.ctrl.cmdChan <- Command{Type: CmdPlay}; return nil }
 func (o *mprisPlayerObj) Seek(offset int64) *dbus.Error {
-	o.ctrl.cmdChan <- CmdSeek
+	o.ctrl.cmdChan <- Command{Type: CmdSeek, Value: offset}
 	return nil
 }
 func (o *mprisPlayerObj) SetPosition(trackID dbus.ObjectPath, pos int64) *dbus.Error {
-	o.ctrl.cmdChan <- CmdSeek
+	o.ctrl.cmdChan <- Command{Type: CmdSetPosition, Value: pos}
 	return nil
 }
 func (o *mprisPlayerObj) OpenUri(uri string) *dbus.Error { return nil }

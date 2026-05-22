@@ -15,6 +15,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
 
 func loadAudio(filePath, sfPath, trackerBackend string) tea.Msg {
@@ -180,6 +181,9 @@ func NewModel(filePath string, cfg *config.Config) *Model {
 		pendingPath: filePath,
 	}
 
+	// Initialize OS media control layer (MPRIS on Linux, no-op elsewhere)
+	m.MediaCtl, _ = mediactl.New()
+
 	logger.Info("Model created", "iconTheme", cfg.IconTheme, "tickRate", cfg.TickRate)
 
 	ti.SetWidth(m.UI.Width - 1)
@@ -227,6 +231,21 @@ func (m *Model) togglePlayback() {
 func (m *Model) cleanup() {
 	logger.Debug("Cleanup: closing player")
 	m.Audio.Close()
+	if m.MediaCtl != nil {
+		logger.Debug("Cleanup: closing media controller")
+		m.MediaCtl.Close()
+	}
+}
+
+// buildPlayState builds a mediactl.PlayState from the current audio state.
+func (m *Model) buildPlayState() mediactl.PlayState {
+	return mediactl.PlayState{
+		Title:    m.Audio.CurrentSong,
+		Artist:   m.Audio.Artist,
+		Duration: m.Audio.Duration,
+		Position: m.Audio.Elapsed,
+		Playing:  m.Audio.IsPlaying,
+	}
 }
 
 func (m *Model) adjustVolume(delta float64) {
