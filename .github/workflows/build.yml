@@ -1,0 +1,291 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GO_VERSION: "stable"
+  LIBOPENMPT_VERSION: "0.8.6"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: linux-${{ matrix.libc }}-${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            runner: ubuntu-latest
+            libc: glibc
+            cc: clang
+            cxx: clang++
+            host_triple: x86_64-linux-gnu
+            deps: ""
+            install_libopenmpt: "sudo apt-get install -y libopenmpt-dev"
+
+          - goarch: "386"
+            runner: ubuntu-latest
+            libc: glibc
+            cc: "clang -m32"
+            cxx: "clang++ -m32"
+            host_triple: i686-linux-gnu
+            deps: "gcc-multilib g++-multilib"
+            install_libopenmpt: "sudo apt-get install -y libopenmpt-dev"
+
+          - goarch: arm64
+            runner: ubuntu-24.04-arm
+            libc: glibc
+            cc: clang
+            cxx: clang++
+            host_triple: aarch64-linux-gnu
+            deps: ""
+            install_libopenmpt: "sudo apt-get install -y libopenmpt-dev"
+
+          - goarch: amd64
+            runner: ubuntu-latest
+            libc: musl
+            cc: musl-gcc
+            cxx: musl-g++
+            host_triple: x86_64-linux-musl
+            deps: "musl-tools"
+            musl_target: "x86_64-linux-musl"
+            cache_key: "musl-x86_64"
+
+          - goarch: arm64
+            runner: ubuntu-latest
+            libc: musl
+            cc: aarch64-linux-musl-gcc
+            cxx: aarch64-linux-musl-g++
+            host_triple: aarch64-linux-musl
+            deps: ""
+            musl_target: "aarch64-linux-musl"
+            cache_key: "musl-aarch64"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install base dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clang llvm-dev pkg-config make ${{ matrix.deps }}
+
+      - name: Install libopenmpt (glibc)
+        if: matrix.libc == 'glibc'
+        run: ${{ matrix.install_libopenmpt }}
+
+      - name: Cache musl-cross toolchain
+        if: matrix.libc == 'musl' && matrix.goarch == 'arm64'
+        id: cache-musl-cross
+        uses: actions/cache@v4
+        with:
+          path: /opt/musl-cross
+          key: musl-cross-aarch64-v1
+
+      - name: Build musl-cross toolchain (aarch64)
+        if: matrix.libc == 'musl' && matrix.goarch == 'arm64' && steps.cache-musl-cross.outputs.cache-hit != 'true'
+        run: |
+          git clone https://github.com/richfelker/musl-cross-make.git
+          cd musl-cross-make
+          echo "TARGET = aarch64-linux-musl" >> config.mak
+          echo "OUTPUT = /opt/musl-cross" >> config.mak
+          make install -j$(nproc)
+          echo "/opt/musl-cross/bin" >> $GITHUB_PATH
+
+      - name: Add musl-cross to PATH (aarch64)
+        if: matrix.libc == 'musl' && matrix.goarch == 'arm64'
+        run: echo "/opt/musl-cross/bin" >> $GITHUB_PATH
+
+      - name: Cache libopenmpt (musl)
+        if: matrix.libc == 'musl'
+        id: cache-openmpt-musl
+        uses: actions/cache@v4
+        with:
+          path: /tmp/libopenmpt-musl-${{ matrix.musl_target }}
+          key: libopenmpt-${{ env.LIBOPENMPT_VERSION }}-${{ matrix.cache_key }}
+
+      - name: Build libopenmpt (musl)
+        if: matrix.libc == 'musl' && steps.cache-openmpt-musl.outputs.cache-hit != 'true'
+        run: |
+          PREFIX=/tmp/libopenmpt-musl-${{ matrix.musl_target }}
+          mkdir -p "$PREFIX"
+
+          cd /tmp
+          curl -fsSL \
+            "https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-${LIBOPENMPT_VERSION}+release.autotools.tar.gz" \
+            -o libopenmpt.tar.gz
+          tar xzf libopenmpt.tar.gz
+          cd "libopenmpt-${LIBOPENMPT_VERSION}+release.autotools"
+
+          BUILD_TRIPLE=$(./config.guess)
+          ./configure \
+            --host=${{ matrix.host_triple }} \
+            --build="$BUILD_TRIPLE" \
+            --prefix="$PREFIX" \
+            --enable-static --disable-shared \
+            --disable-examples --disable-tests --disable-openmpt123 \
+            CC="${{ matrix.cc }}" CXX="${{ matrix.cxx }}"
+
+          make -j$(nproc)
+          make install
+
+      - name: Build binary
+        run: |
+          export CGO_ENABLED=1
+          export GOOS=linux
+          export GOARCH=${{ matrix.goarch }}
+          export CC="${{ matrix.cc }}"
+          export CXX="${{ matrix.cxx }}"
+
+          if [ "${{ matrix.libc }}" = "musl" ]; then
+            export PKG_CONFIG_PATH=/tmp/libopenmpt-musl-${{ matrix.musl_target }}/lib/pkgconfig
+            export CGO_LDFLAGS="-static"
+          fi
+
+          make build
+
+      - name: Verify static binary
+        if: matrix.libc == 'musl'
+        run: |
+          if ldd neoviolet 2>&1 | grep -q "not a dynamic executable"; then
+            echo "Verified static link"
+          else
+            echo "Binary is not fully static"
+            ldd neoviolet || true
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neoviolet-linux-${{ matrix.goarch }}-${{ matrix.libc }}
+          path: neoviolet
+          if-no-files-found: error
+
+  macos:
+    name: macos-${{ matrix.goarch }}
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            host_triple: x86_64-apple-darwin
+            cc: "clang -arch x86_64"
+            cxx: "clang++ -arch x86_64"
+          - goarch: arm64
+            host_triple: aarch64-apple-darwin
+            cc: clang
+            cxx: clang++
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install pkg-config make libopenmpt
+
+      - name: Build binary
+        run: |
+          export CGO_ENABLED=1
+          export GOOS=darwin
+          export GOARCH=${{ matrix.goarch }}
+          export CC="${{ matrix.cc }}"
+          export CXX="${{ matrix.cxx }}"
+          if [ "${{ matrix.goarch }}" = "amd64" ]; then
+            export PKG_CONFIG_PATH="/usr/local/lib/pkgconfig:/usr/local/Homebrew/lib/pkgconfig"
+          fi
+          make build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neoviolet-macos-${{ matrix.goarch }}
+          path: neoviolet
+          if-no-files-found: error
+
+  windows:
+    name: windows-${{ matrix.goarch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            msystem: MINGW64
+            pkg_prefix: mingw-w64-x86_64
+            libopenmpt_pkg: mingw-w64-x86_64-libopenmpt
+          - goarch: "386"
+            msystem: MINGW32
+            pkg_prefix: mingw-w64-i686
+            libopenmpt_pkg: mingw-w64-i686-libopenmpt
+          - goarch: arm64
+            msystem: CLANGARM64
+            pkg_prefix: mingw-w64-clang-aarch64
+            libopenmpt_pkg: mingw-w64-clang-aarch64-libopenmpt
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2.30.0
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            ${{ matrix.pkg_prefix }}-clang
+            ${{ matrix.pkg_prefix }}-pkg-config
+            ${{ matrix.libopenmpt_pkg }}
+            make
+            curl
+            ca-certificates
+
+      - name: Build binary
+        run: |
+          export PATH="$GOROOT/bin:$PATH"
+          export CGO_ENABLED=1
+          export GOOS=windows
+          export GOARCH=${{ matrix.goarch }}
+          export CC=clang
+          export CXX=clang++
+          export CGO_LDFLAGS="-static-libgcc -static-libstdc++ -Wl,-Bstatic -lopenmpt -Wl,-Bdynamic"
+          make build
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: neoviolet-windows-${{ matrix.goarch }}
+          path: neoviolet.exe
+          if-no-files-found: error
