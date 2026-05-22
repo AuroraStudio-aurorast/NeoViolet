@@ -275,12 +275,12 @@ func (p *Player) openURL(urlStr string) error {
 
 	p.applyLinearVolumeLocked()
 
-	title := strings.TrimSuffix(filepath.Base(u.Path), ext)
-	if title == "" || title == "." {
-		title = "Remote Audio"
+	display := urlStr
+	if u.Scheme != "" {
+		display = u.Host + u.RequestURI()
 	}
-	p.title = title
-	p.artist = "Unknown Artist"
+	p.title = display
+	p.artist = ""
 
 	return nil
 }
