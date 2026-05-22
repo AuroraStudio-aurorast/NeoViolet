@@ -157,14 +157,14 @@ jobs:
             to_process=("${to_process[@]:1}")
             deps=$(objdump -p "$current" | grep "DLL Name" | awk '{print $3}' | sort -u)
             for dll in $deps; do
-              if [[ "$dll" =~ $SYSTEM_DLLS ]] || [ -n "${seen[$dll]}" ]; then
+              if [[ "$dll" =~ $SYSTEM_DLLS ]] || [[ -v seen[$dll] ]]; then
                 continue
               fi
               seen["$dll"]=1
               SRC="${BIN_DIR}/${dll}"
               if [ -f "$SRC" ]; then
                 cp "$SRC" dist/
-                to_process+=("${BIN_DIR}/${dll}")
+                to_process+=("$SRC")
               else
                 echo "Skipping (not found in $BIN_DIR): $dll"
               fi
