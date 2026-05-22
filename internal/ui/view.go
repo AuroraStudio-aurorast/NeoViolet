@@ -75,7 +75,7 @@ func renderTabs(m *Model) string {
 		} else {
 			s := tabStyle
 			if m.UI.Focus == FocusTabBar {
-				s = s.Copy().BorderForeground(lipgloss.Color(accentFocusOrDefault(m.Accent, "15")))
+				s = s.Copy().BorderForeground(lipgloss.Color("15"))
 			}
 			tabs = append(tabs, s.Width(m.UI.tabWidth).Render(tabContent))
 		}
@@ -99,7 +99,7 @@ func renderContent(m *Model) string {
 
 	s := contentStyle.Copy()
 	if m.UI.Focus == FocusContent {
-		s = s.BorderForeground(lipgloss.Color(accentFocusOrDefault(m.Accent, "15")))
+		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
 	return s.
@@ -210,7 +210,7 @@ func renderFooter(m *Model) string {
 
 	s := footerStyle.Copy()
 	if m.UI.Focus == FocusFooter {
-		s = s.BorderForeground(lipgloss.Color(accentFocusOrDefault(m.Accent, "15")))
+		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
 	return s.Width(m.UI.Width).Render(content)
