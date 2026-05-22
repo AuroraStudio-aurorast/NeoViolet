@@ -20,6 +20,9 @@ jobs:
   linux:
     name: linux-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: 1
+      GOOS: linux
     strategy:
       fail-fast: false
       matrix:
@@ -45,13 +48,11 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq clang llvm-dev pkg-config make libasound2-dev
-          sudo apt-get install -y -qq libopenmpt-dev
+          sudo apt-get install -y -qq clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev
 
       - name: Build binary
         run: |
-          export CGO_ENABLED=1
-          export GOOS=linux
+          set -eux
           export GOARCH=${{ matrix.goarch }}
           export CC="${{ matrix.cc }}"
           export CXX="${{ matrix.cxx }}"
@@ -67,6 +68,9 @@ jobs:
   macos:
     name: macos-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: 1
+      GOOS: darwin
     strategy:
       fail-fast: false
       matrix:
@@ -96,8 +100,7 @@ jobs:
 
       - name: Build binary
         run: |
-          export CGO_ENABLED=1
-          export GOOS=darwin
+          set -eux
           export GOARCH=${{ matrix.goarch }}
           export CC="${{ matrix.cc }}"
           export CXX="${{ matrix.cxx }}"
@@ -113,6 +116,9 @@ jobs:
   windows:
     name: windows-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: 1
+      GOOS: windows
     strategy:
       fail-fast: false
       matrix:
@@ -120,24 +126,29 @@ jobs:
           - goarch: amd64
             runner: windows-latest
             msystem: MINGW64
+            env_prefix: mingw64
             pkg_prefix: mingw-w64-x86_64
             compiler_pkg: mingw-w64-x86_64-gcc
             libopenmpt_pkg: mingw-w64-x86_64-libopenmpt
             go_pkg: mingw-w64-x86_64-go
             cc: gcc
             cxx: g++
+
           - goarch: arm64
             runner: windows-11-arm
             msystem: CLANGARM64
+            env_prefix: clangarm64
             pkg_prefix: mingw-w64-clang-aarch64
             compiler_pkg: mingw-w64-clang-aarch64-clang
             libopenmpt_pkg: mingw-w64-clang-aarch64-libopenmpt
             go_pkg: mingw-w64-clang-aarch64-go
             cc: clang
             cxx: clang++
+
     defaults:
       run:
         shell: msys2 {0}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -149,8 +160,11 @@ jobs:
           update: true
           install: >-
             ${{ matrix.compiler_pkg }}
-            ${{ matrix.pkg_prefix }}-pkg-config
+            ${{ matrix.pkg_prefix }}-pkgconf
             ${{ matrix.libopenmpt_pkg }}
+            ${{ matrix.pkg_prefix }}-libogg
+            ${{ matrix.pkg_prefix }}-libvorbis
+            ${{ matrix.pkg_prefix }}-zlib
             ${{ matrix.go_pkg }}
             make
             curl
@@ -159,12 +173,16 @@ jobs:
 
       - name: Build binary
         run: |
-          export CGO_ENABLED=1
-          export GOOS=windows
+          set -eux
+          # Verify Go installation
+          go version
+
           export GOARCH=${{ matrix.goarch }}
           export CC="${{ matrix.cc }}"
           export CXX="${{ matrix.cxx }}"
-          export CGO_LDFLAGS="-static-libgcc -static-libstdc++ -Wl,-Bstatic -lopenmpt -Wl,-Bdynamic"
+          export CGO_CFLAGS="$(pkg-config --cflags libopenmpt)"
+          export CGO_LDFLAGS="$(pkg-config --static --libs libopenmpt)"
+
           make build
 
       - name: Upload artifact
