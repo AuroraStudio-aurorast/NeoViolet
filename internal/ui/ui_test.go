@@ -12,6 +12,7 @@ import (
 
 // mockPlayer implements audio.AudioPlayer for testing.
 type mockPlayer struct {
+	path        string
 	playing     bool
 	volume      float64
 	position    time.Duration
@@ -43,7 +44,7 @@ func (m *mockPlayer) Close() error            { m.closeCalled = true; return nil
 func (m *mockPlayer) Format() beep.Format {
 	return beep.Format{SampleRate: 44100, NumChannels: 2, Precision: 4}
 }
-func (m *mockPlayer) Path() string            { return "" }
+func (m *mockPlayer) Path() string            { return m.path }
 func (m *mockPlayer) Title() string           { return "" }
 func (m *mockPlayer) Artist() string          { return "" }
 func (m *mockPlayer) CoverImage() image.Image { return nil }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
 func setupModel() *Model {
@@ -172,6 +173,155 @@ func TestExecuteCommand_unknown(t *testing.T) {
 
 	if !m.Error.Visible {
 		t.Error("expected error for unknown command")
+	}
+}
+
+func TestExecuteCommand_lrc_status_no_lyrics(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected status message for lrc without args")
+	}
+}
+
+func TestExecuteCommand_lrc_status_showing(t *testing.T) {
+	m := setupModel()
+	m.Audio.Lyrics = &lyrics.LyricsData{}
+	m.Audio.ShowLyrics = true
+	setCommand(m, "lrc")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected status message")
+	}
+	if m.Audio.Lyrics == nil {
+		t.Error("lyrics should not be nil")
+	}
+}
+
+func TestExecuteCommand_lrc_off(t *testing.T) {
+	m := setupModel()
+	m.Audio.Lyrics = &lyrics.LyricsData{}
+	m.Audio.ShowLyrics = true
+	setCommand(m, "lrc off")
+	executeCommand(m)
+
+	if m.Audio.ShowLyrics {
+		t.Error("ShowLyrics should be false after lrc off")
+	}
+	if m.Audio.Lyrics == nil {
+		t.Error("Lyrics data should be preserved in memory after lrc off")
+	}
+}
+
+func TestExecuteCommand_lrc_off_idempotent(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc off")
+	executeCommand(m)
+
+	if m.Audio.ShowLyrics {
+		t.Error("ShowLyrics should be false")
+	}
+}
+
+func TestExecuteCommand_lrc_on_no_player(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc on")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected error for lrc on with no player")
+	}
+}
+
+func TestExecuteCommand_lrc_on_no_lyrics(t *testing.T) {
+	m := setupModel()
+	m.Audio.Player = &mockPlayer{path: "/nonexistent/song.mp3"}
+	setCommand(m, "lrc on")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected error when no lyrics file exists")
+	}
+}
+
+func TestExecuteCommand_lrc_on_already_loaded(t *testing.T) {
+	m := setupModel()
+	m.Audio.Lyrics = &lyrics.LyricsData{}
+	m.Audio.ShowLyrics = false
+	setCommand(m, "lrc on")
+	executeCommand(m)
+
+	if !m.Audio.ShowLyrics {
+		t.Error("ShowLyrics should be true after lrc on")
+	}
+	if m.Error.Visible {
+		t.Errorf("unexpected error: %s", m.Error.Message)
+	}
+}
+
+func TestExecuteCommand_lrc_unknown_subcmd(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc foo")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected error for unknown lrc subcommand")
+	}
+}
+
+func TestExecuteCommand_lrc_switch_no_format(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc switch")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected error for lrc switch without format")
+	}
+}
+
+func TestExecuteCommand_lrc_switch_no_player(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc switch lrc")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected error for lrc switch with no player")
+	}
+}
+
+func TestExecuteCommand_lrc_switch_no_file(t *testing.T) {
+	m := setupModel()
+	m.Audio.Player = &mockPlayer{path: "/nonexistent/song.mp3"}
+	setCommand(m, "lrc switch lrc")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected error when no lrc file exists for switch")
+	}
+}
+
+func TestExecuteCommand_lyric_alias(t *testing.T) {
+	m := setupModel()
+	m.Audio.ShowLyrics = true
+	setCommand(m, "lyric off")
+	executeCommand(m)
+
+	if m.Audio.ShowLyrics {
+		t.Error("ShowLyrics should be false after lyric off")
+	}
+}
+
+func TestExecuteCommand_lyrics_alias(t *testing.T) {
+	m := setupModel()
+	m.Audio.ShowLyrics = true
+	setCommand(m, "lyrics off")
+	executeCommand(m)
+
+	if m.Audio.ShowLyrics {
+		t.Error("ShowLyrics should be false after lyrics off")
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
 var (
@@ -370,8 +371,81 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "lrc", "lyric", "lyrics":
+		return executeLrcCommand(m, parts)
+
 	default:
 		m.Error.Set(fmt.Sprintf("Unknown command: %s", cmdText), m.Config.Error.Duration)
+		return m, nil
+	}
+}
+
+func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
+	if len(parts) < 2 {
+		if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
+			m.Error.Set("Lyrics: enabled", m.Config.Error.Duration)
+		} else {
+			m.Error.Set("Lyrics: disabled", m.Config.Error.Duration)
+		}
+		return m, nil
+	}
+
+	subcmd := parts[1]
+
+	switch subcmd {
+	case "on":
+		if m.Audio.Lyrics != nil {
+			m.Audio.ShowLyrics = true
+			return m, nil
+		}
+		if m.Audio.Player == nil {
+			m.Error.Set("No audio loaded", m.Config.Error.Duration)
+			return m, nil
+		}
+		data, err := lyrics.FindAndParse(m.Audio.Player.Path(), m.Config.Lyrics.FormatPriority)
+		if err != nil {
+			m.Error.Set(fmt.Sprintf("Failed to load lyrics: %v", err), m.Config.Error.Duration)
+			return m, nil
+		}
+		if data == nil {
+			m.Error.Set("No lyrics found for current track", m.Config.Error.Duration)
+			return m, nil
+		}
+		m.Audio.Lyrics = data
+		m.Audio.LyricIndex = -1
+		m.Audio.ShowLyrics = true
+		return m, nil
+
+	case "off":
+		m.Audio.ShowLyrics = false
+		return m, nil
+
+	case "switch":
+		if len(parts) < 3 {
+			m.Error.Set("Usage: lrc switch <format> (e.g. lrc, ttml, qrc, embedded)", m.Config.Error.Duration)
+			return m, nil
+		}
+		if m.Audio.Player == nil {
+			m.Error.Set("No audio loaded", m.Config.Error.Duration)
+			return m, nil
+		}
+		format := parts[2]
+		data, err := lyrics.FindAndParse(m.Audio.Player.Path(), []string{format})
+		if err != nil {
+			m.Error.Set(fmt.Sprintf("Failed to parse %s lyrics: %v", format, err), m.Config.Error.Duration)
+			return m, nil
+		}
+		if data == nil {
+			m.Error.Set(fmt.Sprintf("No lyrics found for format: %s", format), m.Config.Error.Duration)
+			return m, nil
+		}
+		m.Audio.Lyrics = data
+		m.Audio.LyricIndex = -1
+		m.Audio.ShowLyrics = true
+		return m, nil
+
+	default:
+		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, or switch)", subcmd), m.Config.Error.Duration)
 		return m, nil
 	}
 }

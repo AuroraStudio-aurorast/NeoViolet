@@ -152,6 +152,7 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		} else if data != nil {
 			m.Audio.Lyrics = data
 			m.Audio.LyricIndex = -1
+				m.Audio.ShowLyrics = true
 		}
 	}
 

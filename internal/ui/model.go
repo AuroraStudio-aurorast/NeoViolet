@@ -157,7 +157,8 @@ func NewModel(filePath string, cfg *config.Config) *Model {
 
 	m := &Model{
 		Audio: &AudioState{
-			Volume: cfg.DefaultVolume,
+			Volume:     cfg.DefaultVolume,
+			ShowLyrics: true,
 		},
 		UI: &UIState{
 			Mode:       ModeNormal,

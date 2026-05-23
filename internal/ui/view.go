@@ -156,7 +156,7 @@ func renderFooter(m *Model) string {
 
 	// Current lyric line with marquee scroll
 	var lyricLine string
-	if m.Audio.Lyrics != nil && m.Audio.LyricIndex >= 0 && m.Audio.LyricIndex < len(m.Audio.Lyrics.Lines) {
+	if m.Audio.Lyrics != nil && m.Audio.ShowLyrics && m.Audio.LyricIndex >= 0 && m.Audio.LyricIndex < len(m.Audio.Lyrics.Lines) {
 		lyricLine = m.Audio.Lyrics.Lines[m.Audio.LyricIndex].Text
 	}
 	maxWidth := m.UI.Width - 6

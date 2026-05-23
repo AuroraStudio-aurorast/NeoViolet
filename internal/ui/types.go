@@ -119,6 +119,7 @@ type AudioState struct {
 	Duration          time.Duration
 	Elapsed           time.Duration
 	IsPlaying         bool
+	ShowLyrics        bool
 	Lyrics            *lyrics.LyricsData
 	LyricIndex        int
 	LyricScrollOffset int
