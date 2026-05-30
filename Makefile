@@ -17,13 +17,7 @@ ifeq ($(HAS_OPENMPT),1)
 	TEST_FLAGS  += -tags openmpt
 endif
 
-HAS_OPENMPT := $(shell pkg-config --exists libopenmpt 2>/dev/null && echo 1 || echo 0)
-ifeq ($(HAS_OPENMPT),1)
-	BUILD_FLAGS += -tags openmpt
-	TEST_FLAGS  += -tags openmpt
-endif
-
-.PHONY: all build build/race build/debug run test test/race test/verbose test/short test/cover clean lint vet tidy install help
+.PHONY: all build build/race build/debug build/noopenmpt run test test/race test/verbose test/short test/cover clean lint vet tidy install help
 
 all: build
 
@@ -37,6 +31,9 @@ build/race:
 
 build/debug:
 	$(GO) build -gcflags="all=-N -l" -o $(OUTPUT) ./cmd/$(BINARY)
+
+build/noopenmpt:
+	$(GO) build -ldflags="-s -w" -o $(OUTPUT) ./cmd/$(BINARY)
 
 # --- Run ---
 
@@ -102,9 +99,10 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Build:"
-	@echo "  build              Build binary (default)"
+	@echo "  build              Build binary (default, with openmpt if available)"
 	@echo "  build/race         Build with race detector"
 	@echo "  build/debug        Build without optimizations (dlv compatible)"
+	@echo "  build/noopenmpt    Build without libopenmpt support"
 	@echo ""
 	@echo "Run:"
 	@echo "  run ARGS=...       Build and run with optional arguments"
