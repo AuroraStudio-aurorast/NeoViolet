@@ -13,6 +13,7 @@ import (
 	"github.com/gopxl/beep/v2/vorbis"
 	"github.com/gopxl/beep/v2/wav"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/alacstream"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
@@ -70,6 +71,21 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	case n >= 4 && string(buffer[0:4]) == "MThd":
 		logger.Debug("Detected format: MIDI", "path", file.Name())
 		return ".mid", nil
+	case n >= 8 && string(buffer[4:8]) == "ftyp":
+		ftype := string(buffer[8:12])
+		if ftype == "M4A " || ftype == "mp42" || ftype == "isom" || ftype == "M4B" {
+			logger.Debug("Detected format: M4A/ALAC", "path", file.Name(), "ftype", ftype)
+			return ".m4a", nil
+		}
+		if n >= 16 {
+			ftype2 := string(buffer[12:16])
+			if ftype2 == "M4A " || ftype2 == "M4B" {
+				logger.Debug("Detected format: M4A/ALAC", "path", file.Name(), "ftype", ftype2)
+				return ".m4a", nil
+			}
+		}
+		logger.Debug("Detected ftyp but not M4A", "path", file.Name(), "ftype", ftype)
+		return "", fmt.Errorf("unknown ftyp container")
 	default:
 		if synth.OpenmptProbe(buffer[:n]) {
 			logger.Debug("Detected format: tracker (openmpt probe)", "path", file.Name())
@@ -98,6 +114,11 @@ func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekClos
 		streamer, format, err = flac.Decode(file)
 	case ".ogg", ".oga":
 		streamer, format, err = vorbis.Decode(file)
+	case ".m4a":
+		if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+			return nil, beep.Format{}, fmt.Errorf("m4a seek: %w", seekErr)
+		}
+		streamer, format, err = alacstream.DecodeM4A(file)
 	default:
 		return nil, beep.Format{}, ErrUnsupportedFormat
 	}
@@ -132,7 +153,7 @@ func isMODSignature(sig string) bool {
 }
 
 func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm"}
+	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
 }
 
 func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
@@ -159,6 +180,12 @@ func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamS
 			return nil, beep.Format{}, fmt.Errorf("vorbis decode requires io.ReadCloser")
 		}
 		streamer, format, err = vorbis.Decode(rc)
+	case ".m4a":
+		rsc, ok := r.(io.ReadSeeker)
+		if !ok {
+			return nil, beep.Format{}, fmt.Errorf("m4a decode requires io.ReadSeeker")
+		}
+		streamer, format, err = alacstream.DecodeM4A(rsc)
 	default:
 		return nil, beep.Format{}, ErrUnsupportedFormat
 	}
