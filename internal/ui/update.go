@@ -145,6 +145,17 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		m.Audio.IsPlaying = true
 	}
 
+	// Apply --seek flag: seek to initial position after playing starts
+	if m.pendingSeek > 0 {
+		seekPos := m.pendingSeek
+		if seekPos > m.Audio.Duration {
+			seekPos = m.Audio.Duration
+		}
+		logger.Info("Initial seek", "to", seekPos)
+		m.Audio.SeekPlayer(seekPos)
+		m.pendingSeek = 0
+	}
+
 	if m.Config.Lyrics.Enabled {
 		data, err := lyrics.FindAndParse(msg.Path, m.Config.Lyrics.FormatPriority)
 		if err != nil {

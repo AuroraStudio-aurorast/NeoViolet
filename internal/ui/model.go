@@ -92,7 +92,7 @@ var keys = KeyMap{
 	),
 }
 
-func NewModel(filePath string, cfg *config.Config) *Model {
+func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Model {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
@@ -180,6 +180,10 @@ func NewModel(filePath string, cfg *config.Config) *Model {
 		Error:       &ErrorState{},
 		Loading:     filePath != "",
 		pendingPath: filePath,
+	}
+
+	if len(seekTo) > 0 && seekTo[0] > 0 {
+		m.pendingSeek = seekTo[0]
 	}
 
 	// Initialize OS media control layer (MPRIS on Linux, no-op elsewhere)

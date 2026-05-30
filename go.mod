@@ -10,13 +10,14 @@ require (
 	charm.land/log/v2 v2.0.0
 	github.com/EdlinOrg/prominentcolor v1.0.0
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
+	github.com/gen2brain/mpeg v0.5.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/gotracker/playback v1.5.0
 	github.com/jpodeszfa/go-meltysynth v1.0.1
 	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/pion/opus v0.0.0-20260530062302-292081249302
-	github.com/gen2brain/mpeg v0.5.0
+	github.com/spf13/cobra v1.10.2
 )
 
 require (
@@ -43,6 +44,7 @@ require (
 	github.com/heucuva/comparison v1.0.0 // indirect
 	github.com/heucuva/optional v0.0.1 // indirect
 	github.com/icza/bitio v1.1.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jfreymuth/oggvorbis v1.0.5 // indirect
 	github.com/jfreymuth/vorbis v1.0.2 // indirect
 	github.com/mattn/go-runewidth v0.0.23 // indirect
@@ -54,6 +56,7 @@ require (
 	github.com/oliamb/cutter v0.2.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
+	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
 	golang.org/x/sync v0.20.0 // indirect

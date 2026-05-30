@@ -8,7 +8,9 @@ ifeq ($(GOOS),windows)
 	OUTPUT := $(OUTPUT).exe
 endif
 
-BUILD_FLAGS ?= -ldflags="-s -w"
+VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS   = -s -w -X github.com/AuroraStudio-aurorast/neoviolet/cmd/neoviolet/cmd.Version=$(VERSION)
+BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
 TEST_FLAGS  ?= -count=1
 
 HAS_OPENMPT := $(shell pkg-config --exists libopenmpt 2>/dev/null && echo 1 || echo 0)
@@ -33,7 +35,7 @@ build/debug:
 	$(GO) build -gcflags="all=-N -l" -o $(OUTPUT) ./cmd/$(BINARY)
 
 build/noopenmpt:
-	$(GO) build -ldflags="-s -w" -o $(OUTPUT) ./cmd/$(BINARY)
+	$(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT) ./cmd/$(BINARY)
 
 # --- Run ---
 

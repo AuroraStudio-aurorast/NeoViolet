@@ -180,6 +180,7 @@ type Model struct {
 	ExitCode       int
 	Loading        bool
 	pendingPath    string
+	pendingSeek    time.Duration
 	CommandHistory []string
 	historyIndex   int
 
