@@ -14,6 +14,7 @@ import (
 	"github.com/gopxl/beep/v2/wav"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/alacstream"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/opusstream"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
@@ -66,7 +67,13 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: FLAC", "path", file.Name())
 		return ".flac", nil
 	case n >= 4 && string(buffer[0:4]) == "OggS":
-		logger.Debug("Detected format: OGG", "path", file.Name())
+		// Differentiate Opus from Vorbis: Opus ID page starts
+		// at offset 28 with "OpusHead", Vorbis has "vorbis".
+		if n >= 37 && string(buffer[28:36]) == "OpusHead" {
+			logger.Debug("Detected format: Opus/OGG", "path", file.Name())
+			return ".opus", nil
+		}
+		logger.Debug("Detected format: OGG/Vorbis", "path", file.Name())
 		return ".ogg", nil
 	case n >= 4 && string(buffer[0:4]) == "MThd":
 		logger.Debug("Detected format: MIDI", "path", file.Name())
@@ -119,6 +126,8 @@ func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekClos
 			return nil, beep.Format{}, fmt.Errorf("m4a seek: %w", seekErr)
 		}
 		streamer, format, err = alacstream.DecodeM4A(file)
+	case ".opus":
+		streamer, format, err = opusstream.DecodeOGG(file)
 	default:
 		return nil, beep.Format{}, ErrUnsupportedFormat
 	}
@@ -153,7 +162,7 @@ func isMODSignature(sig string) bool {
 }
 
 func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
+	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
 }
 
 func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
@@ -186,6 +195,12 @@ func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamS
 			return nil, beep.Format{}, fmt.Errorf("m4a decode requires io.ReadSeeker")
 		}
 		streamer, format, err = alacstream.DecodeM4A(rsc)
+	case ".opus":
+		rsc, ok := r.(io.ReadSeeker)
+		if !ok {
+			return nil, beep.Format{}, fmt.Errorf("opus decode requires io.ReadSeeker")
+		}
+		streamer, format, err = opusstream.DecodeOGG(rsc)
 	default:
 		return nil, beep.Format{}, ErrUnsupportedFormat
 	}

@@ -92,6 +92,7 @@ internal/
       alac/             # ALAC decoder (internal, based on MIT-licensed C-to-Go port)
       mp4/              # Minimal MP4/M4A demuxer (box iteration, sample table, magic cookie)
       alacstream/       # beep.StreamSeekCloser wrapper for ALAC-over-MP4
+      opusstream/       # beep.StreamSeekCloser wrapper for Opus-over-OGG using github.com/pion/opus
     synth/              # MIDI synthesis via SoundFont
   config/               # JSON config with defaults, first-run detection
   cover/                # Album art extraction from audio metadata
@@ -120,7 +121,7 @@ testdata/               # Shared test fixtures (*.mp3, *.flac, *.m4a, *.lrc, etc
 - **Pluggable lyrics parsers:** Each format (LRC, TTML, QRC, YRC, ESLRC, LYS, embedded) implements `LyricParser` and registers via `lyrics.RegisterParser()`. The registry iterates in priority order and uses the first successful parse.
 - **Platform abstraction via build tags:** Media control selects implementation at compile time — `controller_linux.go` (MPRIS/D-Bus) vs `controller_stub.go` (no-op). Add new platform support by creating a new `controller_<os>.go`.
 - **Config-first startup:** On first run, `config.ConfigExists()` returns false, triggering a setup wizard (`ui/wizard`) before the main TUI launches. Config is persisted as JSON next to the binary.
-- **Cross-platform audio:** `gopxl/beep` provides the core playback loop; format-specific decoders in `audio/format/` handle WAV/MP3/FLAC/OGG/ALAC (M4A). MIDI requires a SoundFont `.sf2` file. Tracker modules (MOD/XM/IT/S3M) use `gotracker/playback` with an optional `libopenmpt` backend enabled via build tag.
+- **Cross-platform audio:** `gopxl/beep` provides the core playback loop; format-specific decoders in `audio/format/` handle WAV/MP3/FLAC/OGG/Opus/ALAC (M4A). MIDI requires a SoundFont `.sf2` file. Tracker modules (MOD/XM/IT/S3M) use `gotracker/playback` with an optional `libopenmpt` backend enabled via build tag.
 
 ## Common Tasks
 
@@ -141,3 +142,4 @@ testdata/               # Shared test fixtures (*.mp3, *.flac, *.m4a, *.lrc, etc
 | github.com/gotracker/playback | MOD/XM/IT/S3M playback |
 | github.com/godbus/dbus/v5 | Linux MPRIS integration |
 | github.com/alicebob/alac (forked internal) | ALAC decoder for M4A files |
+| github.com/pion/opus | Opus decoder for OGG containers |

@@ -12,8 +12,10 @@ require (
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gopxl/beep/v2 v2.1.1
+	github.com/gotracker/playback v1.5.0
 	github.com/jpodeszfa/go-meltysynth v1.0.1
 	github.com/lucasb-eyer/go-colorful v1.4.0
+	github.com/pion/opus v0.0.0-20260530062302-292081249302
 )
 
 require (
@@ -36,7 +38,6 @@ require (
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/gotracker/goaudiofile v1.0.16 // indirect
 	github.com/gotracker/opl2 v1.0.2 // indirect
-	github.com/gotracker/playback v1.5.0 // indirect
 	github.com/hajimehoshi/go-mp3 v0.3.4 // indirect
 	github.com/heucuva/comparison v1.0.0 // indirect
 	github.com/heucuva/optional v0.0.1 // indirect
@@ -52,7 +53,6 @@ require (
 	github.com/oliamb/cutter v0.2.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20251209150349-8475f28825e9 // indirect
 	golang.org/x/sync v0.20.0 // indirect
