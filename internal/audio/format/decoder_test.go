@@ -56,6 +56,32 @@ func TestDetectFormatByMagic_mp3_sync_no_second_byte(t *testing.T) {
 	}
 }
 
+func TestDetectFormatByMagic_mp2_sync(t *testing.T) {
+	fd := NewFormatDecoder()
+	f := writeTempFile(t, []byte{0xFF, 0xFC, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
+	ext, err := fd.DetectFormatByMagic(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ext != ".mp2" {
+		t.Errorf("DetectFormatByMagic = %q, want .mp2", ext)
+	}
+}
+
+func TestDetectFormatByMagic_mp2_id3(t *testing.T) {
+	fd := NewFormatDecoder()
+	// ID3v2 header + 2B tag body + MPEG-1 Layer II sync (0xFF 0xFC) at offset 12.
+	data := append([]byte("ID3\x03\x00\x00\x00\x00\x00\x02"), 0x00, 0x00, 0xFF, 0xFC)
+	f := writeTempFile(t, data)
+	ext, err := fd.DetectFormatByMagic(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if ext != ".mp2" {
+		t.Errorf("DetectFormatByMagic = %q, want .mp2", ext)
+	}
+}
+
 func TestDetectFormatByMagic_wav(t *testing.T) {
 	fd := NewFormatDecoder()
 	f := writeTempFile(t, []byte("RIFF\x00\x00\x00\x00WAVE"))
@@ -134,7 +160,7 @@ func TestDetectFormatByMagic_empty(t *testing.T) {
 func TestSupportedFormats(t *testing.T) {
 	fd := NewFormatDecoder()
 	formats := fd.SupportedFormats()
-	expected := []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
+	expected := []string{".mp2", ".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
 	if len(formats) != len(expected) {
 		t.Fatalf("SupportedFormats() = %v, want %v", formats, expected)
 	}

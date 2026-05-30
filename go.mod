@@ -16,6 +16,7 @@ require (
 	github.com/jpodeszfa/go-meltysynth v1.0.1
 	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/pion/opus v0.0.0-20260530062302-292081249302
+	github.com/gen2brain/mpeg v0.5.0
 )
 
 require (

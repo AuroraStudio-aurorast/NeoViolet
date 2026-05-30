@@ -14,6 +14,7 @@ import (
 	"github.com/gopxl/beep/v2/wav"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/alacstream"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/mp2stream"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/opusstream"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
@@ -55,9 +56,20 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: MOD", "path", file.Name())
 		return ".mod", nil
 	case n >= 3 && string(buffer[0:3]) == "ID3":
+		// ID3v2 header: skip past the tag and check the actual MPEG layer.
+		if ext := detectMPEGBehindID3(buffer, n); ext != "" {
+			logger.Debug("Detected format: MPEG behind ID3 -> "+ext, "path", file.Name())
+			return ext, nil
+		}
 		logger.Debug("Detected format: MP3 (ID3)", "path", file.Name())
 		return ".mp3", nil
 	case n >= 2 && buffer[0] == 0xFF && (buffer[1]&0xE0) == 0xE0:
+		// MPEG sync word; check layer bits to distinguish MP2 from MP3.
+		layer := (buffer[1] >> 1) & 0x03
+		if layer == 2 { // Layer II -> MP2
+			logger.Debug("Detected format: MP2 (sync)", "path", file.Name())
+			return ".mp2", nil
+		}
 		logger.Debug("Detected format: MP3 (sync)", "path", file.Name())
 		return ".mp3", nil
 	case n >= 12 && string(buffer[0:4]) == "RIFF" && string(buffer[8:12]) == "WAVE":
@@ -103,6 +115,28 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	}
 }
 
+// detectMPEGBehindID3 skips past an ID3v2 header and checks the underlying
+// MPEG frame to distinguish MP2 (Layer II) from MP3 (Layer III).
+func detectMPEGBehindID3(buf []byte, n int) string {
+	if n < 10 {
+		return ""
+	}
+	// ID3v2 header: "ID3" (3) + major(1) + revision(1) + flags(1) + size(4 synchsafe)
+	tagSize := int(buf[6])<<21 | int(buf[7])<<14 | int(buf[8])<<7 | int(buf[9])
+	// Header is 10 bytes; the actual tag body is tagSize bytes
+	pastID3 := 10 + tagSize
+	if pastID3+2 > n {
+		return ""
+	}
+	if buf[pastID3] == 0xFF && (buf[pastID3+1]&0xE0) == 0xE0 {
+		layer := (buf[pastID3+1] >> 1) & 0x03
+		if layer == 2 {
+			return ".mp2"
+		}
+	}
+	return ".mp3"
+}
+
 func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekCloser, beep.Format, error) {
 	detectedExt, err := fd.DetectFormatByMagic(file)
 	if err != nil {
@@ -115,6 +149,11 @@ func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekClos
 	switch detectedExt {
 	case ".mp3":
 		streamer, format, err = mp3.Decode(file)
+	case ".mp2":
+		if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+			return nil, beep.Format{}, fmt.Errorf("mp2 seek: %w", seekErr)
+		}
+		streamer, format, err = mp2stream.DecodeMP2(file)
 	case ".wav":
 		streamer, format, err = wav.Decode(file)
 	case ".flac":
@@ -162,7 +201,7 @@ func isMODSignature(sig string) bool {
 }
 
 func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
+	return []string{".mp2", ".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
 }
 
 func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
@@ -179,6 +218,12 @@ func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamS
 			return nil, beep.Format{}, fmt.Errorf("mp3 decode requires io.ReadCloser")
 		}
 		streamer, format, err = mp3.Decode(rc)
+	case ".mp2":
+		rsc, ok := r.(io.ReadSeeker)
+		if !ok {
+			return nil, beep.Format{}, fmt.Errorf("mp2 decode requires io.ReadSeeker")
+		}
+		streamer, format, err = mp2stream.DecodeMP2(rsc)
 	case ".wav":
 		streamer, format, err = wav.Decode(r)
 	case ".flac":
