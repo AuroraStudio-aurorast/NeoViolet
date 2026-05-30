@@ -1613,7 +1613,7 @@ SOFTWARE.
 
 > This dependency is statically compiled into the program using `CGo`, and may not be included in all copies.
 
-Licensed under `BSD-3-Clause license`
+Licensed under **BSD-3-Clause license**
 
 ~~~
 Copyright (c) 2004-2026, OpenMPT Project Developers and Contributors
