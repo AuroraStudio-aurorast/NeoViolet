@@ -33,10 +33,8 @@ static size_t probe_recommended_size(void) {
 import "C"
 import (
 	"fmt"
-	"image"
 	"os"
 	"strings"
-	"sync"
 	"time"
 	"unsafe"
 
@@ -72,23 +70,11 @@ func OpenmptSupportedFormats() []string {
 }
 
 type OpenmptPlayer struct {
-	mu         sync.Mutex
-	mod        *C.openmpt_module
-	sampleRate int
+	baseSynth
+	mod *C.openmpt_module
 
 	renderSamples [][2]float64
 	renderPos     int
-
-	duration    time.Duration
-	elapsed     time.Duration
-	isPlaying   bool
-	isPaused    bool
-	closed      bool
-	finished    bool
-	volumeScale float64
-
-	title  string
-	artist string
 }
 
 func NewOpenmptPlayer(path string, sampleRate beep.SampleRate) (*OpenmptPlayer, error) {
@@ -111,15 +97,17 @@ func NewOpenmptPlayer(path string, sampleRate beep.SampleRate) (*OpenmptPlayer, 
 	title := metadata(mod, "title")
 	artist := metadata(mod, "artist")
 
-	return &OpenmptPlayer{
-		mod:         mod,
-		sampleRate:  int(sampleRate),
-		duration:    time.Duration(float64(C.openmpt_module_get_duration_seconds(mod)) * float64(time.Second)),
-		isPaused:    true,
-		volumeScale: 1.0,
-		title:       title,
-		artist:      artist,
-	}, nil
+	p := &OpenmptPlayer{
+		mod: mod,
+	}
+	p.sampleRate = sampleRate
+	p.duration = time.Duration(float64(C.openmpt_module_get_duration_seconds(mod)) * float64(time.Second))
+	p.isPaused = true
+	p.volumeScale = 1.0
+	p.title = title
+	p.artist = artist
+
+	return p, nil
 }
 
 func metadata(mod *C.openmpt_module, key string) string {
@@ -212,28 +200,10 @@ func (p *OpenmptPlayer) fillSamples(samples [][2]float64, vs float64, elapsed *t
 
 func (p *OpenmptPlayer) Err() error { return nil }
 
-func (p *OpenmptPlayer) Play() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.isPaused = false
-	p.isPlaying = true
-	p.finished = false
-	return nil
-}
-
-func (p *OpenmptPlayer) Pause() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.isPaused = true
-}
-
 func (p *OpenmptPlayer) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.isPaused = true
-	p.isPlaying = false
-	p.finished = false
-	p.elapsed = 0
+	p.baseStop()
 	p.renderSamples = nil
 	p.renderPos = 0
 }
@@ -241,7 +211,7 @@ func (p *OpenmptPlayer) Stop() {
 func (p *OpenmptPlayer) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.closed = true
+	p.baseClose()
 	if p.mod != nil {
 		C.openmpt_module_destroy(p.mod)
 		p.mod = nil
@@ -261,18 +231,6 @@ func (p *OpenmptPlayer) Duration() time.Duration {
 	return p.duration
 }
 
-func (p *OpenmptPlayer) SetVolume(vol float64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.volumeScale = clamp(vol, 0, 1)
-}
-
-func (p *OpenmptPlayer) Volume() float64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.volumeScale
-}
-
 func (p *OpenmptPlayer) Seek(pos time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -286,25 +244,7 @@ func (p *OpenmptPlayer) Seek(pos time.Duration) error {
 	return nil
 }
 
-func (p *OpenmptPlayer) Format() beep.Format {
-	return beep.Format{SampleRate: beep.SampleRate(p.sampleRate), NumChannels: 2, Precision: 4}
-}
-
 func (p *OpenmptPlayer) Streamer() Streamer { return p }
-
-func (p *OpenmptPlayer) Title() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.title
-}
-
-func (p *OpenmptPlayer) Artist() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.artist
-}
-
-func (p *OpenmptPlayer) CoverImage() image.Image { return nil }
 
 func (p *OpenmptPlayer) Open(path string) error {
 	return fmt.Errorf("openmpt player does not support Open, use NewOpenmptPlayer")

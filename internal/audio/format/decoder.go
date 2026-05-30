@@ -26,6 +26,72 @@ func NewFormatDecoder() *FormatDecoder {
 	return &FormatDecoder{}
 }
 
+// formatHandler describes how to decode one audio format from an io.Reader.
+type formatHandler struct {
+	extensions       []string
+	decode           func(r io.Reader) (beep.StreamSeekCloser, beep.Format, error)
+	decodeSeeker     func(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error)
+	decodeReadCloser func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error)
+}
+
+var formatTable = []formatHandler{
+	{
+		extensions: []string{".mp2"},
+		decodeSeeker: func(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
+			return mp2stream.DecodeMP2(r)
+		},
+	},
+	{
+		extensions: []string{".mp3"},
+		decodeReadCloser: func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+			return mp3.Decode(r)
+		},
+	},
+	{
+		extensions: []string{".wav"},
+		decode: func(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
+			return wav.Decode(r)
+		},
+	},
+	{
+		extensions: []string{".flac"},
+		decode: func(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
+			return flac.Decode(r)
+		},
+	},
+	{
+		extensions: []string{".ogg", ".oga"},
+		decodeReadCloser: func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
+			return vorbis.Decode(r)
+		},
+	},
+	{
+		extensions: []string{".opus"},
+		decodeSeeker: func(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
+			return opusstream.DecodeOGG(r)
+		},
+	},
+	{
+		extensions: []string{".m4a"},
+		decodeSeeker: func(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
+			return alacstream.DecodeM4A(r)
+		},
+	},
+}
+
+// extLookup maps a file extension (lower-case with dot) to its formatHandler.
+var extLookup map[string]*formatHandler
+
+func init() {
+	extLookup = make(map[string]*formatHandler)
+	for i := range formatTable {
+		h := &formatTable[i]
+		for _, ext := range h.extensions {
+			extLookup[ext] = h
+		}
+	}
+}
+
 func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	originalPos, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
@@ -56,7 +122,6 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: MOD", "path", file.Name())
 		return ".mod", nil
 	case n >= 3 && string(buffer[0:3]) == "ID3":
-		// ID3v2 header: skip past the tag and check the actual MPEG layer.
 		if ext := detectMPEGBehindID3(buffer, n); ext != "" {
 			logger.Debug("Detected format: MPEG behind ID3 -> "+ext, "path", file.Name())
 			return ext, nil
@@ -64,9 +129,8 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: MP3 (ID3)", "path", file.Name())
 		return ".mp3", nil
 	case n >= 2 && buffer[0] == 0xFF && (buffer[1]&0xE0) == 0xE0:
-		// MPEG sync word; check layer bits to distinguish MP2 from MP3.
 		layer := (buffer[1] >> 1) & 0x03
-		if layer == 2 { // Layer II -> MP2
+		if layer == 2 {
 			logger.Debug("Detected format: MP2 (sync)", "path", file.Name())
 			return ".mp2", nil
 		}
@@ -79,8 +143,6 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: FLAC", "path", file.Name())
 		return ".flac", nil
 	case n >= 4 && string(buffer[0:4]) == "OggS":
-		// Differentiate Opus from Vorbis: Opus ID page starts
-		// at offset 28 with "OpusHead", Vorbis has "vorbis".
 		if n >= 37 && string(buffer[28:36]) == "OpusHead" {
 			logger.Debug("Detected format: Opus/OGG", "path", file.Name())
 			return ".opus", nil
@@ -121,9 +183,7 @@ func detectMPEGBehindID3(buf []byte, n int) string {
 	if n < 10 {
 		return ""
 	}
-	// ID3v2 header: "ID3" (3) + major(1) + revision(1) + flags(1) + size(4 synchsafe)
 	tagSize := int(buf[6])<<21 | int(buf[7])<<14 | int(buf[8])<<7 | int(buf[9])
-	// Header is 10 bytes; the actual tag body is tagSize bytes
 	pastID3 := 10 + tagSize
 	if pastID3+2 > n {
 		return ""
@@ -143,36 +203,63 @@ func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekClos
 		detectedExt = filepath.Ext(path)
 	}
 
+	h := extLookup[detectedExt]
+	if h == nil {
+		return nil, beep.Format{}, ErrUnsupportedFormat
+	}
+
+	if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+		return nil, beep.Format{}, fmt.Errorf("%s seek: %w", detectedExt, seekErr)
+	}
+
 	var streamer beep.StreamSeekCloser
 	var format beep.Format
-
-	switch detectedExt {
-	case ".mp3":
-		streamer, format, err = mp3.Decode(file)
-	case ".mp2":
-		if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
-			return nil, beep.Format{}, fmt.Errorf("mp2 seek: %w", seekErr)
-		}
-		streamer, format, err = mp2stream.DecodeMP2(file)
-	case ".wav":
-		streamer, format, err = wav.Decode(file)
-	case ".flac":
-		streamer, format, err = flac.Decode(file)
-	case ".ogg", ".oga":
-		streamer, format, err = vorbis.Decode(file)
-	case ".m4a":
-		if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
-			return nil, beep.Format{}, fmt.Errorf("m4a seek: %w", seekErr)
-		}
-		streamer, format, err = alacstream.DecodeM4A(file)
-	case ".opus":
-		streamer, format, err = opusstream.DecodeOGG(file)
+	switch {
+	case h.decodeSeeker != nil:
+		streamer, format, err = h.decodeSeeker(file)
+	case h.decodeReadCloser != nil:
+		streamer, format, err = h.decodeReadCloser(file)
 	default:
-		return nil, beep.Format{}, ErrUnsupportedFormat
+		streamer, format, err = h.decode(file)
 	}
 
 	if err != nil {
 		return nil, beep.Format{}, fmt.Errorf("decode %s: %w", detectedExt, err)
+	}
+
+	return streamer, format, nil
+}
+
+func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
+	formatMime := strings.ToLower(ext)
+	h := extLookup[formatMime]
+	if h == nil {
+		return nil, beep.Format{}, ErrUnsupportedFormat
+	}
+
+	var streamer beep.StreamSeekCloser
+	var format beep.Format
+	var err error
+
+	switch {
+	case h.decodeSeeker != nil:
+		rsc, ok := r.(io.ReadSeeker)
+		if !ok {
+			return nil, beep.Format{}, fmt.Errorf("%s decode requires io.ReadSeeker", formatMime)
+		}
+		streamer, format, err = h.decodeSeeker(rsc)
+	case h.decodeReadCloser != nil:
+		rc, ok := r.(io.ReadCloser)
+		if !ok {
+			return nil, beep.Format{}, fmt.Errorf("%s decode requires io.ReadCloser", formatMime)
+		}
+		streamer, format, err = h.decodeReadCloser(rc)
+	default:
+		streamer, format, err = h.decode(r)
+	}
+
+	if err != nil {
+		return nil, beep.Format{}, fmt.Errorf("decode %s: %w", formatMime, err)
 	}
 
 	return streamer, format, nil
@@ -200,61 +287,29 @@ func isMODSignature(sig string) bool {
 	return modSignatures[sig]
 }
 
-func (fd *FormatDecoder) SupportedFormats() []string {
-	return []string{".mp2", ".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
+// MIMETypeToExt maps a MIME type (e.g. "audio/mpeg") to a file extension.
+func MIMETypeToExt(mime string) string {
+	mime = strings.ToLower(mime)
+	switch {
+	case strings.Contains(mime, "audio/mpeg"), strings.Contains(mime, "audio/mp3"):
+		return ".mp3"
+	case strings.Contains(mime, "audio/flac"):
+		return ".flac"
+	case strings.Contains(mime, "audio/wav"), strings.Contains(mime, "audio/x-wav"), strings.Contains(mime, "audio/wave"):
+		return ".wav"
+	case strings.Contains(mime, "audio/ogg"), strings.Contains(mime, "audio/vorbis"):
+		return ".ogg"
+	}
+	return ""
 }
 
-func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
-	var streamer beep.StreamSeekCloser
-	var format beep.Format
-	var err error
-
-	formatMime := strings.ToLower(ext)
-
-	switch formatMime {
-	case ".mp3":
-		rc, ok := r.(io.ReadCloser)
-		if !ok {
-			return nil, beep.Format{}, fmt.Errorf("mp3 decode requires io.ReadCloser")
-		}
-		streamer, format, err = mp3.Decode(rc)
-	case ".mp2":
-		rsc, ok := r.(io.ReadSeeker)
-		if !ok {
-			return nil, beep.Format{}, fmt.Errorf("mp2 decode requires io.ReadSeeker")
-		}
-		streamer, format, err = mp2stream.DecodeMP2(rsc)
-	case ".wav":
-		streamer, format, err = wav.Decode(r)
-	case ".flac":
-		streamer, format, err = flac.Decode(r)
-	case ".ogg", ".oga":
-		rc, ok := r.(io.ReadCloser)
-		if !ok {
-			return nil, beep.Format{}, fmt.Errorf("vorbis decode requires io.ReadCloser")
-		}
-		streamer, format, err = vorbis.Decode(rc)
-	case ".m4a":
-		rsc, ok := r.(io.ReadSeeker)
-		if !ok {
-			return nil, beep.Format{}, fmt.Errorf("m4a decode requires io.ReadSeeker")
-		}
-		streamer, format, err = alacstream.DecodeM4A(rsc)
-	case ".opus":
-		rsc, ok := r.(io.ReadSeeker)
-		if !ok {
-			return nil, beep.Format{}, fmt.Errorf("opus decode requires io.ReadSeeker")
-		}
-		streamer, format, err = opusstream.DecodeOGG(rsc)
-	default:
-		return nil, beep.Format{}, ErrUnsupportedFormat
+func (fd *FormatDecoder) SupportedFormats() []string {
+	var exts []string
+	for i := range formatTable {
+		exts = append(exts, formatTable[i].extensions...)
 	}
-
-	if err != nil {
-		return nil, beep.Format{}, fmt.Errorf("decode %s: %w", formatMime, err)
-	}
-
-	return streamer, format, nil
+	exts = append(exts, ".mid", ".midi", ".mod", ".xm", ".s3m", ".it")
+	return exts
 }
 
 var ErrUnsupportedFormat = &UnsupportedFormatError{}

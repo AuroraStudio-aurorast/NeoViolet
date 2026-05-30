@@ -7,6 +7,8 @@ import (
 
 	"github.com/gen2brain/mpeg"
 	"github.com/gopxl/beep/v2"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/streamcore"
 )
 
 // cachedFrame holds one decoded MP2 frame's audio samples.
@@ -17,18 +19,9 @@ type cachedFrame struct {
 
 // Streamer implements beep.StreamSeekCloser for MP2-encoded audio.
 type Streamer struct {
-	frames       []cachedFrame
-	totalSamples int
-	numChannels  int
-	sampleRate   beep.SampleRate
-
-	frameIndex    int
-	currentSample int
-	pos           int
-	buf           []float64
-	bufSamples    int
-
-	closed bool
+	streamcore.Core
+	frames     []cachedFrame
+	frameIndex int
 }
 
 // DecodeMP2 reads an MP2 audio stream and returns a beep.StreamSeekCloser.
@@ -87,18 +80,16 @@ func DecodeMP2(r io.ReadSeeker) (*Streamer, beep.Format, error) {
 		return nil, beep.Format{}, fmt.Errorf("mp2: no audio data found")
 	}
 
+	s := &Streamer{frames: frames}
+	s.TotalSamples = totalSamples
+	s.NumChannels = numChannels
+
 	f := beep.Format{
 		SampleRate:  sampleRate,
 		NumChannels: numChannels,
 		Precision:   2,
 	}
-
-	return &Streamer{
-		frames:       frames,
-		totalSamples: totalSamples,
-		numChannels:  numChannels,
-		sampleRate:   sampleRate,
-	}, f, nil
+	return s, f, nil
 }
 
 // toFrame converts an mpeg.Samples into a cachedFrame with float64 stereo pairs.
@@ -127,7 +118,7 @@ func toFrame(s *mpeg.Samples, numChannels int) cachedFrame {
 }
 
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
-	if s.closed {
+	if s.Closed {
 		return 0, false
 	}
 
@@ -135,20 +126,8 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	totalFilled := 0
 
 	for totalFilled < totalNeeded {
-		if s.pos < s.bufSamples {
-			framesToCopy := minInt(totalNeeded-totalFilled, s.bufSamples-s.pos)
-			for i := 0; i < framesToCopy; i++ {
-				srcIdx := (s.pos + i) * 2
-				samples[totalFilled+i][0] = s.buf[srcIdx]
-				if s.numChannels > 1 && srcIdx+1 < len(s.buf) {
-					samples[totalFilled+i][1] = s.buf[srcIdx+1]
-				} else {
-					samples[totalFilled+i][1] = s.buf[srcIdx]
-				}
-			}
-			s.pos += framesToCopy
-			s.currentSample += framesToCopy
-			totalFilled += framesToCopy
+		if s.Pos < s.BufSamples {
+			totalFilled += s.CopyToOutput(samples, totalNeeded, totalFilled)
 			continue
 		}
 
@@ -160,9 +139,9 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 		}
 
 		fr := s.frames[s.frameIndex]
-		s.buf = fr.data
-		s.bufSamples = len(fr.data) / 2
-		s.pos = 0
+		s.Buf = fr.data
+		s.BufSamples = len(fr.data) / 2
+		s.Pos = 0
 		s.frameIndex++
 	}
 
@@ -170,57 +149,37 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 }
 
 func (s *Streamer) Len() int {
-	return s.totalSamples
+	return s.TotalSamples
 }
 
 func (s *Streamer) Position() int {
-	return s.currentSample
+	return s.CurrentSample
 }
 
 func (s *Streamer) Seek(samples int) error {
-	if s.closed {
+	if s.Closed {
 		return fmt.Errorf("streamer is closed")
 	}
 	if samples < 0 {
 		samples = 0
 	}
-	if samples > s.totalSamples {
-		samples = s.totalSamples
+	if samples > s.TotalSamples {
+		samples = s.TotalSamples
 	}
 
 	accum := 0
 	for i, fr := range s.frames {
 		if accum+fr.samples > samples {
 			s.frameIndex = i
-			s.currentSample = accum
-			s.buf = nil
-			s.bufSamples = 0
-			s.pos = 0
+			s.CurrentSample = accum
+			s.ResetBuffer()
 			return nil
 		}
 		accum += fr.samples
 	}
 
 	s.frameIndex = len(s.frames)
-	s.currentSample = s.totalSamples
-	s.buf = nil
-	s.bufSamples = 0
-	s.pos = 0
+	s.CurrentSample = s.TotalSamples
+	s.ResetBuffer()
 	return nil
-}
-
-func (s *Streamer) Err() error {
-	return nil
-}
-
-func (s *Streamer) Close() error {
-	s.closed = true
-	return nil
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

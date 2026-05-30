@@ -3,9 +3,7 @@ package synth
 import (
 	"fmt"
 	"image"
-	"math"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/gopxl/beep/v2"
@@ -17,12 +15,11 @@ import (
 const midiBlockSize = 512
 
 type MidiPlayer struct {
-	mu sync.Mutex
+	baseSynth
 
 	synthesizer *meltysynth.Synthesizer
 	sequencer   *meltysynth.MidiFileSequencer
 	midiFile    *meltysynth.MidiFile
-	sampleRate  beep.SampleRate
 
 	renderBufL []float32
 	renderBufR []float32
@@ -31,17 +28,6 @@ type MidiPlayer struct {
 
 	seekTarget int
 	seeking    bool
-
-	duration    time.Duration
-	elapsed     time.Duration
-	isPlaying   bool
-	isPaused    bool
-	closed      bool
-	finished    bool
-	volumeScale float64
-
-	title  string
-	artist string
 }
 
 func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sampleRate beep.SampleRate) (*MidiPlayer, *meltysynth.SoundFont, error) {
@@ -81,37 +67,19 @@ func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sam
 	sequencer := meltysynth.NewMidiFileSequencer(synthesizer)
 	sequencer.Play(midiFile, false)
 
-	return &MidiPlayer{
+	p := &MidiPlayer{
 		synthesizer: synthesizer,
 		sequencer:   sequencer,
 		midiFile:    midiFile,
-		sampleRate:  sampleRate,
-		duration:    midiFile.GetLength(),
 		renderBufL:  make([]float32, midiBlockSize),
 		renderBufR:  make([]float32, midiBlockSize),
-		isPaused:    true,
-		volumeScale: 1.0,
-	}, sf, nil
-}
+	}
+	p.sampleRate = sampleRate
+	p.duration = midiFile.GetLength()
+	p.isPaused = true
+	p.volumeScale = 1.0
 
-func softClip(x float64) float64 {
-	if x > 3 {
-		return 1.0
-	}
-	if x < -3 {
-		return -1.0
-	}
-	return math.Tanh(x)
-}
-
-func clamp(v, lo, hi float64) float64 {
-	if v < lo {
-		return lo
-	}
-	if v > hi {
-		return hi
-	}
-	return v
+	return p, sf, nil
 }
 
 func (p *MidiPlayer) Stream(samples [][2]float64) (n int, ok bool) {
@@ -243,52 +211,19 @@ func (p *MidiPlayer) fillSamples(samples [][2]float64, vs float64, elapsed *time
 
 func (p *MidiPlayer) Err() error { return nil }
 
-func (p *MidiPlayer) Play() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	logger.Debug("MIDI player play")
-	p.isPaused = false
-	p.isPlaying = true
-	p.finished = false
-	return nil
-}
-
-func (p *MidiPlayer) Pause() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	logger.Debug("MIDI player pause")
-	p.isPaused = true
-}
-
 func (p *MidiPlayer) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	logger.Debug("MIDI player stop")
-	p.isPaused = true
-	p.isPlaying = false
-	p.finished = false
+	p.baseStop()
 	p.seeking = false
-	p.elapsed = 0
-}
-
-func (p *MidiPlayer) Toggle() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	logger.Debug("MIDI player toggle", "wasPaused", p.isPaused)
-	if p.isPaused || !p.isPlaying {
-		p.isPaused = false
-		p.isPlaying = true
-		p.finished = false
-	} else {
-		p.isPaused = true
-	}
 }
 
 func (p *MidiPlayer) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	logger.Debug("MIDI player close")
-	p.closed = true
+	p.baseClose()
 	p.seeking = false
 	p.sequencer.Stop()
 	return nil
@@ -300,54 +235,14 @@ func (p *MidiPlayer) IsPlaying() bool {
 	return p.isPlaying && !p.isPaused
 }
 
-func (p *MidiPlayer) Position() time.Duration {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.elapsed
-}
-
-func (p *MidiPlayer) Duration() time.Duration {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.duration
-}
-
-func (p *MidiPlayer) SetVolume(vol float64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.volumeScale = clamp(vol, 0, 1)
-}
-
-func (p *MidiPlayer) Volume() float64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.volumeScale
-}
-
-func (p *MidiPlayer) Format() beep.Format {
-	return beep.Format{SampleRate: p.sampleRate, NumChannels: 2, Precision: 4}
-}
-
 func (p *MidiPlayer) Streamer() Streamer { return p }
 
 func (p *MidiPlayer) Path() string { return "" }
-
-func (p *MidiPlayer) Title() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.title
-}
 
 func (p *MidiPlayer) SetTitle(title string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.title = title
-}
-
-func (p *MidiPlayer) Artist() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.artist
 }
 
 func (p *MidiPlayer) SetArtist(artist string) {

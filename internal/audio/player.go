@@ -52,6 +52,7 @@ type Player struct {
 	decoder        *format.FormatDecoder
 	tagReader      *format.MetadataReader
 	synthCtrl      synth.Controller
+	synthActive    bool
 	sfPath         string
 	cachedSF       *meltysynth.SoundFont
 	cachedSFPath   string
@@ -94,19 +95,19 @@ func (p *Player) Open(path string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	detectFile, err := os.Open(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open file: %w", err)
 	}
-	ext, detectErr := p.decoder.DetectFormatByMagic(detectFile)
-	detectFile.Close()
 
+	ext, detectErr := p.decoder.DetectFormatByMagic(file)
 	synthExt := ext
 	if detectErr != nil {
 		synthExt = filepath.Ext(path)
 	}
 
 	if isSyntheticFormat(synthExt) {
+		file.Close()
 		logger.Info("Detected synthetic format", "path", path, "ext", synthExt)
 		return p.openSynthetic(path, synthExt)
 	}
@@ -115,15 +116,13 @@ func (p *Player) Open(path string) error {
 		speaker.Clear()
 		p.isPlaying = false
 	}
-	if p.streamer != nil {
-		if p.file != nil {
-			p.file.Close()
-		}
+	if p.streamer != nil && p.file != nil {
+		p.file.Close()
 	}
 
-	file, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("open audio file: %w", err)
+	if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
+		file.Close()
+		return fmt.Errorf("file seek: %w", seekErr)
 	}
 
 	streamer, format, err := p.decoder.Decode(file, path)
@@ -145,6 +144,7 @@ func (p *Player) Open(path string) error {
 	p.isPaused = true
 	p.isPlaying = false
 	p.path = path
+	p.synthActive = false
 
 	p.ctrl = &beep.Ctrl{
 		Streamer: streamer,
@@ -190,11 +190,26 @@ func (p *Player) readTags(path string) {
 	}
 }
 
+// closeStreamer stops playback and closes the file/streamer resources. Caller must hold p.mu.
+func (p *Player) closeStreamer() {
+	if p.isPlaying {
+		speaker.Clear()
+		p.isPlaying = false
+	}
+	if p.streamer != nil && p.file != nil {
+		p.file.Close()
+		p.file = nil
+	}
+	p.streamer = nil
+	p.ctrl = nil
+	p.volume = nil
+}
+
 func (p *Player) Play() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		logger.Debug("Synth play")
 		return p.playSynthetic()
 	}
@@ -223,7 +238,7 @@ func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		logger.Debug("Synth pause")
 		p.synthCtrl.Pause()
 		p.isPaused = true
@@ -244,7 +259,7 @@ func (p *Player) Resume() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		logger.Debug("Synth resume")
 		p.synthCtrl.Play()
 		p.isPaused = false
@@ -265,7 +280,7 @@ func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		logger.Debug("Synth stop")
 		p.synthCtrl.Stop()
 		p.isPlaying = false
@@ -280,7 +295,7 @@ func (p *Player) Stop() {
 }
 
 func (p *Player) Toggle() {
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		if p.isPaused || !p.isPlaying {
 			p.Play()
 		} else {
@@ -299,7 +314,7 @@ func (p *Player) Seek(position time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		logger.Debug("Synth seek", "position", position)
 		return p.synthCtrl.Seek(position)
 	}
@@ -327,7 +342,7 @@ func (p *Player) Seek(position time.Duration) error {
 
 	p.ctrl = &beep.Ctrl{
 		Streamer: p.streamer,
-		Paused:   true,
+		Paused:   !wasPlaying,
 	}
 	p.volume = &effects.Volume{
 		Streamer: p.ctrl,
@@ -363,7 +378,7 @@ func (p *Player) SetVolume(vol float64) {
 	}
 	p.linearVolume = vol
 
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		p.synthCtrl.SetVolume(vol)
 	}
 	logger.Debug("Volume set", "volume", vol)
@@ -385,7 +400,7 @@ func (p *Player) IsPlaying() bool {
 func (p *Player) Duration() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		return p.synthCtrl.Duration()
 	}
 	if p.streamer == nil {
@@ -397,7 +412,7 @@ func (p *Player) Duration() time.Duration {
 func (p *Player) Position() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		return p.synthCtrl.Position()
 	}
 	if p.streamer == nil {
@@ -410,7 +425,7 @@ func (p *Player) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		logger.Debug("Player.Close (synth)")
 		return p.synthCtrl.Close()
 	}
@@ -438,7 +453,7 @@ func (p *Player) Path() string {
 func (p *Player) Title() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		return p.synthCtrl.Title()
 	}
 	return p.title
@@ -447,7 +462,7 @@ func (p *Player) Title() string {
 func (p *Player) Artist() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		return p.synthCtrl.Artist()
 	}
 	return p.artist
@@ -456,7 +471,7 @@ func (p *Player) Artist() string {
 func (p *Player) CoverImage() image.Image {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		return p.synthCtrl.CoverImage()
 	}
 	return p.coverImage
@@ -465,7 +480,7 @@ func (p *Player) CoverImage() image.Image {
 func (p *Player) Format() beep.Format {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthCtrl != nil {
+	if p.synthActive && p.synthCtrl != nil {
 		return p.synthCtrl.Streamer().Format()
 	}
 	return p.format
@@ -478,7 +493,6 @@ var syntheticFormats = map[string]bool{
 	".xm":   true,
 	".s3m":  true,
 	".it":   true,
-	".mptm": true,
 	".stm":  true,
 	".nst":  true,
 	".wow":  true,
@@ -503,7 +517,6 @@ func isSyntheticFormat(ext string) bool {
 	if syntheticFormats[ext] {
 		return true
 	}
-	// Check against libopenmpt's supported extensions (dynamic, avoids stale lists)
 	for _, se := range synth.OpenmptSupportedFormats() {
 		if "."+se == ext {
 			return true
@@ -515,19 +528,12 @@ func isSyntheticFormat(ext string) bool {
 func (p *Player) openSynthetic(path, ext string) error {
 	logger.Info("Opening synthetic", "path", path, "ext", ext)
 
-	if p.isPlaying {
-		speaker.Clear()
-		p.isPlaying = false
-	}
-	if p.streamer != nil {
-		if p.file != nil {
-			p.file.Close()
-		}
-	}
+	p.closeStreamer()
 	if p.synthCtrl != nil {
 		p.synthCtrl.Close()
 		p.synthCtrl = nil
 	}
+	p.synthActive = false
 
 	sr := speakerSampleRate
 	if sr == 0 {
@@ -540,10 +546,11 @@ func (p *Player) openSynthetic(path, ext string) error {
 	switch ext {
 	case ".mid", ".midi":
 		return p.openMIDISynth(path, sr)
-	case ".mod", ".xm", ".s3m", ".it", ".mptm":
-		return p.openTrackerSynth(path, ext, sr)
 	default:
-		return fmt.Errorf("unknown synthetic format: %s", ext)
+		// All tracker formats (MOD, XM, S3M, IT, and OpenMPT-only
+		// formats like MPTM) route through openTrackerSynth — it tries
+		// OpenMPT first, then falls back to gotracker.
+		return p.openTrackerSynth(path, ext, sr)
 	}
 }
 
@@ -569,6 +576,7 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 	mp.SetVolume(p.linearVolume)
 
 	p.synthCtrl = mp
+	p.synthActive = true
 	p.path = path
 	p.isPaused = true
 	p.isPlaying = false
@@ -609,6 +617,7 @@ func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 	ctrl.SetVolume(p.linearVolume)
 
 	p.synthCtrl = ctrl
+	p.synthActive = true
 	p.path = path
 	p.isPaused = true
 	p.isPlaying = false

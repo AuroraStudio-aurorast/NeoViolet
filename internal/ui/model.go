@@ -120,25 +120,18 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	}
 	pb := progress.New(pbOpts...)
 
-	vb := progress.New(
+	vbOpts := []progress.Option{
 		progress.WithColors(
 			lipgloss.Color("#00FF00"),
 			lipgloss.Color("#FF0000"),
 		),
 		progress.WithFillCharacters([]rune(cfg.VolumeBar.Fill[0])[0], []rune(cfg.VolumeBar.Fill[1])[0]),
 		progress.WithScaled(false),
-	)
-	if !cfg.VolumeBar.ShowPercentage {
-		vb = progress.New(
-			progress.WithColors(
-				lipgloss.Color("#00FF00"),
-				lipgloss.Color("#FF0000"),
-			),
-			progress.WithFillCharacters([]rune(cfg.VolumeBar.Fill[0])[0], []rune(cfg.VolumeBar.Fill[1])[0]),
-			progress.WithScaled(false),
-			progress.WithoutPercentage(),
-		)
 	}
+	if !cfg.VolumeBar.ShowPercentage {
+		vbOpts = append(vbOpts, progress.WithoutPercentage())
+	}
+	vb := progress.New(vbOpts...)
 	vb.SetWidth(cfg.VolumeBar.Width)
 
 	h := help.New()

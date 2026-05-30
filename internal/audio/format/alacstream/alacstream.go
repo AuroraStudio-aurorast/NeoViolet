@@ -9,25 +9,16 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/alac"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/mp4"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/streamcore"
 )
 
 // Streamer implements beep.StreamSeekCloser for ALAC-encoded audio in M4A/MP4.
 type Streamer struct {
-	reader      io.ReadSeeker
-	track       *mp4.ALACTrack
-	decoder     *alac.Decoder
-	sampleRate  beep.SampleRate
-	numChannels int
-	sampleSize  int
-
-	currentSample int
-	totalSamples  int
-	pos           int
-
-	buf        []float64
-	bufSamples int
-
-	closed bool
+	streamcore.Core
+	reader     io.ReadSeeker
+	track      *mp4.ALACTrack
+	decoder    *alac.Decoder
+	sampleSize int
 }
 
 // DecodeM4A opens an M4A file and returns a beep.StreamSeekCloser for the ALAC track.
@@ -60,27 +51,27 @@ func DecodeM4A(reader io.ReadSeeker) (*Streamer, beep.Format, error) {
 		sampleRate = beep.SampleRate(decoder.SampleRate())
 	}
 
+	s := &Streamer{
+		reader:     reader,
+		track:      track,
+		decoder:    decoder,
+		sampleSize: int(track.SampleSize),
+	}
+	s.TotalSamples = totalSamples
+	s.NumChannels = int(track.Channels)
+
 	f := beep.Format{
 		SampleRate:  sampleRate,
 		NumChannels: int(track.Channels),
 		Precision:   2,
 	}
 
-	return &Streamer{
-		reader:        reader,
-		track:         track,
-		decoder:       decoder,
-		sampleRate:    sampleRate,
-		numChannels:   int(track.Channels),
-		sampleSize:    int(track.SampleSize),
-		currentSample: 0,
-		totalSamples:  totalSamples,
-	}, f, nil
+	return s, f, nil
 }
 
 // Stream reads audio samples into the provided buffer.
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
-	if s.closed {
+	if s.Closed {
 		return 0, false
 	}
 
@@ -88,24 +79,12 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	totalFilled := 0
 
 	for totalFilled < totalNeeded {
-		if s.pos < s.bufSamples {
-			framesToCopy := minInt(totalNeeded-totalFilled, s.bufSamples-s.pos)
-			for i := 0; i < framesToCopy; i++ {
-				srcIdx := (s.pos + i) * 2
-				samples[totalFilled+i][0] = s.buf[srcIdx]
-				if s.numChannels > 1 && srcIdx+1 < len(s.buf) {
-					samples[totalFilled+i][1] = s.buf[srcIdx+1]
-				} else {
-					samples[totalFilled+i][1] = s.buf[srcIdx]
-				}
-			}
-			s.pos += framesToCopy
-			s.currentSample += framesToCopy
-			totalFilled += framesToCopy
+		if s.Pos < s.BufSamples {
+			totalFilled += s.CopyToOutput(samples, totalNeeded, totalFilled)
 			continue
 		}
 
-		frameIndex := uint32(s.currentSample / int(s.decoder.MaxSamplesPerFrame))
+		frameIndex := uint32(s.CurrentSample / int(s.decoder.MaxSamplesPerFrame))
 		if int(frameIndex) >= len(s.track.SampleSizes) {
 			if totalFilled == 0 {
 				return 0, false
@@ -121,17 +100,12 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 			return totalFilled, true
 		}
 
-		s.buf = pcmToFloat64(pcm, s.numChannels, s.sampleSize)
-		s.bufSamples = len(s.buf) / 2
-		s.pos = 0
+		s.Buf = pcmToFloat64(pcm, s.NumChannels, s.sampleSize)
+		s.BufSamples = len(s.Buf) / 2
+		s.Pos = 0
 	}
 
 	return totalFilled, true
-}
-
-// Err returns any error that occurred during streaming.
-func (s *Streamer) Err() error {
-	return nil
 }
 
 func (s *Streamer) decodeFrame(index uint32) ([]byte, error) {
@@ -185,39 +159,21 @@ func pcmToFloat64(pcm []byte, numChannels, sampleSize int) []float64 {
 	return out
 }
 
-func (s *Streamer) Len() int {
-	return s.totalSamples
-}
+func (s *Streamer) Len() int { return s.TotalSamples }
 
-func (s *Streamer) Position() int {
-	return s.currentSample
-}
+func (s *Streamer) Position() int { return s.CurrentSample }
 
 func (s *Streamer) Seek(samples int) error {
-	if s.closed {
+	if s.Closed {
 		return fmt.Errorf("streamer is closed")
 	}
 	if samples < 0 {
 		samples = 0
 	}
-	if samples > s.totalSamples {
-		samples = s.totalSamples
+	if samples > s.TotalSamples {
+		samples = s.TotalSamples
 	}
-	s.currentSample = samples
-	s.pos = 0
-	s.buf = nil
-	s.bufSamples = 0
+	s.CurrentSample = samples
+	s.ResetBuffer()
 	return nil
-}
-
-func (s *Streamer) Close() error {
-	s.closed = true
-	return nil
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

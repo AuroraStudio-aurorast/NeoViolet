@@ -160,13 +160,17 @@ func TestDetectFormatByMagic_empty(t *testing.T) {
 func TestSupportedFormats(t *testing.T) {
 	fd := NewFormatDecoder()
 	formats := fd.SupportedFormats()
-	expected := []string{".mp2", ".mp3", ".wav", ".flac", ".ogg", ".oga", ".opus", ".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm", ".m4a"}
+	expected := map[string]bool{".mp2": true, ".mp3": true, ".wav": true, ".flac": true, ".ogg": true, ".oga": true, ".opus": true, ".mid": true, ".midi": true, ".mod": true, ".xm": true, ".s3m": true, ".it": true, ".m4a": true}
 	if len(formats) != len(expected) {
-		t.Fatalf("SupportedFormats() = %v, want %v", formats, expected)
+		t.Fatalf("SupportedFormats() = %d items (%v), want %d", len(formats), formats, len(expected))
 	}
-	for i, f := range formats {
-		if f != expected[i] {
-			t.Errorf("SupportedFormats()[%d] = %q, want %q", i, f, expected[i])
+	for _, f := range formats {
+		if !expected[f] {
+			t.Errorf("unexpected format %q", f)
 		}
+		delete(expected, f)
+	}
+	if len(expected) > 0 {
+		t.Errorf("missing formats: %v", expected)
 	}
 }

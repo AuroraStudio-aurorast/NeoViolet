@@ -16,7 +16,8 @@ import (
 	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/speaker"
 
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
+		"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 func isURL(path string) bool {
@@ -24,18 +25,7 @@ func isURL(path string) bool {
 }
 
 func detectFormatFromContentType(ct string) string {
-	ct = strings.ToLower(ct)
-	switch {
-	case strings.Contains(ct, "audio/mpeg"), strings.Contains(ct, "audio/mp3"):
-		return ".mp3"
-	case strings.Contains(ct, "audio/flac"):
-		return ".flac"
-	case strings.Contains(ct, "audio/wav"), strings.Contains(ct, "audio/x-wav"), strings.Contains(ct, "audio/wave"):
-		return ".wav"
-	case strings.Contains(ct, "audio/ogg"), strings.Contains(ct, "audio/vorbis"):
-		return ".ogg"
-	}
-	return ""
+	return format.MIMETypeToExt(ct)
 }
 
 type remoteReadSeeker struct {

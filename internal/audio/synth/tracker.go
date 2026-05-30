@@ -4,9 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"image"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/gopxl/beep/v2"
@@ -24,12 +22,11 @@ import (
 )
 
 type TrackerPlayer struct {
-	mu sync.Mutex
+	baseSynth
 
 	machine      machine.MachineTicker
 	songData     song.Data
 	userSettings settings.UserSettings
-	sampleRate   beep.SampleRate
 
 	mixer          mixing.Mixer
 	sampler        *sampler.Sampler
@@ -41,16 +38,6 @@ type TrackerPlayer struct {
 	seekTarget int
 	seeking    bool
 
-	duration    time.Duration
-	elapsed     time.Duration
-	isPlaying   bool
-	isPaused    bool
-	closed      bool
-	finished    bool
-	volumeScale float64
-
-	title      string
-	artist     string
 	songFormat string
 }
 
@@ -85,19 +72,19 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 	tp := &TrackerPlayer{
 		songData:       songData,
 		userSettings:   us,
-		sampleRate:     sampleRate,
 		mixer:          mixing.Mixer{Channels: 2},
 		receivedPremix: make(chan *output.PremixData, 1),
-		isPaused:       true,
-		volumeScale:    1.0,
+		songFormat:     songFmtKey,
 	}
+	tp.sampleRate = sampleRate
+	tp.isPaused = true
+	tp.volumeScale = 1.0
 
 	name := songData.GetName()
 	if name != "" {
 		tp.title = name
 	}
 	tp.artist = formatDisplayName(songFmtKey)
-	tp.songFormat = songFmtKey
 
 	out := sampler.NewSampler(int(sampleRate), 2, 1.0, func(premix *output.PremixData) {
 		tp.receivedPremix <- premix
@@ -278,53 +265,21 @@ func (p *TrackerPlayer) renderOneTick() {
 
 func (p *TrackerPlayer) Err() error { return nil }
 
-func (p *TrackerPlayer) Play() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	logger.Debug("Tracker player play")
-	p.isPaused = false
-	p.isPlaying = true
-	p.finished = false
-	return nil
-}
-
-func (p *TrackerPlayer) Pause() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	logger.Debug("Tracker player pause")
-	p.isPaused = true
-}
-
 func (p *TrackerPlayer) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	logger.Debug("Tracker player stop")
-	p.isPaused = true
-	p.isPlaying = false
-	p.finished = false
+	p.baseStop()
 	p.seeking = false
-	p.elapsed = 0
 	p.renderSamples = nil
 	p.renderPos = 0
-}
-
-func (p *TrackerPlayer) Toggle() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.isPaused || !p.isPlaying {
-		p.isPaused = false
-		p.isPlaying = true
-		p.finished = false
-	} else {
-		p.isPaused = true
-	}
 }
 
 func (p *TrackerPlayer) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	logger.Debug("Tracker player close")
-	p.closed = true
+	p.baseClose()
 	p.seeking = false
 	return nil
 }
@@ -335,49 +290,7 @@ func (p *TrackerPlayer) IsPlaying() bool {
 	return p.isPlaying && !p.isPaused
 }
 
-func (p *TrackerPlayer) Position() time.Duration {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.elapsed
-}
-
-func (p *TrackerPlayer) Duration() time.Duration {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.duration
-}
-
-func (p *TrackerPlayer) SetVolume(vol float64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.volumeScale = clamp(vol, 0, 1)
-}
-
-func (p *TrackerPlayer) Volume() float64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.volumeScale
-}
-
-func (p *TrackerPlayer) Format() beep.Format {
-	return beep.Format{SampleRate: p.sampleRate, NumChannels: 2, Precision: 4}
-}
-
 func (p *TrackerPlayer) Streamer() Streamer { return p }
-
-func (p *TrackerPlayer) Title() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.title
-}
-
-func (p *TrackerPlayer) Artist() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.artist
-}
-
-func (p *TrackerPlayer) CoverImage() image.Image { return nil }
 
 func (p *TrackerPlayer) Seek(pos time.Duration) error {
 	p.mu.Lock()
@@ -409,7 +322,7 @@ func formatKeyFromExt(ext string) string {
 		return "xm"
 	case ".s3m":
 		return "s3m"
-	case ".it", ".mptm":
+	case ".it":
 		return "it"
 	default:
 		if len(ext) > 1 && ext[0] == '.' {
