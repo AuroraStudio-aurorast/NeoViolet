@@ -161,13 +161,32 @@ func renderFooter(m *Model) string {
 	var lyricText string
 	maxWidth := m.UI.Width - 6
 
-	if m.Audio.Lyrics != nil && m.Audio.ShowLyrics && len(m.Audio.ActiveLyricLines) > 0 {
-		active := m.Audio.ActiveLyricLines
-		parts := make([]string, 0, len(active))
-		for _, line := range active {
-			parts = append(parts, m.Audio.Lyrics.LineDisplayText(line))
+	if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
+		if len(m.Audio.ActiveLyricLines) > 0 {
+			active := m.Audio.ActiveLyricLines
+			parts := make([]string, 0, len(active))
+			for _, line := range active {
+				parts = append(parts, m.Audio.Lyrics.LineDisplayText(line))
+			}
+			lyricText = strings.Join(parts, " | ")
+		} else if m.Audio.LyricNextIndex >= 0 && m.Audio.LyricNextIndex < len(m.Audio.Lyrics.Lines) {
+			// Show waiting dots if the total gap (previous line end to next line start)
+			// exceeds 5 seconds, otherwise use a simple placeholder.
+			if m.Audio.LyricGapDuration > 5*time.Second {
+				// Dots animate in the last 3 seconds before the lyric begins.
+				nextLine := m.Audio.Lyrics.Lines[m.Audio.LyricNextIndex]
+				remaining := nextLine.Time - m.Audio.Elapsed
+				secs := remaining.Seconds()
+				dots := buildLyricCountdown(secs, m.Icons.LyricFilled, m.Icons.LyricEmpty)
+				nextText := m.Audio.Lyrics.LineDisplayText(nextLine)
+				lyricText = dots + "  " + nextText
+			} else {
+				lyricText = "-"
+			}
+		} else {
+			// Past end or no upcoming lyric: show placeholder
+			lyricText = "-"
 		}
-		lyricText = strings.Join(parts, " | ")
 	}
 
 	var lyricRows []string
@@ -250,6 +269,29 @@ func renderSingleLyricLine(lineText string, maxWidth int, scrollOffset int, acce
 	return lyricStyle.Copy().
 		Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
 		Width(maxWidth).Render(lineText)
+}
+
+// buildLyricCountdown returns a 3-dot countdown string based on seconds remaining
+// until the next lyric line. Icon-theme-aware via filled/empty parameters.
+// Only called when secs > 5 (long gap); the dots animate in the last 3 seconds:
+//
+//	s > 3s:  ○ ○ ○  (long wait, all empty)
+//	2-3s:    ○ ○ ●  (one filled, countdown begins)
+//	1-2s:    ○ ● ●  (two filled)
+//	≤ 1s:    ● ● ●  (all filled, imminent)
+func buildLyricCountdown(secs float64, filled, empty string) string {
+	var a, b, c string
+	switch {
+	case secs > 3:
+		a, b, c = empty, empty, empty
+	case secs > 2:
+		a, b, c = empty, empty, filled
+	case secs > 1:
+		a, b, c = empty, filled, filled
+	default:
+		a, b, c = filled, filled, filled
+	}
+	return a + " " + b + " " + c
 }
 
 func renderHelp(m *Model) string {

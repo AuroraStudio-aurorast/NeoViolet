@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"sort"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -109,6 +110,10 @@ func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
 }
 
 func (a *AudioState) UpdateLyricIndex() {
+	// Reset gap tracking state; set below if in a gap
+	a.LyricNextIndex = -1
+	a.LyricGapDuration = 0
+
 	if a.Lyrics == nil {
 		a.LyricIndex = -1
 		a.ActiveLyricLines = nil
@@ -147,6 +152,34 @@ func (a *AudioState) UpdateLyricIndex() {
 		}
 	}
 	a.LyricIndex = -1
+
+	// Gap detection: no active lines -> find the next upcoming lyric line
+	if len(active) == 0 && len(a.Lyrics.Lines) > 0 {
+		filterAgent := a.Lyrics.AgentFilter
+		nextIdx := sort.Search(len(a.Lyrics.Lines), func(i int) bool {
+			return a.Lyrics.Lines[i].Time > a.Elapsed
+		})
+		// Advance past the gap to the first line matching the agent filter
+		for filterAgent != "" && nextIdx < len(a.Lyrics.Lines) && a.Lyrics.Lines[nextIdx].Agent != filterAgent {
+			nextIdx++
+		}
+		a.LyricNextIndex = nextIdx
+
+		// Total gap duration: from previous line's end (or Time if End==0) to
+		// next line's Time. For song start (nextIdx==0), gap starts at 0.
+		// Used by the view to decide dots (>5s) vs placeholder (<=5s).
+		if nextIdx < len(a.Lyrics.Lines) {
+			gapStart := time.Duration(0)
+			if nextIdx > 0 {
+				prev := a.Lyrics.Lines[nextIdx-1]
+				gapStart = prev.End
+				if gapStart <= 0 {
+					gapStart = prev.Time
+				}
+			}
+			a.LyricGapDuration = a.Lyrics.Lines[nextIdx].Time - gapStart
+		}
+	}
 }
 
 func (a *AudioState) AdvanceLyricScroll(scrollSpeed int, maxWidth int) {

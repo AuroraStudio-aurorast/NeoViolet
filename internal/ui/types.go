@@ -131,6 +131,16 @@ type AudioState struct {
 	ActiveLyricLines []lyrics.LyricLine
 
 	lastActiveSig string // signature for detecting active-line changes
+
+	// LyricNextIndex is the index of the upcoming lyric line when no active lines exist.
+	// -1 means no upcoming lyric (past end or no lyrics loaded).
+	// >=0 indicates a gap — the view shows countdown dots until this line begins.
+	LyricNextIndex int
+
+	// LyricGapDuration is the total duration of the current gap (end-of-previous
+	// line to start-of-next line). Used to decide whether to show countdown dots
+	// (gap >5s) or a simple placeholder (gap ≤5s).
+	LyricGapDuration time.Duration
 }
 
 type UIState struct {
