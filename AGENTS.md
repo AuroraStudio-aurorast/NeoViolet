@@ -118,7 +118,7 @@ testdata/               # Shared test fixtures (*.mp3, *.flac, *.m4a, *.lrc, etc
 ## Architecture & Design Decisions
 
 - **Bubble Tea Elm architecture:** Model → Update (via `tea.Msg`) → View. All state mutations happen through message handlers in `update.go`; never mutate model state outside of `Update()`.
-- **Pluggable lyrics parsers:** Each format (LRC, TTML, QRC, YRC, ESLRC, LYS, embedded) implements `LyricParser` and registers via `lyrics.RegisterParser()`. The registry iterates in priority order and uses the first successful parse.
+- **Pluggable lyrics parsers:** Each format (LRC, TTML, QRC, YRC, ESLRC, LYS, embedded) implements `LyricParser` and registers via `lyrics.RegisterParser()`. The registry iterates in priority order and uses the first successful parse. TTML and LYS support multi-agent with overlapping line rendering.
 - **Platform abstraction via build tags:** Media control selects implementation at compile time — `controller_linux.go` (MPRIS/D-Bus) vs `controller_stub.go` (no-op). Add new platform support by creating a new `controller_<os>.go`.
 - **Config-first startup:** On first run, `config.ConfigExists()` returns false, triggering a setup wizard (`ui/wizard`) before the main TUI launches. Config is persisted as JSON next to the binary.
 - **Cross-platform audio:** `gopxl/beep` provides the core playback loop; format-specific decoders in `audio/format/` handle WAV/MP3/FLAC/OGG/Opus/ALAC (M4A). MIDI requires a SoundFont `.sf2` file. Tracker modules (MOD/XM/IT/S3M) use `gotracker/playback` with an optional `libopenmpt` backend enabled via build tag.

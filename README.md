@@ -34,7 +34,7 @@
 | `m4a/alac` | Apple Lossless |  |
 | `opus` | Opus |  |
 | `mp2` | MPEG-1 Audio Layer II |  |
-| `mid`, `midi` | Musical Instrument Digital Interface | requires .sf2 |
+| `mid`, `midi` | Musical Instrument Digital Interface | requires SoundFont |
 | `mod` | Module Music |  |
 | `xm` | Extended Module |  |
 | `it` | Impulse Tracker |  |
@@ -52,9 +52,20 @@
 | `eslrc` | Enhanced Synced Lyrics File | EXPERIMENTAL |
 | `lys` | LYS Lyrics File | EXPERIMENTAL |
 
+## Usage
+
+Simply run:
+~~~bash
+./neoviolet /path/to/audiofile
+~~~
+
+> [!TIP]
+> **Modern terminal emulators like Windows Terminal, Konsole, iTerm2 or Ghostty is recommended!**
+> Issues may occurred when using this program on outdated terminal emulators like xterm.
+
 ## Build
 
-Checkout [`BUILD.md`](./docs/BUILD.md)
+Checkout [`BUILD.md`](./docs/BUILD.md) for more infomation!
 
 ## License
 
