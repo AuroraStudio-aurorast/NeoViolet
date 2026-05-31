@@ -269,7 +269,23 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	}
 
 	switch cmd {
-	case "quit", "q", "wq":
+	case "w", "save":
+		m.Config.DefaultVolume = m.Audio.Volume
+		if err := m.Config.Save(); err != nil {
+			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
+		}
+		return m, nil
+
+	case "wq":
+		// Save config then quit gracefully
+		m.Config.DefaultVolume = m.Audio.Volume
+		if err := m.Config.Save(); err != nil {
+			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
+		}
+		m.cleanup()
+		return m, tea.Quit
+
+	case "quit", "q":
 		// Graceful quit with cleanup
 		m.cleanup()
 		return m, tea.Quit

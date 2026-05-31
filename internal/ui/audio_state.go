@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"math"
 	"time"
 
 	"charm.land/lipgloss/v2"
@@ -38,7 +39,7 @@ func clampVolume(v float64) float64 {
 	if v < 0 {
 		return 0
 	}
-	return v
+	return math.Round(v*100) / 100
 }
 
 func (a *AudioState) AdjustVolume(delta float64) {
