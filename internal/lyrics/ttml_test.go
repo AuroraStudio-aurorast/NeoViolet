@@ -194,10 +194,10 @@ func TestTTML_NoParagraphs(t *testing.T) {
 
 func TestTTML_SortedOutput(t *testing.T) {
 	unsorted := `<tt xmlns="http://www.w3.org/ns/ttml"><body><div>
-		<p begin="00:00:10.000">Later</p>
-		<p begin="00:00:01.000">Earlier</p>
-		<p begin="00:00:05.000">Middle</p>
-	</div></body></tt>`
+			<p begin="00:00:10.000">Later</p>
+			<p begin="00:00:01.000">Earlier</p>
+			<p begin="00:00:05.000">Middle</p>
+		</div></body></tt>`
 
 	d, err := parseTTML(unsorted)
 	if err != nil {
@@ -430,10 +430,10 @@ func TestTTML_CJKLangNoSpace(t *testing.T) {
     xml:lang="zh-CN">
   <body><div xml:lang="zh-CN">
     <p begin="1.345" end="3.071" ttm:agent="v1">
-      <span begin="1.345" end="1.548">我</span>
-      <span begin="1.548" end="1.938">找到</span>
-      <span begin="1.938" end="2.198">了</span>
-      <span begin="2.198" end="2.770">你</span>
+      <span begin="1.345" end="1.548">` + "我" + `</span>
+      <span begin="1.548" end="1.938">` + "找到" + `</span>
+      <span begin="1.938" end="2.198">` + "了" + `</span>
+      <span begin="2.198" end="2.770">` + "你" + `</span>
     </p>
   </div></body>
 </tt>`
@@ -447,7 +447,7 @@ func TestTTML_CJKLangNoSpace(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(d.Lines))
 	}
 
-	if d.Lines[0].Text != "我找到了你" {
+	if d.Lines[0].Text != `我找到了你` {
 		t.Errorf("CJK text should have no spaces between words, got %q", d.Lines[0].Text)
 	}
 	if len(d.Lines[0].Words) != 4 {
@@ -459,10 +459,10 @@ func TestTTML_CJKAutoDetectNoSpace(t *testing.T) {
 	cjkNoLang := `<tt xmlns="http://www.w3.org/ns/ttml">
   <body><div>
     <p begin="1.345" end="3.071">
-      <span begin="1.345" end="1.548">我</span>
-      <span begin="1.548" end="1.938">找到</span>
-      <span begin="1.938" end="2.198">了</span>
-      <span begin="2.198" end="2.770">你</span>
+      <span begin="1.345" end="1.548">` + "我" + `</span>
+      <span begin="1.548" end="1.938">` + "找到" + `</span>
+      <span begin="1.938" end="2.198">` + "了" + `</span>
+      <span begin="2.198" end="2.770">` + "你" + `</span>
     </p>
   </div></body>
 </tt>`
@@ -476,7 +476,395 @@ func TestTTML_CJKAutoDetectNoSpace(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(d.Lines))
 	}
 
-	if d.Lines[0].Text != "我找到了你" {
+	if d.Lines[0].Text != `我找到了你` {
 		t.Errorf("auto-detected CJK should have no spaces, got %q", d.Lines[0].Text)
+	}
+}
+
+const testTTMLAgents = `<?xml version="1.0" encoding="UTF-8"?>
+<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+    xmlns:amll="http://www.example.com/ns/amll">
+  <head>
+    <metadata>
+      <ttm:agent type="person" xml:id="v1"/>
+      <ttm:agent type="other" xml:id="v2"/>
+      <ttm:agent type="person" xml:id="v3"/>
+      <amll:meta key="musicName" value="ME!"/>
+      <amll:meta key="artists" value="Taylor Swift"/>
+      <amll:meta key="artists" value="Brendon Urie"/>
+      <amll:meta key="album" value="ME! (feat. Brendon Urie)"/>
+      <amll:meta key="ncmMusicId" value="1361348080"/>
+    </metadata>
+  </head>
+  <body dur="03:08.002">
+    <div>
+      <p begin="00:00.000" end="00:02.593" ttm:agent="v1">
+        <span begin="00:00.000" end="00:00.223">I</span>
+        <span begin="00:00.223" end="00:00.394">promise</span>
+      </p>
+      <p begin="00:03.490" end="00:05.848" ttm:agent="v1">
+        <span begin="00:03.490" end="00:03.553">I</span>
+        <span begin="00:03.553" end="00:03.722">know</span>
+      </p>
+      <p begin="00:58.854" end="01:01.239" ttm:agent="v2">
+        <span begin="00:58.854" end="00:59.025">I</span>
+        <span begin="00:59.025" end="00:59.176">know</span>
+      </p>
+      <p begin="02:46.447" end="02:47.814" ttm:agent="v2">
+        <span begin="02:46.447" end="02:46.572">I'm</span>
+        <span begin="02:46.572" end="02:46.732">the</span>
+      </p>
+      <p begin="02:50.728" end="02:52.328" ttm:agent="v3">
+        <span begin="02:50.728" end="02:51.008">eeh</span>
+      </p>
+    </div>
+  </body>
+</tt>`
+
+func TestTTML_ParseAgentOnParagraph(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d", len(d.Lines))
+	}
+	if d.Lines[0].Agent != "v1" {
+		t.Errorf("line 0 agent = %q, want v1", d.Lines[0].Agent)
+	}
+	if d.Lines[2].Agent != "v2" {
+		t.Errorf("line 2 agent = %q, want v2", d.Lines[2].Agent)
+	}
+	if d.Lines[4].Agent != "v3" {
+		t.Errorf("line 4 agent = %q, want v3", d.Lines[4].Agent)
+	}
+	if d.Lines[0].End == 0 {
+		t.Error("line 0 End should not be 0")
+	}
+}
+
+func TestTTML_ParseHeadAgent(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if d.Agents == nil {
+		t.Fatal("Agents map is nil")
+	}
+	if d.Agents["v1"] != "Taylor Swift" {
+		t.Errorf("v1 display name = %q, want Taylor Swift", d.Agents["v1"])
+	}
+	if d.Agents["v2"] != "Brendon Urie" {
+		t.Errorf("v2 display name = %q, want Brendon Urie", d.Agents["v2"])
+	}
+}
+
+func TestTTML_ExcessAgentFallback(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if d.Agents["v3"] != "V3" {
+		t.Errorf("excess agent v3 display name = %q, want V3", d.Agents["v3"])
+	}
+}
+
+func TestTTML_NoArtistsMapping(t *testing.T) {
+	noArtists := `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata">
+  <head>
+    <metadata>
+      <ttm:agent type="person" xml:id="v1"/>
+    </metadata>
+  </head>
+  <body><div>
+    <p begin="00:00.000" end="00:01.000" ttm:agent="v1">Hello</p>
+  </div></body>
+</tt>`
+	d, err := parseTTML(noArtists)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if d.Agents["v1"] != "V1" {
+		t.Errorf("no-artist agent display name = %q, want V1", d.Agents["v1"])
+	}
+}
+
+func TestTTML_ParseAMLLMeta(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if d.Properties == nil {
+		t.Fatal("Properties map is nil")
+	}
+	if d.Properties["musicName"] != "ME!" {
+		t.Errorf("musicName = %q, want ME!", d.Properties["musicName"])
+	}
+	if d.Properties["ncmMusicId"] != "1361348080" {
+		t.Errorf("ncmMusicId = %q, want 1361348080", d.Properties["ncmMusicId"])
+	}
+	if d.Properties["album"] != "ME! (feat. Brendon Urie)" {
+		t.Errorf("album = %q, want ME! (feat. Brendon Urie)", d.Properties["album"])
+	}
+	if d.Title != "ME!" {
+		t.Errorf("Title = %q, want ME!", d.Title)
+	}
+	if d.Artist != "Taylor Swift" {
+		t.Errorf("Artist = %q, want Taylor Swift", d.Artist)
+	}
+	if d.Album != "ME! (feat. Brendon Urie)" {
+		t.Errorf("Album = %q, want ME! (feat. Brendon Urie)", d.Album)
+	}
+}
+
+func TestTTML_ParseEndTime(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if d.Lines[0].End != 2593*time.Millisecond {
+		t.Errorf("line 0 end = %v, want 2593ms", d.Lines[0].End)
+	}
+	if d.Lines[1].End != 5848*time.Millisecond {
+		t.Errorf("line 1 end = %v, want 5848ms", d.Lines[1].End)
+	}
+}
+
+func TestTTML_ActiveLinesBounded(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	tests := []struct {
+		elapsed time.Duration
+		want    int
+	}{
+		{0, 1},                       // line 0 starts at 0
+		{1500 * time.Millisecond, 1}, // line 0 active
+		{2593 * time.Millisecond, 0}, // line 0 just ended (exclusive)
+		{4000 * time.Millisecond, 1}, // only line 1
+		{6000 * time.Millisecond, 0}, // between lines
+	}
+
+	for _, tt := range tests {
+		active := d.ActiveLines(tt.elapsed)
+		if len(active) != tt.want {
+			t.Errorf("ActiveLines(%v) returned %d lines, want %d", tt.elapsed, len(active), tt.want)
+		}
+	}
+}
+
+func TestTTML_ActiveLinesOverlapping(t *testing.T) {
+	overlap := `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata">
+  <body><div>
+    <p begin="00:10.000" end="00:15.000" ttm:agent="v1">First part</p>
+    <p begin="00:12.000" end="00:18.000" ttm:agent="v2">Harmony part</p>
+  </div></body>
+</tt>`
+	d, err := parseTTML(overlap)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	active := d.ActiveLines(11 * time.Second)
+	if len(active) != 1 {
+		t.Fatalf("at 11s expected 1 active line, got %d", len(active))
+	}
+	if active[0].Agent != "v1" {
+		t.Errorf("at 11s active line agent = %q, want v1", active[0].Agent)
+	}
+
+	active = d.ActiveLines(13 * time.Second)
+	if len(active) != 2 {
+		t.Fatalf("at 13s expected 2 active lines, got %d", len(active))
+	}
+
+	active = d.ActiveLines(16 * time.Second)
+	if len(active) != 1 {
+		t.Fatalf("at 16s expected 1 active line, got %d", len(active))
+	}
+	if active[0].Agent != "v2" {
+		t.Errorf("at 16s active line agent = %q, want v2", active[0].Agent)
+	}
+}
+
+func TestTTML_ActiveLinesLegacy(t *testing.T) {
+	noEnd := `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body><div>
+    <p begin="00:01.000">First</p>
+    <p begin="00:03.000">Second</p>
+    <p begin="00:05.000">Third</p>
+  </div></body>
+</tt>`
+	d, err := parseTTML(noEnd)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	for i, line := range d.Lines {
+		if line.End != 0 {
+			t.Errorf("line %d End = %v, want 0", i, line.End)
+		}
+	}
+
+	active := d.ActiveLines(2 * time.Second)
+	if len(active) != 1 {
+		t.Fatalf("ActiveLines(2s) returned %d lines, want 1", len(active))
+	}
+	if active[0].Text != "First" {
+		t.Errorf("active line text = %q, want First", active[0].Text)
+	}
+
+	active = d.ActiveLines(4 * time.Second)
+	if len(active) != 1 {
+		t.Fatalf("ActiveLines(4s) returned %d lines, want 1", len(active))
+	}
+	if active[0].Text != "Second" {
+		t.Errorf("active line text = %q, want Second", active[0].Text)
+	}
+}
+
+func TestTTML_ActiveLinesEmpty(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	// At exactly 0, line 0 is active (it has begin=0)
+	// Use a duration before any active line
+	// Note: line 0 is NOT active at 2593ms (end is exclusive)
+	active := d.ActiveLines(2594 * time.Millisecond)
+	if len(active) != 0 {
+		t.Errorf("ActiveLines(2594ms) = %d, want 0", len(active))
+	}
+}
+
+func TestTTML_ActiveLinesFilter(t *testing.T) {
+	overlap := `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata">
+  <head>
+    <metadata>
+      <ttm:agent type="person" xml:id="v1"/>
+      <ttm:agent type="other" xml:id="v2"/>
+    </metadata>
+  </head>
+  <body><div>
+    <p begin="00:10.000" end="00:20.000" ttm:agent="v1">Lead vocal</p>
+    <p begin="00:12.000" end="00:18.000" ttm:agent="v2">Harmony</p>
+  </div></body>
+</tt>`
+	d, err := parseTTML(overlap)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	d.AgentFilter = "v1"
+	active := d.ActiveLines(14 * time.Second)
+	if len(active) != 1 {
+		t.Fatalf("filtered ActiveLines returned %d lines, want 1", len(active))
+	}
+	if active[0].Agent != "v1" {
+		t.Errorf("filtered active line agent = %q, want v1", active[0].Agent)
+	}
+
+	d.AgentFilter = "v2"
+	active = d.ActiveLines(14 * time.Second)
+	if len(active) != 1 {
+		t.Fatalf("filtered v2 ActiveLines returned %d lines, want 1", len(active))
+	}
+	if active[0].Agent != "v2" {
+		t.Errorf("filtered v2 active line agent = %q, want v2", active[0].Agent)
+	}
+
+	d.AgentFilter = ""
+	active = d.ActiveLines(14 * time.Second)
+	if len(active) != 2 {
+		t.Fatalf("unfiltered ActiveLines returned %d lines, want 2", len(active))
+	}
+}
+
+func TestTTML_ActiveLinesFilterNoMatch(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	d.AgentFilter = "nonexistent"
+	active := d.ActiveLines(1500 * time.Millisecond)
+	if len(active) != 0 {
+		t.Errorf("filtered with nonexistent agent returned %d lines, want 0", len(active))
+	}
+}
+
+func TestTTML_LineDisplayTextWithAgent(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	display := d.LineDisplayText(d.Lines[0])
+	want := "Taylor Swift: I promise"
+	if display != want {
+		t.Errorf("LineDisplayText = %q, want %q", display, want)
+	}
+
+	display = d.LineDisplayText(d.Lines[4])
+	want = "V3: eeh"
+	if display != want {
+		t.Errorf("LineDisplayText for v3 = %q, want %q", display, want)
+	}
+}
+
+func TestTTML_LineDisplayTextNoAgent(t *testing.T) {
+	d, err := parseTTML(testTTML)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	display := d.LineDisplayText(d.Lines[0])
+	want := "First line of lyrics"
+	if display != want {
+		t.Errorf("LineDisplayText (no agent) = %q, want %q", display, want)
+	}
+}
+
+func TestTTML_FullIntegration(t *testing.T) {
+	d, err := parseTTML(testTTMLAgents)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if d.Title != "ME!" || d.Artist != "Taylor Swift" || d.Album != "ME! (feat. Brendon Urie)" {
+		t.Errorf("metadata mismatch: Title=%q Artist=%q Album=%q", d.Title, d.Artist, d.Album)
+	}
+
+	if d.Agents["v1"] != "Taylor Swift" || d.Agents["v2"] != "Brendon Urie" || d.Agents["v3"] != "V3" {
+		t.Errorf("Agents map unexpected: %v", d.Agents)
+	}
+
+	if len(d.Lines) != 5 {
+		t.Fatalf("expected 5 lines, got %d", len(d.Lines))
+	}
+	for i := 1; i < len(d.Lines); i++ {
+		if d.Lines[i].Time < d.Lines[i-1].Time {
+			t.Errorf("lines not sorted at index %d", i)
+		}
+	}
+
+	if d.Lines[0].Agent != "v1" || d.Lines[0].Time != 0 || d.Lines[0].End != 2593*time.Millisecond {
+		t.Errorf("line 0: agent=%q time=%v end=%v", d.Lines[0].Agent, d.Lines[0].Time, d.Lines[0].End)
+	}
+
+	if d.Lines[2].Agent != "v2" || d.Lines[2].Time != 58854*time.Millisecond || d.Lines[2].End != 61239*time.Millisecond {
+		t.Errorf("line 2: agent=%q time=%v end=%v", d.Lines[2].Agent, d.Lines[2].Time, d.Lines[2].End)
+	}
+
+	active := d.ActiveLines(60 * time.Second)
+	if len(active) != 1 || active[0].Agent != "v2" {
+		t.Errorf("ActiveLines(60s) = %d lines, want 1 (v2)", len(active))
 	}
 }

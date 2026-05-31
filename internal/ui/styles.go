@@ -65,6 +65,11 @@ var (
 			Foreground(lipgloss.Color("196")).
 			Background(lipgloss.Color("236"))
 
+	// Info/success styling (green text on dark background)
+	infoStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("46")).
+			Background(lipgloss.Color("236"))
+
 	// Lyric styling
 	lyricStyle = lipgloss.NewStyle().
 			Italic(true).

@@ -2,10 +2,13 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 )
 
 const (
@@ -154,57 +157,28 @@ func renderFooter(m *Model) string {
 		volumeBar,
 	)
 
-	// Current lyric line with marquee scroll
-	var lyricLine string
-	if m.Audio.Lyrics != nil && m.Audio.ShowLyrics && m.Audio.LyricIndex >= 0 && m.Audio.LyricIndex < len(m.Audio.Lyrics.Lines) {
-		lyricLine = m.Audio.Lyrics.Lines[m.Audio.LyricIndex].Text
-	}
+	// Lyric rendering: single or multiple lines joined by " | "
+	var lyricText string
 	maxWidth := m.UI.Width - 6
 
-	lyricRow := ""
-	if lyricLine != "" {
-		runes := []rune(lyricLine)
-		displayWidth := lipgloss.Width(lyricLine)
-		if displayWidth > maxWidth {
-			start := m.Audio.LyricScrollOffset
-			// Find rune index corresponding to display offset
-			runeStart := 0
-			for i, w := 0, 0; i < len(runes) && w < start; i++ {
-				w += lipgloss.Width(string(runes[i]))
-				runeStart = i + 1
-			}
-			if runeStart >= len(runes) {
-				runeStart = 0
-			}
-			// Accumulate runes up to maxWidth display cells
-			runeEnd := runeStart
-			for w := 0; runeEnd < len(runes); runeEnd++ {
-				cw := lipgloss.Width(string(runes[runeEnd]))
-				if w+cw > maxWidth {
-					break
-				}
-				w += cw
-			}
-			visible := string(runes[runeStart:runeEnd])
-			// Pad to exact display width
-			padWidth := maxWidth - lipgloss.Width(visible)
-			if padWidth > 0 {
-				visible += fmt.Sprintf("%*s", padWidth, "")
-			}
-			lyricRow = lyricStyle.Copy().
-				Foreground(lipgloss.Color(accentOrDefault(m.Accent, "141"))).
-				Width(maxWidth).Render(visible)
-		} else {
-			lyricRow = lyricStyle.Copy().
-				Foreground(lipgloss.Color(accentOrDefault(m.Accent, "141"))).
-				Width(maxWidth).Render(lyricLine)
+	if m.Audio.Lyrics != nil && m.Audio.ShowLyrics && len(m.Audio.ActiveLyricLines) > 0 {
+		active := m.Audio.ActiveLyricLines
+		parts := make([]string, 0, len(active))
+		for _, line := range active {
+			parts = append(parts, m.Audio.Lyrics.LineDisplayText(line))
 		}
+		lyricText = strings.Join(parts, " | ")
+	}
+
+	var lyricRows []string
+	if lyricText != "" {
+		lyricRows = append(lyricRows, renderSingleLyricLine(lyricText, maxWidth, m.Audio.LyricScrollOffset, m.Accent))
 	}
 
 	// Combine all lines vertically
 	elements := []string{songLine, progressLine, volumeLine}
-	if lyricLine != "" {
-		elements = append(elements, lyricRow)
+	for _, row := range lyricRows {
+		elements = append(elements, row)
 	}
 	content := lipgloss.JoinVertical(lipgloss.Top, elements...)
 
@@ -242,9 +216,49 @@ func truncateLine(s string, maxWidth int) string {
 	return s
 }
 
+// renderSingleLyricLine renders a single lyric line with marquee scroll support.
+func renderSingleLyricLine(lineText string, maxWidth int, scrollOffset int, accent *accent.Accent) string {
+	runes := []rune(lineText)
+	displayWidth := lipgloss.Width(lineText)
+	if displayWidth > maxWidth {
+		start := scrollOffset
+		runeStart := 0
+		for i, w := 0, 0; i < len(runes) && w < start; i++ {
+			w += lipgloss.Width(string(runes[i]))
+			runeStart = i + 1
+		}
+		if runeStart >= len(runes) {
+			runeStart = 0
+		}
+		runeEnd := runeStart
+		for w := 0; runeEnd < len(runes); runeEnd++ {
+			cw := lipgloss.Width(string(runes[runeEnd]))
+			if w+cw > maxWidth {
+				break
+			}
+			w += cw
+		}
+		visible := string(runes[runeStart:runeEnd])
+		padWidth := maxWidth - lipgloss.Width(visible)
+		if padWidth > 0 {
+			visible += fmt.Sprintf("%*s", padWidth, "")
+		}
+		return lyricStyle.Copy().
+			Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
+			Width(maxWidth).Render(visible)
+	}
+	return lyricStyle.Copy().
+		Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
+		Width(maxWidth).Render(lineText)
+}
+
 func renderHelp(m *Model) string {
 	if m.UI.Mode == ModeCommand {
 		return inputStyle.Render(m.Icons.Command + m.Components.CommandInput.View())
+	}
+
+	if m.Info.Message != "" && m.Info.Visible {
+		return infoStyle.Width(m.UI.Width).Render(" " + m.Info.Message)
 	}
 
 	if m.Error.Message != "" && m.Error.Visible {

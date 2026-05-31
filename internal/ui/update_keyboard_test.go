@@ -181,7 +181,7 @@ func TestExecuteCommand_lrc_status_no_lyrics(t *testing.T) {
 	setCommand(m, "lrc")
 	executeCommand(m)
 
-	if !m.Error.Visible {
+	if !m.Info.Visible {
 		t.Error("expected status message for lrc without args")
 	}
 }
@@ -193,7 +193,7 @@ func TestExecuteCommand_lrc_status_showing(t *testing.T) {
 	setCommand(m, "lrc")
 	executeCommand(m)
 
-	if !m.Error.Visible {
+	if !m.Info.Visible {
 		t.Error("expected status message")
 	}
 	if m.Audio.Lyrics == nil {

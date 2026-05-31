@@ -43,6 +43,7 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
 	m.Error.Tick()
+	m.Info.Tick()
 
 	// Push current playback state to OS media control layer (MPRIS on Linux)
 	if m.MediaCtl != nil {

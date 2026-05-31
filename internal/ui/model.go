@@ -171,6 +171,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 		Config:      cfg,
 		Icons:       activeIcons,
 		Error:       &ErrorState{},
+		Info:        &InfoState{},
 		Loading:     filePath != "",
 		pendingPath: filePath,
 	}

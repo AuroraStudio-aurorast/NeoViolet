@@ -125,6 +125,12 @@ type AudioState struct {
 	LyricScrollOffset int
 	LyricScrollTick   int
 	LastLyricIndex    int
+
+	// ActiveLyricLines holds the result of Lyrics.ActiveLines() for the current
+	// elapsed time. Set during UpdateLyricIndex(). Used by the renderer.
+	ActiveLyricLines []lyrics.LyricLine
+
+	lastActiveSig string // signature for detecting active-line changes
 }
 
 type UIState struct {
@@ -167,12 +173,37 @@ func (e *ErrorState) Tick() {
 	}
 }
 
+// InfoState shows green status messages that auto-dismiss.
+// Separate from ErrorState so status updates don't look like errors.
+type InfoState struct {
+	Message string
+	Timer   int
+	Visible bool
+}
+
+func (info *InfoState) Set(msg string, timer int) {
+	info.Message = msg
+	info.Timer = timer
+	info.Visible = true
+}
+
+func (info *InfoState) Tick() {
+	if info.Visible && info.Timer > 0 {
+		info.Timer--
+		if info.Timer <= 0 {
+			info.Visible = false
+			info.Message = ""
+		}
+	}
+}
+
 // Model represents the main application state
 type Model struct {
 	Audio          *AudioState
 	UI             *UIState
 	Components     *ComponentState
 	Error          *ErrorState
+	Info           *InfoState
 	Config         *config.Config
 	Icons          IconSet
 	Accent         *accent.Accent

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"math"
 	"time"
 
@@ -110,16 +111,42 @@ func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
 func (a *AudioState) UpdateLyricIndex() {
 	if a.Lyrics == nil {
 		a.LyricIndex = -1
+		a.ActiveLyricLines = nil
 		a.LyricScrollOffset = 0
 		return
 	}
-	newIdx := a.Lyrics.CurrentLine(a.Elapsed)
-	if newIdx != a.LastLyricIndex {
-		a.LastLyricIndex = newIdx
+
+	// Use ActiveLines to get all active lyric lines at the current elapsed time
+	active := a.Lyrics.ActiveLines(a.Elapsed)
+	a.ActiveLyricLines = active
+
+	// Compute signature for change detection
+	sig := ""
+	for _, l := range active {
+		sig += fmt.Sprintf("%d|%s|", l.Time.Nanoseconds(), l.Text)
+	}
+	if sig != a.lastActiveSig {
+		a.lastActiveSig = sig
 		a.LyricScrollOffset = 0
 		a.LyricScrollTick = 0
 	}
-	a.LyricIndex = newIdx
+
+	// If exactly one active line, find its index for marquee-scroll support.
+	// Multiple active lines (overlapping) disable marquee scroll.
+	if len(active) == 1 {
+		for i, line := range a.Lyrics.Lines {
+			if line.Time == active[0].Time && line.Text == active[0].Text {
+				if i != a.LastLyricIndex {
+					a.LastLyricIndex = i
+					a.LyricScrollOffset = 0
+					a.LyricScrollTick = 0
+				}
+				a.LyricIndex = i
+				return
+			}
+		}
+	}
+	a.LyricIndex = -1
 }
 
 func (a *AudioState) AdvanceLyricScroll(scrollSpeed int, maxWidth int) {

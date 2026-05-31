@@ -399,9 +399,9 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 	if len(parts) < 2 {
 		if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
-			m.Error.Set("Lyrics: enabled", m.Config.Error.Duration)
+			m.Info.Set("Lyrics: enabled", m.Config.Error.Duration)
 		} else {
-			m.Error.Set("Lyrics: disabled", m.Config.Error.Duration)
+			m.Info.Set("Lyrics: disabled", m.Config.Error.Duration)
 		}
 		return m, nil
 	}
@@ -460,8 +460,35 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 		m.Audio.ShowLyrics = true
 		return m, nil
 
+	case "agent":
+		if len(parts) < 3 {
+			if m.Audio.Lyrics != nil && m.Audio.Lyrics.AgentFilter != "" {
+				m.Info.Set(fmt.Sprintf("Lyrics agent filter: %s", m.Audio.Lyrics.AgentFilter), m.Config.Error.Duration)
+			} else {
+				m.Info.Set("Lyrics agent filter: all", m.Config.Error.Duration)
+			}
+			return m, nil
+		}
+		if m.Audio.Lyrics == nil {
+			m.Error.Set("No lyrics loaded", m.Config.Error.Duration)
+			return m, nil
+		}
+		filter := parts[2]
+		switch filter {
+		case "all", "":
+			m.Audio.Lyrics.AgentFilter = ""
+			m.Info.Set("Lyrics: showing all agents", m.Config.Error.Duration)
+		default:
+			m.Audio.Lyrics.AgentFilter = filter
+			m.Info.Set(fmt.Sprintf("Lyrics: filtering agent %s", filter), m.Config.Error.Duration)
+		}
+		m.Audio.LyricScrollOffset = 0
+		m.Audio.LyricIndex = -1
+		m.Audio.ActiveLyricLines = nil
+		return m, nil
+
 	default:
-		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, or switch)", subcmd), m.Config.Error.Duration)
+		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, or agent)", subcmd), m.Config.Error.Duration)
 		return m, nil
 	}
 }

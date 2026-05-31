@@ -35,6 +35,7 @@ func (p *ttmlParser) FindSidecar(audioPath string) string {
 
 type ttmlTT struct {
 	XMLName      xml.Name `xml:"tt"`
+	Head         ttmlHead `xml:"head"`
 	Body         ttmlBody `xml:"body"`
 	TickRate     int      `xml:"http://www.w3.org/ns/ttml#parameter tickRate,attr"`
 	FrameRate    int      `xml:"http://www.w3.org/ns/ttml#parameter frameRate,attr"`
@@ -42,6 +43,25 @@ type ttmlTT struct {
 	SubFrameRate int      `xml:"http://www.w3.org/ns/ttml#parameter subFrameRate,attr"`
 	XMLLang      string   `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
 	tickRate     int
+}
+
+type ttmlHead struct {
+	Metadata ttmlMetadata `xml:"metadata"`
+}
+
+type ttmlMetadata struct {
+	Agents []ttmlAgent `xml:"http://www.w3.org/ns/ttml#metadata agent"`
+	AMLLs  []ttmlAMLL  `xml:"http://www.example.com/ns/amll meta"`
+}
+
+type ttmlAgent struct {
+	ID   string `xml:"http://www.w3.org/XML/1998/namespace id,attr"`
+	Type string `xml:"type,attr"`
+}
+
+type ttmlAMLL struct {
+	Key   string `xml:"key,attr"`
+	Value string `xml:"value,attr"`
 }
 
 type ttmlBody struct {
@@ -56,6 +76,7 @@ type ttmlDiv struct {
 type ttmlParagraph struct {
 	Begin string     `xml:"begin,attr"`
 	End   string     `xml:"end,attr"`
+	Agent string     `xml:"http://www.w3.org/ns/ttml#metadata agent,attr"`
 	Spans []ttmlSpan `xml:"span"`
 	Text  string     `xml:",chardata"`
 }
@@ -93,11 +114,6 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 		needsSpace = !tt.isCJKContent()
 	}
 
-	// Auto-detect: if no xml:lang, check first rune of first paragraph text
-	if lang == "" {
-		needsSpace = !tt.isCJKContent()
-	}
-
 	tickRate := tt.tickRate
 	if tickRate <= 0 {
 		tickRate = 1
@@ -115,6 +131,43 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 		subFrameRate = 1
 	}
 
+	// Parse head metadata: agents and AMLL properties
+	agents := make(map[string]string)
+	props := make(map[string]string)
+	var artists []string
+
+	for _, m := range tt.Head.Metadata.AMLLs {
+		if m.Key == "artists" {
+			artists = append(artists, m.Value)
+		}
+		props[m.Key] = m.Value
+	}
+
+	// Map agents to artists in order
+	for i, a := range tt.Head.Metadata.Agents {
+		if i < len(artists) {
+			agents[a.ID] = artists[i]
+		} else {
+			agents[a.ID] = strings.ToUpper(a.ID)
+		}
+	}
+
+	// Build LyricsData metadata from properties
+	lyrics := &LyricsData{
+		Path:       sourcePath,
+		Agents:     agents,
+		Properties: props,
+	}
+	if title, ok := props["musicName"]; ok {
+		lyrics.Title = title
+	}
+	if len(artists) > 0 {
+		lyrics.Artist = artists[0]
+	}
+	if album, ok := props["album"]; ok {
+		lyrics.Album = album
+	}
+
 	lines := make([]LyricLine, 0, len(tt.Body.Div.Paragraphs))
 
 	for _, para := range tt.Body.Div.Paragraphs {
@@ -122,6 +175,8 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 		if err != nil {
 			continue
 		}
+
+		paraEnd, _ := parseTTMLTime(para.End, tickRate, frameRate, frameRateMul, subFrameRate)
 
 		var words []WordFragment
 		fullText := strings.Builder{}
@@ -151,8 +206,10 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 
 		lines = append(lines, LyricLine{
 			Time:  paraBegin,
+			End:   paraEnd,
 			Text:  text,
 			Words: words,
+			Agent: para.Agent,
 		})
 	}
 
@@ -164,10 +221,8 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 		return lines[i].Time < lines[j].Time
 	})
 
-	return &LyricsData{
-		Lines: lines,
-		Path:  sourcePath,
-	}, nil
+	lyrics.Lines = lines
+	return lyrics, nil
 }
 
 func (tt *ttmlTT) resolveRates() {
