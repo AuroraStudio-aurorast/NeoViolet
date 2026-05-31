@@ -17,6 +17,15 @@ func init() {
 
 type lysParser struct{}
 
+// channelToAgent maps LYS channel numbers to agent IDs matching TTML conventions.
+// Channel 0 is lead vocal (v1), 2 is duet (v2), 6 and 8 are backing vocals (v3, v4).
+var channelToAgent = map[int]string{
+	0: "v1",
+	2: "v2",
+	6: "v3",
+	8: "v4",
+}
+
 func (p *lysParser) FindSidecar(audioPath string) string {
 	ext := filepath.Ext(audioPath)
 	base := audioPath[:len(audioPath)-len(ext)]
@@ -47,6 +56,10 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 			continue
 		}
 
+		// Parse channel prefix [N] (e.g. [0], [2], [6])
+		channelStr := strings.TrimPrefix(parts[0], "[")
+		channel, _ := strconv.Atoi(channelStr)
+
 		body := parts[1]
 		matches := qrcWordRe.FindAllStringSubmatch(body, -1)
 		if len(matches) == 0 {
@@ -56,19 +69,27 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		var words []WordFragment
 		var fullText strings.Builder
 		lineStart := time.Duration(0)
+		lineEnd := time.Duration(0)
 
 		for _, m := range matches {
 			wordText := m[1]
 			wordStart, _ := strconv.Atoi(m[2])
+			wordDuration, _ := strconv.Atoi(m[3])
+
+			startDur := time.Duration(wordStart) * time.Millisecond
+			endDur := startDur + time.Duration(wordDuration)*time.Millisecond
 
 			words = append(words, WordFragment{
-				Time: time.Duration(wordStart) * time.Millisecond,
+				Time: startDur,
 				Text: wordText,
 			})
 			fullText.WriteString(wordText)
 
 			if lineStart == 0 && wordStart > 0 {
-				lineStart = time.Duration(wordStart) * time.Millisecond
+				lineStart = startDur
+			}
+			if endDur > lineEnd {
+				lineEnd = endDur
 			}
 		}
 
@@ -77,10 +98,14 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 			continue
 		}
 
+		agent := channelToAgent[channel]
+
 		lines = append(lines, LyricLine{
 			Time:  lineStart,
+			End:   lineEnd,
 			Text:  text,
 			Words: words,
+			Agent: agent,
 		})
 	}
 
@@ -93,5 +118,6 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 	})
 
 	lyrics.Lines = lines
+
 	return lyrics, nil
 }

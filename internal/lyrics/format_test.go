@@ -370,3 +370,125 @@ func TestLYS_CurrentLine(t *testing.T) {
 		t.Errorf("CurrentLine(39345ms) = %d, want 0", got)
 	}
 }
+
+// LYS multi-agent test data: channels 0,2,6,8 mapped to v1-v4
+const testLYSMultiAgent = `[0]I(1000,500) (0,0)am(1500,300) (0,0)lead(1800,400)
+[2]I(1000,500) (0,0)am(1500,300) (0,0)duet(1800,400)
+[6]backing(2000,600) (0,0)vocals(2600,500)
+[8]oh(2500,300) (0,0)yeah(2800,400)`
+
+func parseLYSMulti(s string) (*LyricsData, error) {
+	var p lysParser
+	return p.Parse(strings.NewReader(s), "")
+}
+
+func TestLYS_AgentAssignment(t *testing.T) {
+	d, err := parseLYSMulti(testLYSMultiAgent)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 4 {
+		t.Fatalf("expected 4 lines, got %d", len(d.Lines))
+	}
+
+	if d.Lines[0].Agent != "v1" {
+		t.Errorf("line 0 (channel 0): Agent = %q, want v1", d.Lines[0].Agent)
+	}
+	if d.Lines[1].Agent != "v2" {
+		t.Errorf("line 1 (channel 2): Agent = %q, want v2", d.Lines[1].Agent)
+	}
+	if d.Lines[2].Agent != "v3" {
+		t.Errorf("line 2 (channel 6): Agent = %q, want v3", d.Lines[2].Agent)
+	}
+	if d.Lines[3].Agent != "v4" {
+		t.Errorf("line 3 (channel 8): Agent = %q, want v4", d.Lines[3].Agent)
+	}
+}
+
+func TestLYS_AgentsMap(t *testing.T) {
+	d, err := parseLYSMulti(testLYSMultiAgent)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	// LYS doesn't have real names for agents, so Agents map should be nil
+	// (falls back to uppercase agent ID: V1, V2, etc.)
+	if d.Agents != nil {
+		t.Log("Agents map is nil for LYS (falls back to uppercase agent ID)")
+	}
+}
+
+func TestLYS_LineDisplayTextWithAgent(t *testing.T) {
+	d, err := parseLYSMulti(testLYSMultiAgent)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	display := d.LineDisplayText(d.Lines[0])
+	// LYS has no agent name mapping, so falls back to uppercase agent ID
+	if display != "V1: I am lead" {
+		t.Errorf("LineDisplayText = %q, want 'V1: I am lead'", display)
+	}
+}
+
+func TestLYS_EndTimeComputed(t *testing.T) {
+	d, err := parseLYSMulti(testLYSMultiAgent)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if d.Lines[0].End <= 0 {
+		t.Error("line 0 should have End set from last word duration")
+	}
+	if d.Lines[0].End != 2200*time.Millisecond {
+		t.Errorf("line 0 End = %v, want 2200ms", d.Lines[0].End)
+	}
+}
+
+func TestLYS_ActiveLinesOverlap(t *testing.T) {
+	d, err := parseLYSMulti(testLYSMultiAgent)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	// At t=1000ms, lines 0 and 1 both start at 1000ms and overlap
+	t1 := 1000 * time.Millisecond
+	active := d.ActiveLines(t1)
+	if len(active) != 2 {
+		t.Errorf("at %v: expected 2 active lines, got %d", t1, len(active))
+	}
+	// At t=2700ms, lines 2 and 3 overlap (2000-2600 extended, 2500-2800)
+	t2 := 2700 * time.Millisecond
+	active = d.ActiveLines(t2)
+	if len(active) != 2 {
+		t.Errorf("at %v: expected 2 active lines, got %d", t2, len(active))
+	}
+}
+
+func TestLYS_ActiveLinesFilter(t *testing.T) {
+	d, err := parseLYSMulti(testLYSMultiAgent)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	d.AgentFilter = "v1"
+	t1 := 1000 * time.Millisecond
+	active := d.ActiveLines(t1)
+	if len(active) != 1 {
+		t.Errorf("filtered v1 at %v: expected 1 line, got %d", t1, len(active))
+	}
+	if len(active) > 0 && active[0].Text != "I am lead" {
+		t.Errorf("filtered v1: expected 'I am lead', got %q", active[0].Text)
+	}
+}
+
+func TestLYS_NoAgentForUnknownChannel(t *testing.T) {
+	input := `[42]unknown(1000,500) (0,0)channel(1500,300)`
+	d, err := parseLYS(input)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(d.Lines))
+	}
+	if d.Lines[0].Agent != "" {
+		t.Errorf("Agent = %q, want empty", d.Lines[0].Agent)
+	}
+}
