@@ -1,12 +1,20 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
+
+func TestMain(m *testing.M) {
+	testMode = true
+	os.Exit(m.Run())
+}
 
 func setupModel() *Model {
 	return NewModel("", &config.Config{
@@ -385,5 +393,93 @@ func TestExecuteCommand_noPlayerSeek(t *testing.T) {
 
 	if !m.Error.Visible {
 		t.Error("expected error for seek without player")
+	}
+}
+
+// historyTestSetup creates a temp XDG_CONFIG_HOME, enables XDG config paths,
+// disables testMode so persistence actually hits disk,
+// and returns the neoviolet config directory path for the test.
+func historyTestSetup(t *testing.T) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", tmpDir)
+	config.SetXDGConfig(true)
+	oldTestMode := testMode
+	testMode = false
+	t.Cleanup(func() {
+		config.SetXDGConfig(false)
+		testMode = oldTestMode
+	})
+	return filepath.Join(tmpDir, "neoviolet")
+}
+
+func TestHistoryPersistence(t *testing.T) {
+	cfgDir := historyTestSetup(t)
+	m := setupModel()
+	setCommand(m, "vol 0.5")
+	executeCommand(m)
+
+	data, err := os.ReadFile(filepath.Join(cfgDir, "history.txt"))
+	if err != nil {
+		t.Fatal("history.txt should exist after command execution:", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 1 || lines[0] != "vol 0.5" {
+		t.Errorf("history.txt = %q, want [vol 0.5]", lines)
+	}
+}
+
+func TestHistoryLoad(t *testing.T) {
+	cfgDir := historyTestSetup(t)
+
+	// Pre-write a history file
+	historyContent := "seek 30\nvol 0.5\n"
+	historyPath := filepath.Join(cfgDir, "history.txt")
+	if err := os.MkdirAll(cfgDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(historyPath, []byte(historyContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := setupModel()
+	if len(m.CommandHistory) != 2 {
+		t.Fatalf("CommandHistory length = %d, want 2", len(m.CommandHistory))
+	}
+	if m.CommandHistory[0] != "seek 30" {
+		t.Errorf("CommandHistory[0] = %q, want %q", m.CommandHistory[0], "seek 30")
+	}
+	if m.CommandHistory[1] != "vol 0.5" {
+		t.Errorf("CommandHistory[1] = %q, want %q", m.CommandHistory[1], "vol 0.5")
+	}
+}
+
+func TestHistoryMaxRespected(t *testing.T) {
+	cfgDir := historyTestSetup(t)
+	m := setupModel()
+	m.Config.CommandHistory.Max = 3
+
+	for i := 0; i < 5; i++ {
+		cmd := "cmd"
+		setCommand(m, cmd)
+		executeCommand(m)
+		// Reset for next command
+		m.Error.Visible = false
+		m.Error.Message = ""
+	}
+
+	// Verify in-memory cap
+	if len(m.CommandHistory) > 3 {
+		t.Errorf("CommandHistory length %d exceeds max 3", len(m.CommandHistory))
+	}
+
+	// Verify file cap
+	data, err := os.ReadFile(filepath.Join(cfgDir, "history.txt"))
+	if err != nil {
+		t.Fatal("history.txt should exist:", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) > 3 {
+		t.Errorf("history.txt has %d lines, want ≤3", len(lines))
 	}
 }

@@ -1,6 +1,7 @@
 /neoviolet
 /neoviolet.exe
 config.json
+history.txt
 *.log
 
 .DS_Store

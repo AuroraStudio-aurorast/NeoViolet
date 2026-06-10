@@ -135,7 +135,8 @@ func ConfigExists() bool {
 	return err == nil
 }
 
-func configPath() (string, error) {
+// ConfigDir returns the directory holding config.json.
+func ConfigDir() (string, error) {
 	if useXDG {
 		xdgHome := os.Getenv("XDG_CONFIG_HOME")
 		if xdgHome == "" || !filepath.IsAbs(xdgHome) {
@@ -145,14 +146,21 @@ func configPath() (string, error) {
 			}
 			xdgHome = filepath.Join(home, ".config")
 		}
-		return filepath.Join(xdgHome, "neoviolet", "config.json"), nil
+		return filepath.Join(xdgHome, "neoviolet"), nil
 	}
 
 	exe, err := os.Executable()
 	if err != nil {
 		return "", fmt.Errorf("get executable path: %w", err)
 	}
-	dir := filepath.Dir(exe)
+	return filepath.Dir(exe), nil
+}
+
+func configPath() (string, error) {
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
 	return filepath.Join(dir, "config.json"), nil
 }
 

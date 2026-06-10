@@ -254,6 +254,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 		if len(m.CommandHistory) > m.Config.CommandHistory.Max {
 			m.CommandHistory = m.CommandHistory[1:]
 		}
+		saveHistory(m)
 	}
 	m.historyIndex = len(m.CommandHistory)
 

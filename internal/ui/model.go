@@ -183,6 +183,9 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	// Initialize OS media control layer (MPRIS on Linux, no-op elsewhere)
 	m.MediaCtl, _ = mediactl.New()
 
+	// Load persisted command history
+	loadHistory(m)
+
 	logger.Info("Model created", "iconTheme", cfg.IconTheme, "tickRate", cfg.TickRate)
 
 	ti.SetWidth(m.UI.Width - 1)
