@@ -13,9 +13,6 @@ import (
 	"github.com/gopxl/beep/v2/vorbis"
 	"github.com/gopxl/beep/v2/wav"
 
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/alacstream"
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/mp2stream"
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/opusstream"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
@@ -26,6 +23,35 @@ func NewFormatDecoder() *FormatDecoder {
 	return &FormatDecoder{}
 }
 
+// ---- Format probe infrastructure ----
+
+// FormatProbe inspects raw bytes and reports whether it recognizes the format.
+// It returns the extension and true on match; otherwise "", false.
+type FormatProbe func(buf []byte, n int) (ext string, matched bool)
+
+var (
+	ftypProbes []FormatProbe // MP4 ftyp box content (m4a, etc.)
+	oggProbes  []FormatProbe // Ogg container stream type (OpusHead, etc.)
+	mpegProbes []FormatProbe // MPEG sync byte layer detection (MP2, etc.)
+	id3Probes  []FormatProbe // Format behind an ID3 tag (MP2, etc.)
+)
+
+func registerFTYPProbe(fn FormatProbe) { ftypProbes = append(ftypProbes, fn) }
+func registerOGGProbe(fn FormatProbe)  { oggProbes = append(oggProbes, fn) }
+func registerMPEGProbe(fn FormatProbe) { mpegProbes = append(mpegProbes, fn) }
+func registerID3Probe(fn FormatProbe)  { id3Probes = append(id3Probes, fn) }
+
+// ---- Format registration ----
+
+var formatTable []formatHandler
+
+func registerFormat(h formatHandler) {
+	formatTable = append(formatTable, h)
+	for _, ext := range h.extensions {
+		extLookup[ext] = &formatTable[len(formatTable)-1]
+	}
+}
+
 // formatHandler describes how to decode one audio format from an io.Reader.
 type formatHandler struct {
 	extensions       []string
@@ -34,62 +60,36 @@ type formatHandler struct {
 	decodeReadCloser func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error)
 }
 
-var formatTable = []formatHandler{
-	{
-		extensions: []string{".mp2"},
-		decodeSeeker: func(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
-			return mp2stream.DecodeMP2(r)
-		},
-	},
-	{
+// extLookup maps a file extension (lower-case with dot) to its formatHandler.
+var extLookup = make(map[string]*formatHandler)
+
+func init() {
+	// Register built-in (beep) formats.
+	// Custom decoder formats (ALAC, Opus, MP2) are registered via init() in their own files.
+	registerFormat(formatHandler{
 		extensions: []string{".mp3"},
 		decodeReadCloser: func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
 			return mp3.Decode(r)
 		},
-	},
-	{
+	})
+	registerFormat(formatHandler{
 		extensions: []string{".wav"},
 		decode: func(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
 			return wav.Decode(r)
 		},
-	},
-	{
+	})
+	registerFormat(formatHandler{
 		extensions: []string{".flac"},
 		decode: func(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
 			return flac.Decode(r)
 		},
-	},
-	{
+	})
+	registerFormat(formatHandler{
 		extensions: []string{".ogg", ".oga"},
 		decodeReadCloser: func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
 			return vorbis.Decode(r)
 		},
-	},
-	{
-		extensions: []string{".opus"},
-		decodeSeeker: func(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
-			return opusstream.DecodeOGG(r)
-		},
-	},
-	{
-		extensions: []string{".m4a"},
-		decodeSeeker: func(r io.ReadSeeker) (beep.StreamSeekCloser, beep.Format, error) {
-			return alacstream.DecodeM4A(r)
-		},
-	},
-}
-
-// extLookup maps a file extension (lower-case with dot) to its formatHandler.
-var extLookup map[string]*formatHandler
-
-func init() {
-	extLookup = make(map[string]*formatHandler)
-	for i := range formatTable {
-		h := &formatTable[i]
-		for _, ext := range h.extensions {
-			extLookup[ext] = h
-		}
-	}
+	})
 }
 
 func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
@@ -129,10 +129,11 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: MP3 (ID3)", "path", file.Name())
 		return ".mp3", nil
 	case n >= 2 && buffer[0] == 0xFF && (buffer[1]&0xE0) == 0xE0:
-		layer := (buffer[1] >> 1) & 0x03
-		if layer == 2 {
-			logger.Debug("Detected format: MP2 (sync)", "path", file.Name())
-			return ".mp2", nil
+		for _, p := range mpegProbes {
+			if ext, ok := p(buffer, n); ok {
+				logger.Debug("Detected format: "+ext+" (sync)", "path", file.Name())
+				return ext, nil
+			}
 		}
 		logger.Debug("Detected format: MP3 (sync)", "path", file.Name())
 		return ".mp3", nil
@@ -143,9 +144,11 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: FLAC", "path", file.Name())
 		return ".flac", nil
 	case n >= 4 && string(buffer[0:4]) == "OggS":
-		if n >= 37 && string(buffer[28:36]) == "OpusHead" {
-			logger.Debug("Detected format: Opus/OGG", "path", file.Name())
-			return ".opus", nil
+		for _, p := range oggProbes {
+			if ext, ok := p(buffer, n); ok {
+				logger.Debug("Detected format: "+ext, "path", file.Name())
+				return ext, nil
+			}
 		}
 		logger.Debug("Detected format: OGG/Vorbis", "path", file.Name())
 		return ".ogg", nil
@@ -153,19 +156,13 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected format: MIDI", "path", file.Name())
 		return ".mid", nil
 	case n >= 8 && string(buffer[4:8]) == "ftyp":
-		ftype := string(buffer[8:12])
-		if ftype == "M4A " || ftype == "mp42" || ftype == "isom" || ftype == "M4B" {
-			logger.Debug("Detected format: M4A/ALAC", "path", file.Name(), "ftype", ftype)
-			return ".m4a", nil
-		}
-		if n >= 16 {
-			ftype2 := string(buffer[12:16])
-			if ftype2 == "M4A " || ftype2 == "M4B" {
-				logger.Debug("Detected format: M4A/ALAC", "path", file.Name(), "ftype", ftype2)
-				return ".m4a", nil
+		for _, p := range ftypProbes {
+			if ext, ok := p(buffer, n); ok {
+				logger.Debug("Detected format: "+ext, "path", file.Name())
+				return ext, nil
 			}
 		}
-		logger.Debug("Detected ftyp but not M4A", "path", file.Name(), "ftype", ftype)
+		logger.Debug("Detected ftyp but unrecognized", "path", file.Name())
 		return "", fmt.Errorf("unknown ftyp container")
 	default:
 		if synth.OpenmptProbe(buffer[:n]) {
@@ -189,9 +186,10 @@ func detectMPEGBehindID3(buf []byte, n int) string {
 		return ""
 	}
 	if buf[pastID3] == 0xFF && (buf[pastID3+1]&0xE0) == 0xE0 {
-		layer := (buf[pastID3+1] >> 1) & 0x03
-		if layer == 2 {
-			return ".mp2"
+		for _, p := range id3Probes {
+			if ext, ok := p(buf, n); ok {
+				return ext
+			}
 		}
 	}
 	return ".mp3"
