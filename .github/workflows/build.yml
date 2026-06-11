@@ -65,6 +65,8 @@ jobs:
           cache: true
       - name: Install system dependencies
         run: ${{ matrix.install_cmd }} ${{ matrix.pkgs }}
+      - name: Setup Rust
+        run: rustup show || rustup default stable
       - name: Set version info
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
@@ -83,7 +85,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: neoviolet-${{ matrix.os }}-${{ matrix.goarch }}
-          path: neoviolet
+          path: |
+            neoviolet
+            apecli
           if-no-files-found: error
 
   windows:
@@ -104,6 +108,7 @@ jobs:
             compiler_pkg: mingw-w64-clang-x86_64-clang
             libopenmpt_pkg: mingw-w64-clang-x86_64-libopenmpt
             go_pkg: mingw-w64-clang-x86_64-go
+            rust_pkg: mingw-w64-clang-x86_64-rust
             cc: clang
             cxx: clang++
           - goarch: arm64
@@ -114,6 +119,7 @@ jobs:
             compiler_pkg: mingw-w64-clang-aarch64-clang
             libopenmpt_pkg: mingw-w64-clang-aarch64-libopenmpt
             go_pkg: mingw-w64-clang-aarch64-go
+            rust_pkg: mingw-w64-clang-aarch64-rust
             cc: clang
             cxx: clang++
     defaults:
@@ -136,6 +142,7 @@ jobs:
             ${{ matrix.pkg_prefix }}-zlib
             ${{ matrix.pkg_prefix }}-mpg123
             ${{ matrix.go_pkg }}
+            ${{ matrix.rust_pkg }}
             make
             curl
             ca-certificates
@@ -162,6 +169,7 @@ jobs:
           set -eux
           mkdir -p dist
           cp neoviolet.exe dist/
+          cp apecli.exe dist/ 2>/dev/null || true
           BIN_DIR="/${{ matrix.env_prefix }}/bin"
           SYSTEM_DLLS="^(KERNEL32|ntdll|USER32|GDI32|ADVAPI32|SHELL32|OLE32|MSVCRT|VCRUNTIME|api-ms-win|ucrtbase|WS2_32|IPHLPAPI|SETUPAPI|CRYPT32|bcrypt|PSAPI|WINMM|VERSION|combase|RPCRT4|SHLWAPI|oleaut32|IMM32|MSCTF|kernel\.appcore|windows\.storage)\.dll$"
           declare -A seen

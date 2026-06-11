@@ -157,10 +157,22 @@ func TestDetectFormatByMagic_empty(t *testing.T) {
 	}
 }
 
+func TestDetectFormatByMagic_ape(t *testing.T) {
+	fd := NewFormatDecoder()
+	f := writeTempFile(t, []byte("MAC \x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"))
+	ext, err := fd.DetectFormatByMagic(f)
+	if err != nil {
+		t.Fatalf("unexpected error for APE: %v", err)
+	}
+	if ext != ".ape" {
+		t.Errorf("DetectFormatByMagic = %q, want .ape", ext)
+	}
+}
+
 func TestSupportedFormats(t *testing.T) {
 	fd := NewFormatDecoder()
 	formats := fd.SupportedFormats()
-	expected := map[string]bool{".mp2": true, ".mp3": true, ".wav": true, ".flac": true, ".ogg": true, ".oga": true, ".opus": true, ".mid": true, ".midi": true, ".mod": true, ".xm": true, ".s3m": true, ".it": true, ".m4a": true}
+	expected := map[string]bool{".mp2": true, ".mp3": true, ".wav": true, ".flac": true, ".ogg": true, ".oga": true, ".opus": true, ".mid": true, ".midi": true, ".mod": true, ".xm": true, ".s3m": true, ".it": true, ".m4a": true, ".ape": true}
 	if len(formats) != len(expected) {
 		t.Fatalf("SupportedFormats() = %d items (%v), want %d", len(formats), formats, len(expected))
 	}

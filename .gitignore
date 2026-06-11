@@ -1,5 +1,7 @@
 /neoviolet
 /neoviolet.exe
+/apecli
+/apecli.exe
 config.json
 history.txt
 *.log
@@ -27,3 +29,6 @@ Thumbs.db
 .idea/
 .zed/
 *.sublime-*
+
+# Rust build artifacts
+tools/apecli/target/

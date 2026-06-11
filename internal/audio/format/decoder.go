@@ -34,12 +34,14 @@ var (
 	oggProbes  []FormatProbe // Ogg container stream type (OpusHead, etc.)
 	mpegProbes []FormatProbe // MPEG sync byte layer detection (MP2, etc.)
 	id3Probes  []FormatProbe // Format behind an ID3 tag (MP2, etc.)
+	magicProbes []FormatProbe // Raw leading magic bytes (APE, etc.)
 )
 
-func registerFTYPProbe(fn FormatProbe) { ftypProbes = append(ftypProbes, fn) }
-func registerOGGProbe(fn FormatProbe)  { oggProbes = append(oggProbes, fn) }
-func registerMPEGProbe(fn FormatProbe) { mpegProbes = append(mpegProbes, fn) }
-func registerID3Probe(fn FormatProbe)  { id3Probes = append(id3Probes, fn) }
+func registerFTYPProbe(fn FormatProbe)  { ftypProbes = append(ftypProbes, fn) }
+func registerOGGProbe(fn FormatProbe)   { oggProbes = append(oggProbes, fn) }
+func registerMPEGProbe(fn FormatProbe)  { mpegProbes = append(mpegProbes, fn) }
+func registerID3Probe(fn FormatProbe)   { id3Probes = append(id3Probes, fn) }
+func registerMagicProbe(fn FormatProbe) { magicProbes = append(magicProbes, fn) }
 
 // ---- Format registration ----
 
@@ -165,6 +167,12 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 		logger.Debug("Detected ftyp but unrecognized", "path", file.Name())
 		return "", fmt.Errorf("unknown ftyp container")
 	default:
+		for _, p := range magicProbes {
+			if ext, ok := p(buffer, n); ok {
+				logger.Debug("Detected format: "+ext+" (magic)", "path", file.Name())
+				return ext, nil
+			}
+		}
 		if synth.OpenmptProbe(buffer[:n]) {
 			logger.Debug("Detected format: tracker (openmpt probe)", "path", file.Name())
 			return ".mod", nil
@@ -185,14 +193,17 @@ func detectMPEGBehindID3(buf []byte, n int) string {
 	if pastID3+2 > n {
 		return ""
 	}
-	if buf[pastID3] == 0xFF && (buf[pastID3+1]&0xE0) == 0xE0 {
-		for _, p := range id3Probes {
-			if ext, ok := p(buf, n); ok {
-				return ext
-			}
+	// Run id3Probes unconditionally (each probe decides if the data matches).
+	for _, p := range id3Probes {
+		if ext, ok := p(buf, n); ok {
+			return ext
 		}
 	}
-	return ".mp3"
+	// If no probe matched but we see MPEG sync, default to MP3.
+	if buf[pastID3] == 0xFF && (buf[pastID3+1]&0xE0) == 0xE0 {
+		return ".mp3"
+	}
+	return ""
 }
 
 func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekCloser, beep.Format, error) {

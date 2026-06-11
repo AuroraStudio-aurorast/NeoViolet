@@ -19,13 +19,18 @@ ifeq ($(HAS_OPENMPT),1)
 	TEST_FLAGS  += -tags openmpt
 endif
 
-.PHONY: all build build/race build/debug build/noopenmpt run test test/race test/verbose test/short test/cover clean lint vet tidy install help
+HAS_CARGO := $(shell which cargo 2>/dev/null | grep -q . && echo 1 || echo 0)
+
+APECLI_DIR := tools/apecli
+APECLI_BIN := $(APECLI_DIR)/target/release/apecli$(shell [ "$(GOOS)" = windows ] && echo ".exe")
+
+.PHONY: all build build/race build/debug build/noopenmpt run test test/race test/verbose test/short test/cover clean lint vet tidy install apetools apetools/debug help
 
 all: build
 
 # --- Build ---
 
-build:
+build: apetools
 	$(GO) build $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
 build/race:
@@ -36,6 +41,17 @@ build/debug:
 
 build/noopenmpt:
 	$(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT) ./cmd/$(BINARY)
+
+# --- APE toolchain (Rust) ---
+
+apetools:
+	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)"; exit 0; fi
+	cd $(APECLI_DIR) && cargo build --release
+	@cp $(APECLI_BIN) . 2>/dev/null || true
+
+apetools/debug:
+	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, apecli will not be built"; exit 0; fi
+	cd $(APECLI_DIR) && cargo build
 
 # --- Run ---
 
@@ -74,8 +90,9 @@ tidy:
 # --- Clean ---
 
 clean:
-	rm -f $(BINARY) $(BINARY).exe
+	rm -f $(BINARY) $(BINARY).exe apecli apecli.exe
 	rm -f coverage.out coverage.html
+	-cd $(APECLI_DIR) && cargo clean 2>/dev/null || true
 
 # --- Install ---
 
@@ -105,6 +122,10 @@ help:
 	@echo "  build/race         Build with race detector"
 	@echo "  build/debug        Build without optimizations (dlv compatible)"
 	@echo "  build/noopenmpt    Build without libopenmpt support"
+	@echo ""
+	@echo "APE (Monkey's Audio):"
+	@echo "  apetools           Build apecli Rust helper (cargo required)"
+	@echo "  apetools/debug     Build apecli in debug mode"
 	@echo ""
 	@echo "Run:"
 	@echo "  run ARGS=...       Build and run with optional arguments"
