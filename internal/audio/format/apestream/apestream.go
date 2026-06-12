@@ -261,6 +261,8 @@ type apeCLIBackend struct {
 	numChannels    int
 	// Signalled when the read goroutine exits.
 	done chan struct{}
+	// Closed to signal the readLoop to stop (e.g. during Seek).
+	cancel chan struct{}
 }
 
 type pcmChunk struct {
@@ -281,9 +283,7 @@ type apeCLIHeader struct {
 
 func newApeCLIBackend(binary string) *apeCLIBackend {
 	return &apeCLIBackend{
-		binary:    binary,
-		chunkChan: make(chan pcmChunk, 4),
-		done:      make(chan struct{}),
+		binary: binary,
 	}
 }
 
@@ -360,7 +360,11 @@ func (b *apeCLIBackend) startProcess(args []string) (*StreamInfo, error) {
 	b.bytesPerSample = int(hdr.BitsPerSample) / 8
 	b.numChannels = int(hdr.Channels)
 
-	// Start read goroutine.
+	// Create fresh channels and start the read goroutine. Channels are created
+	// here (not at the top) so they only exist when a readLoop is active.
+	b.chunkChan = make(chan pcmChunk, 4)
+	b.done = make(chan struct{})
+	b.cancel = make(chan struct{})
 	go b.readLoop()
 
 	return &StreamInfo{
@@ -373,7 +377,6 @@ func (b *apeCLIBackend) startProcess(args []string) (*StreamInfo, error) {
 
 func (b *apeCLIBackend) readLoop() {
 	defer close(b.done)
-	defer close(b.chunkChan)
 
 	bps := b.bytesPerSample
 	ch := b.numChannels
@@ -387,7 +390,11 @@ func (b *apeCLIBackend) readLoop() {
 			validFrames := n / (bps * ch)
 			pcmBuf := make([]float64, bufFrames*2)
 			pcmBuf = convertPCMToFloat64(rawBuf[:n], ch, bps, pcmBuf)
-			b.chunkChan <- pcmChunk{data: pcmBuf[:validFrames*2]}
+			select {
+			case b.chunkChan <- pcmChunk{data: pcmBuf[:validFrames*2]}:
+			case <-b.cancel:
+				return
+			}
 		}
 		if err != nil {
 			return
@@ -433,22 +440,54 @@ func (b *apeCLIBackend) Seek(samples int) error {
 
 	b.kill()
 
-	_, err := b.startProcess([]string{"--seek", fmt.Sprintf("%d", samples), b.path})
-	if err != nil {
-		return err
+	// Drain any buffered PCM and wait for the old readLoop to fully exit
+	// before starting a new one. This prevents the old goroutine from
+	// sending on or closing the new channel.
+	if b.chunkChan != nil {
+		for {
+			select {
+			case <-b.chunkChan:
+			case <-b.done:
+				goto stopped
+			}
+		}
 	}
-	return nil
+stopped:
+	if b.chunkChan != nil {
+		close(b.chunkChan)
+	}
+
+	_, err := b.startProcess([]string{"--seek", fmt.Sprintf("%d", samples), b.path})
+	return err
 }
 
 func (b *apeCLIBackend) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.kill()
+	// Wait for the readLoop to exit before closing chunkChan, so we don't
+	// race with a concurrent send on a full channel.
+	if b.chunkChan != nil {
+		for {
+			select {
+			case <-b.chunkChan:
+			case <-b.done:
+				goto closeCh
+			}
+		}
+	}
+closeCh:
+	if b.chunkChan != nil {
+		close(b.chunkChan)
+	}
 	return nil
 }
 
 func (b *apeCLIBackend) kill() {
 	b.readBuf = nil
+	if b.cancel != nil {
+		close(b.cancel)
+	}
 	if b.cmd != nil && b.cmd.Process != nil {
 		b.cmd.Process.Kill()
 		b.cmd.Wait()
@@ -474,6 +513,7 @@ type ffmpegBackend struct {
 	chunkChan    chan pcmChunk
 	readBuf      []float64
 	done         chan struct{}
+	cancel       chan struct{} // closed to signal readLoop to stop
 }
 
 func (b *ffmpegBackend) Name() string { return "ffmpeg" }
@@ -585,8 +625,6 @@ func (b *ffmpegBackend) startProcess(path string, seekSamples int) (*StreamInfo,
 
 	b.cmd = cmd
 	b.stdout = stdout
-	b.chunkChan = make(chan pcmChunk, 4)
-	b.done = make(chan struct{})
 
 	// Capture stderr for diagnostics (ffmpeg logs there).
 	go func() {
@@ -597,7 +635,10 @@ func (b *ffmpegBackend) startProcess(path string, seekSamples int) (*StreamInfo,
 		}
 	}()
 
-	// Start read goroutine. ffmpeg always outputs 16-bit LE PCM.
+	// Create fresh channels and start the read goroutine.
+	b.chunkChan = make(chan pcmChunk, 4)
+	b.done = make(chan struct{})
+	b.cancel = make(chan struct{})
 	go b.readLoop()
 
 	return info, nil
@@ -605,7 +646,6 @@ func (b *ffmpegBackend) startProcess(path string, seekSamples int) (*StreamInfo,
 
 func (b *ffmpegBackend) readLoop() {
 	defer close(b.done)
-	defer close(b.chunkChan)
 
 	ch := b.info.Channels
 	if ch == 0 {
@@ -621,7 +661,11 @@ func (b *ffmpegBackend) readLoop() {
 			validFrames := n / frameBytes
 			pcmBuf := make([]float64, bufFrames*2)
 			pcmBuf = convertPCMToFloat64(rawBuf[:n], ch, 2, pcmBuf)
-			b.chunkChan <- pcmChunk{data: pcmBuf[:validFrames*2]}
+			select {
+			case b.chunkChan <- pcmChunk{data: pcmBuf[:validFrames*2]}:
+			case <-b.cancel:
+				return
+			}
 		}
 		if err != nil {
 			return
@@ -667,6 +711,21 @@ func (b *ffmpegBackend) Seek(samples int) error {
 
 	b.kill()
 
+	// Drain any buffered PCM and wait for the old readLoop to fully exit.
+	if b.chunkChan != nil {
+		for {
+			select {
+			case <-b.chunkChan:
+			case <-b.done:
+				goto stoppedFfmpeg
+			}
+		}
+	}
+stoppedFfmpeg:
+	if b.chunkChan != nil {
+		close(b.chunkChan)
+	}
+
 	_, err := b.startProcess(b.path, samples)
 	return err
 }
@@ -675,11 +734,27 @@ func (b *ffmpegBackend) Close() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.kill()
+	if b.chunkChan != nil {
+		for {
+			select {
+			case <-b.chunkChan:
+			case <-b.done:
+				goto closeChFfmpeg
+			}
+		}
+	}
+closeChFfmpeg:
+	if b.chunkChan != nil {
+		close(b.chunkChan)
+	}
 	return nil
 }
 
 func (b *ffmpegBackend) kill() {
 	b.readBuf = nil
+	if b.cancel != nil {
+		close(b.cancel)
+	}
 	if b.cmd != nil && b.cmd.Process != nil {
 		b.cmd.Process.Kill()
 		b.cmd.Wait()
