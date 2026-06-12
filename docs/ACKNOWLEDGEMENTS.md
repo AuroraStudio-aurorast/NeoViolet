@@ -1,6 +1,8 @@
 # This project used following dependenices
 
-## charm.land/bubbletea/v2
+## neoviolet - `/`
+
+### charm.land/bubbletea/v2
 
 Licensed under **MIT License**
 
@@ -28,7 +30,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## charm.land/lipgloss/v2
+### charm.land/lipgloss/v2
 
 Licensed under **MIT License**
 
@@ -56,7 +58,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## charm.land/bubbles/v2
+### charm.land/bubbles/v2
 
 Licensed under **MIT License**
 
@@ -84,7 +86,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## charm.land/log/v2
+### charm.land/log/v2
 
 Licensed under **MIT License**
 
@@ -112,7 +114,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## charm.land/huh/v2
+### charm.land/huh/v2
 
 Licensed under **MIT License**
 
@@ -140,7 +142,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/gopxl/beep/v2
+### github.com/gopxl/beep/v2
 
 Licensed under **MIT License**
 
@@ -168,7 +170,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/dhowden/tag
+### github.com/dhowden/tag
 
 Licensed under **BSD-2-Clause license**
 
@@ -198,7 +200,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~
 
-## github.com/jpodeszfa/go-meltysynth/meltysynth
+### github.com/jpodeszfa/go-meltysynth/meltysynth
 
 Licensed under **MIT License**
 
@@ -230,7 +232,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/gotracker/playback
+### github.com/gotracker/playback
 
 Licensed under `MIT License`
 
@@ -258,7 +260,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~
 
-## github.com/EdlinOrg/prominentcolor
+### github.com/EdlinOrg/prominentcolor
 
 Licensed under **BSD-3-Clause license**
 
@@ -292,7 +294,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~
 
-## github.com/lucasb-eyer/go-colorful
+### github.com/lucasb-eyer/go-colorful
 
 Licensed under **MIT License**
 
@@ -306,7 +308,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ~~~
 
-## github.com/godbus/dbus/v5
+### github.com/godbus/dbus/v5
 
 Licensed under **BSD-2-Clause license**
 
@@ -336,7 +338,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~
 
-## github.com/ebitengine/oto/v3
+### github.com/ebitengine/oto/v3
 
 Licensed under **Apache License 2.0**
 
@@ -544,7 +546,7 @@ Licensed under **Apache License 2.0**
    limitations under the License.
 ~~~
 
-## github.com/ebitengine/purego
+### github.com/ebitengine/purego
 
 Licensed under **Apache License 2.0**
 
@@ -752,7 +754,7 @@ Licensed under **Apache License 2.0**
    limitations under the License.
 ~~~
 
-## github.com/hajimehoshi/go-mp3
+### github.com/hajimehoshi/go-mp3
 
 Licensed under **Apache License 2.0**
 
@@ -960,7 +962,7 @@ Licensed under **Apache License 2.0**
    limitations under the License.
 ~~~
 
-## github.com/pion/opus
+### github.com/pion/opus
 
 Licensed under **MIT License**
 
@@ -988,7 +990,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/gen2brain/mpeg
+### github.com/gen2brain/mpeg
 
 Licensed under **MIT License**
 
@@ -1016,7 +1018,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ~~~
 
-## github.com/icza/bitio
+### github.com/icza/bitio
 
 Licensed under **Apache License 2.0**
 
@@ -1224,7 +1226,7 @@ Licensed under **Apache License 2.0**
    limitations under the License.
 ~~~
 
-## github.com/jfreymuth/oggvorbis
+### github.com/jfreymuth/oggvorbis
 
 Licensed under **MIT License**
 
@@ -1252,7 +1254,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/jfreymuth/vorbis
+### github.com/jfreymuth/vorbis
 
 Licensed under **MIT License**
 
@@ -1280,7 +1282,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/mewkiz/flac
+### github.com/mewkiz/flac
 
 Licensed under **The Unlicense**
 
@@ -1311,7 +1313,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org/>
 ~~~
 
-## github.com/spf13/cobra
+### github.com/spf13/cobra
 
 Licensed under **Apache License 2.0**
 
@@ -1492,7 +1494,7 @@ Licensed under **Apache License 2.0**
       of your accepting any such warranty or additional liability.
 ~~~
 
-## github.com/mewkiz/pkg
+### github.com/mewkiz/pkg
 
 Licensed under **The Unlicense**
 
@@ -1523,7 +1525,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org/>
 ~~~
 
-## github.com/catppuccin/go
+### github.com/catppuccin/go
 
 Licensed under **MIT License**
 
@@ -1551,7 +1553,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/mitchellh/hashstructure/v2
+### github.com/mitchellh/hashstructure/v2
 
 Licensed under **MIT License**
 
@@ -1579,7 +1581,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## github.com/alicebob/alac
+### github.com/alicebob/alac
 
 > Modified version at `/internal/audio/format/alac/alac.go`
 
@@ -1609,9 +1611,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ~~~
 
-## libopenmpt
+### libopenmpt
 
-> This dependency is statically compiled into the program using `CGo`, and may not be included in all copies.
+> This dependency was used this software and may not be included in all copies.
 
 Licensed under **BSD-3-Clause license**
 
@@ -1641,4 +1643,34 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+~~~
+
+## apeCLI - `/tools/apecli`
+
+### ape-decoder
+
+Licensed under **MIT License**
+
+~~~
+MIT License
+
+Copyright (c) 2026 ombs.io
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ~~~

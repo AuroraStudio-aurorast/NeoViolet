@@ -9,6 +9,7 @@ This document describes how to build NeoViolet from source — locally and via C
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Makefile Targets](#makefile-targets)
+- [APE (Monkey's Audio) Toolchain](#ape-monkeys-audio-toolchain)
 - [Platform-Specific Instructions](#platform-specific-instructions)
   - [Linux](#linux)
   - [macOS](#macos)
@@ -23,6 +24,7 @@ This document describes how to build NeoViolet from source — locally and via C
 ## Prerequisites
 
 - **Go 1.26+** (see `go.mod` for the exact version)
+- **Rust with cargo** — required for building `apecli` (the APE/Monkey's Audio decoder helper). Without it, `make build` still succeeds but APE playback falls back to ffmpeg or macOS `afconvert`. Install via [rustup](https://rustup.rs/).
 - **`make`** — used for all build targets
 - **C compiler** — required by CGo dependencies (the audio playback engine uses CGo for system audio)
 - **`pkg-config`** — used to detect `libopenmpt` automatically
@@ -52,10 +54,12 @@ make build
 
 | Target             | Description                                          |
 |--------------------|------------------------------------------------------|
-| `build`            | Production build with stripped debug info            |
+| `build`            | Production build with stripped debug info (builds `apecli` automatically) |
 | `build/race`       | Build with Go race detector                          |
 | `build/debug`      | Build with debug symbols (compatible with `dlv`)     |
 | `build/noopenmpt`  | Build without libopenmpt support                     |
+| `apetools`         | Build `apecli` Rust helper (release mode)            |
+| `apetools/debug`   | Build `apecli` in debug mode                         |
 | `run ARGS=...`     | Build and run with optional arguments                |
 | `test`             | Run all tests                                        |
 | `test/race`        | Run tests with race detector                         |
@@ -70,11 +74,45 @@ make build
 
 ---
 
+## APE (Monkey's Audio) Toolchain
+
+APE format support requires a separate Rust helper binary (`apecli`) built from `tools/apecli/`. The Makefile handles this automatically.
+
+### How It Works
+
+- **`make build`** depends on **`apetools`**, so `apecli` is built before the Go binary on every production build.
+- The `apetools` target checks for `cargo` — if missing, it prints a warning and exits cleanly; the Go build proceeds and APE playback falls back to ffmpeg or macOS `afconvert`.
+- The built `apecli` binary is copied to the repo root so the Go runtime can find it.
+
+### Build Targets
+
+| Target | Command | Description |
+|---|---|---|
+| `make build` (default) | `make build` | Runs `apetools` → `go build` — one-step build with APE support |
+| `make apetools` | `make apetools` | `cargo build --release` in `tools/apecli/` + copy to repo root |
+| `make apetools/debug` | `make apetools/debug` | `cargo build` (debug) — useful for Rust debugging |
+| `make clean` | `make clean` | Removes `apecli` binary + `cargo clean` |
+
+### Without cargo
+
+If Rust/cargo is not installed, all build targets still work. The build output includes a warning:
+
+```
+Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)
+```
+
+Install Rust via [rustup](https://rustup.rs/) and run `make apetools` to build `apecli` afterwards.
+
+---
+
 ## Platform-Specific Instructions
 
 ### Linux
 
 **Install dependencies:**
+
+> [!NOTE]
+> Exclude **Go** and **Rust**
 
 ```bash
 # Debian / Ubuntu
@@ -155,6 +193,7 @@ pacman -S \
   mingw-w64-clang-x86_64-zlib \
   mingw-w64-clang-x86_64-mpg123 \
   mingw-w64-clang-x86_64-go \
+  mingw-w64-clang-x86_64-rust \
   make curl ca-certificates
 ```
 
@@ -170,7 +209,8 @@ pacman -S \
   mingw-w64-clang-aarch64-libvorbis \
   mingw-w64-clang-aarch64-zlib \
   mingw-w64-clang-aarch64-mpg123 \
-  mingw-w64-clang-aarch64-go \ # Recommended
+  mingw-w64-clang-aarch64-go \
+  mingw-w64-clang-aarch64-rust \
   make curl ca-certificates
 ```
 
@@ -204,10 +244,12 @@ The resulting bundle is `dist/` containing `neoviolet.exe` and all required DLLs
 
 ```bash
 make build
-# Equivalent to: go build -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
+# Step 1: cargo build --release in tools/apecli/  (if cargo is available)
+# Step 2: go build -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
 # With openmpt tag: go build -tags openmpt -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
 ```
 
+- Builds the `apecli` Rust helper automatically (if cargo is available)
 - Strips debug info (`-s -w`)
 - Auto-detects `libopenmpt` and adds `openmpt` build tag if available
 - Output: `./neoviolet` (or `./neoviolet.exe` on Windows)
@@ -291,6 +333,8 @@ make test/cover
 # Produces coverage.out and coverage.html
 ```
 
+> **Note:** `make test` does **not** rebuild `apecli`. If you've modified the Rust source in `tools/apecli/`, run `make apetools` first, then `make test`.
+
 ---
 
 ## Troubleshooting
@@ -362,6 +406,24 @@ When building a version for the 32-bit x86 architecture (`GOARCH=386`), you may 
 ```
 
 Due to dependencies, the project does not support 32-bit architecture. We do not plan to fix this issue; you should compile a 64-bit version, such as x86_64 (`GOARCH=amd64`).
+
+### apecli Build Failure (Rust)
+
+```
+error[E0463]: can't find crate for `ape_decoder`
+```
+
+This means the Rust `ape-decoder` crate failed to download or compile. Ensure:
+
+```bash
+# Verify cargo is installed
+cargo --version
+
+# Test the build directly
+cd tools/apecli && cargo build --release
+```
+
+If `cargo` is missing, install [rustup](https://rustup.rs/) and retry.
 
 ### Go Version Mismatch
 
