@@ -1,0 +1,27 @@
+<SAMI>
+<HEAD>
+<TITLE>Lyrics Test</TITLE>
+</HEAD>
+<BODY>
+<SYNC Start=0><P Class=KRCC>This is the first line of the song.
+<SYNC Start=1720><P Class=KRCC>Here comes the second line more words.
+<SYNC Start=4280><P Class=KRCC>A third line to complete the verse.
+<SYNC Start=6160><P Class=KRCC>The chorus begins right about now
+<SYNC Start=7820><P Class=KRCC>Singing la la la la la la la
+<SYNC Start=9540><P Class=KRCC>This is the final line of the test song.
+<SYNC Start=12360><P Class=KRCC>Fading away slowly.
+<SYNC Start=13000><P Class=KRCC>End of track.
+<SYNC Start=15240><P Class=KRCC>This is the first multilingual line.<P Class=ENCC>This is the first multilingual line.
+<SYNC Start=17560><P Class=KRCC>Hello.<P Class=ENCC>Hello.
+<SYNC Start=18200><P Class=KRCC>Shared text free timestamps.
+<SYNC Start=20280><P Class=KRCC>English only.
+<SYNC Start=21360><P Class=KRCC>English text.
+<SYNC Start=22600><P Class=KRCC>Bilingual A
+<SYNC Start=23700><P Class=KRCC>Bilingual B
+<SYNC Start=24980><P Class=KRCC>Separated by other lines.
+<SYNC Start=26880><P Class=KRCC>Bilingual A2.
+<SYNC Start=28200><P Class=KRCC>Punctuation: !@#$%^&amp;*()_+{}:&quot;&lt;&gt;?
+<SYNC Start=29220><P Class=KRCC>Word sync the lyrics
+<SYNC Start=30200><P Class=KRCC>Test file complete.
+</BODY>
+</SAMI>

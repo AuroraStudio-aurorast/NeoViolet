@@ -22,6 +22,8 @@ func TestSidecarParsersWithTestdata(t *testing.T) {
 		{"yrc", "yrc"},
 		{"eslrc", "eslrc"},
 		{"lys", "lys"},
+			{"srt", "srt"},
+			{"smi", "smi"},
 	}
 
 	for _, tt := range tests {
