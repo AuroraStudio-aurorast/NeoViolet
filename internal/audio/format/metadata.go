@@ -1,6 +1,7 @@
 package format
 
 import (
+	"io"
 	"os"
 
 	"github.com/dhowden/tag"
@@ -67,6 +68,23 @@ func readViaAPEv2(path string) Metadata {
 		Artist: tags.Artist,
 	}
 	logger.Debug("Metadata read (APEv2)", "path", path, "title", m.Title, "artist", m.Artist)
+	return m
+}
+
+// ReadFromSeeker reads metadata from an io.ReadSeeker (e.g. bytes.Reader).
+// Uses dhowden/tag internally (supports MP3/ID3, FLAC, OGG, MP4, etc.).
+func (mr *MetadataReader) ReadFromSeeker(r io.ReadSeeker) Metadata {
+	metadata, err := tag.ReadFrom(r)
+	if err != nil {
+		logger.Debug("Metadata read from seeker failed", "err", err)
+		return Metadata{}
+	}
+
+	m := Metadata{
+		Title:  metadata.Title(),
+		Artist: metadata.Artist(),
+	}
+	logger.Debug("Metadata read from seeker", "title", m.Title, "artist", m.Artist)
 	return m
 }
 

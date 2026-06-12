@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	"charm.land/bubbles/v2/help"
@@ -25,11 +27,46 @@ func loadAudio(filePath, sfPath, trackerBackend string) tea.Msg {
 		player.SetSoundfontPath(sfPath)
 	}
 	player.SetTrackerBackend(trackerBackend)
+
+	// Stdin mode: load audio data from pipe
+	if filePath == "-" {
+		return loadAudioFromStdin(player)
+	}
+
 	if err := player.Open(filePath); err != nil {
 		logger.Error("Failed to load audio", "path", filePath, "err", err)
 		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180}
 	}
 	return AudioLoadedMsg{Player: player, Path: filePath}
+}
+
+// loadAudioFromStdin reads audio data from os.Stdin and opens it via the player.
+func loadAudioFromStdin(player *audio.Player) tea.Msg {
+	// Check if stdin is a pipe (not a terminal)
+	info, err := os.Stdin.Stat()
+	if err != nil {
+		logger.Error("Failed to stat stdin", "err", err)
+		return ErrorMsg{Message: "Failed to read stdin", Timer: 120}
+	}
+	if info.Mode()&os.ModeNamedPipe == 0 && info.Mode()&os.ModeCharDevice != 0 {
+		return ErrorMsg{
+			Message: "stdin is a terminal; pipe audio data or provide a file path",
+			Timer:   180,
+		}
+	}
+
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		logger.Error("Failed to read stdin", "err", err)
+		return ErrorMsg{Message: fmt.Sprintf("Failed to read stdin: %v", err), Timer: 120}
+	}
+
+	if err := player.OpenReader("stdin", data); err != nil {
+		logger.Error("Failed to load audio from stdin", "err", err)
+		return ErrorMsg{Message: fmt.Sprintf("Failed to load from stdin: %v", err), Timer: 180}
+	}
+
+	return AudioLoadedMsg{Player: player, Path: "stdin"}
 }
 
 // Global key bindings

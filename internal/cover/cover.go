@@ -6,6 +6,7 @@ import (
 	"image"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
 	"os"
 
 	"github.com/dhowden/tag"
@@ -39,7 +40,17 @@ func extractViaDhowden(path string) (image.Image, error) {
 	}
 	defer f.Close()
 
-	m, err := tag.ReadFrom(f)
+	return extractCoverFromReader(f)
+}
+
+// ExtractFromReader extracts cover art from an io.ReadSeeker (e.g. bytes.Reader).
+// Uses dhowden/tag to parse embedded cover art from MP3/FLAC/OGG/MP4 files.
+func ExtractFromReader(r io.ReadSeeker) (image.Image, error) {
+	return extractCoverFromReader(r)
+}
+
+func extractCoverFromReader(r io.ReadSeeker) (image.Image, error) {
+	m, err := tag.ReadFrom(r)
 	if err != nil {
 		return nil, err
 	}

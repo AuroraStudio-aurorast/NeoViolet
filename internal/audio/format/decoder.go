@@ -94,6 +94,86 @@ func init() {
 	})
 }
 
+// detectFormatFromBuf runs the format-detection logic on a byte slice.
+// It is the shared core used by both DetectFormatByMagic (from *os.File)
+// and DetectFormatFromBytes (from a raw []byte).
+func detectFormatFromBuf(buf []byte, n int, sourceName string) (string, error) {
+	if n < 4 {
+		return "", fmt.Errorf("file too small to detect format")
+	}
+
+	switch {
+	case n >= 17 && string(buf[0:17]) == "Extended Module: ":
+		logger.Debug("Detected format: XM", "source", sourceName)
+		return ".xm", nil
+	case n >= 4 && string(buf[0:4]) == "IMPM":
+		logger.Debug("Detected format: IT", "source", sourceName)
+		return ".it", nil
+	case n >= 48 && string(buf[44:48]) == "SCRM":
+		logger.Debug("Detected format: S3M", "source", sourceName)
+		return ".s3m", nil
+	case n >= 1084 && isMODSignature(string(buf[1080:1084])):
+		logger.Debug("Detected format: MOD", "source", sourceName)
+		return ".mod", nil
+	case n >= 3 && string(buf[0:3]) == "ID3":
+		if ext := detectMPEGBehindID3(buf, n); ext != "" {
+			logger.Debug("Detected format: MPEG behind ID3 -> "+ext, "source", sourceName)
+			return ext, nil
+		}
+		logger.Debug("Detected format: MP3 (ID3)", "source", sourceName)
+		return ".mp3", nil
+	case n >= 2 && buf[0] == 0xFF && (buf[1]&0xE0) == 0xE0:
+		for _, p := range mpegProbes {
+			if ext, ok := p(buf, n); ok {
+				logger.Debug("Detected format: "+ext+" (sync)", "source", sourceName)
+				return ext, nil
+			}
+		}
+		logger.Debug("Detected format: MP3 (sync)", "source", sourceName)
+		return ".mp3", nil
+	case n >= 12 && string(buf[0:4]) == "RIFF" && string(buf[8:12]) == "WAVE":
+		logger.Debug("Detected format: WAV", "source", sourceName)
+		return ".wav", nil
+	case n >= 4 && string(buf[0:4]) == "fLaC":
+		logger.Debug("Detected format: FLAC", "source", sourceName)
+		return ".flac", nil
+	case n >= 4 && string(buf[0:4]) == "OggS":
+		for _, p := range oggProbes {
+			if ext, ok := p(buf, n); ok {
+				logger.Debug("Detected format: "+ext, "source", sourceName)
+				return ext, nil
+			}
+		}
+		logger.Debug("Detected format: OGG/Vorbis", "source", sourceName)
+		return ".ogg", nil
+	case n >= 4 && string(buf[0:4]) == "MThd":
+		logger.Debug("Detected format: MIDI", "source", sourceName)
+		return ".mid", nil
+	case n >= 8 && string(buf[4:8]) == "ftyp":
+		for _, p := range ftypProbes {
+			if ext, ok := p(buf, n); ok {
+				logger.Debug("Detected format: "+ext, "source", sourceName)
+				return ext, nil
+			}
+		}
+		logger.Debug("Detected ftyp but unrecognized", "source", sourceName)
+		return "", fmt.Errorf("unknown ftyp container")
+	default:
+		for _, p := range magicProbes {
+			if ext, ok := p(buf, n); ok {
+				logger.Debug("Detected format: "+ext+" (magic)", "source", sourceName)
+				return ext, nil
+			}
+		}
+		if synth.OpenmptProbe(buf[:n]) {
+			logger.Debug("Detected format: tracker (openmpt probe)", "source", sourceName)
+			return ".mod", nil
+		}
+		logger.Debug("Unknown audio format", "source", sourceName)
+		return "", fmt.Errorf("unknown audio format")
+	}
+}
+
 func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	originalPos, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
@@ -106,80 +186,16 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	if err != nil && err != io.EOF {
 		return "", err
 	}
-	if n < 4 {
-		return "", fmt.Errorf("file too small to detect format")
-	}
 
-	switch {
-	case n >= 17 && string(buffer[0:17]) == "Extended Module: ":
-		logger.Debug("Detected format: XM", "path", file.Name())
-		return ".xm", nil
-	case n >= 4 && string(buffer[0:4]) == "IMPM":
-		logger.Debug("Detected format: IT", "path", file.Name())
-		return ".it", nil
-	case n >= 48 && string(buffer[44:48]) == "SCRM":
-		logger.Debug("Detected format: S3M", "path", file.Name())
-		return ".s3m", nil
-	case n >= 1084 && isMODSignature(string(buffer[1080:1084])):
-		logger.Debug("Detected format: MOD", "path", file.Name())
-		return ".mod", nil
-	case n >= 3 && string(buffer[0:3]) == "ID3":
-		if ext := detectMPEGBehindID3(buffer, n); ext != "" {
-			logger.Debug("Detected format: MPEG behind ID3 -> "+ext, "path", file.Name())
-			return ext, nil
-		}
-		logger.Debug("Detected format: MP3 (ID3)", "path", file.Name())
-		return ".mp3", nil
-	case n >= 2 && buffer[0] == 0xFF && (buffer[1]&0xE0) == 0xE0:
-		for _, p := range mpegProbes {
-			if ext, ok := p(buffer, n); ok {
-				logger.Debug("Detected format: "+ext+" (sync)", "path", file.Name())
-				return ext, nil
-			}
-		}
-		logger.Debug("Detected format: MP3 (sync)", "path", file.Name())
-		return ".mp3", nil
-	case n >= 12 && string(buffer[0:4]) == "RIFF" && string(buffer[8:12]) == "WAVE":
-		logger.Debug("Detected format: WAV", "path", file.Name())
-		return ".wav", nil
-	case n >= 4 && string(buffer[0:4]) == "fLaC":
-		logger.Debug("Detected format: FLAC", "path", file.Name())
-		return ".flac", nil
-	case n >= 4 && string(buffer[0:4]) == "OggS":
-		for _, p := range oggProbes {
-			if ext, ok := p(buffer, n); ok {
-				logger.Debug("Detected format: "+ext, "path", file.Name())
-				return ext, nil
-			}
-		}
-		logger.Debug("Detected format: OGG/Vorbis", "path", file.Name())
-		return ".ogg", nil
-	case n >= 4 && string(buffer[0:4]) == "MThd":
-		logger.Debug("Detected format: MIDI", "path", file.Name())
-		return ".mid", nil
-	case n >= 8 && string(buffer[4:8]) == "ftyp":
-		for _, p := range ftypProbes {
-			if ext, ok := p(buffer, n); ok {
-				logger.Debug("Detected format: "+ext, "path", file.Name())
-				return ext, nil
-			}
-		}
-		logger.Debug("Detected ftyp but unrecognized", "path", file.Name())
-		return "", fmt.Errorf("unknown ftyp container")
-	default:
-		for _, p := range magicProbes {
-			if ext, ok := p(buffer, n); ok {
-				logger.Debug("Detected format: "+ext+" (magic)", "path", file.Name())
-				return ext, nil
-			}
-		}
-		if synth.OpenmptProbe(buffer[:n]) {
-			logger.Debug("Detected format: tracker (openmpt probe)", "path", file.Name())
-			return ".mod", nil
-		}
-		logger.Debug("Unknown audio format", "path", file.Name())
-		return "", fmt.Errorf("unknown audio format")
-	}
+	return detectFormatFromBuf(buffer, n, file.Name())
+}
+
+// DetectFormatFromBytes detects the audio format from a raw byte slice.
+// Returns the file extension (e.g. ".mp3", ".flac") or an error.
+func (fd *FormatDecoder) DetectFormatFromBytes(data []byte) (string, error) {
+	buffer := make([]byte, 1084)
+	n := copy(buffer, data)
+	return detectFormatFromBuf(buffer, n, "stdin")
 }
 
 // detectMPEGBehindID3 skips past an ID3v2 header and checks the underlying
