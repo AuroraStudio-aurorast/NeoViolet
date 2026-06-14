@@ -128,9 +128,9 @@ func renderFooter(m *Model) string {
 	if m.Audio.Player != nil {
 		artist := m.Audio.Artist
 		if artist == "" || artist == "Unknown Artist" {
-			songLine = fmt.Sprintf("%s  %s", icon, m.Audio.CurrentSong)
+			songLine = m.Audio.CurrentSong
 		} else {
-			songLine = fmt.Sprintf("%s  %s - %s", icon, m.Audio.CurrentSong, artist)
+			songLine = fmt.Sprintf("%s - %s", m.Audio.CurrentSong, artist)
 		}
 	} else {
 		songLine = fmt.Sprintf("%s  No audio loaded", m.Icons.Music)
@@ -155,13 +155,36 @@ func renderFooter(m *Model) string {
 		footerTextStyle.Render(timeDisplay),
 	)
 
+	whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
+	prevText := whiteStyle.Render(m.Icons.Prev)
+	playPauseText := whiteStyle.Render(icon)
+	nextText := whiteStyle.Render(m.Icons.Next)
+	statusLine := lipgloss.JoinHorizontal(lipgloss.Left,
+		prevText,
+		" ",
+		playPauseText,
+		" ",
+		nextText,
+	)
 	volumeLabel := footerTextStyle.Render(m.Icons.Volume + " ")
 	volumeBar := m.Components.VolumeBar.ViewAs(m.Audio.Volume)
-
-	// Combine volume label and bar on one line
-	volumeLine := lipgloss.JoinHorizontal(lipgloss.Left,
+	volumeSection := lipgloss.JoinHorizontal(lipgloss.Left,
 		volumeLabel,
 		volumeBar,
+	)
+
+	// Combine play/pause icon (left) and volume section (right-aligned) on one line
+	availableWidth := m.UI.Width - 4
+	playWidth := lipgloss.Width(statusLine)
+	volumeWidth := lipgloss.Width(volumeSection)
+	spaceCount := availableWidth - playWidth - volumeWidth
+	if spaceCount < 1 {
+		spaceCount = 1
+	}
+	volumeLine := lipgloss.JoinHorizontal(lipgloss.Left,
+		statusLine,
+		strings.Repeat(" ", spaceCount),
+		volumeSection,
 	)
 
 	// Lyric rendering: single or multiple lines joined by " | "

@@ -20,8 +20,8 @@ type IconSet struct {
 var NerdIcons = IconSet{
 	Play:        "\uf04b",
 	Pause:       "\uf04c",
-	Next:        "\uf050",
-	Prev:        "\uf04a",
+	Next:        "\U000f04ad",
+	Prev:        "\U000f04ae",
 	Volume:      "\uf028",
 	Command:     ":",
 	Home:        "\uf46d",
