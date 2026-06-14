@@ -89,7 +89,7 @@ internal/
   cover/                # Album art from audio tags
   lyrics/               # Pluggable parser registry: lrc/ttml/qrc/yrc/eslrc/lys/embedded
   ui/                   # Bubble Tea model.go/types.go/update.go/update_keyboard.go/view.go/audio_state.go
-  mediactl/             # OS media control: Linux (MPRIS/D-Bus) or no-op stub
+  mediactl/             # OS media control: Linux (MPRIS/D-Bus), macOS (NowPlaying via MediaPlayer.framework)
   accent/               # K-means color extraction from cover art
   logger/               # Structured logging
 docs/                   # Documentation
@@ -101,7 +101,12 @@ testdata/               # Test fixtures (*.mp3, *.flac, *.m4a, *.lrc, ...)
 
 - **Elm architecture:** Model → Update (`tea.Msg`) → View. Mutate state only in `Update()`.
 - **Pluggable lyrics:** `LyricParser` interface + `RegisterParser()` — prioritized by registration order. TTML/LYS support overlapping multi-agent rendering.
-- **Platform build tags:** Media control via `controller_linux.go` (MPRIS/D-Bus) vs `controller_stub.go`. Add `controller_<os>.go` for new platforms.
+- **Platform build tags:** Media control via per-OS files with Go build tags:
+  `controller_linux.go` (`//go:build linux`) — MPRIS2/D-Bus,
+  `controller_darwin.go` (`//go:build darwin`) — MPNowPlayingInfoCenter + MPRemoteCommandCenter via purego/objc,
+  `controller_stub.go` (`//go:build !linux && !darwin`) — no-op.
+  macOS entry point: `cmd/neoviolet/cmd/run_darwin.go` wraps main in `mediactl.MacOSRun()` which calls `[NSApp run]`.
+  Add `controller_<os>.go` + update stub constraint for new platforms.
 - **Config-first startup:** First run → setup wizard → persist JSON config next to binary.
 - **Cross-platform audio:** `gopxl/beep` core loop. Format decoders for WAV/MP3/FLAC/OGG/Opus/ALAC/APE. MIDI needs `.sf2`. Trackers via `gotracker/playback` + optional `libopenmpt`.
 

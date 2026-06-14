@@ -91,40 +91,42 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		seekDuration = time.Duration(flagSeek) * time.Second
 	}
 
-	model := neoviolet.NewModel(filePath, cfg, seekDuration)
-	p := tea.NewProgram(model)
+	return runWithOSMedia(func() error {
+		model := neoviolet.NewModel(filePath, cfg, seekDuration)
+		p := tea.NewProgram(model)
 
-	// Bridge OS media control commands (MPRIS on Linux) into BubbleTea messages
-	if model.MediaCtl != nil {
-		go func() {
-			cmdChan, err := model.MediaCtl.Start()
-			if err != nil {
-				logger.Error("mediactl: start failed", "err", err)
-				return
-			}
-			for cmd := range cmdChan {
-				p.Send(neoviolet.MediaCtlMsg{Command: cmd})
-			}
-		}()
-	}
-
-	m, err := p.Run()
-	if err != nil {
-		logger.Error("Program error", "err", err)
-		return err
-	}
-	if model, ok := m.(*neoviolet.Model); ok {
-		if model.ExitCode == 0 {
-			// Normal quit: persist runtime volume to config
-			model.Config.DefaultVolume = model.Audio.Volume
-			if saveErr := model.Config.Save(); saveErr != nil {
-				logger.Warn("Failed to save config on quit", "err", saveErr)
-			}
-		} else {
-			logger.Info("Program exited with code", "code", model.ExitCode)
-			os.Exit(model.ExitCode)
+		// Bridge OS media control commands (MPRIS on Linux, NowPlaying on macOS) into BubbleTea messages
+		if model.MediaCtl != nil {
+			go func() {
+				cmdChan, err := model.MediaCtl.Start()
+				if err != nil {
+					logger.Error("mediactl: start failed", "err", err)
+					return
+				}
+				for cmd := range cmdChan {
+					p.Send(neoviolet.MediaCtlMsg{Command: cmd})
+				}
+			}()
 		}
-	}
-	logger.Info("Program exited")
-	return nil
+
+		m, err := p.Run()
+		if err != nil {
+			logger.Error("Program error", "err", err)
+			return err
+		}
+		if model, ok := m.(*neoviolet.Model); ok {
+			if model.ExitCode == 0 {
+				// Normal quit: persist runtime volume to config
+				model.Config.DefaultVolume = model.Audio.Volume
+				if saveErr := model.Config.Save(); saveErr != nil {
+					logger.Warn("Failed to save config on quit", "err", saveErr)
+				}
+			} else {
+				logger.Info("Program exited with code", "code", model.ExitCode)
+				os.Exit(model.ExitCode)
+			}
+		}
+		logger.Info("Program exited")
+		return nil
+	})
 }

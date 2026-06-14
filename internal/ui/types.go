@@ -114,6 +114,7 @@ type AudioState struct {
 	Player            audio.AudioPlayer
 	CurrentSong       string
 	Artist            string
+	Album             string
 	Progress          float64
 	Volume            float64
 	Duration          time.Duration

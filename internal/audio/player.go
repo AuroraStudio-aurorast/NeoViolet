@@ -49,6 +49,7 @@ type Player struct {
 	linearVolume   float64
 	title          string
 	artist         string
+	album          string
 	coverImage     image.Image
 	decoder        *format.FormatDecoder
 	tagReader      *format.MetadataReader
@@ -185,6 +186,7 @@ func (p *Player) readTags(path string) {
 	metadata := p.tagReader.Read(path)
 	p.title = metadata.Title
 	p.artist = metadata.Artist
+	p.album = metadata.Album
 
 	img, err := cover.ExtractFromFile(path)
 	if err == nil {
@@ -265,6 +267,7 @@ func (p *Player) OpenReader(name string, data []byte) error {
 	metadata := p.tagReader.ReadFromSeeker(metaReader)
 	p.title = metadata.Title
 	p.artist = metadata.Artist
+	p.album = metadata.Album
 
 	// Extract cover art from the buffer (using another reader).
 	coverReader := bytes.NewReader(data)
@@ -618,6 +621,12 @@ func (p *Player) Artist() string {
 		return p.synthCtrl.Artist()
 	}
 	return p.artist
+}
+
+func (p *Player) Album() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.album
 }
 
 func (p *Player) CoverImage() image.Image {

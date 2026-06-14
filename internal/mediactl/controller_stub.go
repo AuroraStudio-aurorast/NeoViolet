@@ -1,4 +1,4 @@
-//go:build !linux
+//go:build !linux && !darwin
 
 package mediactl
 
@@ -29,8 +29,8 @@ func (s *stubController) Close() error {
 
 var _ Controller = (*stubController)(nil)
 
-// EnsureNotImplemented is exported solely for build-verification on non-Linux
-// platforms. It panics if called.
+// EnsureNotImplemented panics — used for build verification on platforms
+// without native media controls (neither MPRIS/D-Bus nor MediaPlayer).
 func EnsureNotImplemented() {
-	panic(errors.New("mediactl: MPRIS requires Linux with a D-Bus session bus"))
+	panic(errors.New("mediactl: this platform has no native media control backend"))
 }

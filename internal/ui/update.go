@@ -150,6 +150,9 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.Audio.Artist = "Unknown Artist"
 	}
+	if msg.Player.Album() != "" {
+		m.Audio.Album = msg.Player.Album()
+	}
 
 	msg.Player.SetVolume(m.Audio.Volume)
 
@@ -230,10 +233,18 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 		// MPRIS Seek offset is in microseconds
 		offset := time.Duration(msg.Command.Value) * time.Microsecond
 		m.Audio.SeekRelative(offset)
+		// Push new position to NowPlaying immediately so Control Center
+		// doesn't briefly show the old position before the next tick.
+		if m.MediaCtl != nil {
+			m.MediaCtl.Update(m.buildPlayState())
+		}
 	case mediactl.CmdSetPosition:
 		// MPRIS SetPosition is absolute position in microseconds
 		pos := time.Duration(msg.Command.Value) * time.Microsecond
 		m.Audio.SeekPlayer(pos)
+		if m.MediaCtl != nil {
+			m.MediaCtl.Update(m.buildPlayState())
+		}
 	}
 
 	return m, nil

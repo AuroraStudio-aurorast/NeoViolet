@@ -30,5 +30,6 @@ Thumbs.db
 .zed/
 *.sublime-*
 
-# Rust build artifacts
 tools/apecli/target/
+
+reasonix.toml

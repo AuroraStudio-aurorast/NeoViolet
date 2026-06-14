@@ -47,6 +47,7 @@ func (m *mockPlayer) Format() beep.Format {
 func (m *mockPlayer) Path() string            { return m.path }
 func (m *mockPlayer) Title() string           { return "" }
 func (m *mockPlayer) Artist() string          { return "" }
+func (m *mockPlayer) Album() string           { return "" }
 func (m *mockPlayer) CoverImage() image.Image { return nil }
 
 func TestAudioState_UpdatePosition(t *testing.T) {

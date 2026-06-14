@@ -29,6 +29,7 @@ func (p *OpenmptPlayer) Position() time.Duration                 { return 0 }
 func (p *OpenmptPlayer) Close() error                            { return nil }
 func (p *OpenmptPlayer) Title() string                           { return "" }
 func (p *OpenmptPlayer) Artist() string                          { return "" }
+func (p *OpenmptPlayer) Album() string                           { return "" }
 func (p *OpenmptPlayer) CoverImage() image.Image                 { return nil }
 func (p *OpenmptPlayer) Format() beep.Format                     { return beep.Format{} }
 func (p *OpenmptPlayer) Streamer() Streamer                      { return nil }

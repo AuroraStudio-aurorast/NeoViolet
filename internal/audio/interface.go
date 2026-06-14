@@ -24,5 +24,6 @@ type AudioPlayer interface {
 	Path() string
 	Title() string
 	Artist() string
+	Album() string
 	CoverImage() image.Image
 }

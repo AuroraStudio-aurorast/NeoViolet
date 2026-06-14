@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"image"
 	"io"
 	"os"
 	"time"
@@ -280,12 +281,18 @@ func (m *Model) cleanup() {
 
 // buildPlayState builds a mediactl.PlayState from the current audio state.
 func (m *Model) buildPlayState() mediactl.PlayState {
+	var cover image.Image
+	if m.Audio.Player != nil {
+		cover = m.Audio.Player.CoverImage()
+	}
 	return mediactl.PlayState{
 		Title:    m.Audio.CurrentSong,
 		Artist:   m.Audio.Artist,
+		Album:    m.Audio.Album,
 		Duration: m.Audio.Duration,
 		Position: m.Audio.Elapsed,
 		Playing:  m.Audio.IsPlaying,
+		Cover:    cover,
 	}
 }
 

@@ -1,12 +1,15 @@
 // Package mediactl integrates NeoViolet with OS-level media controls:
 //   - Linux: MPRIS2 over D-Bus
-//   - macOS: MPNowPlayingInfoCenter (planned)
+//   - macOS: MPNowPlayingInfoCenter + MPRemoteCommandCenter
 //   - Windows: SMTC (planned)
 //
 // On unsupported platforms it's a no-op.
 package mediactl
 
-import "time"
+import (
+	"image"
+	"time"
+)
 
 // CommandType identifies the kind of media control command.
 type CommandType int
@@ -36,6 +39,7 @@ type PlayState struct {
 	Duration time.Duration
 	Position time.Duration
 	Playing  bool
+	Cover    image.Image // nil if no cover art available
 }
 
 // Controller is the interface each platform backend must implement.

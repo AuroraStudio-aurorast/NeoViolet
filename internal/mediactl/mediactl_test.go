@@ -103,7 +103,3 @@ func TestStubController(t *testing.T) {
 		t.Error("channel should be closed after Close()")
 	}
 }
-
-func TestControllerInterface(t *testing.T) {
-	var _ Controller = (*stubController)(nil)
-}

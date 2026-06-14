@@ -19,6 +19,7 @@ func NewMetadataReader() *MetadataReader {
 type Metadata struct {
 	Title  string
 	Artist string
+	Album  string
 }
 
 func (mr *MetadataReader) Read(path string) Metadata {
@@ -52,8 +53,9 @@ func readViaDhowden(path string) Metadata {
 	m := Metadata{
 		Title:  metadata.Title(),
 		Artist: metadata.Artist(),
+		Album:  metadata.Album(),
 	}
-	logger.Debug("Metadata read (dhowden)", "path", path, "title", m.Title, "artist", m.Artist)
+	logger.Debug("Metadata read (dhowden)", "path", path, "title", m.Title, "artist", m.Artist, "album", m.Album)
 	return m
 }
 
@@ -66,8 +68,9 @@ func readViaAPEv2(path string) Metadata {
 	m := Metadata{
 		Title:  tags.Title,
 		Artist: tags.Artist,
+		Album:  tags.Album,
 	}
-	logger.Debug("Metadata read (APEv2)", "path", path, "title", m.Title, "artist", m.Artist)
+	logger.Debug("Metadata read (APEv2)", "path", path, "title", m.Title, "artist", m.Artist, "album", m.Album)
 	return m
 }
 
@@ -83,8 +86,9 @@ func (mr *MetadataReader) ReadFromSeeker(r io.ReadSeeker) Metadata {
 	m := Metadata{
 		Title:  metadata.Title(),
 		Artist: metadata.Artist(),
+		Album:  metadata.Album(),
 	}
-	logger.Debug("Metadata read from seeker", "title", m.Title, "artist", m.Artist)
+	logger.Debug("Metadata read from seeker", "title", m.Title, "artist", m.Artist, "album", m.Album)
 	return m
 }
 
