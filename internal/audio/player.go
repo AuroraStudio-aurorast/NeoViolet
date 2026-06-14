@@ -576,7 +576,24 @@ func (p *Player) Close() error {
 	}
 	p.tempFiles = nil
 
+	// Release the cached SoundFont — it is only needed during MIDI playback.
+	p.cachedSF = nil
+	p.cachedSFPath = ""
+
 	return nil
+}
+
+// UnloadSoundfont releases the cached SoundFont to free memory.
+// It is safe to call at any time; the SoundFont will be reloaded
+// on the next MIDI playback if needed.
+func (p *Player) UnloadSoundfont() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.cachedSF != nil {
+		logger.Debug("Releasing cached SoundFont")
+		p.cachedSF = nil
+		p.cachedSFPath = ""
+	}
 }
 
 func (p *Player) Path() string {
@@ -685,6 +702,9 @@ func (p *Player) openSynthetic(path, ext string) error {
 		// All tracker formats (MOD, XM, S3M, IT, and OpenMPT-only
 		// formats like MPTM) route through openTrackerSynth — it tries
 		// OpenMPT first, then falls back to gotracker.
+		// Release the SoundFont cache — it is only needed for MIDI playback.
+		p.cachedSF = nil
+		p.cachedSFPath = ""
 		return p.openTrackerSynth(path, ext, sr)
 	}
 }
