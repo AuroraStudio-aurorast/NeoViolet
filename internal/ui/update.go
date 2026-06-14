@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -44,6 +45,10 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
 	m.Error.Tick()
 	m.Info.Tick()
+
+	if m.Loading {
+		m.loadingTick++
+	}
 
 	// Push current playback state to OS media control layer (MPRIS on Linux)
 	if m.MediaCtl != nil {
@@ -116,12 +121,20 @@ func handleSeek(m *Model, msg SeekMsg) (tea.Model, tea.Cmd) {
 
 func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
 	m.Loading = false
+	// Clear loading line from normal screen
+	fmt.Fprint(os.Stdout, "\033[2K\r")
+	// Hide ConEmu progress bar
+	fmt.Fprint(os.Stdout, "\033]9;4;0;0\a")
 	m.Error.Set(msg.Message, msg.Timer)
 	return m, nil
 }
 
 func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	m.Loading = false
+	// Clear loading line from normal screen
+	fmt.Fprint(os.Stdout, "\033[2K\r")
+	// Hide ConEmu progress bar
+	fmt.Fprint(os.Stdout, "\033]9;4;0;0\a")
 	m.Audio.Player = msg.Player
 	m.Audio.Duration = msg.Player.Duration()
 

@@ -220,6 +220,7 @@ type Model struct {
 	QuitConfirm    bool
 	ExitCode       int
 	Loading        bool
+	loadingTick    int
 	pendingPath    string
 	pendingSeek    time.Duration
 	CommandHistory []string

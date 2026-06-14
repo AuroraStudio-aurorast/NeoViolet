@@ -24,7 +24,10 @@ var appLayoutStyle = lipgloss.NewStyle()
 
 func renderMainView(m *Model) tea.View {
 	if m.Loading {
-		return tea.NewView(loadingStyle.Render("Loading..."))
+		// Braille dot spinner (npm-style): ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		idx := m.loadingTick / 6 % len(frames)
+		return tea.NewView(loadingStyle.Render(frames[idx] + " Loading..."))
 	}
 
 	if m.UI.Width < minWidth || m.UI.Height < minHeight {

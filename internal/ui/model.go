@@ -243,6 +243,8 @@ func (m *Model) Init() tea.Cmd {
 		backend := m.Config.TrackerBackend
 		m.pendingPath = ""
 		cmds = append(cmds, func() tea.Msg {
+			// Start ConEmu progress bar (OSC 9;4) with indeterminate state
+			fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
 			return loadAudio(path, sfPath, backend)
 		})
 	}
