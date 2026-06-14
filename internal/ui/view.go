@@ -105,9 +105,16 @@ func renderContent(m *Model) string {
 		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
+	// When lyrics are rendered in the footer, they take 1 row (footerHeight=6).
+	// Without lyrics the footer is only 5 rows, so content gets that row back.
+	offset := contentOffset
+	if !(m.Audio.Lyrics != nil && m.Audio.ShowLyrics) {
+		offset = contentOffset - 1
+	}
+
 	return s.
 		Width(m.UI.Width).
-		Height(m.UI.Height - contentOffset).
+		Height(m.UI.Height - offset).
 		Render(content)
 }
 
