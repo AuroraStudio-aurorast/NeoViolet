@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
@@ -13,11 +14,11 @@ import (
 // useXDG controls whether config is stored at the XDG standard path
 // (~/.config/neoviolet/config.json) instead of next to the executable.
 // Must be set via SetXDGConfig before Load/Save/ConfigExists.
-var useXDG bool
+var useXDG atomic.Bool
 
 // SetXDGConfig controls whether the XDG standard config path is used.
 // Must be called before Load, Save, or ConfigExists.
-func SetXDGConfig(enabled bool) { useXDG = enabled }
+func SetXDGConfig(enabled bool) { useXDG.Store(enabled) }
 
 type LyricsConfig struct {
 	Enabled        bool     `json:"enabled"`
@@ -137,7 +138,7 @@ func ConfigExists() bool {
 
 // ConfigDir returns the directory holding config.json.
 func ConfigDir() (string, error) {
-	if useXDG {
+	if useXDG.Load() {
 		xdgHome := os.Getenv("XDG_CONFIG_HOME")
 		if xdgHome == "" || !filepath.IsAbs(xdgHome) {
 			home, err := os.UserHomeDir()
@@ -189,6 +190,13 @@ func Load() (*Config, error) {
 	case "auto", "openmpt", "gotracker":
 	default:
 		cfg.TrackerBackend = "auto"
+	}
+
+	// Validate SoundfontPath if configured.
+	if cfg.SoundfontPath != "" {
+		if _, err := os.Stat(cfg.SoundfontPath); err != nil {
+			logger.Warn("SoundfontPath not found", "path", cfg.SoundfontPath, "err", err)
+		}
 	}
 
 	if cfg.Normalize() {

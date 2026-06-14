@@ -16,6 +16,9 @@ type Accent struct {
 	Lyric     colorful.Color
 }
 
+// IsDark reports whether the main accent color is dark using the CIE L*a*b*
+// lightness channel (L*). The threshold of 50 is the perceptual midpoint of the
+// L* scale (0 = black, 100 = white).
 func (a Accent) IsDark() bool {
 	l, _, _ := a.Main.Lab()
 	return l < 50

@@ -42,6 +42,9 @@ func loadAudio(filePath, sfPath, trackerBackend string) tea.Msg {
 }
 
 // loadAudioFromStdin reads audio data from os.Stdin and opens it via the player.
+// os.Stdin is only read when it's a pipe (not a terminal); BubbleTea uses
+// /dev/tty for terminal input so there is no conflict. Stdin is closed after
+// reading to prevent accidental reuse.
 func loadAudioFromStdin(player *audio.Player) tea.Msg {
 	// Check if stdin is a pipe (not a terminal)
 	info, err := os.Stdin.Stat()
@@ -57,6 +60,7 @@ func loadAudioFromStdin(player *audio.Player) tea.Msg {
 	}
 
 	data, err := io.ReadAll(os.Stdin)
+	os.Stdin.Close()
 	if err != nil {
 		logger.Error("Failed to read stdin", "err", err)
 		return ErrorMsg{Message: fmt.Sprintf("Failed to read stdin: %v", err), Timer: 120}
@@ -219,7 +223,11 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	}
 
 	// Initialize OS media control layer (MPRIS on Linux, no-op elsewhere)
-	m.MediaCtl, _ = mediactl.New()
+	var mediaCtlErr error
+	m.MediaCtl, mediaCtlErr = mediactl.New()
+	if mediaCtlErr != nil {
+		logger.Warn("mediactl init failed", "err", mediaCtlErr)
+	}
 
 	// Load persisted command history
 	loadHistory(m)
@@ -299,6 +307,18 @@ func (m *Model) buildPlayState() mediactl.PlayState {
 func (m *Model) adjustVolume(delta float64) {
 	m.Audio.AdjustVolume(delta)
 	m.Components.VolumeBar.SetPercent(m.Audio.Volume)
+	m.saveVolumeConfig()
+}
+
+// saveVolumeConfig persists the current volume to config if it changed.
+func (m *Model) saveVolumeConfig() {
+	if m.Config.DefaultVolume == m.Audio.Volume {
+		return
+	}
+	m.Config.DefaultVolume = m.Audio.Volume
+	if err := m.Config.Save(); err != nil {
+		logger.Warn("Failed to save volume config", "err", err)
+	}
 }
 
 func (m *Model) updatePlaybackState() tea.Cmd {

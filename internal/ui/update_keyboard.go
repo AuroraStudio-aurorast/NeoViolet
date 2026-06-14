@@ -316,6 +316,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 			m.Audio.Player.SetVolume(vol)
 		}
 		m.Components.VolumeBar.SetPercent(vol)
+		m.saveVolumeConfig()
 		return m, nil
 
 	case "seek":

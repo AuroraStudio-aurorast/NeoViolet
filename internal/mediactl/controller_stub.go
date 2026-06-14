@@ -2,8 +2,6 @@
 
 package mediactl
 
-import "errors"
-
 type stubController struct {
 	cmdChan chan Command
 }
@@ -28,9 +26,3 @@ func (s *stubController) Close() error {
 }
 
 var _ Controller = (*stubController)(nil)
-
-// EnsureNotImplemented panics — used for build verification on platforms
-// without native media controls (neither MPRIS/D-Bus nor MediaPlayer).
-func EnsureNotImplemented() {
-	panic(errors.New("mediactl: this platform has no native media control backend"))
-}

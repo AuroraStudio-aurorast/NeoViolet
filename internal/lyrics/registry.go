@@ -46,8 +46,8 @@ func FindAndParse(audioPath string, priority []string) (*LyricsData, error) {
 			logger.Warn("open lyric file failed", "format", name, "path", sidecar, "error", err)
 			continue
 		}
-		defer f.Close()
 		data, err := p.Parse(f, sidecar)
+		f.Close()
 		if err != nil {
 			logger.Warn("lyric parse failed", "format", name, "path", sidecar, "error", err)
 			continue
