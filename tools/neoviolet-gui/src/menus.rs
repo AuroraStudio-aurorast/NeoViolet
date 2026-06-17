@@ -13,7 +13,8 @@ actions!(
         QuitApp,
         ZoomIn,
         ZoomOut,
-        ZoomReset
+        ZoomReset,
+        OpenRepository,
     ]
 );
 
@@ -105,6 +106,11 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         }
     });
 
+    cx.on_action(|_: &OpenRepository, _cx: &mut App| {
+        let _ = std::process::Command::new("open")
+            .arg("https://github.com/AuroraStudio-aurorast/NeoViolet").spawn(); 
+    });
+
     cx.bind_keys([
         KeyBinding::new("cmd-q", QuitApp, None),
         KeyBinding::new("cmd-,", Preferences, None),
@@ -140,7 +146,9 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         },
         Menu {
             name: "Help".into(),
-            items: vec![],
+            items: vec![
+                MenuItem::action("GitHub Repository", OpenRepository),
+            ],
         },
     ]);
 }

@@ -74,6 +74,26 @@ fn main() {
                 return;
             }
 
+            // ── Escape: dismiss dialogs (not exit_error — user must choose) ──
+            if e.keystroke.key.as_str() == "escape"
+                && !modifiers.control && !modifiers.alt && !modifiers.shift
+            {
+                let (dismissed, notify_eid) = {
+                    let state = cx.global::<AppState>();
+                    let about = *state.show_about.lock().unwrap();
+                    let close = *state.show_close.lock().unwrap();
+                    if about { *state.show_about.lock().unwrap() = false; }
+                    if close { *state.show_close.lock().unwrap() = false; }
+                    (about || close, *state.root_entity_id.lock().unwrap())
+                };
+                if dismissed {
+                    if let Some(eid) = notify_eid {
+                        cx.notify(eid);
+                    }
+                    return;
+                }
+            }
+
             // Read locally-cached terminal modes (no FairMutex lock).
             let mode = cx.global::<AppState>().cached_modes();
 
@@ -137,7 +157,10 @@ fn main() {
                     false
                 });
 
-                cx.new(|cx| NeoVioletApp::new(cx, args))
+                let root_entity = cx.new(|cx| NeoVioletApp::new(cx, args));
+                // Store root entity ID for menu/dialog notifications
+                cx.global::<AppState>().root_entity_id.lock().unwrap().replace(root_entity.entity_id());
+                root_entity
             },
         )
         .unwrap();

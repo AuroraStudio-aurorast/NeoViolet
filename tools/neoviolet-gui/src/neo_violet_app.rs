@@ -237,12 +237,12 @@ impl Render for NeoVioletApp {
 
         let terminal_view = move || {
             if lines.is_empty() {
-                return div().flex_1().bg(gpui::rgb(DRACULA_BG))
+                return div().id("aria:terminal:empty").flex_1().bg(gpui::rgb(DRACULA_BG))
                     .flex().items_center().justify_center()
                     .child(div().text_color(gpui::rgb(0xf8f8f2)).text_sm().child("No terminal"))
                     .into_any_element();
             }
-            div().id("terminal-view").flex_1().overflow_hidden().px_2().pb_1()
+            div().id("aria:region:terminal").flex_1().overflow_hidden().px_2().pb_1()
                 .font_family(font_family).text_size(px(font_size)).text_color(default_fg)
                 .bg(gpui::rgb(DRACULA_BG))
                 .child(div().flex().flex_col().children(lines.iter().map(|line| {
@@ -262,16 +262,16 @@ impl Render for NeoVioletApp {
                 .into_any_element()
         };
 
-        let base = div().bg(cx.theme().surface.canvas).size_full().flex().flex_col()
+        let base = div().id("aria:app:neoviolet-gui").bg(cx.theme().surface.canvas).size_full().flex().flex_col()
             .when(!window.is_fullscreen() && cfg!(target_os = "macos"), |base| {
-                base.child(div().id("titlebar").w_full().h(px(28.0))
+                base.child(div().id("aria:region:titlebar").w_full().h(px(28.0))
                     .bg(cx.theme().surface.base).text_color(cx.theme().content.primary)
                     .flex().flex_row().items_center()
-                    .child(div().id("titlebar:drag-area")
+                    .child(div().id("aria:titlebar:drag-area")
                         .window_control_area(WindowControlArea::Drag)
                         .h_full().flex().flex_row().items_center().flex_grow().min_w(px(0.0)).pl_3()
                         .child(div().flex_grow())
-                        .child(div().id("titlebar:title").font_weight(FontWeight::SEMIBOLD).text_sm()
+                        .child(div().id("aria:titlebar:title").font_weight(FontWeight::SEMIBOLD).text_sm()
                             .child(self.current_title.clone()))
                         .child(div().flex_grow()))
                     .on_mouse_down(MouseButton::Left, cx.listener(move |_t, ev: &MouseDownEvent, w, cx| {
