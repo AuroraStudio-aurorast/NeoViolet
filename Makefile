@@ -24,13 +24,23 @@ HAS_CARGO := $(shell which cargo 2>/dev/null | grep -q . && echo 1 || echo 0)
 APECLI_DIR := tools/apecli
 APECLI_BIN := $(APECLI_DIR)/target/release/apecli$(shell [ "$(GOOS)" = windows ] && echo ".exe")
 
-.PHONY: all build build/race build/debug build/noopenmpt run test test/race test/verbose test/short test/cover clean lint vet tidy install apetools apetools/debug help
+GUI_DIR   := tools/neoviolet-gui
+GUI_OUT   := neoviolet-gui$(shell [ "$(GOOS)" = windows ] && echo ".exe")
+GUI_BIN   := $(GUI_DIR)/target/release/neoviolet-gui$(shell [ "$(GOOS)" = windows ] && echo ".exe")
+# Use runtime_shaders on macOS to avoid Metal Toolchain requirement.
+# Shaders compile at runtime via system Metal framework (no xcrun metal needed).
+GUI_FEATURES :=
+ifeq ($(GOOS),darwin)
+  GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
+endif
+
+.PHONY: all build build/race build/debug build/noopenmpt run test test/race test/verbose test/short test/cover clean lint vet tidy install apetools apetools/debug gui gui/debug run/gui help
 
 all: build
 
 # --- Build ---
 
-build: apetools
+build: apetools gui
 	$(GO) build $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
 build/race:
@@ -41,6 +51,17 @@ build/debug:
 
 build/noopenmpt:
 	$(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT) ./cmd/$(BINARY)
+
+# --- GUI (Rust + gpui-ce) ---
+
+gui:
+	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, GUI will not be built"; exit 0; fi
+	cd $(GUI_DIR) && cargo build --release $(GUI_FEATURES)
+	@cp $(GUI_BIN) . 2>/dev/null || true
+
+gui/debug:
+	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, GUI will not be built"; exit 0; fi
+	cd $(GUI_DIR) && cargo build $(GUI_FEATURES)
 
 # --- APE toolchain (Rust) ---
 
@@ -57,6 +78,9 @@ apetools/debug:
 
 run: build
 	./$(OUTPUT) $(ARGS)
+
+run/gui: gui
+	./$(GUI_OUT) $(ARGS)
 
 # --- Test ---
 
@@ -90,9 +114,10 @@ tidy:
 # --- Clean ---
 
 clean:
-	rm -f $(BINARY) $(BINARY).exe apecli apecli.exe
+	rm -f $(BINARY) $(BINARY).exe apecli apecli.exe $(GUI_OUT)
 	rm -f coverage.out coverage.html
 	-cd $(APECLI_DIR) && cargo clean 2>/dev/null || true
+	-cd $(GUI_DIR) && cargo clean 2>/dev/null || true
 
 # --- Install ---
 
@@ -140,6 +165,11 @@ help:
 	@echo "  vet                Run go vet"
 	@echo "  lint               Run golangci-lint (fallback: go vet)"
 	@echo "  tidy               Run go mod tidy"
+	@echo ""
+	@echo "GUI (gpui-ce + yororen-ui):"
+	@echo "  gui                Build neoviolet-gui (cargo required)"
+	@echo "  gui/debug          Build neoviolet-gui in debug mode"
+	@echo "  run/gui ARGS=...   Build GUI and run with optional arguments"
 	@echo ""
 	@echo "Other:"
 	@echo "  clean              Remove build artifacts"

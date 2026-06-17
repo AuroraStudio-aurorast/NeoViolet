@@ -31,5 +31,8 @@ Thumbs.db
 *.sublime-*
 
 tools/apecli/target/
+tools/neoviolet-gui/target/
+/neoviolet-gui
+/neoviolet-gui.exe
 
 reasonix.toml

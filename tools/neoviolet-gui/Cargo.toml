@@ -1,0 +1,18 @@
+[package]
+name = "neoviolet-gui"
+version = "0.1.0"
+edition = "2024"
+description = "Native GUI wrapper for NeoViolet terminal music player"
+
+[dependencies]
+gpui = { package = "gpui-ce", version = "0.3", features = ["runtime_shaders"] }
+yororen_ui = "0.2"
+alacritty_terminal = "0.26"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+dirs = "6"
+log = "0.4"
+env_logger = "0.11"
+futures = "0.3"
+smol = "2"
+regex = "1"
