@@ -171,10 +171,11 @@ jobs:
           mkdir -p dist
           cp neoviolet.exe dist/
           cp apecli.exe dist/ 2>/dev/null || true
+          cp neoviolet-gui.exe dist/ 2>/dev/null || true
           BIN_DIR="/${{ matrix.env_prefix }}/bin"
           SYSTEM_DLLS="^(KERNEL32|ntdll|USER32|GDI32|ADVAPI32|SHELL32|OLE32|MSVCRT|VCRUNTIME|api-ms-win|ucrtbase|WS2_32|IPHLPAPI|SETUPAPI|CRYPT32|bcrypt|PSAPI|WINMM|VERSION|combase|RPCRT4|SHLWAPI|oleaut32|IMM32|MSCTF|kernel\.appcore|windows\.storage)\.dll$"
           declare -A seen
-          to_process=("neoviolet.exe")
+          to_process=("neoviolet.exe" "neoviolet-gui.exe")
           while [ ${#to_process[@]} -gt 0 ]; do
             current="${to_process[0]}"
             to_process=("${to_process[@]:1}")
