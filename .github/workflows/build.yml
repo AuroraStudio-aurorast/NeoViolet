@@ -32,14 +32,14 @@ jobs:
             runner: ubuntu-latest
             cc: clang
             cxx: clang++
-            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev libxcb-dev libxkbcommon-dev libxkbcommon-x11-dev"
+            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev"
             install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
           - os: linux
             goarch: arm64
             runner: ubuntu-24.04-arm
             cc: clang
             cxx: clang++
-            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev libxcb-dev libxkbcommon-dev libxkbcommon-x11-dev"
+            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev"
             install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
           - os: macos
             goarch: amd64
