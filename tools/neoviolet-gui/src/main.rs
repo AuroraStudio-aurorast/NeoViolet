@@ -15,8 +15,10 @@ mod menus;
 mod modes;
 mod mouse;
 mod neo_violet_app;
+mod platform;
 mod state;
 mod term;
+mod terminal_view;
 
 use key_encode::encode_key_seq;
 use neo_violet_app::NeoVioletApp;
@@ -110,16 +112,13 @@ fn main() {
         .detach();
 
         // ── 8) Open window ──
-        // Custom transparent titlebar only on macOS; other platforms use system default.
-        let titlebar_opts = if cfg!(target_os = "macos") {
-            Some(TitlebarOptions {
-                title: Some("NeoViolet".into()),
-                appears_transparent: true,
-                traffic_light_position: None,
-            })
-        } else {
-            None
-        };
+        // macOS: custom transparent titlebar with traffic-light buttons.
+        // Linux/Windows: explicit native system titlebar (appears_transparent: false).
+        let titlebar_opts = Some(TitlebarOptions {
+            title: Some("NeoViolet".into()),
+            appears_transparent: cfg!(target_os = "macos"),
+            traffic_light_position: None,
+        });
 
         cx.open_window(
             WindowOptions {

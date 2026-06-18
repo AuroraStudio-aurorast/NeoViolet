@@ -1,21 +1,18 @@
+//! Root component: titlebar + terminal + dialogs.
+//!
+//! Delegates terminal rendering/maintenance to `terminal_view`, mouse/key
+//! encoding to `mouse`/`key_encode`, and cross-platform logic to `platform`.
+
 use gpui::*;
 use gpui::prelude::*;
 use futures::StreamExt;
-use std::sync::Arc;
 use yororen_ui::theme::ActiveTheme;
 
-use crate::bounds::TerminalBounds;
 use crate::components;
 use crate::config;
-use crate::hyperlink;
-use crate::modes::Modes;
 use crate::state::AppState;
-use crate::term::{CursorShape, TerminalState};
-
-const DRACULA_BG: u32 = 0x282a36;
-const DRACULA_CURSOR: u32 = 0x8be9fd;
-const CELL_ASPECT: f32 = 0.6;
-const PAD_LEFT: f32 = 8.0;
+use crate::term::TerminalState;
+use crate::terminal_view::{self, CELL_ASPECT};
 
 pub struct NeoVioletApp {
     current_title: String,
@@ -31,7 +28,6 @@ impl NeoVioletApp {
         let app_state = cx.global::<AppState>();
         let cfg = app_state.config.clone();
 
-        // Spawn terminal
         let mut terminal = TerminalState::spawn(&cfg, &launch_args)
             .expect("failed to spawn terminal");
         *app_state.pty_sender.lock().unwrap() = Some(terminal.input_sender());
@@ -60,7 +56,7 @@ impl NeoVioletApp {
                         let state = cx.global::<AppState>();
                         let term = state.terminal.lock().unwrap();
                         if let Some(ref t) = *term {
-                            let should_blink = t.modes().contains(Modes::SHOW_CURSOR)
+                            let should_blink = t.modes().contains(crate::modes::Modes::SHOW_CURSOR)
                                 && { let tl = t.inner_term().lock(); tl.cursor_style().blinking };
                             if should_blink { t.toggle_blink(); return true; }
                         }
@@ -96,65 +92,9 @@ impl Render for NeoVioletApp {
         let cell_w = (font_size * CELL_ASPECT).max(6.0);
         let cell_h = font_size * 1.2;
 
-        // ── Terminal maintenance + snapshot (single lock) ──
-        let (title_change, process_exited, lines, cols, cursor, ime_text) = {
-            let titlebar_h = if !window.is_fullscreen() && cfg!(target_os = "macos") { 28.0 } else { 0.0 };
-            let wf = bounds.size.width / px(1.0) - 16.0;
-            let hf = bounds.size.height / px(1.0) - titlebar_h - 4.0;
-            let ncols = (wf / cell_w).max(80.0) as usize;
-            let nrows = (hf / cell_h).max(24.0) as usize;
-
-            let state = cx.global::<AppState>();
-            let mut term = state.terminal.lock().unwrap();
-
-            let (title, exited, ls, cs, cur, ime) = if let Some(ref mut t) = *term {
-                if self.last_size != Some(bounds.size) {
-                    t.resize(ncols, nrows, cell_w as u16, cell_h as u16);
-                    self.last_size = Some(bounds.size);
-                }
-                t.update_and_swap_snapshot();
-                *state.modes.lock().unwrap() = t.modes();
-
-                let title = t.poll_title();
-                t.poll_exit_code();
-                let exited = !t.is_alive();
-
-                // OSC events
-                for data in t.drain_pty_writes() {
-                    let _ = t.input_sender().send(alacritty_terminal::event_loop::Msg::Input(
-                        std::borrow::Cow::Owned(data)));
-                }
-                for event in t.drain_term_events() {
-                    use crate::event_listener::TermEvent;
-                    match event {
-                        TermEvent::ClipboardStore(text) => {
-                            cx.write_to_clipboard(gpui::ClipboardItem::new_string(text));
-                        }
-                        TermEvent::ClipboardLoad(fmt) => {
-                            if let Some(item) = cx.read_from_clipboard() {
-                                if let Some(txt) = item.text().as_deref() {
-                                    let _ = t.input_sender().send(alacritty_terminal::event_loop::Msg::Input(
-                                        std::borrow::Cow::Owned(fmt(txt).into_bytes())));
-                                }
-                            }
-                        }
-                        TermEvent::ColorQuery(idx, fmt) => {
-                            let [r, g, b] = crate::term::dracula_fallback(idx);
-                            let rgb = alacritty_terminal::vte::ansi::Rgb { r, g, b };
-                            let _ = t.input_sender().send(alacritty_terminal::event_loop::Msg::Input(
-                                std::borrow::Cow::Owned(fmt(rgb).into_bytes())));
-                        }
-                    }
-                }
-
-                let snap = t.content_snapshot();
-                let ime = t.ime_preedit();
-                (title, exited, snap.lines.clone(), snap.cols, snap.cursor, ime)
-            } else {
-                (None, false, Arc::new(vec![]), 0, None, None::<String>)
-            };
-            (title, exited, ls, cs, cur, ime)
-        };
+        // ── Terminal maintenance (single lock) ──
+        let (title_change, process_exited, lines, cols, cursor, ime_text) =
+            terminal_view::maintain_terminal(cx, bounds, cell_w, cell_h, &mut self.last_size);
 
         // ── React to terminal events ──
         if let Some(ref title) = title_change {
@@ -163,7 +103,6 @@ impl Render for NeoVioletApp {
         if process_exited && !self.show_exit_error {
             self.show_exit_error = true;
         }
-
         if self.current_title != self.last_window_title {
             window.set_window_title(&self.current_title);
             self.last_window_title = self.current_title.clone();
@@ -201,64 +140,32 @@ impl Render for NeoVioletApp {
 
         // ── Build UI ──
         let default_fg: Hsla = gpui::rgb(0xf8f8f2).into();
+        let ime_overlay = terminal_view::render_ime_overlay(&ime_text, cursor, cell_w, cell_h, font_size);
+        let cursor_overlay = terminal_view::render_cursor_overlay(&lines, cols, cursor, cell_w, cell_h, font_size, default_fg);
 
-        let ime_overlay: Option<AnyElement> = match (&ime_text, cursor) {
-            (Some(text), Some((col, row, _))) => {
-                let left = col as f32 * cell_w + PAD_LEFT;
-                let top = row as f32 * cell_h;
-                Some(div().absolute().left(px(left)).top(px(top)).h(px(cell_h))
-                    .text_size(px(font_size)).text_color(gpui::rgb(DRACULA_CURSOR))
-                    .underline().child(text.clone()).into_any_element())
-            }
-            _ => None,
-        };
-
-        let cursor_overlay: Option<AnyElement> = cursor.and_then(|(col, row, style)| {
-            if !style.visible { return None; }
-            let ch = lines.get(row).and_then(|l| l.cells.get(col)).map(|c| c.ch).unwrap_or(' ');
-            let left = col as f32 * cell_w + PAD_LEFT;
-            let top = row as f32 * cell_h;
-            let wide = col < cols.saturating_sub(1)
-                && lines.get(row).and_then(|l| l.cells.get(col)).is_some_and(|c| c.is_wide);
-            let w = if wide { cell_w * 2.0 } else { cell_w };
-            Some(match style.shape {
-                CursorShape::Block => div().absolute().left(px(left)).top(px(top)).min_w(px(w)).h(px(cell_h))
-                    .bg(gpui::rgb(DRACULA_CURSOR)).text_color(gpui::rgb(DRACULA_BG)).text_size(px(font_size))
-                    .flex().items_center().justify_center().child(ch.to_string()).into_any_element(),
-                CursorShape::HollowBlock => div().absolute().left(px(left)).top(px(top)).min_w(px(w)).h(px(cell_h))
-                    .border_1().border_color(gpui::rgb(DRACULA_CURSOR)).text_size(px(font_size)).text_color(default_fg)
-                    .flex().items_center().justify_center().child(ch.to_string()).into_any_element(),
-                CursorShape::Underline => div().absolute().left(px(left)).top(px(top + cell_h - 2.0))
-                    .min_w(px(w)).h(px(2.0)).bg(gpui::rgb(DRACULA_CURSOR)).into_any_element(),
-                CursorShape::Beam => div().absolute().left(px(left)).top(px(top))
-                    .w(px(2.0)).h(px(cell_h)).bg(gpui::rgb(DRACULA_CURSOR)).into_any_element(),
-            })
-        });
-
-        let terminal_view = move || {
+        let terminal_element = move || {
             if lines.is_empty() {
-                return div().id("aria:terminal:empty").flex_1().bg(gpui::rgb(DRACULA_BG))
+                return div().id("aria:terminal:empty").flex_1().bg(gpui::rgb(terminal_view::DRACULA_BG))
                     .flex().items_center().justify_center()
                     .child(div().text_color(gpui::rgb(0xf8f8f2)).text_sm().child("No terminal"))
                     .into_any_element();
             }
             div().id("aria:region:terminal").flex_1().overflow_hidden().px_2().pb_1()
                 .font_family(font_family).text_size(px(font_size)).text_color(default_fg)
-                .bg(gpui::rgb(DRACULA_BG))
+                .bg(gpui::rgb(terminal_view::DRACULA_BG))
                 .child(div().flex().flex_col().children(lines.iter().map(|line| {
-                    let cw = cell_w; let ch = cell_h; let dfg = default_fg;
-                    build_line(line, cw, ch, dfg)
+                    terminal_view::build_line(line, cell_w, cell_h, default_fg)
                 })))
                 .when(ime_overlay.is_some(), |b| b.child(ime_overlay.unwrap()))
                 .when(cursor_overlay.is_some(), |b| b.child(cursor_overlay.unwrap()))
-                .on_mouse_down(MouseButton::Left, mk_mouse(cell_w, cell_h, MouseButton::Left))
-                .on_mouse_down(MouseButton::Right, mk_mouse(cell_w, cell_h, MouseButton::Right))
-                .on_mouse_down(MouseButton::Middle, mk_mouse(cell_w, cell_h, MouseButton::Middle))
-                .on_mouse_up(MouseButton::Left, mk_mouse_up(cell_w, cell_h, MouseButton::Left))
-                .on_mouse_up(MouseButton::Right, mk_mouse_up(cell_w, cell_h, MouseButton::Right))
-                .on_mouse_up(MouseButton::Middle, mk_mouse_up(cell_w, cell_h, MouseButton::Middle))
-                .on_mouse_move(mk_mouse_move(cell_w, cell_h))
-                .on_scroll_wheel(mk_scroll(cell_w, cell_h))
+                .on_mouse_down(MouseButton::Left, terminal_view::mk_mouse_down(cell_w, cell_h, MouseButton::Left))
+                .on_mouse_down(MouseButton::Right, terminal_view::mk_mouse_down(cell_w, cell_h, MouseButton::Right))
+                .on_mouse_down(MouseButton::Middle, terminal_view::mk_mouse_down(cell_w, cell_h, MouseButton::Middle))
+                .on_mouse_up(MouseButton::Left, terminal_view::mk_mouse_up(cell_w, cell_h, MouseButton::Left))
+                .on_mouse_up(MouseButton::Right, terminal_view::mk_mouse_up(cell_w, cell_h, MouseButton::Right))
+                .on_mouse_up(MouseButton::Middle, terminal_view::mk_mouse_up(cell_w, cell_h, MouseButton::Middle))
+                .on_mouse_move(terminal_view::mk_mouse_move(cell_w, cell_h))
+                .on_scroll_wheel(terminal_view::mk_scroll(cell_w, cell_h))
                 .into_any_element()
         };
 
@@ -278,7 +185,7 @@ impl Render for NeoVioletApp {
                         if ev.click_count > 1 { w.zoom_window(); cx.notify(); }
                     })))
             })
-            .child(terminal_view());
+            .child(terminal_element());
 
         let base = if self.show_exit_error {
             let exit_msg = {
@@ -336,101 +243,4 @@ impl InputHandler for NeoVioletApp {
     }
     fn bounds_for_range(&mut self, _: std::ops::Range<usize>, _: &mut Window, _: &mut App) -> Option<Bounds<Pixels>> { None }
     fn character_index_for_point(&mut self, _: Point<Pixels>, _: &mut Window, _: &mut App) -> Option<usize> { None }
-}
-
-// ── Cell rendering ──
-
-fn build_line(line: &crate::term::CachedLine, cw: f32, ch: f32, dfg: Hsla) -> impl IntoElement {
-    let cells = &line.cells;
-    if cells.is_empty() { return div().flex().h(px(ch)).into_any_element(); }
-    let end = cells.iter().rposition(|c| c.ch != ' ').map_or(0, |i| i + 1);
-    if end == 0 { return div().flex().h(px(ch)).into_any_element(); }
-    div().flex().children(cells[..end].iter().map(|cell| {
-        let c = if cell.ch == ' ' { '\u{00A0}' } else { cell.ch };
-        let mut dc = div().min_w(px(if cell.is_wide { cw * 2.0 } else { cw })).h(px(ch))
-            .flex().items_center().justify_center().child(c.to_string());
-        if let Some([r, g, b]) = cell.fg {
-            dc = dc.text_color(gpui::rgb((r as u32) << 16 | (g as u32) << 8 | b as u32));
-        } else { dc = dc.text_color(dfg); }
-        if let Some([r, g, b]) = cell.bg {
-            dc = dc.bg(gpui::rgb((r as u32) << 16 | (g as u32) << 8 | b as u32));
-        }
-        if cell.bold { dc = dc.font_weight(FontWeight::BOLD); }
-        if cell.italic { dc = dc.italic(); }
-        if cell.underline { dc = dc.underline(); }
-        if cell.strikethrough { dc = dc.line_through(); }
-        dc
-    })).into_any_element()
-}
-
-// ── Mouse event helpers ──
-
-fn grid_coords(pos: Point<Pixels>, cw: f32, ch: f32) -> (usize, usize) {
-    TerminalBounds { line_height: px(ch), cell_width: px(cw),
-        bounds: Bounds { origin: point(px(0.0), px(0.0)), size: size(px(2000.0), px(2000.0)) }
-    }.grid_point(pos)
-}
-
-fn mk_mouse(cw: f32, ch: f32, btn: MouseButton) -> impl Fn(&MouseDownEvent, &mut Window, &mut App) {
-    move |ev: &MouseDownEvent, _w, cx| {
-        if btn == MouseButton::Left && ev.modifiers.control {
-            if try_open_hyperlink(cx, ev.position, cw, ch) { return; }
-        }
-        let (col, row) = grid_coords(ev.position, cw, ch);
-        let m = cx.global::<AppState>().cached_modes();
-        if let Some(s) = crate::mouse::mouse_button_report(&m, btn, &ev.modifiers, true, col as u16, row as u16) {
-            cx.global::<AppState>().send_to_pty(s);
-        }
-    }
-}
-
-fn mk_mouse_up(cw: f32, ch: f32, btn: MouseButton) -> impl Fn(&MouseUpEvent, &mut Window, &mut App) {
-    move |ev: &MouseUpEvent, _w, cx| {
-        let (col, row) = grid_coords(ev.position, cw, ch);
-        let m = cx.global::<AppState>().cached_modes();
-        if let Some(s) = crate::mouse::mouse_button_report(&m, btn, &ev.modifiers, false, col as u16, row as u16) {
-            cx.global::<AppState>().send_to_pty(s);
-        }
-    }
-}
-
-fn mk_mouse_move(cw: f32, ch: f32) -> impl Fn(&MouseMoveEvent, &mut Window, &mut App) {
-    move |ev: &MouseMoveEvent, _w, cx| {
-        let (col, row) = grid_coords(ev.position, cw, ch);
-        let m = cx.global::<AppState>().cached_modes();
-        if let Some(s) = crate::mouse::mouse_moved_report(&m, ev.pressed_button, &ev.modifiers, col as u16, row as u16) {
-            cx.global::<AppState>().send_to_pty(s);
-        }
-    }
-}
-
-fn mk_scroll(cw: f32, ch: f32) -> impl Fn(&ScrollWheelEvent, &mut Window, &mut App) {
-    move |ev: &ScrollWheelEvent, _w, cx| {
-        let (col, row) = grid_coords(ev.position, cw, ch);
-        let is_down = match ev.delta { ScrollDelta::Lines(p) => p.y > 0.0, ScrollDelta::Pixels(p) => f32::from(p.y) > 0.0 };
-        let m = cx.global::<AppState>().cached_modes();
-        if m.intersects(Modes::MOUSE_MODE) {
-            if let Some(s) = crate::mouse::scroll_report(&m, is_down, &ev.modifiers, col as u16, row as u16, 1) {
-                cx.global::<AppState>().send_to_pty(s);
-            }
-        } else if m.contains(Modes::ALTERNATE_SCROLL) {
-            cx.global::<AppState>().send_to_pty(if is_down { vec![0x1b, b'O', b'B'] } else { vec![0x1b, b'O', b'A'] });
-        }
-    }
-}
-
-fn try_open_hyperlink(cx: &mut App, pos: Point<Pixels>, cw: f32, ch: f32) -> bool {
-    let (col, row) = grid_coords(pos, cw, ch);
-    let s = cx.global::<AppState>();
-    let tg = s.terminal.lock().unwrap();
-    if let Some(ref t) = *tg {
-        let snap = t.content_snapshot();
-        if let Some(line) = snap.lines.get(row) {
-            let text: String = line.cells.iter().map(|c| c.ch).collect();
-            if let Some(url) = hyperlink::hyperlink_at_column(&text, col) {
-                hyperlink::open_url(&url); return true;
-            }
-        }
-    }
-    false
 }

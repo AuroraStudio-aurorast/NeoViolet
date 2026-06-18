@@ -131,7 +131,7 @@ impl TerminalState {
     pub fn spawn(gui_config: &GuiConfig, user_args: &[String]) -> Result<Self, String> {
         tty::setup_env();
 
-        let neoviolet_bin = find_neoviolet_binary(gui_config);
+        let neoviolet_bin = crate::platform::find_neoviolet_binary(gui_config.neoviolet_path.as_deref());
 
         // Pre-check: verify the binary exists before handing it to the PTY layer.
         // On some platforms a missing shell binary can cause tty::new() to panic
@@ -366,10 +366,10 @@ impl TerminalState {
             match c {
                 Color::Named(n) => colors[n]
                     .map(|r| [r.r, r.g, r.b])
-                    .or_else(|| Some(dracula_fallback(n as usize))),
+                    .or_else(|| Some(crate::dracula_theme::dracula_color(n as usize))),
                 Color::Indexed(i) => colors[i as usize]
                     .map(|r| [r.r, r.g, r.b])
-                    .or_else(|| Some(dracula_fallback(i as usize))),
+                    .or_else(|| Some(crate::dracula_theme::dracula_color(i as usize))),
                 Color::Spec(r) => Some([r.r, r.g, r.b]),
             }
         };
@@ -501,78 +501,3 @@ impl Drop for TerminalState {
     }
 }
 
-/// Dracula color palette fallback for ANSI named colors and 256-color palette.
-///
-/// Used when alacritty's `Colors` table has `None` for a given index.
-pub fn dracula_fallback(index: usize) -> [u8; 3] {
-    use alacritty_terminal::vte::ansi::NamedColor;
-
-    // Standard 16 ANSI + Foreground/Background/Cursor + Dim variants
-    match index {
-        n if n == NamedColor::Black as usize => [0x21, 0x22, 0x2c],
-        n if n == NamedColor::Red as usize => [0xff, 0x55, 0x55],
-        n if n == NamedColor::Green as usize => [0x50, 0xfa, 0x7b],
-        n if n == NamedColor::Yellow as usize => [0xf1, 0xfa, 0x8c],
-        n if n == NamedColor::Blue as usize => [0xbd, 0x93, 0xf9],
-        n if n == NamedColor::Magenta as usize => [0xff, 0x79, 0xc6],
-        n if n == NamedColor::Cyan as usize => [0x8b, 0xe9, 0xfd],
-        n if n == NamedColor::White as usize => [0xf8, 0xf8, 0xf2],
-        n if n == NamedColor::BrightBlack as usize => [0x62, 0x72, 0xa4],
-        n if n == NamedColor::BrightRed as usize => [0xff, 0x6e, 0x6e],
-        n if n == NamedColor::BrightGreen as usize => [0x69, 0xff, 0x94],
-        n if n == NamedColor::BrightYellow as usize => [0xff, 0xff, 0xa5],
-        n if n == NamedColor::BrightBlue as usize => [0xd6, 0xac, 0xff],
-        n if n == NamedColor::BrightMagenta as usize => [0xff, 0x92, 0xdf],
-        n if n == NamedColor::BrightCyan as usize => [0xa4, 0xff, 0xff],
-        n if n == NamedColor::BrightWhite as usize => [0xff, 0xff, 0xff],
-        n if n == NamedColor::Foreground as usize => [0xf8, 0xf8, 0xf2],
-        n if n == NamedColor::Background as usize => [0x28, 0x2a, 0x36],
-        n if n == NamedColor::Cursor as usize => [0xf8, 0xf8, 0xf2],
-        n if n == NamedColor::DimBlack as usize => [0x21, 0x22, 0x2c],
-        n if n == NamedColor::DimRed as usize => [0xff, 0x55, 0x55],
-        n if n == NamedColor::DimGreen as usize => [0x50, 0xfa, 0x7b],
-        n if n == NamedColor::DimYellow as usize => [0xf1, 0xfa, 0x8c],
-        n if n == NamedColor::DimBlue as usize => [0xbd, 0x93, 0xf9],
-        n if n == NamedColor::DimMagenta as usize => [0xff, 0x79, 0xc6],
-        n if n == NamedColor::DimCyan as usize => [0x8b, 0xe9, 0xfd],
-        n if n == NamedColor::DimWhite as usize => [0xf8, 0xf8, 0xf2],
-
-        // Standard xterm 6×6×6 color cube (indices 16-231)
-        i if (16..=231).contains(&i) => {
-            let v = (i - 16) as u8;
-            let (r, g, b) = (v / 36, (v / 6) % 6, v % 6);
-            let level = |c: u8| -> u8 {
-                if c == 0 { 0 } else { (c * 40 + 55).min(255) }
-            };
-            [level(r), level(g), level(b)]
-        }
-
-        // Standard xterm grayscale (indices 232-255)
-        i if (232..=255).contains(&i) => {
-            let level = ((i - 232) as u8 * 10 + 8).min(255);
-            [level, level, level]
-        }
-
-        _ => [0xf8, 0xf8, 0xf2], // default foreground
-    }
-}
-
-/// Locate the `neoviolet` binary.
-fn find_neoviolet_binary(gui_config: &GuiConfig) -> String {
-    if let Some(ref path) = gui_config.neoviolet_path
-        && std::path::Path::new(path).exists()
-    {
-        return path.clone();
-    }
-
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        let candidate = dir.join("neoviolet");
-        if candidate.exists() {
-            return candidate.to_string_lossy().to_string();
-        }
-    }
-
-    "neoviolet".to_string()
-}

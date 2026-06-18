@@ -21,23 +21,3 @@ pub fn hyperlink_at_column(line_text: &str, col: usize) -> Option<String> {
     None
 }
 
-/// Open a URL using the system default handler.
-pub fn open_url(url: &str) {
-    let result = if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
-            .arg(url)
-            .spawn()
-    } else if cfg!(target_os = "linux") {
-        std::process::Command::new("xdg-open")
-            .arg(url)
-            .spawn()
-    } else if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd")
-            .args(["/c", "start", url])
-            .spawn()
-    } else {
-        return;
-    };
-    // Silently ignore errors — if the browser can't open, nothing we can do.
-    let _ = result;
-}

@@ -84,3 +84,58 @@ pub fn dracula_theme() -> Theme {
         text_direction: Default::default(),
     }
 }
+
+// ── 256-color palette fallback for terminal cells ──
+
+/// Map an ANSI named-color or 256-color index to an RGB triplet.
+/// Used by the terminal grid renderer when alacritty's color table is empty.
+pub fn dracula_color(index: usize) -> [u8; 3] {
+    use alacritty_terminal::vte::ansi::NamedColor;
+
+    // Standard 16 ANSI + Foreground/Background/Cursor + Dim variants
+    match index {
+        n if n == NamedColor::Black as usize => [0x21, 0x22, 0x2c],
+        n if n == NamedColor::Red as usize => [0xff, 0x55, 0x55],
+        n if n == NamedColor::Green as usize => [0x50, 0xfa, 0x7b],
+        n if n == NamedColor::Yellow as usize => [0xf1, 0xfa, 0x8c],
+        n if n == NamedColor::Blue as usize => [0xbd, 0x93, 0xf9],
+        n if n == NamedColor::Magenta as usize => [0xff, 0x79, 0xc6],
+        n if n == NamedColor::Cyan as usize => [0x8b, 0xe9, 0xfd],
+        n if n == NamedColor::White as usize => [0xf8, 0xf8, 0xf2],
+        n if n == NamedColor::BrightBlack as usize => [0x62, 0x72, 0xa4],
+        n if n == NamedColor::BrightRed as usize => [0xff, 0x6e, 0x6e],
+        n if n == NamedColor::BrightGreen as usize => [0x69, 0xff, 0x94],
+        n if n == NamedColor::BrightYellow as usize => [0xff, 0xff, 0xa5],
+        n if n == NamedColor::BrightBlue as usize => [0xd6, 0xac, 0xff],
+        n if n == NamedColor::BrightMagenta as usize => [0xff, 0x92, 0xdf],
+        n if n == NamedColor::BrightCyan as usize => [0xa4, 0xff, 0xff],
+        n if n == NamedColor::BrightWhite as usize => [0xff, 0xff, 0xff],
+        n if n == NamedColor::Foreground as usize => [0xf8, 0xf8, 0xf2],
+        n if n == NamedColor::Background as usize => [0x28, 0x2a, 0x36],
+        n if n == NamedColor::Cursor as usize => [0xf8, 0xf8, 0xf2],
+        n if n == NamedColor::DimBlack as usize => [0x21, 0x22, 0x2c],
+        n if n == NamedColor::DimRed as usize => [0xff, 0x55, 0x55],
+        n if n == NamedColor::DimGreen as usize => [0x50, 0xfa, 0x7b],
+        n if n == NamedColor::DimYellow as usize => [0xf1, 0xfa, 0x8c],
+        n if n == NamedColor::DimBlue as usize => [0xbd, 0x93, 0xf9],
+        n if n == NamedColor::DimMagenta as usize => [0xff, 0x79, 0xc6],
+        n if n == NamedColor::DimCyan as usize => [0x8b, 0xe9, 0xfd],
+        n if n == NamedColor::DimWhite as usize => [0xf8, 0xf8, 0xf2],
+
+        // 6×6×6 color cube (indices 16-231)
+        i if (16..=231).contains(&i) => {
+            let v = (i - 16) as u8;
+            let (r, g, b) = (v / 36, (v / 6) % 6, v % 6);
+            let level = |c: u8| if c == 0 { 0 } else { (c * 40 + 55).min(255) };
+            [level(r), level(g), level(b)]
+        }
+
+        // Grayscale (indices 232-255)
+        i if (232..=255).contains(&i) => {
+            let l = ((i - 232) as u8 * 10 + 8).min(255);
+            [l, l, l]
+        }
+
+        _ => [0xf8, 0xf8, 0xf2],
+    }
+}

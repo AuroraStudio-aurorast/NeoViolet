@@ -1,6 +1,5 @@
 use gpui::*;
 use std::sync::OnceLock;
-use std::time::Duration;
 
 use crate::components;
 use crate::state::AppState;
@@ -21,10 +20,6 @@ actions!(
 pub static CLI_VER: OnceLock<String> = OnceLock::new();
 pub static GUI_VER: &str = env!("CARGO_PKG_VERSION");
 
-/// Version check timeout — prevents the GUI from hanging at startup if the
-/// neoviolet binary is stuck (macOS watchdog kills non-responsive apps).
-const VERSION_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
-
 pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     // Cache CLI version asynchronously — never block startup.
     // The version string is available via cached_cli_version() (returns
@@ -37,7 +32,7 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         state.cli_version.clone()
     };
     std::thread::spawn(move || {
-        let ver = cli_version(configured_path.as_deref());
+        let ver = crate::platform::fetch_cli_version(configured_path.as_deref());
         let _ = CLI_VER.set(ver.clone());
         if let Ok(mut guard) = version_tx.lock() {
             *guard = ver;
@@ -153,77 +148,3 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     ]);
 }
 
-fn cli_version(configured_path: Option<&str>) -> String {
-    let bin = find_neoviolet_binary(configured_path);
-
-    // Run --version with a timeout so a stuck/hanging binary doesn't
-    // freeze the GUI at startup (macOS watchdog kills after ~5 s).
-    let raw = run_version_command(&bin);
-
-    if raw.is_empty() {
-        return "unknown".to_string();
-    }
-
-    let version = raw
-        .strip_prefix("NeoViolet version ")
-        .unwrap_or(&raw)
-        .trim()
-        .to_string();
-
-    let version = version.strip_prefix('v').unwrap_or(&version).to_string();
-
-    if version.is_empty() {
-        return "unknown".to_string();
-    }
-
-    // Sanity check: version must be mostly printable ASCII
-    if version.chars().any(|c| c.is_control() && c != '\n') {
-        return "unknown".to_string();
-    }
-
-    // Truncate unreasonably long version strings
-    if version.len() > 128 {
-        return version[..128].to_string();
-    }
-
-    version
-}
-
-/// Run `neoviolet --version` in a background thread with a timeout.
-/// Returns the captured stdout, or an empty string on timeout / error.
-fn run_version_command(bin: &str) -> String {
-    let (tx, rx) = std::sync::mpsc::channel();
-    let bin = bin.to_string();
-    std::thread::spawn(move || {
-        let raw = std::process::Command::new(&bin)
-            .arg("--version")
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_default();
-        let _ = tx.send(raw);
-    });
-    rx.recv_timeout(VERSION_CHECK_TIMEOUT).unwrap_or_default()
-}
-
-/// Locate the `neoviolet` binary, respecting the user-configured path first.
-fn find_neoviolet_binary(configured_path: Option<&str>) -> String {
-    // 1) Explicit path from GUI config
-    if let Some(path) = configured_path
-        && std::path::Path::new(path).exists()
-    {
-        return path.to_string();
-    }
-
-    // 2) Sibling next to the GUI binary
-    if let Ok(exe) = std::env::current_exe()
-        && let Some(dir) = exe.parent()
-    {
-        let c = dir.join("neoviolet");
-        if c.exists() {
-            return c.to_string_lossy().to_string();
-        }
-    }
-
-    // 3) Fallback to PATH
-    "neoviolet".to_string()
-}

@@ -13,7 +13,7 @@ pub struct GuiConfig {
 impl Default for GuiConfig {
     fn default() -> Self {
         Self {
-            monospace_font: "Menlo".into(),
+            monospace_font: crate::platform::default_monospace_font().into(),
             font_size: 14,
             window_width: 800,
             window_height: 600,
