@@ -1,6 +1,6 @@
 use std::{
     ops::Range,
-    sync::mpsc,
+    sync::{mpsc, Arc, Mutex},
 };
 
 use alacritty_terminal::{index::Side, selection::SelectionType};
@@ -31,6 +31,8 @@ pub struct TerminalApp {
     pub terminal_font_family: SharedString,
     pub focus_handle: FocusHandle,
     pub(crate) pending_resize: Option<(u16, u16)>,
+    /// Buffer for recent PTY output (for bad-args crash diagnostics)
+    recent_output: Arc<Mutex<Vec<u8>>>,
 }
 
 impl TerminalApp {
@@ -39,12 +41,15 @@ impl TerminalApp {
         let (events_tx, events_rx) = mpsc::channel();
 
         // Read config from AppState global
-        let (font_size, font_family, launch_args) = {
+        let (font_size, font_family, launch_args, recent_output) = {
             let state = cx.global::<AppState>();
             let fs = *state.font_size.lock().unwrap() as f32;
             let ff = state.config.monospace_font.clone();
-            let args = state.launch_args.clone();
-            (fs, ff, args)
+            let args = state.launch_args.lock().unwrap().clone();
+            let ro = state.recent_output.clone();
+            // Record process start time for bad-args detection
+            *state.process_start.lock().unwrap() = Some(std::time::Instant::now());
+            (fs, ff, args, ro)
         };
 
         let backend_tx =
@@ -92,6 +97,7 @@ impl TerminalApp {
             terminal_font_family: font_family.into(),
             focus_handle: cx.focus_handle(),
             pending_resize: None,
+            recent_output,
         }
     }
 
@@ -106,12 +112,20 @@ impl TerminalApp {
             match event {
                 BackendEvent::Output { bytes, .. } => {
                     self.tab.feed(&bytes);
+                    // Buffer recent output for diagnostics (cap at 16 KB)
+                    {
+                        let mut buf = self.recent_output.lock().unwrap();
+                        if buf.len() < 16384 {
+                            buf.extend_from_slice(&bytes);
+                        }
+                    }
                 }
                 BackendEvent::Status { text, .. } => {
                     self.tab.status = text;
                 }
                 BackendEvent::Closed { reason, .. } => {
                     log::info!("terminal closed: {reason}");
+                    self.tab.status = reason;
                 }
                 BackendEvent::TerminalTitleChanged { title, .. } => {
                     self.tab.title = title;

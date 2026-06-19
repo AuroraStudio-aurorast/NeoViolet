@@ -2,16 +2,21 @@
 
 use gpui::{EntityId, Global, WeakEntity};
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use crate::config::GuiConfig;
 use crate::app::TerminalApp;
 
 pub struct AppState {
     pub config: GuiConfig,
-    pub launch_args: Vec<String>,
+    pub launch_args: Arc<Mutex<Vec<String>>>,
 
     // ── Terminal state ──
     pub terminal_child: Arc<Mutex<Option<WeakEntity<TerminalApp>>>>,
+
+    // ── PTY output buffer (for bad-args / crash diagnostics) ──
+    pub recent_output: Arc<Mutex<Vec<u8>>>,
+    pub process_start: Arc<Mutex<Option<Instant>>>,
 
     // ── Font (mutated by zoom handlers, read by TerminalApp on restart) ──
     pub font_size: Arc<Mutex<u32>>,
@@ -35,8 +40,10 @@ impl AppState {
         let font_size = config.font_size;
         Self {
             config,
-            launch_args,
+            launch_args: Arc::new(Mutex::new(launch_args)),
             terminal_child: Arc::new(Mutex::new(None)),
+            recent_output: Arc::new(Mutex::new(Vec::new())),
+            process_start: Arc::new(Mutex::new(None)),
             font_size: Arc::new(Mutex::new(font_size)),
             show_about: Arc::new(Mutex::new(false)),
             show_close: Arc::new(Mutex::new(false)),

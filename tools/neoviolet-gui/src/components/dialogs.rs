@@ -140,3 +140,57 @@ pub fn render_error_dialog(
                 .actions(modal_actions_row(actions)),
         )
 }
+
+// ── Bad-args dialog — displays captured help text (NOT Esc-dismissable) ──
+
+pub fn render_bad_args_dialog(
+    cx: &mut App,
+    output_text: &str,
+    on_quit: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let theme = cx.theme();
+    let output_text = output_text.to_string();
+
+    div()
+        .id("aria:dialog:bad-args")
+        .absolute().size_full()
+        .bg(gpui::rgba(0x000000cc))
+        .flex().items_center().justify_center()
+        .child(
+            modal()
+                .id("aria:dialog:bad-args:modal")
+                .title("NeoViolet: Invalid Arguments")
+                .width(px(640.))
+                .bg(theme.surface.raised)
+                .content(
+                    div().flex().flex_col().gap_2()
+                        .child(
+                            div()
+                                .id("aria:bad-args:error-banner")
+                                .text_sm()
+                                .text_color(theme.content.tertiary)
+                                .child("The arguments you provided were not recognized by NeoViolet.\nSee the help output below:"),
+                        )
+                        .child(
+                            div()
+                                .id("aria:bad-args:help-output")
+                                .max_h(px(300.))
+                                .overflow_y_scroll()
+                                .px_2()
+                                .py_1()
+                                .font_family("Menlo")
+                                .text_xs()
+                                .text_color(theme.content.secondary)
+                                .bg(theme.surface.sunken)
+                                .rounded_md()
+                                .child(output_text),
+                        ),
+                )
+                .actions(modal_actions_row([
+                    button("aria:btn:bad-args-close")
+                        .child("Close")
+                        .on_click(on_quit)
+                        .into_any_element(),
+                ])),
+        )
+}

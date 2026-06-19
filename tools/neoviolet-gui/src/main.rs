@@ -8,6 +8,7 @@ mod neo_violet_app;
 mod platform;
 mod state;
 mod terminal;
+mod util;
 
 use gpui::*;
 use yororen_ui::assets::UiAsset;
