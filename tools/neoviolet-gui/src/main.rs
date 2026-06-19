@@ -1,119 +1,95 @@
+mod app;
+mod backend;
+mod components;
+mod config;
+mod dracula_theme;
+mod menus;
+mod neo_violet_app;
+mod platform;
+mod state;
+mod terminal;
+
 use gpui::*;
 use yororen_ui::assets::UiAsset;
 use yororen_ui::component;
 use yororen_ui::i18n::{I18n, Locale};
 use yororen_ui::theme::{GlobalTheme, ThemeSet};
 
-mod components;
-mod config;
-mod bounds;
-mod dracula_theme;
-mod event_listener;
-mod hyperlink;
-mod key_encode;
-mod menus;
-mod modes;
-mod mouse;
-mod neo_violet_app;
-mod platform;
-mod state;
-mod term;
-mod terminal_view;
-
-use key_encode::encode_key_seq;
+use app::TerminalApp;
 use neo_violet_app::NeoVioletApp;
-use modes::Modes;
 use state::AppState;
 
 fn main() {
+    // Sync macOS launch environment
+    #[cfg(target_os = "macos")]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        if let Ok(output) = std::process::Command::new(&shell)
+            .args(["-l", "-c", "env -0"])
+            .output()
+        {
+            if output.status.success() {
+                for entry in output.stdout.split(|b| *b == 0) {
+                    if entry.is_empty() {
+                        continue;
+                    }
+                    let Some(eq) = entry.iter().position(|b| *b == b'=') else {
+                        continue;
+                    };
+                    let Ok(key) = std::str::from_utf8(&entry[..eq]) else {
+                        continue;
+                    };
+                    let Ok(value) = std::str::from_utf8(&entry[eq + 1..]) else {
+                        continue;
+                    };
+                    let should_import = matches!(
+                        key,
+                        "PATH"
+                            | "LANG"
+                            | "LC_ALL"
+                            | "LC_CTYPE"
+                            | "SHELL"
+                            | "HOME"
+                            | "HOMEBREW_PREFIX"
+                            | "HOMEBREW_CELLAR"
+                            | "HOMEBREW_REPOSITORY"
+                    ) || key.starts_with("LC_");
+                    if should_import {
+                        unsafe {
+                            std::env::set_var(key, value);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     env_logger::init();
     let gui_config = config::load_or_create();
     let user_args: Vec<String> = std::env::args().skip(1).collect();
 
-    // ── 1) Create app with Yororen UI assets ──
     let app = Application::new().with_assets(UiAsset);
 
     app.run(move |cx: &mut App| {
-        // ── 2) Init Yororen UI components ──
         component::init(cx);
 
-        // ── 3) Theme (Dracula) ──
+        // Theme (Dracula)
         let dracula = std::sync::Arc::new(dracula_theme::dracula_theme());
         cx.set_global(GlobalTheme::new_with_themes(
             WindowAppearance::Dark,
             ThemeSet::new(dracula.clone()).dark(dracula),
         ));
 
-        // ── 4) i18n ──
+        // i18n
         cx.set_global(I18n::with_embedded(Locale::new("en").unwrap()));
 
-        // ── 5) AppState (no mpsc channel — keys go direct to PTY) ──
+        // AppState
         cx.set_global(AppState::new(gui_config.clone(), user_args.clone()));
 
-        // ── 6) Menu setup (CLI version check is now non-blocking) ──
+        // Menu setup
         menus::setup(cx, gui_config.neoviolet_path.as_deref());
 
-        // ── 7) Keystroke observer — sends directly to PTY, zero buffering ──
-        cx.observe_keystrokes(move |e, _w, cx| {
-            let modifiers = e.keystroke.modifiers;
-
-            // ── Bracketed paste: Cmd/Ctrl+V ──
-            if modifiers.platform
-                && (e.keystroke.key.as_str() == "v" || e.keystroke.key.as_str() == "V")
-            {
-                if let Some(item) = cx.read_from_clipboard() {
-                    if let Some(text) = item.text().as_deref() {
-                        let paste = bracketed_paste_wrap(cx, text);
-                        let state = cx.global::<AppState>();
-                        state.send_to_pty(paste.into_bytes());
-                    }
-                }
-                return;
-            }
-
-            // Don't forward other app shortcuts (Cmd/Win + key)
-            if modifiers.platform {
-                return;
-            }
-
-            // ── Escape: dismiss dialogs (not exit_error — user must choose) ──
-            if e.keystroke.key.as_str() == "escape"
-                && !modifiers.control && !modifiers.alt && !modifiers.shift
-            {
-                let (dismissed, notify_eid) = {
-                    let state = cx.global::<AppState>();
-                    let about = *state.show_about.lock().unwrap();
-                    let close = *state.show_close.lock().unwrap();
-                    if about { *state.show_about.lock().unwrap() = false; }
-                    if close { *state.show_close.lock().unwrap() = false; }
-                    (about || close, *state.root_entity_id.lock().unwrap())
-                };
-                if dismissed {
-                    if let Some(eid) = notify_eid {
-                        cx.notify(eid);
-                    }
-                    return;
-                }
-            }
-
-            // Read locally-cached terminal modes (no FairMutex lock).
-            let mode = cx.global::<AppState>().cached_modes();
-
-            if let Some(bytes) = encode_key_seq(
-                e.keystroke.key.as_str(),
-                e.keystroke.key_char.as_deref(),
-                &modifiers,
-                &mode,
-                true,
-            ) {
-                cx.global::<AppState>().send_to_pty(bytes);
-            }
-        })
-        .detach();
-
-        // ── 8) Open window ──
-        // macOS: custom transparent titlebar with traffic-light buttons.
-        // Linux/Windows: explicit native system titlebar (appears_transparent: false).
+        // Open window
         let titlebar_opts = Some(TitlebarOptions {
             title: Some("NeoViolet".into()),
             appears_transparent: cfg!(target_os = "macos"),
@@ -134,8 +110,7 @@ fn main() {
                 ..Default::default()
             },
             move |window, cx| {
-                let args = user_args.clone();
-                // Window close → skip confirmation if process already exited
+                let _args = user_args.clone();
                 window.on_window_should_close(cx, move |w, cx| {
                     let already_exited = {
                         let state = cx.global::<AppState>();
@@ -156,22 +131,22 @@ fn main() {
                     false
                 });
 
-                let root_entity = cx.new(|cx| NeoVioletApp::new(cx, args));
-                // Store root entity ID for menu/dialog notifications
-                cx.global::<AppState>().root_entity_id.lock().unwrap().replace(root_entity.entity_id());
+                let terminal_child = cx.new(|cx| TerminalApp::new(cx));
+                cx.global::<AppState>()
+                    .terminal_child
+                    .lock()
+                    .unwrap()
+                    .replace(terminal_child.downgrade());
+
+                let root_entity = cx.new(|cx| NeoVioletApp::new(terminal_child, cx));
+                cx.global::<AppState>()
+                    .root_entity_id
+                    .lock()
+                    .unwrap()
+                    .replace(root_entity.entity_id());
                 root_entity
             },
         )
         .unwrap();
     });
-}
-
-fn bracketed_paste_wrap(cx: &mut App, text: &str) -> String {
-    let state = cx.global::<AppState>();
-    let use_bracketed = state.cached_modes().contains(Modes::BRACKETED_PASTE);
-    if use_bracketed {
-        format!("\x1b[200~{}\x1b[201~", text)
-    } else {
-        text.to_string()
-    }
 }

@@ -22,9 +22,6 @@ pub static GUI_VER: &str = env!("CARGO_PKG_VERSION");
 
 pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     // Cache CLI version asynchronously — never block startup.
-    // The version string is available via cached_cli_version() (returns
-    // "loading…" until the background thread finishes) and is written
-    // into AppState for the About dialog.
     let configured_path = neoviolet_path.map(|s| s.to_string());
     let _ = CLI_VER.set(String::new()); // placeholder
     let version_tx = {
@@ -65,45 +62,78 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         }
     });
 
-    // Zoom — uses AppState for font size
+    // Zoom — updates AppState + live TerminalApp
     cx.on_action(move |_: &ZoomIn, cx: &mut App| {
-        let eid = {
+        let (new_fs, weak_opt, root_eid) = {
             let state = cx.global::<AppState>();
             let mut fs = state.font_size.lock().unwrap();
             *fs = (*fs + 2).min(48);
-            *state.root_entity_id.lock().unwrap()
+            let new_fs = *fs as f32;
+            let weak = state.terminal_child.lock().unwrap().clone();
+            let eid = *state.root_entity_id.lock().unwrap();
+            (new_fs, weak, eid)
         };
-        if let Some(eid) = eid {
+        if let Some(ref weak) = weak_opt {
+            if let Some(terminal) = weak.upgrade() {
+                terminal.update(cx, |t, cx| {
+                    t.terminal_font_size = new_fs;
+                    cx.notify();
+                });
+            }
+        }
+        if let Some(eid) = root_eid {
             cx.notify(eid);
         }
     });
 
     cx.on_action(move |_: &ZoomOut, cx: &mut App| {
-        let eid = {
+        let (new_fs, weak_opt, root_eid) = {
             let state = cx.global::<AppState>();
             let mut fs = state.font_size.lock().unwrap();
             *fs = (*fs).saturating_sub(2).max(8);
-            *state.root_entity_id.lock().unwrap()
+            let new_fs = *fs as f32;
+            let weak = state.terminal_child.lock().unwrap().clone();
+            let eid = *state.root_entity_id.lock().unwrap();
+            (new_fs, weak, eid)
         };
-        if let Some(eid) = eid {
+        if let Some(ref weak) = weak_opt {
+            if let Some(terminal) = weak.upgrade() {
+                terminal.update(cx, |t, cx| {
+                    t.terminal_font_size = new_fs;
+                    cx.notify();
+                });
+            }
+        }
+        if let Some(eid) = root_eid {
             cx.notify(eid);
         }
     });
 
     cx.on_action(move |_: &ZoomReset, cx: &mut App| {
-        let eid = {
+        let (new_fs, weak_opt, root_eid) = {
             let state = cx.global::<AppState>();
             *state.font_size.lock().unwrap() = 14;
-            *state.root_entity_id.lock().unwrap()
+            let new_fs = 14.0_f32;
+            let weak = state.terminal_child.lock().unwrap().clone();
+            let eid = *state.root_entity_id.lock().unwrap();
+            (new_fs, weak, eid)
         };
-        if let Some(eid) = eid {
+        if let Some(ref weak) = weak_opt {
+            if let Some(terminal) = weak.upgrade() {
+                terminal.update(cx, |t, cx| {
+                    t.terminal_font_size = new_fs;
+                    cx.notify();
+                });
+            }
+        }
+        if let Some(eid) = root_eid {
             cx.notify(eid);
         }
     });
 
     cx.on_action(|_: &OpenRepository, _cx: &mut App| {
         let _ = std::process::Command::new("open")
-            .arg("https://github.com/AuroraStudio-aurorast/NeoViolet").spawn(); 
+            .arg("https://github.com/AuroraStudio-aurorast/NeoViolet").spawn();
     });
 
     cx.bind_keys([
@@ -147,4 +177,3 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         },
     ]);
 }
-

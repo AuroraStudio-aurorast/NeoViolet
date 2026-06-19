@@ -1,6 +1,4 @@
-//! Cross-platform utilities: binary discovery, font defaults, URL opening.
-//!
-//! Code previously scattered across term.rs, menus.rs, config.rs, and hyperlink.rs.
+//! Cross-platform utilities: binary discovery, font defaults, version check.
 
 use std::time::Duration;
 
@@ -39,23 +37,8 @@ pub fn default_monospace_font() -> &'static str {
     } else if cfg!(target_os = "windows") {
         "Consolas"
     } else {
-        // "Monospace" is a fontconfig alias present on all major Linux desktops.
         "Monospace"
     }
-}
-
-/// Open a URL in the system default browser.
-pub fn open_url(url: &str) {
-    let result = if cfg!(target_os = "macos") {
-        std::process::Command::new("open").arg(url).spawn()
-    } else if cfg!(target_os = "linux") {
-        std::process::Command::new("xdg-open").arg(url).spawn()
-    } else if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd").args(["/c", "start", url]).spawn()
-    } else {
-        return;
-    };
-    let _ = result;
 }
 
 // ── CLI version check (async, non-blocking) ──
@@ -77,12 +60,9 @@ pub fn fetch_cli_version(configured_path: Option<&str>) -> String {
         .unwrap_or(&raw.trim())
         .to_string();
 
-    // Sanity: version must be mostly printable ASCII
     if version.is_empty() || version.chars().any(|c| c.is_control() && c != '\n') {
         return "unknown".to_string();
     }
-
-    // Truncate unreasonably long version strings
     if version.len() > 128 { version[..128].to_string() } else { version }
 }
 
