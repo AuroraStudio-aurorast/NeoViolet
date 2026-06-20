@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
@@ -36,6 +37,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleAccentApply(m, msg)
 	case MediaCtlMsg:
 		return handleMediaCtlCmd(m, msg)
+	case LoadTrackMsg:
+		return handleLoadTrack(m, msg)
 	default:
 		return m, nil
 	}
@@ -48,6 +51,27 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 
 	if m.Loading {
 		m.loadingTick++
+	}
+
+	// Drain IPC messages from GUI wrapper (non-blocking, one per tick)
+	if m.ipcServer != nil {
+		select {
+		case msg := <-m.ipcServer.Incoming:
+			if path, ok := parseIPCMessage(msg); ok {
+				logger.Info("IPC: loading track", "path", path)
+				_, loadCmd := handleLoadTrack(m, LoadTrackMsg{Path: path})
+				// Batch the load command with the next tick so the
+				// event loop keeps running — without the tick, the
+				// progress bar and lyrics would freeze and new IPC
+				// messages would never be processed.
+				return m, tea.Batch(loadCmd,
+					tea.Tick(time.Second/time.Duration(m.Config.TickRate),
+						func(t time.Time) tea.Msg { return TickMsg{} },
+					),
+				)
+			}
+		default:
+		}
 	}
 
 	// Push current playback state to OS media control layer (MPRIS on Linux)
@@ -120,7 +144,14 @@ func handleSeek(m *Model, msg SeekMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
+	// Ignore stale errors from a superseded track switch (Generation > 0 only)
+	if msg.Generation > 0 && msg.Generation != m.loadGeneration {
+		logger.Debug("Ignoring stale ErrorMsg", "msgGen", msg.Generation, "modelGen", m.loadGeneration)
+		return m, nil
+	}
+
 	m.Loading = false
+	m.switchingTrack = false
 	// Clear loading line from normal screen
 	fmt.Fprint(os.Stdout, "\033[2K\r")
 	// Hide ConEmu progress bar
@@ -130,7 +161,14 @@ func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
+	// Ignore stale load results from a superseded track switch
+	if msg.Generation != m.loadGeneration {
+		logger.Debug("Ignoring stale AudioLoadedMsg", "msgGen", msg.Generation, "modelGen", m.loadGeneration)
+		return m, nil
+	}
+
 	m.Loading = false
+	m.switchingTrack = false
 	// Clear loading line from normal screen
 	fmt.Fprint(os.Stdout, "\033[2K\r")
 	// Hide ConEmu progress bar
@@ -174,13 +212,15 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.Config.Lyrics.Enabled {
-		data, err := lyrics.FindAndParse(msg.Path, m.Config.Lyrics.FormatPriority)
+		preferred := m.preferredLyricFormat
+		m.preferredLyricFormat = ""
+		data, err := lyrics.FindAndParsePreferred(msg.Path, m.Config.Lyrics.FormatPriority, preferred)
 		if err != nil {
 			m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
 		} else if data != nil {
 			m.Audio.Lyrics = data
 			m.Audio.LyricIndex = -1
-				m.Audio.ShowLyrics = true
+			m.Audio.ShowLyrics = true
 		}
 	}
 
@@ -248,4 +288,78 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// handleLoadTrack switches to a new audio track at runtime.
+// It releases the current player, preserves volume/playback settings,
+// and synchronizes lyrics with a preference for the same format used
+// by the previous track.
+func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
+	logger.Info("Loading new track", "path", msg.Path)
+
+	// Increment generation to invalidate any in-flight load from a previous track
+	m.loadGeneration++
+
+	// Remember the current lyrics format to try it first on the new track
+	if m.Audio.Lyrics != nil && m.Audio.Lyrics.Format != "" {
+		m.preferredLyricFormat = m.Audio.Lyrics.Format
+	} else {
+		m.preferredLyricFormat = ""
+	}
+
+	// Release current player
+	m.Audio.Close()
+
+	// Reset audio state but preserve volume
+	savedVolume := m.Audio.Volume
+	m.Audio.Player = nil
+	m.Audio.CurrentSong = ""
+	m.Audio.Artist = ""
+	m.Audio.Album = ""
+	m.Audio.Progress = 0
+	m.Audio.Duration = 0
+	m.Audio.Elapsed = 0
+	m.Audio.IsPlaying = false
+	m.Audio.Lyrics = nil
+	m.Audio.LyricIndex = -1
+	m.Audio.LyricScrollOffset = 0
+	m.Audio.LyricScrollTick = 0
+	m.Audio.LastLyricIndex = 0
+	m.Audio.ActiveLyricLines = nil
+	m.Audio.lastActiveSig = ""
+	m.Audio.LyricNextIndex = -1
+	m.Audio.LyricGapDuration = 0
+	m.Audio.Volume = savedVolume
+
+	// Reset accent
+	m.Accent = nil
+	m.rebuildProgressBar()
+
+	m.Loading = true
+	m.loadingTick = 0
+	m.switchingTrack = true
+
+	// Update media control with cleared metadata
+	if m.MediaCtl != nil {
+		m.MediaCtl.Update(m.buildPlayState())
+	}
+
+	return m, func() tea.Msg {
+		fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
+		return loadAudio(msg.Path, m.Config.SoundfontPath, m.Config.TrackerBackend, m.loadGeneration)
+	}
+}
+
+// parseIPCMessage handles a single line received from the GUI via IPC.
+// Currently supports "open <path>" messages. Returns the path and true,
+// or empty string and false for unknown/unparseable messages.
+func parseIPCMessage(msg string) (string, bool) {
+	if after, ok := strings.CutPrefix(msg, "open "); ok {
+		path := strings.TrimSpace(after)
+		if path != "" {
+			return path, true
+		}
+	}
+	logger.Debug("IPC: unknown message", "msg", msg)
+	return "", false
 }

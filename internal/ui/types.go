@@ -12,6 +12,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
@@ -43,13 +44,15 @@ type (
 	}
 
 	ErrorMsg struct {
-		Message string
-		Timer   int
+		Message    string
+		Timer      int
+		Generation int // 0 for non-load errors (always shown); >0 checked against Model.loadGeneration
 	}
 
 	AudioLoadedMsg struct {
-		Player audio.AudioPlayer
-		Path   string
+		Player     audio.AudioPlayer
+		Path       string
+		Generation int // matches Model.loadGeneration; stale messages are ignored
 	}
 
 	VolumeMsg struct {
@@ -68,6 +71,12 @@ type (
 
 	MediaCtlMsg struct {
 		Command mediactl.Command
+	}
+
+	// LoadTrackMsg requests loading a new audio track at runtime.
+	// Sent by the stdin listener or :open command.
+	LoadTrackMsg struct {
+		Path string
 	}
 )
 
@@ -226,6 +235,25 @@ type Model struct {
 	pendingSeek    time.Duration
 	CommandHistory []string
 	historyIndex   int
+
+	// preferredLyricFormat is set when switching tracks to try the same
+	// lyrics format that was active on the previous track before falling
+	// back to the config priority order.
+	preferredLyricFormat string
+
+	// loadGeneration is incremented each time a new track load is initiated.
+	// AudioLoadedMsg and ErrorMsg with a mismatched generation are ignored,
+	// preventing stale load results from corrupting state on rapid switches.
+	loadGeneration int
+
+	// switchingTrack is true during a runtime track switch (stdin/:open).
+	// When set, the view stays on the main UI and shows a loading indicator
+	// in the help bar instead of switching to the full-screen loading view.
+	switchingTrack bool
+
+	// ipcServer handles bidirectional communication with the GUI wrapper
+	// via Unix domain socket. nil when running standalone.
+	ipcServer *ipc.Server
 
 	MediaCtl  mediactl.Controller
 	mediaChan chan mediactl.Command

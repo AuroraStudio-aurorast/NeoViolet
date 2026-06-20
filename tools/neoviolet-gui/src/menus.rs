@@ -14,6 +14,7 @@ actions!(
         ZoomOut,
         ZoomReset,
         OpenRepository,
+        OpenFile,
     ]
 );
 
@@ -134,9 +135,34 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
             .arg("https://github.com/AuroraStudio-aurorast/NeoViolet").spawn();
     });
 
+    // Open File — native file picker, sends path via IPC socket.
+    // The TUI's IPC server receives the message and triggers handleLoadTrack.
+    cx.on_action(move |_: &OpenFile, cx: &mut App| {
+        let ipc = cx.global::<AppState>().ipc.clone();
+
+        let rx = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: false,
+            prompt: Some("Open Audio File".into()),
+        });
+
+        cx.spawn(async move |_cx| {
+            if let Ok(Ok(Some(paths))) = rx.await {
+                if let Some(path) = paths.into_iter().next() {
+                    if let Err(e) = ipc.send_open(&path.to_string_lossy()) {
+                        log::error!("[open-file] IPC send failed: {}", e);
+                    }
+                }
+            }
+        })
+        .detach();
+    });
+
     cx.bind_keys([
         KeyBinding::new("cmd-q", QuitApp, None),
         KeyBinding::new("cmd-,", Preferences, None),
+        KeyBinding::new("cmd-o", OpenFile, None),
         KeyBinding::new("cmd-+", ZoomIn, None),
         KeyBinding::new("cmd-=", ZoomIn, None),
         KeyBinding::new("cmd--", ZoomOut, None),
@@ -153,6 +179,12 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
                 MenuItem::action("Preferences…", Preferences),
                 MenuItem::separator(),
                 MenuItem::action("Quit NeoViolet GUI", QuitApp),
+            ],
+        },
+        Menu {
+            name: "File".into(),
+            items: vec![
+                MenuItem::action("Open File…", OpenFile),
             ],
         },
         Menu {

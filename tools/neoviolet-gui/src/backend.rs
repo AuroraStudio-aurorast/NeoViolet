@@ -1,6 +1,9 @@
 use std::{
     io::{Read, Write},
-    sync::mpsc::{self, Sender},
+    sync::{
+        mpsc::{self, Sender},
+        Arc, Mutex,
+    },
     thread,
 };
 
@@ -16,6 +19,7 @@ pub fn spawn_neoviolet_terminal(
     rows: u16,
     events: Sender<BackendEvent>,
     launch_args: &[String],
+    child_pid: Arc<Mutex<Option<u32>>>,
 ) -> Result<Sender<BackendCommand>> {
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -61,6 +65,8 @@ pub fn spawn_neoviolet_terminal(
         cmd.env("HOME", home);
     }
     let mut child = pair.slave.spawn_command(cmd).context("spawn neoviolet")?;
+    // Store child PID so GUI can write IPC control file
+    *child_pid.lock().unwrap() = child.process_id();
     drop(pair.slave);
 
     let master = pair.master;

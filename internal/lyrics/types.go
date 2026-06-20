@@ -28,6 +28,7 @@ type LyricsData struct {
 	Offset  int
 	Lines   []LyricLine
 	Path    string
+	Format  string // parser name that produced this data ("lrc", "ttml", etc.)
 
 	// Agents maps agent ID to display name (e.g. "v1" -> "Taylor Swift").
 	// Populated by TTML parser from <ttm:agent> + <amll:meta key="artists">.

@@ -27,12 +27,50 @@ func AvailableParsers() []string {
 }
 
 func FindAndParse(audioPath string, priority []string) (*LyricsData, error) {
+	return findAndParseWithPreferred(audioPath, priority, "")
+}
+
+// FindAndParsePreferred is like FindAndParse but tries a single preferred format
+// first (before falling back to the full priority list). If preferred is empty
+// or the preferred parser is not found, it behaves identically to FindAndParse.
+func FindAndParsePreferred(audioPath string, priority []string, preferred string) (*LyricsData, error) {
+	return findAndParseWithPreferred(audioPath, priority, preferred)
+}
+
+func findAndParseWithPreferred(audioPath string, priority []string, preferred string) (*LyricsData, error) {
 	order := priority
 	if len(order) == 0 {
 		order = parserNames
 	}
 
+	// If a preferred format is given, try it first
+	if preferred != "" {
+		if p, ok := parserMap[preferred]; ok {
+			sidecar := p.FindSidecar(audioPath)
+			if sidecar != "" {
+				f, err := os.Open(sidecar)
+				if err == nil {
+					data, err := p.Parse(f, sidecar)
+					f.Close()
+					if err == nil && data != nil {
+						data.Format = preferred
+						return data, nil
+					}
+					if err != nil {
+						logger.Warn("lyric parse failed (preferred)", "format", preferred, "path", sidecar, "error", err)
+					}
+				} else {
+					logger.Warn("open lyric file failed (preferred)", "format", preferred, "path", sidecar, "error", err)
+				}
+			}
+		}
+	}
+
 	for _, name := range order {
+		// Skip the preferred format in the main loop (already tried above)
+		if name == preferred {
+			continue
+		}
 		p, ok := parserMap[name]
 		if !ok {
 			continue
@@ -55,6 +93,7 @@ func FindAndParse(audioPath string, priority []string) (*LyricsData, error) {
 		if data == nil {
 			continue
 		}
+		data.Format = name
 		return data, nil
 	}
 

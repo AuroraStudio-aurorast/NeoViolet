@@ -41,20 +41,31 @@ impl TerminalApp {
         let (events_tx, events_rx) = mpsc::channel();
 
         // Read config from AppState global
-        let (font_size, font_family, launch_args, recent_output) = {
+        let (font_size, font_family, launch_args, recent_output, child_pid) = {
             let state = cx.global::<AppState>();
             let fs = *state.font_size.lock().unwrap() as f32;
             let ff = state.config.monospace_font.clone();
             let args = state.launch_args.lock().unwrap().clone();
             let ro = state.recent_output.clone();
+            let pid = state.child_pid.clone();
             // Record process start time for bad-args detection
             *state.process_start.lock().unwrap() = Some(std::time::Instant::now());
-            (fs, ff, args, ro)
+            (fs, ff, args, ro, pid)
         };
 
         let backend_tx =
-            backend::spawn_neoviolet_terminal(tab_id.clone(), 100, 30, events_tx.clone(), &launch_args)
+            backend::spawn_neoviolet_terminal(tab_id.clone(), 100, 30, events_tx.clone(), &launch_args, child_pid.clone())
                 .expect("failed to spawn neoviolet terminal");
+
+        // Connect IPC client to the TUI's Unix socket (retries up to 5 s)
+        if let Some(pid) = *child_pid.lock().unwrap() {
+            let ipc = cx.global::<AppState>().ipc.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = ipc.connect(pid) {
+                    log::warn!("[ipc] connect failed: {}", e);
+                }
+            });
+        }
 
         let tab = TerminalTab::new(tab_id, "neoviolet".into(), backend_tx, events_tx);
 

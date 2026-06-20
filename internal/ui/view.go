@@ -23,8 +23,9 @@ const (
 var appLayoutStyle = lipgloss.NewStyle()
 
 func renderMainView(m *Model) tea.View {
-	if m.Loading {
-		// Braille dot spinner (npm-style): ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏
+	if m.Loading && !m.switchingTrack {
+		// Full-screen loading: only for initial startup load.
+		// Runtime track switches keep the main UI visible.
 		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		idx := m.loadingTick / 6 % len(frames)
 		return tea.NewView(loadingStyle.Render(frames[idx] + " Loading..."))
@@ -330,6 +331,12 @@ func buildLyricCountdown(secs float64, filled, empty string) string {
 func renderHelp(m *Model) string {
 	if m.UI.Mode == ModeCommand {
 		return inputStyle.Render(m.Icons.Command + m.Components.CommandInput.View())
+	}
+
+	if m.switchingTrack {
+		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		idx := m.loadingTick / 6 % len(frames)
+		return infoStyle.Width(m.UI.Width).Render(" " + frames[idx] + " Loading...")
 	}
 
 	if m.Info.Message != "" && m.Info.Visible {

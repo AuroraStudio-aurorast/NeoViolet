@@ -109,6 +109,9 @@ func runRoot(cmd *cobra.Command, args []string) error {
 			}()
 		}
 
+		// Start stdin listener for runtime track loading via pipe input
+		go neoviolet.StdinListener(p)
+
 		m, err := p.Run()
 		if err != nil {
 			logger.Error("Program error", "err", err)

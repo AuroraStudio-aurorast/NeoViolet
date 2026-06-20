@@ -392,6 +392,19 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	case "lrc", "lyric", "lyrics":
 		return executeLrcCommand(m, parts)
 
+	case "open", "load", "e":
+		if len(parts) < 2 {
+			m.Error.Set("Usage: open <path>", m.Config.Error.Duration)
+			return m, nil
+		}
+		// Join remaining parts to support paths with spaces
+		path := strings.Join(parts[1:], " ")
+		if !isValidAudioPath(path) {
+			m.Error.Set("Invalid or unsupported audio file: "+path, m.Config.Error.Duration)
+			return m, nil
+		}
+		return handleLoadTrack(m, LoadTrackMsg{Path: path})
+
 	default:
 		m.Error.Set(fmt.Sprintf("Unknown command: %s", cmdText), m.Config.Error.Duration)
 		return m, nil

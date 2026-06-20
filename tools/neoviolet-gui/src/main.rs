@@ -3,6 +3,7 @@ mod backend;
 mod components;
 mod config;
 mod dracula_theme;
+mod ipc;
 mod menus;
 mod neo_violet_app;
 #[cfg(target_os = "macos")]

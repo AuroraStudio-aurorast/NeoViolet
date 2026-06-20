@@ -6,6 +6,7 @@ use std::time::Instant;
 
 use crate::config::GuiConfig;
 use crate::app::TerminalApp;
+use crate::ipc::IpcClient;
 
 pub struct AppState {
     pub config: GuiConfig,
@@ -37,6 +38,12 @@ pub struct AppState {
     /// Set by `on_open_urls` / `FileDropEvent` handlers, consumed by
     /// `NeoVioletApp::render()`.
     pub pending_file_paths: Arc<Mutex<Vec<String>>>,
+
+    // ── Child PID (for IPC control file path) ──
+    pub child_pid: Arc<Mutex<Option<u32>>>,
+
+    // ── IPC client (GUI → TUI communication) ──
+    pub ipc: Arc<IpcClient>,
 }
 
 impl Global for AppState {}
@@ -57,6 +64,8 @@ impl AppState {
             root_entity_id: Arc::new(Mutex::new(None)),
             cli_version: Arc::new(Mutex::new(String::new())),
             pending_file_paths: Arc::new(Mutex::new(Vec::new())),
+            child_pid: Arc::new(Mutex::new(None)),
+            ipc: Arc::new(IpcClient::new()),
         }
     }
 }

@@ -17,11 +17,12 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
 
-func loadAudio(filePath, sfPath, trackerBackend string) tea.Msg {
+func loadAudio(filePath, sfPath, trackerBackend string, generation int) tea.Msg {
 	logger.Info("Loading audio file", "path", filePath)
 	player := audio.NewPlayer()
 	if sfPath != "" {
@@ -31,31 +32,32 @@ func loadAudio(filePath, sfPath, trackerBackend string) tea.Msg {
 
 	// Stdin mode: load audio data from pipe
 	if filePath == "-" {
-		return loadAudioFromStdin(player)
+		return loadAudioFromStdin(player, generation)
 	}
 
 	if err := player.Open(filePath); err != nil {
 		logger.Error("Failed to load audio", "path", filePath, "err", err)
-		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180}
+		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180, Generation: generation}
 	}
-	return AudioLoadedMsg{Player: player, Path: filePath}
+	return AudioLoadedMsg{Player: player, Path: filePath, Generation: generation}
 }
 
 // loadAudioFromStdin reads audio data from os.Stdin and opens it via the player.
 // os.Stdin is only read when it's a pipe (not a terminal); BubbleTea uses
 // /dev/tty for terminal input so there is no conflict. Stdin is closed after
 // reading to prevent accidental reuse.
-func loadAudioFromStdin(player *audio.Player) tea.Msg {
+func loadAudioFromStdin(player *audio.Player, generation int) tea.Msg {
 	// Check if stdin is a pipe (not a terminal)
 	info, err := os.Stdin.Stat()
 	if err != nil {
 		logger.Error("Failed to stat stdin", "err", err)
-		return ErrorMsg{Message: "Failed to read stdin", Timer: 120}
+		return ErrorMsg{Message: "Failed to read stdin", Timer: 120, Generation: generation}
 	}
 	if info.Mode()&os.ModeNamedPipe == 0 && info.Mode()&os.ModeCharDevice != 0 {
 		return ErrorMsg{
 			Message: "stdin is a terminal; pipe audio data or provide a file path",
 			Timer:   180,
+			Generation: generation,
 		}
 	}
 
@@ -63,15 +65,15 @@ func loadAudioFromStdin(player *audio.Player) tea.Msg {
 	os.Stdin.Close()
 	if err != nil {
 		logger.Error("Failed to read stdin", "err", err)
-		return ErrorMsg{Message: fmt.Sprintf("Failed to read stdin: %v", err), Timer: 120}
+		return ErrorMsg{Message: fmt.Sprintf("Failed to read stdin: %v", err), Timer: 120, Generation: generation}
 	}
 
 	if err := player.OpenReader("stdin", data); err != nil {
 		logger.Error("Failed to load audio from stdin", "err", err)
-		return ErrorMsg{Message: fmt.Sprintf("Failed to load from stdin: %v", err), Timer: 180}
+		return ErrorMsg{Message: fmt.Sprintf("Failed to load from stdin: %v", err), Timer: 180, Generation: generation}
 	}
 
-	return AudioLoadedMsg{Player: player, Path: "stdin"}
+	return AudioLoadedMsg{Player: player, Path: "stdin", Generation: generation}
 }
 
 // Global key bindings
@@ -229,6 +231,19 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 		logger.Warn("mediactl init failed", "err", mediaCtlErr)
 	}
 
+	// Initialize IPC server for bidirectional GUI communication.
+	// Only start when running inside neoviolet-gui (not a standard terminal).
+	// The GUI sets TERM_PROGRAM=neoviolet-gui as the terminal emulator name.
+	if os.Getenv("TERM_PROGRAM") == "neoviolet-gui" {
+		if srv, err := ipc.NewServer(); err != nil {
+			logger.Warn("IPC server init failed", "err", err)
+		} else {
+			m.ipcServer = srv
+		}
+	} else {
+		logger.Debug("Not running inside neoviolet-gui, IPC disabled")
+	}
+
 	// Load persisted command history
 	loadHistory(m)
 
@@ -251,11 +266,21 @@ func (m *Model) Init() tea.Cmd {
 		sfPath := m.Config.SoundfontPath
 		backend := m.Config.TrackerBackend
 		m.pendingPath = ""
+		gen := m.loadGeneration
 		cmds = append(cmds, func() tea.Msg {
 			// Start ConEmu progress bar (OSC 9;4) with indeterminate state
 			fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
-			return loadAudio(path, sfPath, backend)
+			return loadAudio(path, sfPath, backend, gen)
 		})
+	}
+
+	// Accept GUI IPC connection in the background
+	if m.ipcServer != nil {
+		go func() {
+			if err := m.ipcServer.Accept(); err != nil {
+				logger.Warn("IPC accept failed", "err", err)
+			}
+		}()
 	}
 
 	cmds = append(cmds, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(t time.Time) tea.Msg {
@@ -284,6 +309,10 @@ func (m *Model) cleanup() {
 	if m.MediaCtl != nil {
 		logger.Debug("Cleanup: closing media controller")
 		m.MediaCtl.Close()
+	}
+	if m.ipcServer != nil {
+		logger.Debug("Cleanup: closing IPC server")
+		m.ipcServer.Close()
 	}
 }
 
