@@ -5,12 +5,15 @@ mod config;
 mod dracula_theme;
 mod menus;
 mod neo_violet_app;
+#[cfg(target_os = "macos")]
+mod open_files;
 mod platform;
 mod state;
 mod terminal;
 mod util;
 
 use gpui::*;
+use std::sync::{Arc, Mutex};
 use yororen_ui::assets::UiAsset;
 use yororen_ui::component;
 use yororen_ui::i18n::{I18n, Locale};
@@ -71,6 +74,31 @@ fn main() {
 
     let app = Application::new().with_assets(UiAsset);
 
+    // ── Shared pending-file-paths store ──
+    // On macOS, `on_open_urls` fires before/during `run()` and feeds file
+    // paths here. On other platforms this stays empty — files arrive via
+    // CLI args (`launch_args`) instead.
+    let pending_urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+    // ── macOS: handle files dropped onto Dock icon / opened via Finder ──
+    #[cfg(target_os = "macos")]
+    {
+        let pending = pending_urls.clone();
+        app.on_open_urls(move |urls| {
+            let paths = open_files::extract_file_paths(&urls);
+            if !paths.is_empty() {
+                log::info!("[open_urls] received {} file(s)", paths.len());
+                if let Ok(mut guard) = pending.lock() {
+                    *guard = paths;
+                }
+            }
+        });
+    }
+    #[cfg(target_os = "macos")]
+    app.on_reopen(move |_cx: &mut App| {
+        log::info!("[reopen] app re-opened via Dock / Finder");
+    });
+
     app.run(move |cx: &mut App| {
         component::init(cx);
 
@@ -84,8 +112,13 @@ fn main() {
         // i18n
         cx.set_global(I18n::with_embedded(Locale::new("en").unwrap()));
 
-        // AppState
-        cx.set_global(AppState::new(gui_config.clone(), user_args.clone()));
+        // AppState — seed with the shared pending-urls handle so that
+        // NeoVioletApp can pick up late-arriving open-file events.
+        {
+            let mut state = AppState::new(gui_config.clone(), user_args.clone());
+            state.pending_file_paths = pending_urls.clone();
+            cx.set_global(state);
+        }
 
         // Menu setup
         menus::setup(cx, gui_config.neoviolet_path.as_deref());
@@ -119,6 +152,7 @@ fn main() {
             },
             move |window, cx| {
                 let _args = user_args.clone();
+
                 window.on_window_should_close(cx, move |w, cx| {
                     let already_exited = {
                         let state = cx.global::<AppState>();

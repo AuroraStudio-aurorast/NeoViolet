@@ -31,6 +31,12 @@ pub struct AppState {
 
     // ── CLI version cache ──
     pub cli_version: Arc<Mutex<String>>,
+
+    // ── Pending file paths from drag-and-drop / open-file events ──
+    /// File paths waiting to be forwarded to the PTY process as launch args.
+    /// Set by `on_open_urls` / `FileDropEvent` handlers, consumed by
+    /// `NeoVioletApp::render()`.
+    pub pending_file_paths: Arc<Mutex<Vec<String>>>,
 }
 
 impl Global for AppState {}
@@ -50,6 +56,7 @@ impl AppState {
             show_exit_error: Arc::new(Mutex::new(false)),
             root_entity_id: Arc::new(Mutex::new(None)),
             cli_version: Arc::new(Mutex::new(String::new())),
+            pending_file_paths: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }

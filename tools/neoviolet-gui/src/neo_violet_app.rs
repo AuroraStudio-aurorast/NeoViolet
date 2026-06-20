@@ -7,6 +7,7 @@
 
 use gpui::*;
 use gpui::prelude::*;
+use std::sync::{Arc, Mutex};
 use yororen_ui::theme::ActiveTheme;
 
 use crate::app::TerminalApp;
@@ -26,6 +27,8 @@ pub struct NeoVioletApp {
     pub exit_output: String,
     /// Window opacity (0.0–1.0), applied to the root element.
     pub opacity: f32,
+    /// Caches file paths between FileDropEvent::Entered and ::Submit.
+    drop_paths_cache: Arc<Mutex<Vec<String>>>,
 }
 
 impl NeoVioletApp {
@@ -48,6 +51,7 @@ impl NeoVioletApp {
             exit_is_bad_args: false,
             exit_output: String::new(),
             opacity,
+            drop_paths_cache: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -67,12 +71,10 @@ impl NeoVioletApp {
 
     /// Create a brand-new TerminalApp, swap it in, and re-attach observe.
     fn restart_terminal(&mut self, cx: &mut Context<Self>) {
-        // Drop old reference in global state and clear launch args
-        // so the restarted process starts with a clean slate.
+        // Drop old reference in global state
         {
             let state = cx.global::<AppState>();
             *state.terminal_child.lock().unwrap() = None;
-            state.launch_args.lock().unwrap().clear();
         }
 
         let new_child = cx.new(|cx| TerminalApp::new(cx));
@@ -98,6 +100,22 @@ impl NeoVioletApp {
         *cx.global::<AppState>().process_start.lock().unwrap() = None;
         cx.notify();
     }
+
+    /// Restart terminal with the given file paths as launch arguments.
+    /// Used by drag-and-drop and Dock-icon open-file flows.
+    fn restart_with_files(&mut self, paths: Vec<String>, cx: &mut Context<Self>) {
+        if paths.is_empty() {
+            return;
+        }
+        log::info!("[neoviolet-app] restarting with {} file(s)", paths.len());
+        // Set launch args so TerminalApp::new() picks them up
+        {
+            let state = cx.global::<AppState>();
+            *state.launch_args.lock().unwrap() = paths;
+        }
+        // Restart terminal (this clears the old process and spawns a new one)
+        self.restart_terminal(cx);
+    }
 }
 
 impl Render for NeoVioletApp {
@@ -105,6 +123,71 @@ impl Render for NeoVioletApp {
         let bounds = window.bounds();
         if bounds.size.width <= px(0.0) || bounds.size.height <= px(0.0) {
             return div().into_any_element();
+        }
+
+        // ── In-window drag-and-drop handler (per-frame registration) ──
+        // GPUI's on_mouse_event registers for the next frame only, so we
+        // re-register here on every render. Paths are cached from Entered
+        // and forwarded to the PTY at Submit.
+        {
+            let drop_cache = self.drop_paths_cache.clone();
+            let pending = cx.global::<AppState>().pending_file_paths.clone();
+            let root_eid = cx.entity_id();
+            window.on_mouse_event(
+                move |event: &FileDropEvent, _phase, _window, cx| {
+                    match event {
+                        FileDropEvent::Entered { paths, .. } => {
+                            let file_paths: Vec<String> = paths
+                                .paths()
+                                .iter()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .collect();
+                            log::info!(
+                                "[drag-drop] entered with {} file(s)",
+                                file_paths.len()
+                            );
+                            if let Ok(mut guard) = drop_cache.lock() {
+                                *guard = file_paths;
+                            }
+                        }
+                        FileDropEvent::Submit { .. } => {
+                            if let Ok(mut guard) = drop_cache.lock() {
+                                let paths: Vec<String> = guard.drain(..).collect();
+                                if !paths.is_empty() {
+                                    log::info!(
+                                        "[drag-drop] submit {} file(s)",
+                                        paths.len()
+                                    );
+                                    if let Ok(mut p) = pending.lock() {
+                                        *p = paths;
+                                    }
+                                    cx.notify(root_eid);
+                                }
+                            }
+                        }
+                        FileDropEvent::Exited => {
+                            if let Ok(mut guard) = drop_cache.lock() {
+                                guard.clear();
+                            }
+                        }
+                        _ => {}
+                    }
+                },
+            );
+        }
+
+        // ── Pending file paths from Dock-icon drop / open-file event ──
+        // When macOS delivers files via on_open_urls (or the drag-drop
+        // handler above), they land in pending_file_paths. Restart the
+        // terminal with those files as arguments.
+        {
+            let pending = cx.global::<AppState>().pending_file_paths.clone();
+            if let Ok(mut guard) = pending.lock() {
+                let paths: Vec<String> = guard.drain(..).collect();
+                if !paths.is_empty() {
+                    self.restart_with_files(paths, cx);
+                }
+            }
         }
 
         // ── Sync title from terminal child ──
@@ -183,6 +266,8 @@ impl Render for NeoVioletApp {
         let do_quit = cx.listener(|_: &mut NeoVioletApp, _: &ClickEvent, _w, cx| cx.quit());
         let restart_terminal =
             cx.listener(|this: &mut NeoVioletApp, _: &ClickEvent, _w, cx| {
+                // Clear launch args for a clean restart
+                cx.global::<AppState>().launch_args.lock().unwrap().clear();
                 this.restart_terminal(cx);
             });
         let dismiss_exit =

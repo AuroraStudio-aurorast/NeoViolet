@@ -101,6 +101,68 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <string>12.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Audio File</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.mp3</string>
+        <string>org.xiph.flac</string>
+        <string>com.microsoft.waveform-audio</string>
+        <string>org.xiph.ogg-audio</string>
+        <string>org.xiph.opus-audio</string>
+        <string>public.mpeg-4-audio</string>
+        <string>public.midi-audio</string>
+        <string>com.apple.m4a-audio</string>
+        <string>public.audio</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>MPEG Audio Layer II</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>mp2</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Monkey's Audio</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>ape</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Tracker Module</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>CFBundleTypeExtensions</key>
+      <array>
+        <string>mod</string>
+        <string>xm</string>
+        <string>it</string>
+        <string>s3m</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>
 EOF
