@@ -282,34 +282,93 @@ impl TerminalApp {
 
     // ── Mouse input ──
 
+    /// Send a mouse-report escape sequence to the PTY if the terminal has
+    /// mouse tracking enabled. Returns `true` when the event was forwarded
+    /// (and `prevent_default` + `stop_propagation` have been called).
+    fn send_mouse_report(
+        &mut self,
+        button: u8, // 0=left, 1=middle, 2=right; add 0x80 for SGR release
+        position: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        use alacritty_terminal::term::TermMode;
+
+        let mode = self.tab.term_mode();
+        let is_mouse_tracking = mode.intersects(
+            TermMode::MOUSE_REPORT_CLICK
+                | TermMode::MOUSE_MOTION
+                | TermMode::MOUSE_DRAG,
+        );
+        if !is_mouse_tracking {
+            return false;
+        }
+
+        if let Some((row, col, _)) = self.terminal_grid_point_and_side(position) {
+            let sgr = mode.contains(TermMode::SGR_MOUSE);
+            let mut bytes: Vec<u8> = Vec::new();
+            if sgr {
+                // SGR extended mouse: \x1b[<b;col;rowM (press) or m (release)
+                let release_char = if button >= 0x80 { 'm' } else { 'M' };
+                let btn = button & 0x7F;
+                bytes.extend_from_slice(
+                    format!("\x1b[<{};{};{}{}", btn, col + 1, row + 1, release_char)
+                        .as_bytes(),
+                );
+            } else {
+                // Normal mouse tracking (X10 encoding):
+                // \x1b[M cb cx cy where cb = button + 32, cx/cy = col/row + 33
+                if col < 223 && row < 223 {
+                    bytes.extend_from_slice(b"\x1b[M");
+                    bytes.push(button.wrapping_add(32));
+                    bytes.push(col as u8 + 33);
+                    bytes.push(row as u8 + 33);
+                }
+            }
+            if !bytes.is_empty() {
+                let _ = self.tab.backend.send(BackendCommand::Input(bytes));
+            }
+            window.prevent_default();
+            cx.stop_propagation();
+        }
+        true
+    }
+
     fn on_terminal_right_click(
         &mut self,
-        _event: &MouseDownEvent,
+        event: &MouseDownEvent,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Right-click: copy selection or paste
-        let mut handled = false;
+        // If the terminal program has enabled mouse tracking, forward the
+        // right-click as a mouse-report escape sequence instead of treating
+        // it as a copy/paste gesture.
+        if self.send_mouse_report(2, event.position, window, cx) {
+            return;
+        }
+
+        // Right-click: copy selection to clipboard (no paste).
         if let Some(text) = self.tab.selection_text() {
             if !text.is_empty() {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
                 self.tab.clear_selection();
                 cx.notify();
-                handled = true;
-            }
-        }
-        if !handled {
-            if let Some(clipboard_item) = cx.read_from_clipboard() {
-                if let Some(text) = clipboard_item.text() {
-                    if !text.is_empty() {
-                        self.paste_into_terminal(&text, window, cx);
-                    }
-                }
             }
         }
     }
 
-    fn begin_terminal_selection(&mut self, event: &MouseDownEvent, cx: &mut Context<Self>) {
+    fn begin_terminal_selection(
+        &mut self,
+        event: &MouseDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // If the terminal program has enabled mouse tracking, forward the
+        // left-click as a mouse-report escape sequence.
+        if self.send_mouse_report(0, event.position, window, cx) {
+            return;
+        }
+
         let click_count = event.click_count.max(1);
         let selection_type = match click_count {
             1 => SelectionType::Simple,
@@ -343,10 +402,14 @@ impl TerminalApp {
 
     fn on_terminal_mouse_up(
         &mut self,
-        _event: &MouseUpEvent,
-        _window: &mut Window,
+        event: &MouseUpEvent,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // If the terminal has mouse tracking, report the release.
+        // In SGR mode bit 7 signals release; in normal mode button 3 = release.
+        self.send_mouse_report(0 | 0x80, event.position, window, cx);
+
         self.terminal_selecting = false;
         cx.notify();
     }
@@ -498,8 +561,8 @@ impl Render for TerminalApp {
             ))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|this, event: &MouseDownEvent, _window, cx| {
-                    this.begin_terminal_selection(event, cx);
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.begin_terminal_selection(event, window, cx);
                 }),
             )
             .on_mouse_down(
