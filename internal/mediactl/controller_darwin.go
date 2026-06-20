@@ -125,6 +125,7 @@ var (
 	}{}
 
 	// App delegate selectors
+	sel_finishLaunching      objc.SEL
 	sel_appDidFinishLaunching objc.SEL
 	sel_appShouldTerminate    objc.SEL
 )
@@ -217,6 +218,7 @@ func init() {
 	_handlerSels.sleep = objc.RegisterName("handleWillSleepOrPowerOff:")
 	_handlerSels.wake = objc.RegisterName("handleDidWake:")
 
+	sel_finishLaunching = objc.RegisterName("finishLaunching")
 	sel_appDidFinishLaunching = objc.RegisterName("applicationDidFinishLaunching:")
 	sel_appShouldTerminate = objc.RegisterName("applicationShouldTerminateAfterLastWindowClosed:")
 
@@ -274,28 +276,36 @@ func init() {
 // =========================================================================
 
 var (
-	_bootstrapMu sync.Mutex
-	_bootstrapFn func()
+	_bootstrapMu   sync.Mutex
+	_bootstrapFn   func()
+	_bootstrapOnce sync.Once
 )
 
 func appDidFinishLaunching(id objc.ID, cmd objc.SEL, notification objc.ID) {
-	_bootstrapMu.Lock()
-	fn := _bootstrapFn
-	_bootstrapMu.Unlock()
-	if fn == nil {
-		return
-	}
-	go func() {
-		// IMPORTANT: Do NOT wrap fn() in autoPool.  autoPool calls
-		// runtime.LockOSThread(), which would pin the entire Bubble Tea
-		// app (audio, seeking, UI, ticks) to a single OS thread and
-		// severely degrade seek/playback performance.
-		// Individual ObjC operations (Start, Update) use their own
-		// short-lived autoPool wrappers — that's sufficient.
-		fn()
-		nsApp := objc.ID(class_NSApplication).Send(sel_sharedApplication)
-		nsApp.Send(sel_terminate, objc.ID(0))
-	}()
+	_bootstrapOnce.Do(func() {
+		_bootstrapMu.Lock()
+		fn := _bootstrapFn
+		_bootstrapMu.Unlock()
+		if fn == nil {
+			return
+		}
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					fmt.Printf("mediactl: panic in bootstrap: %v\n", r)
+				}
+				nsApp := objc.ID(class_NSApplication).Send(sel_sharedApplication)
+				nsApp.Send(sel_terminate, objc.ID(0))
+			}()
+			// IMPORTANT: Do NOT wrap fn() in autoPool.  autoPool calls
+			// runtime.LockOSThread(), which would pin the entire Bubble Tea
+			// app (audio, seeking, UI, ticks) to a single OS thread and
+			// severely degrade seek/playback performance.
+			// Individual ObjC operations (Start, Update) use their own
+			// short-lived autoPool wrappers — that's sufficient.
+			fn()
+		}()
+	})
 }
 
 func appShouldTerminate(id objc.ID, cmd objc.SEL, notification objc.ID) bool { return true }
@@ -316,6 +326,13 @@ func MacOSRun(fn func()) {
 	_bootstrapFn = fn
 	_bootstrapMu.Unlock()
 
+	// Explicitly finish launching so applicationDidFinishLaunching:
+	// fires synchronously — essential for CLI (non-bundle) execution
+	// where [NSApp run] alone may not reliably trigger the delegate
+	// callback (e.g. after a Bubble Tea wizard has manipulated the
+	// terminal).  sync.Once in appDidFinishLaunching prevents double
+	// fire when [NSApp run] calls finishLaunching again internally.
+	nsApp.Send(sel_finishLaunching)
 	nsApp.Send(sel_run)
 }
 
