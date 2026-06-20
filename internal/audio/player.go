@@ -139,6 +139,12 @@ func (p *Player) Open(path string) error {
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
+	// Resample if the streamer's native sample rate differs from the
+	// speaker's hardware rate. The beep speaker is initialized once at
+	// the first song's rate and cannot be re-initialized; without
+	// resampling, a rate mismatch causes pitch/tempo distortion.
+	ctrlStreamer := resampleIfNeeded(streamer, format)
+
 	logger.Info("Audio file opened", "path", path, "format", format.SampleRate)
 
 	p.streamer = streamer
@@ -150,7 +156,7 @@ func (p *Player) Open(path string) error {
 	p.synthActive = false
 
 	p.ctrl = &beep.Ctrl{
-		Streamer: streamer,
+		Streamer: ctrlStreamer,
 		Paused:   true,
 	}
 
@@ -289,6 +295,8 @@ func (p *Player) OpenReader(name string, data []byte) error {
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
+	ctrlStreamer := resampleIfNeeded(streamer, format)
+
 	logger.Info("Audio loaded from stdin", "name", name, "format", format.SampleRate)
 
 	p.streamer = streamer
@@ -300,7 +308,7 @@ func (p *Player) OpenReader(name string, data []byte) error {
 	p.synthActive = false
 
 	p.ctrl = &beep.Ctrl{
-		Streamer: streamer,
+		Streamer: ctrlStreamer,
 		Paused:   true,
 	}
 
@@ -362,6 +370,27 @@ func (p *Player) Play() error {
 	p.isPlaying = true
 	p.isPaused = false
 	return nil
+}
+
+// resampleIfNeeded wraps the streamer with beep.ResampleRatio when the
+// source sample rate differs from the speaker's hardware sample rate.
+// The beep speaker is initialized once (at the first song's rate) and
+// cannot be re-initialized; without resampling, a rate mismatch causes
+// incorrect pitch and playback speed.
+//
+// The original streamer (p.streamer) is kept as-is for seeking; the
+// resampled wrapper is used only in the Ctrl → Volume playback chain.
+func resampleIfNeeded(s beep.Streamer, f beep.Format) beep.Streamer {
+	if speakerSampleRate == 0 || f.SampleRate == speakerSampleRate {
+		return s
+	}
+	ratio := float64(f.SampleRate) / float64(speakerSampleRate)
+	logger.Info("Resampling audio",
+		"from", f.SampleRate,
+		"to", speakerSampleRate,
+		"ratio", ratio,
+	)
+	return beep.ResampleRatio(4, ratio, s)
 }
 
 func (p *Player) Pause() {

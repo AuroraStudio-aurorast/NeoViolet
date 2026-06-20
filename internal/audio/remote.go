@@ -243,6 +243,8 @@ func (p *Player) openURL(urlStr string) error {
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
+	ctrlStreamer := resampleIfNeeded(streamer, format)
+
 	logger.Info("Remote audio opened", "url", urlStr, "format", format.SampleRate)
 
 	p.streamer = streamer
@@ -253,7 +255,7 @@ func (p *Player) openURL(urlStr string) error {
 	p.path = urlStr
 
 	p.ctrl = &beep.Ctrl{
-		Streamer: streamer,
+		Streamer: ctrlStreamer,
 		Paused:   true,
 	}
 
