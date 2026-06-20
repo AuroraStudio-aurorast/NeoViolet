@@ -24,11 +24,14 @@ pub struct NeoVioletApp {
     /// invalid arguments. The dialog then shows captured help output.
     pub exit_is_bad_args: bool,
     pub exit_output: String,
+    /// Window opacity (0.0–1.0), applied to the root element.
+    pub opacity: f32,
 }
 
 impl NeoVioletApp {
     pub fn new(
         terminal_child: Entity<TerminalApp>,
+        opacity: f32,
         cx: &mut Context<Self>,
     ) -> Self {
         Self::attach_terminal_observer(&terminal_child, cx);
@@ -44,6 +47,7 @@ impl NeoVioletApp {
             exit_reason: String::new(),
             exit_is_bad_args: false,
             exit_output: String::new(),
+            opacity,
         }
     }
 
@@ -232,6 +236,7 @@ impl Render for NeoVioletApp {
             .size_full()
             .flex()
             .flex_col()
+            .opacity(self.opacity)
             .track_focus(&self.focus_handle)
             .on_key_down(on_key_down)
             .when(

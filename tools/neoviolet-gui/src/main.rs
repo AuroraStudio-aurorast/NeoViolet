@@ -97,6 +97,13 @@ fn main() {
             traffic_light_position: None,
         });
 
+        let config_opacity = gui_config.opacity.clamp(0.1, 1.0);
+        let window_background = if config_opacity < 1.0 {
+            WindowBackgroundAppearance::Transparent
+        } else {
+            WindowBackgroundAppearance::Opaque
+        };
+
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
@@ -107,7 +114,7 @@ fn main() {
                     ),
                 ))),
                 titlebar: titlebar_opts,
-                window_background: WindowBackgroundAppearance::Opaque,
+                window_background,
                 ..Default::default()
             },
             move |window, cx| {
@@ -139,7 +146,7 @@ fn main() {
                     .unwrap()
                     .replace(terminal_child.downgrade());
 
-                let root_entity = cx.new(|cx| NeoVioletApp::new(terminal_child, cx));
+                let root_entity = cx.new(|cx| NeoVioletApp::new(terminal_child, config_opacity, cx));
                 cx.global::<AppState>()
                     .root_entity_id
                     .lock()

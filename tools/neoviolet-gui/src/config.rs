@@ -27,18 +27,31 @@ pub fn load_or_create() -> GuiConfig {
     let config_dir = config_dir_path();
     let config_path = config_dir.join("neoviolet_gui.toml");
 
-    if let Ok(content) = std::fs::read_to_string(&config_path)
-        && let Ok(cfg) = toml::from_str::<GuiConfig>(&content)
+    let mut cfg = if let Ok(content) = std::fs::read_to_string(&config_path)
+        && let Ok(parsed) = toml::from_str::<GuiConfig>(&content)
     {
-        return cfg;
+        parsed
+    } else {
+        let defaults = GuiConfig::default();
+        if let Ok(toml_str) = toml::to_string_pretty(&defaults) {
+            let _ = std::fs::create_dir_all(&config_dir);
+            let _ = std::fs::write(&config_path, toml_str);
+        }
+        defaults
+    };
+
+    // Validate the configured font family — if it doesn't exist on this
+    // system, fall back to the platform default monospace font.
+    if !crate::platform::is_font_available(&cfg.monospace_font) {
+        let fallback = crate::platform::default_monospace_font();
+        log::warn!(
+            "Configured font '{}' is not installed; falling back to '{}'",
+            cfg.monospace_font,
+            fallback,
+        );
+        cfg.monospace_font = fallback.to_string();
     }
 
-    // Create defaults
-    let cfg = GuiConfig::default();
-    if let Ok(toml_str) = toml::to_string_pretty(&cfg) {
-        let _ = std::fs::create_dir_all(&config_dir);
-        let _ = std::fs::write(&config_path, toml_str);
-    }
     cfg
 }
 

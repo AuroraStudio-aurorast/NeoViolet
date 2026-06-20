@@ -41,6 +41,18 @@ pub fn default_monospace_font() -> &'static str {
     }
 }
 
+/// Check whether a font family is installed on the system.
+/// Uses `fontdb` under the hood — queries the system font database.
+pub fn is_font_available(family: &str) -> bool {
+    let mut db = fontdb::Database::new();
+    db.load_system_fonts();
+    db.query(&fontdb::Query {
+        families: &[fontdb::Family::Name(family)],
+        ..Default::default()
+    })
+    .is_some()
+}
+
 // ── CLI version check (async, non-blocking) ──
 
 const VERSION_CHECK_TIMEOUT: Duration = Duration::from_secs(3);
