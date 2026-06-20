@@ -24,13 +24,7 @@ impl Default for GuiConfig {
 }
 
 pub fn load_or_create() -> GuiConfig {
-    let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| {
-            let home = dirs::home_dir().unwrap_or_default();
-            home.join(".config")
-        })
-        .join("neoviolet");
-
+    let config_dir = config_dir_path();
     let config_path = config_dir.join("neoviolet_gui.toml");
 
     if let Ok(content) = std::fs::read_to_string(&config_path)
@@ -46,4 +40,27 @@ pub fn load_or_create() -> GuiConfig {
         let _ = std::fs::write(&config_path, toml_str);
     }
     cfg
+}
+
+/// Returns the config directory path (same as the CLI's --xdg-config path).
+///
+/// Resolution order:
+/// 1. `$XDG_CONFIG_HOME/neoviolet/`
+/// 2. `~/.config/neoviolet/`
+/// 3. OS config directory /neoviolet/ (fallback)
+/// 4. `~/.config/neoviolet/` (ultimate fallback)
+pub fn config_dir_path() -> std::path::PathBuf {
+    std::env::var("XDG_CONFIG_HOME")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
+        .unwrap_or_else(|| {
+            dirs::config_dir().unwrap_or_else(|| {
+                dirs::home_dir()
+                    .unwrap_or_default()
+                    .join(".config")
+            })
+        })
+        .join("neoviolet")
 }

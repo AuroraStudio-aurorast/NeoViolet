@@ -43,9 +43,7 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
 
     // Preferences — reveal config directory
     cx.on_action(|_: &Preferences, cx: &mut App| {
-        let dir = dirs::config_dir()
-            .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
-            .join("neoviolet");
+        let dir = crate::config::config_dir_path();
         cx.reveal_path(&dir);
     });
 

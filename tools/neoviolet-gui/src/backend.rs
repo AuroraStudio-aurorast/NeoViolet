@@ -30,7 +30,14 @@ pub fn spawn_neoviolet_terminal(
     let bin = platform::find_neoviolet_binary(None);
 
     let mut cmd = CommandBuilder::new(&bin);
+
+    // Always pass --xdg-config to the PTY process, deduplicating if the
+    // user already supplied it on the command line.
+    cmd.arg("--xdg-config");
     for arg in launch_args {
+        if arg == "--xdg-config" {
+            continue;
+        }
         cmd.arg(arg);
     }
     cmd.env(
