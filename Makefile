@@ -34,7 +34,7 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: all build build/race build/debug build/noopenmpt run test test/race test/verbose test/short test/cover clean lint vet tidy install apetools apetools/debug gui gui/debug run/gui help
+.PHONY: all build build/race build/debug build/noopenmpt build/osxappbundle run test test/race test/verbose test/short test/cover clean lint vet tidy install apetools apetools/debug gui gui/debug run/gui help
 
 all: build
 
@@ -73,6 +73,9 @@ apetools:
 apetools/debug:
 	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, apecli will not be built"; exit 0; fi
 	cd $(APECLI_DIR) && cargo build
+
+build/osxappbundle:
+	@tools/osx-appbundle-builder/build.sh
 
 # --- Run ---
 
@@ -151,6 +154,9 @@ help:
 	@echo "APE (Monkey's Audio):"
 	@echo "  apetools           Build apecli Rust helper (cargo required)"
 	@echo "  apetools/debug     Build apecli in debug mode"
+	@echo ""
+	@echo "macOS App Bundle:"
+	@echo "  build/osxappbundle    Build macOS .app bundle (macOS only)"
 	@echo ""
 	@echo "Run:"
 	@echo "  run ARGS=...       Build and run with optional arguments"

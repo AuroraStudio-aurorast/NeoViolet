@@ -36,3 +36,4 @@ tools/neoviolet-gui/target/
 /neoviolet-gui.exe
 
 reasonix.toml
+/dist/
