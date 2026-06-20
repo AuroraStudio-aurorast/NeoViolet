@@ -44,6 +44,9 @@ pub struct AppState {
 
     // ── IPC client (GUI → TUI communication) ──
     pub ipc: Arc<IpcClient>,
+
+    // ── IPC messages from TUI (pending processing) ──
+    pub ipc_incoming: Arc<Mutex<Vec<String>>>,
 }
 
 impl Global for AppState {}
@@ -66,6 +69,7 @@ impl AppState {
             pending_file_paths: Arc::new(Mutex::new(Vec::new())),
             child_pid: Arc::new(Mutex::new(None)),
             ipc: Arc::new(IpcClient::new()),
+            ipc_incoming: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }

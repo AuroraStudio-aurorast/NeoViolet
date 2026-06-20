@@ -57,13 +57,17 @@ impl TerminalApp {
             backend::spawn_neoviolet_terminal(tab_id.clone(), 100, 30, events_tx.clone(), &launch_args, child_pid.clone())
                 .expect("failed to spawn neoviolet terminal");
 
-        // Connect IPC client to the TUI's Unix socket (retries up to 5 s)
+        // Connect IPC client to the TUI's TCP endpoint (retries up to 5 s),
+        // then start a reader thread to receive messages from the TUI.
         if let Some(pid) = *child_pid.lock().unwrap() {
             let ipc = cx.global::<AppState>().ipc.clone();
+            let incoming = cx.global::<AppState>().ipc_incoming.clone();
             std::thread::spawn(move || {
                 if let Err(e) = ipc.connect(pid) {
                     log::warn!("[ipc] connect failed: {}", e);
+                    return;
                 }
+                ipc.start_reader(incoming);
             });
         }
 

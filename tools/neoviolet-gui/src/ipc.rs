@@ -95,6 +95,51 @@ impl IpcClient {
             Err(e) => Err(format!("IPC read error: {}", e)),
         }
     }
+
+    /// Start a background reader thread that pushes incoming lines from
+    /// the TUI into the given queue. The stream is cloned so the main
+    /// thread can continue sending concurrently.
+    pub fn start_reader(&self, queue: Arc<Mutex<Vec<String>>>) {
+        let stream_opt = {
+            let guard = self.stream.lock().unwrap();
+            guard.as_ref().and_then(|s| s.try_clone().ok())
+        };
+        let Some(reader_stream) = stream_opt else {
+            log::warn!("[ipc] start_reader: not connected");
+            return;
+        };
+        reader_stream
+            .set_read_timeout(Some(std::time::Duration::from_millis(500)))
+            .ok();
+
+        std::thread::spawn(move || {
+            let mut buf = BufReader::new(reader_stream);
+            loop {
+                let mut line = String::new();
+                match buf.read_line(&mut line) {
+                    Ok(0) => {
+                        log::info!("[ipc] reader: connection closed");
+                        break;
+                    }
+                    Ok(_) => {
+                        let msg = line.trim_end().to_string();
+                        if !msg.is_empty() {
+                            log::debug!("[ipc] received: {}", msg);
+                            if let Ok(mut guard) = queue.lock() {
+                                guard.push(msg);
+                            }
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
+                        || e.kind() == std::io::ErrorKind::TimedOut => {}
+                    Err(e) => {
+                        log::warn!("[ipc] reader error: {}", e);
+                        break;
+                    }
+                }
+            }
+        });
+    }
 }
 
 fn port_file_path(pid: u32) -> String {

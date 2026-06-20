@@ -95,6 +95,9 @@ func handleKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch {
 	case normMatch(msg, keys.Quit):
+		if m.isGUI() {
+			return m, nil
+		}
 		m.cleanup()
 		return m, tea.Quit
 
@@ -146,6 +149,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	// ─── Tier 1: Always-global keys ───
 	switch {
 	case normMatch(msg, keys.Quit):
+		if m.isGUI() {
+			return m, nil
+		}
 		m.cleanup()
 		return m, tea.Quit
 
@@ -223,7 +229,7 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	}
 
 	// ─── Tier 3: Fallback quit confirmation ───
-	if keyStr == "q" || keyStr == "Q" {
+	if !m.isGUI() && (keyStr == "q" || keyStr == "Q") {
 		if m.QuitConfirm {
 			m.cleanup()
 			return m, tea.Quit
@@ -278,15 +284,26 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "wq":
-		// Save config then quit gracefully
+		// Save config then quit gracefully.
+		// In GUI mode, signal the wrapper to quit immediately (no dialog).
 		m.Config.DefaultVolume = m.Audio.Volume
 		if err := m.Config.Save(); err != nil {
 			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
+		}
+		if m.isGUI() {
+			_ = m.ipcServer.Send("quit now")
 		}
 		m.cleanup()
 		return m, tea.Quit
 
 	case "quit", "q":
+		// In GUI mode, request confirmation via the wrapper's close dialog
+		// instead of quitting immediately. The wrapper may deny the quit
+		// and keep the TUI running.
+		if m.isGUI() {
+			_ = m.ipcServer.Send("quit confirm")
+			return m, nil
+		}
 		// Graceful quit with cleanup
 		m.cleanup()
 		return m, tea.Quit

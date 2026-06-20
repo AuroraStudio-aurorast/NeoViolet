@@ -316,6 +316,14 @@ func (m *Model) cleanup() {
 	}
 }
 
+// isGUI returns true when the TUI is running inside the neoviolet-gui
+// wrapper (detected via TERM_PROGRAM=neoviolet-gui). In GUI mode,
+// accidental quit via Ctrl+C or double-tap q is disabled — the user
+// must use :quit / :q to exit gracefully.
+func (m *Model) isGUI() bool {
+	return m.ipcServer != nil
+}
+
 // buildPlayState builds a mediactl.PlayState from the current audio state.
 func (m *Model) buildPlayState() mediactl.PlayState {
 	var cover image.Image

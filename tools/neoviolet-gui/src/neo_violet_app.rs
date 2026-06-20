@@ -190,6 +190,33 @@ impl Render for NeoVioletApp {
             }
         }
 
+        // ── IPC messages from TUI ──
+        {
+            let incoming = cx.global::<AppState>().ipc_incoming.clone();
+            if let Ok(mut guard) = incoming.lock() {
+                let msgs: Vec<String> = guard.drain(..).collect();
+                for msg in msgs {
+                    match msg.as_str() {
+                        "quit confirm" => {
+                            log::info!("[ipc] quit confirm — showing close dialog");
+                            *cx.global::<AppState>().show_close.lock().unwrap() = true;
+                        }
+                        "quit now" => {
+                            log::info!("[ipc] quit now — exiting immediately");
+                            // Prevent the exit-error dialog from appearing
+                            // when the PTY child exits after us.
+                            *cx.global::<AppState>().show_exit_error.lock().unwrap() = true;
+                            cx.quit();
+                            return div().into_any_element();
+                        }
+                        other => {
+                            log::debug!("[ipc] unhandled message: {}", other);
+                        }
+                    }
+                }
+            }
+        }
+
         // ── Sync title from terminal child ──
         let new_title = self.terminal_child.read(cx).current_title().to_string();
         if new_title != self.current_title {
