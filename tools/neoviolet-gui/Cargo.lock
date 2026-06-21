@@ -3388,6 +3388,7 @@ dependencies = [
  "log",
  "portable-pty",
  "serde",
+ "serde_json",
  "smol",
  "toml 0.8.23",
  "yororen_ui",

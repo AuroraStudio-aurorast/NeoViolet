@@ -12,6 +12,7 @@ use yororen_ui::theme::ActiveTheme;
 
 use crate::app::TerminalApp;
 use crate::components;
+use crate::ipc::IpcMessage;
 use crate::state::AppState;
 
 pub struct NeoVioletApp {
@@ -195,22 +196,26 @@ impl Render for NeoVioletApp {
             let incoming = cx.global::<AppState>().ipc_incoming.clone();
             if let Ok(mut guard) = incoming.lock() {
                 let msgs: Vec<String> = guard.drain(..).collect();
-                for msg in msgs {
-                    match msg.as_str() {
-                        "quit confirm" => {
-                            log::info!("[ipc] quit confirm — showing close dialog");
-                            *cx.global::<AppState>().show_close.lock().unwrap() = true;
+                for raw in msgs {
+                    match serde_json::from_str::<IpcMessage>(&raw) {
+                        Ok(msg) if msg.msg_type == "quit" => {
+                            // dialog: true = show dialog (:q/:quit)
+                            // dialog: false = quit immediately (:wq)
+                            if msg.dialog == Some(true) {
+                                log::info!("[ipc] :quit — showing close dialog");
+                                *cx.global::<AppState>().show_close.lock().unwrap() = true;
+                            } else {
+                                log::info!("[ipc] :wq — exiting immediately");
+                                *cx.global::<AppState>().show_exit_error.lock().unwrap() = true;
+                                cx.quit();
+                                return div().into_any_element();
+                            }
                         }
-                        "quit now" => {
-                            log::info!("[ipc] quit now — exiting immediately");
-                            // Prevent the exit-error dialog from appearing
-                            // when the PTY child exits after us.
-                            *cx.global::<AppState>().show_exit_error.lock().unwrap() = true;
-                            cx.quit();
-                            return div().into_any_element();
+                        Ok(other) => {
+                            log::debug!("[ipc] unhandled message: {:?}", other);
                         }
-                        other => {
-                            log::debug!("[ipc] unhandled message: {}", other);
+                        Err(e) => {
+                            log::warn!("[ipc] invalid JSON: {} — {}", raw, e);
                         }
                     }
                 }

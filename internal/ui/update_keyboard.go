@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
@@ -291,7 +292,8 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
 		}
 		if m.isGUI() {
-			_ = m.ipcServer.Send("quit now")
+			f := false
+			_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
 		}
 		m.cleanup()
 		return m, tea.Quit
@@ -301,7 +303,8 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 		// instead of quitting immediately. The wrapper may deny the quit
 		// and keep the TUI running.
 		if m.isGUI() {
-			_ = m.ipcServer.Send("quit confirm")
+			t := true
+			_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &t})
 			return m, nil
 		}
 		// Graceful quit with cleanup

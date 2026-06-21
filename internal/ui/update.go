@@ -1,15 +1,16 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
@@ -350,16 +351,21 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// parseIPCMessage handles a single line received from the GUI via IPC.
-// Currently supports "open <path>" messages. Returns the path and true,
-// or empty string and false for unknown/unparseable messages.
-func parseIPCMessage(msg string) (string, bool) {
-	if after, ok := strings.CutPrefix(msg, "open "); ok {
-		path := strings.TrimSpace(after)
-		if path != "" {
-			return path, true
-		}
+// parseIPCMessage parses a JSON line received from the GUI via IPC.
+// Returns the path to load and true for "open" messages, or empty/false.
+func parseIPCMessage(line string) (string, bool) {
+	var msg ipc.Message
+	if err := json.Unmarshal([]byte(line), &msg); err != nil {
+		logger.Debug("IPC: invalid JSON", "line", line, "err", err)
+		return "", false
 	}
-	logger.Debug("IPC: unknown message", "msg", msg)
+	switch msg.Type {
+	case "open":
+		if msg.Path != "" {
+			return msg.Path, true
+		}
+	default:
+		logger.Debug("IPC: unhandled message type", "type", msg.Type)
+	}
 	return "", false
 }
