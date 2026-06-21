@@ -15,6 +15,7 @@ actions!(
         ZoomReset,
         OpenRepository,
         OpenFile,
+        ToggleDesktopLyrics,
     ]
 );
 
@@ -159,10 +160,60 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         .detach();
     });
 
+    // ── Toggle Desktop Lyrics (Cmd+Shift+L) ──
+    cx.on_action(move |_: &ToggleDesktopLyrics, cx: &mut App| {
+        let (enabled, ipc, lyrics_cfg) = {
+            let state = cx.global::<AppState>();
+            let mut guard = state.desktop_lyrics_enabled.lock().unwrap();
+            *guard = !*guard;
+            let enabled = *guard;
+            let ipc = state.ipc.clone();
+            let cfg = state.config.desktop_lyrics.clone();
+            (enabled, ipc, cfg)
+        };
+
+        if enabled {
+            // Tell CLI to start streaming lyrics
+            if let Err(e) = ipc.send(&crate::ipc::IpcMessage::enable_desktop_lyrics(true)) {
+                log::error!("[desktop-lyrics] IPC enable failed: {}", e);
+            }
+
+            // Open the lyrics overlay window and store its handle
+            let handle_for_close = cx.global::<AppState>().lyrics_window_handle.clone();
+            let window_opts = WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                    point(px(lyrics_cfg.position_x.unwrap_or(100) as f32), px(lyrics_cfg.position_y.unwrap_or(100) as f32)),
+                    size(px(lyrics_cfg.window_width as f32), px(lyrics_cfg.window_height as f32)),
+                ))),
+                titlebar: None,
+                focus: false,
+                window_background: WindowBackgroundAppearance::Transparent,
+                kind: WindowKind::Normal,
+                ..Default::default()
+            };
+
+            let _ = cx.open_window(window_opts, move |window, cx| {
+                let root = cx.new(|cx| crate::desktop_lyrics::DesktopLyricsView::new(cx));
+                // Store window handle for programmatic close via spawn loop.
+                *handle_for_close.lock().unwrap() = Some(window.window_handle());
+                root
+            });
+            log::info!("[desktop-lyrics] window opened");
+        } else {
+            // Tell CLI to stop streaming
+            if let Err(e) = ipc.send(&crate::ipc::IpcMessage::enable_desktop_lyrics(false)) {
+                log::error!("[desktop-lyrics] IPC disable failed: {}", e);
+            }
+            // Lyrics window closes itself on next render (enabled_flag == false → window.remove_window())
+            log::info!("[desktop-lyrics] disabled, window will close on next render");
+        }
+    });
+
     cx.bind_keys([
         KeyBinding::new("cmd-q", QuitApp, None),
         KeyBinding::new("cmd-,", Preferences, None),
         KeyBinding::new("cmd-o", OpenFile, None),
+        KeyBinding::new("cmd-shift-l", ToggleDesktopLyrics, None),
         KeyBinding::new("cmd-+", ZoomIn, None),
         KeyBinding::new("cmd-=", ZoomIn, None),
         KeyBinding::new("cmd--", ZoomOut, None),
@@ -193,6 +244,8 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
                 MenuItem::action("Zoom In", ZoomIn),
                 MenuItem::action("Zoom Out", ZoomOut),
                 MenuItem::action("Actual Size", ZoomReset),
+                MenuItem::separator(),
+                MenuItem::action("Toggle Desktop Lyrics", ToggleDesktopLyrics),
             ],
         },
         Menu {

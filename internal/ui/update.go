@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
@@ -57,19 +59,30 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	// Drain IPC messages from GUI wrapper (non-blocking, one per tick)
 	if m.ipcServer != nil {
 		select {
-		case msg := <-m.ipcServer.Incoming:
-			if path, ok := parseIPCMessage(msg); ok {
-				logger.Info("IPC: loading track", "path", path)
-				_, loadCmd := handleLoadTrack(m, LoadTrackMsg{Path: path})
-				// Batch the load command with the next tick so the
-				// event loop keeps running — without the tick, the
-				// progress bar and lyrics would freeze and new IPC
-				// messages would never be processed.
-				return m, tea.Batch(loadCmd,
-					tea.Tick(time.Second/time.Duration(m.Config.TickRate),
-						func(t time.Time) tea.Msg { return TickMsg{} },
-					),
-				)
+		case raw := <-m.ipcServer.Incoming:
+			var ipcMsg ipc.Message
+			if err := json.Unmarshal([]byte(raw), &ipcMsg); err != nil {
+				logger.Debug("IPC: invalid JSON", "line", raw, "err", err)
+			} else {
+				switch ipcMsg.Type {
+				case "open":
+					if ipcMsg.Path != "" {
+						logger.Info("IPC: loading track", "path", ipcMsg.Path)
+						_, loadCmd := handleLoadTrack(m, LoadTrackMsg{Path: ipcMsg.Path})
+						return m, tea.Batch(loadCmd,
+							tea.Tick(time.Second/time.Duration(m.Config.TickRate),
+								func(t time.Time) tea.Msg { return TickMsg{} },
+							),
+						)
+					}
+				case "desktop_lyrics":
+					if ipcMsg.Enable != nil {
+						m.DesktopLyricsEnabled = *ipcMsg.Enable
+						logger.Info("IPC: desktop lyrics", "enabled", *ipcMsg.Enable)
+					}
+				default:
+					logger.Debug("IPC: unhandled message type", "type", ipcMsg.Type)
+				}
 			}
 		default:
 		}
@@ -78,6 +91,25 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	// Push current playback state to OS media control layer (MPRIS on Linux)
 	if m.MediaCtl != nil {
 		m.MediaCtl.Update(m.buildPlayState())
+	}
+
+	// Stream lyrics to GUI for desktop lyrics overlay (change-based push).
+	// Sends even when lyrics are nil so the GUI can clear stale display.
+	if m.DesktopLyricsEnabled && m.ipcServer != nil {
+		lines := buildLyricLinesJSON(m.Audio.Lyrics, m.Audio.Elapsed)
+		sig := lyricSig(lines, m.Audio.Elapsed, m.Audio.LyricNextIndex)
+		if sig != m.Audio.LastSentLyricSig {
+			m.Audio.LastSentLyricSig = sig
+			lyricMsg := ipc.Message{
+				Type:     "lyrics",
+				Lines:    lines,
+				Elapsed:  m.Audio.Elapsed.Seconds(),
+				Duration: m.Audio.Duration.Seconds(),
+				Title:    m.Audio.CurrentSong,
+				Artist:   m.Audio.Artist,
+			}
+			_ = m.ipcServer.SendJSON(lyricMsg)
+		}
 	}
 
 	return m, tea.Batch(cmd, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(t time.Time) tea.Msg {
@@ -351,21 +383,121 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// parseIPCMessage parses a JSON line received from the GUI via IPC.
-// Returns the path to load and true for "open" messages, or empty/false.
-func parseIPCMessage(line string) (string, bool) {
-	var msg ipc.Message
-	if err := json.Unmarshal([]byte(line), &msg); err != nil {
-		logger.Debug("IPC: invalid JSON", "line", line, "err", err)
-		return "", false
+// parseIPCMessage is no longer used — IPC message dispatch now happens
+// inline in handleTick() to support multiple message types (open, desktop_lyrics).
+
+// lyricSig builds a compact signature for change detection across lyric pushes.
+// When lines are empty/nil the signature is stable (no elapsed) to avoid spam.
+func lyricSig(lines []ipc.LyricLineJSON, elapsed time.Duration, nextIdx int) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "%d|", len(lines))
+	for _, l := range lines {
+		fmt.Fprintf(&sb, "%s|", l.Text)
 	}
-	switch msg.Type {
-	case "open":
-		if msg.Path != "" {
-			return msg.Path, true
+	fmt.Fprintf(&sb, "next=%d", nextIdx)
+	if len(lines) > 0 {
+		fmt.Fprintf(&sb, "|elapsed=%.1f", elapsed.Seconds())
+	}
+	return sb.String()
+}
+// Includes all agents (AgentFilter temporarily cleared), plus up to 2 previous
+// and 2 next lines for context (so the GUI can show surrounding lyrics).
+func buildLyricLinesJSON(data *lyrics.LyricsData, elapsed time.Duration) []ipc.LyricLineJSON {
+	if data == nil || len(data.Lines) == 0 {
+		return nil
+	}
+
+	// Clear AgentFilter to get all agents' lines.
+	savedFilter := data.AgentFilter
+	data.AgentFilter = ""
+	defer func() { data.AgentFilter = savedFilter }()
+
+	active := data.ActiveLines(elapsed)
+
+	// Collect all relevant time values (distinct).
+	seen := make(map[time.Duration]bool)
+	var times []time.Duration
+	addTime := func(t time.Duration) {
+		if !seen[t] {
+			seen[t] = true
+			times = append(times, t)
 		}
-	default:
-		logger.Debug("IPC: unhandled message type", "type", msg.Type)
 	}
-	return "", false
+
+	for _, line := range active {
+		addTime(line.Time)
+	}
+
+	// Find context: up to 2 previous and 2 next time slots.
+	// Walk backwards from the smallest active time.
+	if len(times) > 0 {
+		firstActive := times[0]
+		for _, line := range data.Lines {
+			if line.Time < firstActive {
+				addTime(line.Time)
+			}
+		}
+	}
+	// Walk forwards from the largest active time.
+	if len(times) > 0 {
+		lastActive := times[len(times)-1]
+		for _, line := range data.Lines {
+			if line.Time > lastActive {
+				addTime(line.Time)
+			}
+		}
+	}
+
+	// Sort the collected times.
+	sort.Slice(times, func(i, j int) bool { return times[i] < times[j] })
+
+	// Keep: all active times, plus up to 2 before the first active, plus up to 2 after the last active.
+	firstActiveIdx := -1
+	lastActiveIdx := -1
+	for i, t := range times {
+		activeSet := make(map[time.Duration]bool)
+		for _, a := range active {
+			activeSet[a.Time] = true
+		}
+		if activeSet[t] {
+			if firstActiveIdx < 0 {
+				firstActiveIdx = i
+			}
+			lastActiveIdx = i
+		}
+	}
+
+	keepStart := firstActiveIdx - 2
+	if keepStart < 0 {
+		keepStart = 0
+	}
+	keepEnd := lastActiveIdx + 2
+	if keepEnd >= len(times) {
+		keepEnd = len(times) - 1
+	}
+
+	keepSet := make(map[time.Duration]bool)
+	for i := keepStart; i <= keepEnd; i++ {
+		keepSet[times[i]] = true
+	}
+
+	// Build output: all lines whose Time is in keepSet.
+	out := make([]ipc.LyricLineJSON, 0)
+	for _, line := range data.Lines {
+		if keepSet[line.Time] {
+			displayText := data.LineDisplayText(line)
+			agentName := ""
+			if line.Agent != "" && data.Agents != nil {
+				agentName = data.Agents[line.Agent]
+			}
+			out = append(out, ipc.LyricLineJSON{
+				Time:      line.Time.Seconds(),
+				End:       line.End.Seconds(),
+				Text:      displayText,
+				Agent:     line.Agent,
+				AgentName: agentName,
+			})
+		}
+	}
+	return out
 }

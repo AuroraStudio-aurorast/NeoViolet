@@ -4,12 +4,31 @@
 //! The TUI writes "<addr>\n<token>" to a temp file. The GUI reads both,
 //! connects to the address, and sends the token as its first line.
 //! All subsequent messages are newline-delimited JSON objects.
+//!
+//! GUI → TUI:  {"type":"open","path":"..."}
+//!             {"type":"desktop_lyrics","enable":true|false}
+//! TUI → GUI:  {"type":"quit","dialog":true|false}
+//!             {"type":"lyrics","lines":[...],"elapsed":12.3,"title":"...","artist":"..."}
 
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// A single lyric line received from the TUI via IPC.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct LyricLineData {
+    pub time: f64,
+    /// End time in seconds; 0.0 = unbounded (legacy LRC/QRC/YRC/ESLRC).
+    #[serde(default)]
+    pub end: f64,
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_name: Option<String>,
+}
 
 /// JSON message exchanged between GUI and TUI.
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -20,6 +39,20 @@ pub struct IpcMessage {
     pub path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dialog: Option<bool>,
+
+    // desktop_lyrics: enable/disable streaming
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable: Option<bool>,
+
+    // lyrics: streaming payload from TUI to GUI
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lines: Option<Vec<LyricLineData>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub elapsed: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artist: Option<String>,
 }
 
 impl IpcMessage {
@@ -28,6 +61,25 @@ impl IpcMessage {
             msg_type: "open".into(),
             path: Some(path.to_string()),
             dialog: None,
+            enable: None,
+            lines: None,
+            elapsed: None,
+            title: None,
+            artist: None,
+        }
+    }
+
+    /// Send a desktop_lyrics enable/disable command to the TUI.
+    pub fn enable_desktop_lyrics(enabled: bool) -> Self {
+        Self {
+            msg_type: "desktop_lyrics".into(),
+            path: None,
+            dialog: None,
+            enable: Some(enabled),
+            lines: None,
+            elapsed: None,
+            title: None,
+            artist: None,
         }
     }
 }

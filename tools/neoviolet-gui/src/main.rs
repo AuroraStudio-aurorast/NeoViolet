@@ -2,6 +2,7 @@ mod app;
 mod backend;
 mod components;
 mod config;
+mod desktop_lyrics;
 mod dracula_theme;
 mod ipc;
 mod menus;

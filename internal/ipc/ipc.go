@@ -10,11 +10,13 @@
 // GUI → TUI message types:
 //
 //	{"type": "open", "path": "/path/to/file"}
+//	{"type": "desktop_lyrics", "enable": true|false}
 //
 // TUI → GUI message types:
 //
 //	{"type": "quit", "dialog": true}     — :q/:quit, show confirmation dialog
 //	{"type": "quit", "dialog": false}    — :wq, quit immediately
+//	{"type": "lyrics", "lines": [...], "elapsed": 12.3, "title": "...", "artist": "..."}
 package ipc
 
 import (
@@ -37,6 +39,25 @@ type Message struct {
 	Type   string `json:"type"`
 	Path   string `json:"path,omitempty"`
 	Dialog *bool  `json:"dialog,omitempty"` // quit: true=show dialog, false=quit now
+
+	// desktop_lyrics: enable/disable streaming
+	Enable *bool `json:"enable,omitempty"`
+
+	// lyrics: streaming payload from TUI to GUI
+	Lines    []LyricLineJSON `json:"lines,omitempty"`
+	Elapsed  float64         `json:"elapsed,omitempty"`  // seconds
+	Duration float64         `json:"duration,omitempty"` // seconds (unused in Phase 1)
+	Title    string          `json:"title,omitempty"`
+	Artist   string          `json:"artist,omitempty"`
+}
+
+// LyricLineJSON is a single lyric line serialized for IPC.
+type LyricLineJSON struct {
+	Time      float64 `json:"time"`       // seconds
+	End       float64 `json:"end"`        // seconds; 0 = unbounded (legacy LRC/QRC/YRC/ESLRC)
+	Text      string  `json:"text"`       // display text (with agent prefix if applicable)
+	Agent     string  `json:"agent"`      // agent ID, "" for no agent
+	AgentName string  `json:"agent_name"` // display name for agent, "" if n/a
 }
 
 const secretLen = 32 // bytes for the random token

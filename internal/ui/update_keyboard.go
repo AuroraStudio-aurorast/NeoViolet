@@ -522,8 +522,25 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 		m.Audio.ActiveLyricLines = nil
 		return m, nil
 
+	case "desktop":
+		m.DesktopLyricsEnabled = !m.DesktopLyricsEnabled
+		t := m.DesktopLyricsEnabled
+		if t {
+			m.Info.Set("Desktop lyrics: enabled", m.Config.Error.Duration)
+		} else {
+			m.Info.Set("Desktop lyrics: disabled", m.Config.Error.Duration)
+		}
+		// Sync with GUI if connected
+		if m.ipcServer != nil {
+			_ = m.ipcServer.SendJSON(ipc.Message{
+				Type:   "desktop_lyrics",
+				Enable: &t,
+			})
+		}
+		return m, nil
+
 	default:
-		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, or agent)", subcmd), m.Config.Error.Duration)
+		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, agent, or desktop)", subcmd), m.Config.Error.Duration)
 		return m, nil
 	}
 }

@@ -1,12 +1,23 @@
 //! Shared application state — registered as a gpui `Global`.
 
-use gpui::{EntityId, Global, WeakEntity};
+use gpui::{AnyWindowHandle, EntityId, Global, WeakEntity};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::config::GuiConfig;
 use crate::app::TerminalApp;
-use crate::ipc::IpcClient;
+use crate::ipc::{IpcClient, LyricLineData};
+
+/// Runtime state for the desktop lyrics overlay, updated from IPC "lyrics" messages.
+#[derive(Debug, Clone, Default)]
+pub struct LyricsState {
+    pub lines: Vec<LyricLineData>,
+    pub elapsed: f64,
+    pub title: String,
+    pub artist: String,
+    /// Set to true when new data arrives; the lyrics window clears it after rendering.
+    pub dirty: bool,
+}
 
 pub struct AppState {
     pub config: GuiConfig,
@@ -47,6 +58,14 @@ pub struct AppState {
 
     // ── IPC messages from TUI (pending processing) ──
     pub ipc_incoming: Arc<Mutex<Vec<String>>>,
+
+    // ── Desktop lyrics ──
+    /// Lyric data received from the TUI via IPC.
+    pub lyrics_state: Arc<Mutex<LyricsState>>,
+    /// Whether the desktop lyrics overlay is enabled.
+    pub desktop_lyrics_enabled: Arc<Mutex<bool>>,
+    /// Handle to the lyrics overlay window (for programmatic close).
+    pub lyrics_window_handle: Arc<Mutex<Option<AnyWindowHandle>>>,
 }
 
 impl Global for AppState {}
@@ -70,6 +89,9 @@ impl AppState {
             child_pid: Arc::new(Mutex::new(None)),
             ipc: Arc::new(IpcClient::new()),
             ipc_incoming: Arc::new(Mutex::new(Vec::new())),
+            lyrics_state: Arc::new(Mutex::new(LyricsState::default())),
+            desktop_lyrics_enabled: Arc::new(Mutex::new(false)),
+            lyrics_window_handle: Arc::new(Mutex::new(None)),
         }
     }
 }

@@ -211,6 +211,71 @@ impl Render for NeoVioletApp {
                                 return div().into_any_element();
                             }
                         }
+                        Ok(msg) if msg.msg_type == "lyrics" => {
+                            let mut state = cx.global::<AppState>().lyrics_state.lock().unwrap();
+                            // Always update lines — clear when None (e.g. lyrics unloaded).
+                            state.lines = msg.lines.unwrap_or_default();
+                            state.elapsed = msg.elapsed.unwrap_or(0.0);
+                            state.title = msg.title.unwrap_or_default();
+                            state.artist = msg.artist.unwrap_or_default();
+                            state.dirty = true;
+                            log::debug!(
+                                "[lyrics] updated: title={:?} artist={:?} elapsed={:.1} lines={}",
+                                state.title,
+                                state.artist,
+                                state.elapsed,
+                                state.lines.len(),
+                            );
+                        }
+                        Ok(msg) if msg.msg_type == "desktop_lyrics" => {
+                            if let Some(enable) = msg.enable {
+                                let mut guard = cx.global::<AppState>().desktop_lyrics_enabled.lock().unwrap();
+                                let was_enabled = *guard;
+                                if enable == was_enabled {
+                                    continue;
+                                }
+                                *guard = enable;
+                                drop(guard);
+
+                                if enable {
+                                    log::info!("[ipc] desktop_lyrics enabled from CLI");
+                                    let state = cx.global::<AppState>();
+                                    let lyrics_cfg = state.config.desktop_lyrics.clone();
+                                    let handle_slot = state.lyrics_window_handle.clone();
+                                    let window_opts = WindowOptions {
+                                        window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+                                            point(px(lyrics_cfg.position_x.unwrap_or(100) as f32), px(lyrics_cfg.position_y.unwrap_or(100) as f32)),
+                                            size(px(lyrics_cfg.window_width as f32), px(lyrics_cfg.window_height as f32)),
+                                        ))),
+                                        titlebar: None,
+                                        focus: false,
+                                        window_background: WindowBackgroundAppearance::Transparent,
+                                        kind: if lyrics_cfg.always_on_top {
+                                            WindowKind::PopUp
+                                        } else {
+                                            WindowKind::Normal
+                                        },
+                                        ..Default::default()
+                                    };
+                                    // Defer window creation to avoid crashing during render.
+                                    cx.spawn(async move |_, cx| {
+                                        cx.background_executor()
+                                            .timer(std::time::Duration::from_millis(0))
+                                            .await;
+                                        let _ = cx.update(|cx| {
+                                            cx.open_window(window_opts, move |window, cx| {
+                                                let root = cx.new(|cx| crate::desktop_lyrics::DesktopLyricsView::new(cx));
+                                                *handle_slot.lock().unwrap() = Some(window.window_handle());
+                                                root
+                                            })
+                                        });
+                                    })
+                                    .detach();
+                                } else {
+                                    log::info!("[ipc] desktop_lyrics disabled from CLI");
+                                }
+                            }
+                        }
                         Ok(other) => {
                             log::debug!("[ipc] unhandled message: {:?}", other);
                         }

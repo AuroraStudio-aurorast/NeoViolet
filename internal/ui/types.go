@@ -142,6 +142,10 @@ type AudioState struct {
 
 	lastActiveSig string // signature for detecting active-line changes
 
+	// LastSentLyricSig is the signature of the last lyrics payload sent
+	// to the GUI via IPC. Used to avoid redundant sends (change-based push).
+	LastSentLyricSig string
+
 	// LyricNextIndex is the index of the upcoming lyric line when no active lines exist.
 	// -1 means no upcoming lyric (past end or no lyrics loaded).
 	// >=0 indicates a gap — the view shows countdown dots until this line begins.
@@ -254,6 +258,10 @@ type Model struct {
 	// ipcServer handles bidirectional communication with the GUI wrapper
 	// via Unix domain socket. nil when running standalone.
 	ipcServer *ipc.Server
+
+	// DesktopLyricsEnabled controls whether the TUI streams lyric data
+	// to the GUI for the desktop lyrics overlay window.
+	DesktopLyricsEnabled bool
 
 	MediaCtl  mediactl.Controller
 	mediaChan chan mediactl.Command

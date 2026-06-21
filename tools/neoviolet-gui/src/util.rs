@@ -1,5 +1,7 @@
 //! Miscellaneous utilities for the GUI wrapper.
 
+use gpui::{Hsla, rgb};
+
 /// Strip common ANSI escape sequences from a byte slice, returning a plain
 /// UTF-8 `String`. Handles SGR (`\x1b[...m`), erase (`\x1b[...J`/`K`),
 /// cursor movement (`\x1b[...A`-`H`), and a handful of other common CSI
@@ -52,6 +54,14 @@ pub fn strip_ansi_escapes(bytes: &[u8]) -> String {
     }
 
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// Parse a hex color string ("#RRGGBB" or "RRGGBB") into a gpui Hsla.
+/// Returns opaque white on parse failure.
+pub fn hex_to_hsla(hex: &str) -> Hsla {
+    let hex = hex.trim_start_matches('#');
+    let val = u32::from_str_radix(hex, 16).unwrap_or(0xFFFFFF);
+    rgb(val).into()
 }
 
 #[cfg(test)]
