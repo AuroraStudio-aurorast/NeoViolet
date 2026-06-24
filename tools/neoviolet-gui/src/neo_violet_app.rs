@@ -250,11 +250,7 @@ impl Render for NeoVioletApp {
                                         titlebar: None,
                                         focus: false,
                                         window_background: WindowBackgroundAppearance::Transparent,
-                                        kind: if lyrics_cfg.always_on_top {
-                                            WindowKind::PopUp
-                                        } else {
-                                            WindowKind::Normal
-                                        },
+                                        kind: WindowKind::Normal,
                                         ..Default::default()
                                     };
                                     // Defer window creation to avoid crashing during render.

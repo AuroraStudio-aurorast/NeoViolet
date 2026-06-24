@@ -76,6 +76,8 @@ pub struct DesktopLyricsView {
     scroll_offset: f32,
     last_active_text: String,
     last_line_count: usize,
+    /// Cached window bounds for position save on app quit (on_release).
+    last_bounds: Option<Bounds<Pixels>>,
 }
 
 impl DesktopLyricsView {
@@ -96,7 +98,27 @@ impl DesktopLyricsView {
         };
         let (lyrics_state, enabled_flag, font_family, font_size, opacity, show_song_info, text_color, highlight_color) = cfg;
 
-        // Timer: close-check + marquee (~30 Hz).
+        // Save position on app quit (entity released = window destroyed).
+        cx.on_release(|this, app| {
+            if let Some(bounds) = this.last_bounds {
+                let x = f32::from(bounds.origin.x) as i32;
+                let y = f32::from(bounds.origin.y) as i32;
+                let state = app.global_mut::<AppState>();
+                state.config.desktop_lyrics.position_x = Some(x);
+                state.config.desktop_lyrics.position_y = Some(y);
+                let path = crate::config::config_dir_path().join("neoviolet_gui.toml");
+                if let Ok(content) = std::fs::read_to_string(&path)
+                    && let Ok(mut cfg) = toml::from_str::<crate::config::GuiConfig>(&content)
+                {
+                    cfg.desktop_lyrics.position_x = Some(x);
+                    cfg.desktop_lyrics.position_y = Some(y);
+                    if let Ok(out) = toml::to_string_pretty(&cfg) {
+                        let _ = std::fs::write(&path, out);
+                    }
+                }
+            }
+        })
+        .detach();
         let poll_state = lyrics_state.clone();
         let poll_enabled = enabled_flag.clone();
         let close_handle = cx.global::<AppState>().lyrics_window_handle.clone();
@@ -112,7 +134,7 @@ impl DesktopLyricsView {
                         && let Some(handle) = guard.take()
                     {
                         let _ = cx.update_window(handle, |_view, window, _app| {
-                            Self::save_window_position(window);
+                            Self::save_window_position(window, _app);
                             window.remove_window();
                         });
                     }
@@ -160,16 +182,29 @@ impl DesktopLyricsView {
             scroll_offset: 0.0,
             last_active_text: String::new(),
             last_line_count: 0,
+            last_bounds: None,
         }
     }
 
-    fn save_window_position(window: &mut Window) {
+    /// Persist window position to the TOML config file AND update the
+    /// in-memory AppState so the next window open uses the saved position.
+    fn save_window_position(window: &mut Window, cx: &mut App) {
         let bounds = window.bounds();
+        let x = f32::from(bounds.origin.x) as i32;
+        let y = f32::from(bounds.origin.y) as i32;
+
+        // Update in-memory config so next open reads the saved position.
+        {
+            let state = cx.global_mut::<AppState>();
+            state.config.desktop_lyrics.position_x = Some(x);
+            state.config.desktop_lyrics.position_y = Some(y);
+        }
+
         let path = crate::config::config_dir_path().join("neoviolet_gui.toml");
         let Ok(content) = std::fs::read_to_string(&path) else { return };
         let Ok(mut cfg) = toml::from_str::<crate::config::GuiConfig>(&content) else { return };
-        cfg.desktop_lyrics.position_x = Some(f32::from(bounds.origin.x) as i32);
-        cfg.desktop_lyrics.position_y = Some(f32::from(bounds.origin.y) as i32);
+        cfg.desktop_lyrics.position_x = Some(x);
+        cfg.desktop_lyrics.position_y = Some(y);
         if let Ok(out) = toml::to_string_pretty(&cfg) {
             let _ = std::fs::write(&path, out);
         }
@@ -190,6 +225,9 @@ impl Render for DesktopLyricsView {
         if !*self.enabled_flag.lock().unwrap() {
             return div().into_any_element();
         }
+
+        // Cache bounds for position save on app quit.
+        self.last_bounds = Some(window.bounds());
 
         let (title, artist, elapsed, lines) = {
             let g = self.lyrics_state.lock().unwrap();
