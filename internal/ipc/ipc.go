@@ -11,6 +11,7 @@
 //
 //	{"type": "open", "path": "/path/to/file"}
 //	{"type": "desktop_lyrics", "enable": true|false}
+//	{"type": "play_pause"}                  — toggle play/pause
 //
 // TUI → GUI message types:
 //

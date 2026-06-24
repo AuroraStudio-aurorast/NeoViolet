@@ -7,6 +7,7 @@
 //!
 //! GUI → TUI:  {"type":"open","path":"..."}
 //!             {"type":"desktop_lyrics","enable":true|false}
+//!             {"type":"play_pause"}
 //! TUI → GUI:  {"type":"quit","dialog":true|false}
 //!             {"type":"lyrics","lines":[...],"elapsed":12.3,"title":"...","artist":"..."}
 
@@ -76,6 +77,20 @@ impl IpcMessage {
             path: None,
             dialog: None,
             enable: Some(enabled),
+            lines: None,
+            elapsed: None,
+            title: None,
+            artist: None,
+        }
+    }
+
+    /// Send a play/pause toggle command to the TUI.
+    pub fn play_pause() -> Self {
+        Self {
+            msg_type: "play_pause".into(),
+            path: None,
+            dialog: None,
+            enable: None,
             lines: None,
             elapsed: None,
             title: None,

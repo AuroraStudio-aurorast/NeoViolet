@@ -7,7 +7,7 @@
 use gpui::*;
 use std::sync::{Arc, Mutex};
 
-use crate::ipc::LyricLineData;
+use crate::ipc::{IpcClient, LyricLineData};
 use crate::state::{AppState, LyricsState};
 use crate::util::hex_to_hsla;
 
@@ -66,6 +66,7 @@ fn display_width(text: &str) -> usize {
 pub struct DesktopLyricsView {
     lyrics_state: Arc<Mutex<LyricsState>>,
     enabled_flag: Arc<Mutex<bool>>,
+    ipc_client: Arc<IpcClient>,
     focus_handle: FocusHandle,
     font_family: SharedString,
     font_size: u32,
@@ -97,6 +98,7 @@ impl DesktopLyricsView {
             )
         };
         let (lyrics_state, enabled_flag, font_family, font_size, opacity, show_song_info, text_color, highlight_color) = cfg;
+        let ipc_client = cx.global::<AppState>().ipc.clone();
 
         // Save position on app quit (entity released = window destroyed).
         cx.on_release(|this, app| {
@@ -175,7 +177,7 @@ impl DesktopLyricsView {
         .detach();
 
         Self {
-            lyrics_state, enabled_flag,
+            lyrics_state, enabled_flag, ipc_client,
             focus_handle: cx.focus_handle(),
             font_family, font_size, opacity, show_song_info,
             text_color, highlight_color,
@@ -305,6 +307,16 @@ impl Render for DesktopLyricsView {
             .flex().flex_col().items_center().justify_center()
             .px(px(H_PADDING))
             .track_focus(&self.focus_handle)
+            .on_key_down(cx.listener(
+                |this, event: &KeyDownEvent, window, cx| {
+                    if event.keystroke.key.eq_ignore_ascii_case("space") {
+                        log::debug!("[desktop-lyrics] space pressed → play/pause");
+                        let _ = this.ipc_client.send(&crate::ipc::IpcMessage::play_pause());
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    }
+                },
+            ))
             .on_mouse_down(MouseButton::Left, cx.listener(
                 |_this, _ev: &MouseDownEvent, window, _cx| window.start_window_move(),
             ))

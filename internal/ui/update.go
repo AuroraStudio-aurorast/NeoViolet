@@ -80,6 +80,9 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 						m.DesktopLyricsEnabled = *ipcMsg.Enable
 						logger.Info("IPC: desktop lyrics", "enabled", *ipcMsg.Enable)
 					}
+				case "play_pause":
+					logger.Debug("IPC: play_pause from GUI")
+					m.togglePlayback()
 				default:
 					logger.Debug("IPC: unhandled message type", "type", ipcMsg.Type)
 				}
