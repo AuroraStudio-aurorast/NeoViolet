@@ -9,6 +9,10 @@ This document describes how to build NeoViolet from source — locally and via C
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Makefile Targets](#makefile-targets)
+- [GUI (neoviolet-gui)](#gui-neoviolet-gui)
+  - [GUI Prerequisites](#gui-prerequisites)
+  - [Building](#gui-building)
+  - [macOS App Bundle](#macos-app-bundle)
 - [APE (Monkey's Audio) Toolchain](#ape-monkeys-audio-toolchain)
 - [Platform-Specific Instructions](#platform-specific-instructions)
   - [Linux](#linux)
@@ -24,12 +28,13 @@ This document describes how to build NeoViolet from source — locally and via C
 ## Prerequisites
 
 - **Go 1.26+** (see `go.mod` for the exact version)
-- **Rust with cargo** — required for building `apecli` (the APE/Monkey's Audio decoder helper). Without it, `make build` still succeeds but APE playback falls back to ffmpeg or macOS `afconvert`. Install via [rustup](https://rustup.rs/).
+- **Rust with cargo** — required for building `apecli` (the APE/Monkey's Audio decoder helper) and `neoviolet-gui` (the native GUI wrapper). Without it, `make build` still succeeds (both sub-builds print a warning and exit cleanly). APE playback falls back to ffmpeg or macOS `afconvert`; the GUI binary is simply not produced. Install via [rustup](https://rustup.rs/).
 - **`make`** — used for all build targets
 - **C compiler** — required by CGo dependencies (the audio playback engine uses CGo for system audio)
 - **`pkg-config`** — used to detect `libopenmpt` automatically
 - **`libopenmpt`** (optional) — enables enhanced tracker module playback (`.mptm` and improved MOD/XM/IT/S3M support)
 - **SoundFont file** (optional, `.sf2`) — required for MIDI playback (`mid` files) (Recommend SF2: [GeneralUser GS](https://schristiancollins.com/generaluser))
+- **X11 development libraries** (Linux only) — required by the GUI (`gpui-ce`); see [GUI Prerequisites](#gui-prerequisites)
 
 > The Makefile auto-detects `libopenmpt` via `pkg-config`. If found, the `openmpt` build tag is added. If not found, tracker support still works with the built-in `gotracker/playback` library, but some formats (e.g. `mptm`) won't play.
 
@@ -54,13 +59,17 @@ make build
 
 | Target             | Description                                          |
 |--------------------|------------------------------------------------------|
-| `build`            | Production build with stripped debug info (builds `apecli` automatically) |
+| `build`            | Production build with stripped debug info (builds `apecli`, `neoviolet-gui` automatically) |
 | `build/race`       | Build with Go race detector                          |
 | `build/debug`      | Build with debug symbols (compatible with `dlv`)     |
 | `build/noopenmpt`  | Build without libopenmpt support                     |
+| `build/osxappbundle` | Build all and pack into an app bundle for macOS    |
 | `apetools`         | Build `apecli` Rust helper (release mode)            |
 | `apetools/debug`   | Build `apecli` in debug mode                         |
-| `run ARGS=...`     | Build and run with optional arguments                |
+| `gui`              | Build `neoviolet-gui` GUI wrapper (release mode)     |
+| `gui/debug`        | Build `neoviolet-gui` in debug mode                  |
+| `run/gui ARGS=...` | Build GUI and run with optional arguments            |
+| `run ARGS=...`     | Build TUI and run with optional arguments            |
 | `test`             | Run all tests                                        |
 | `test/race`        | Run tests with race detector                         |
 | `test/verbose`     | Run tests verbosely (`-v`)                           |
@@ -71,6 +80,52 @@ make build
 | `tidy`             | Run `go mod tidy`                                    |
 | `clean`            | Remove build artifacts                               |
 | `install`          | Install binary to `$GOPATH/bin`                      |
+
+---
+
+## GUI (neoviolet-gui)
+
+`neoviolet-gui` is a native desktop GUI wrapper that embeds the NeoViolet terminal player in a native window. Built with Rust (`gpui-ce` + `yororen-ui`). It requires the `neoviolet` binary at runtime, searched as a sibling next to the GUI or via `$PATH`.
+
+### GUI Prerequisites
+
+In addition to the [core prerequisites](#prerequisites), the GUI requires:
+
+**Linux** — X11 development libraries:
+
+```bash
+# Debian / Ubuntu
+sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+
+# Fedora
+sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel
+
+# Arch Linux
+sudo pacman -S libxcb libxkbcommon libxkbcommon-x11
+```
+
+**macOS** — No extra dependencies. The Makefile automatically uses `runtime_shaders` to avoid requiring the Metal Toolchain.
+
+**Windows (MSYS2)** — Covered by the standard [Windows MSYS2 setup](#windows); no extra packages needed.
+
+### Building
+
+```bash
+make gui                # Release build → ./neoviolet-gui
+make gui/debug          # Debug build (no optimizations)
+make build              # Build everything (TUI + APE + GUI) in one step
+make run/gui ARGS=...   # Build GUI and launch it
+```
+
+If `cargo` is not installed, the GUI targets print a warning and exit cleanly.
+
+### macOS App Bundle
+
+```bash
+make build/osxappbundle
+```
+
+Packages `neoviolet`, `neoviolet-gui`, and `apecli` into `dist/NeoViolet GUI.app/`. The script (`tools/osx-appbundle-builder/build.sh`) handles icon compilation (require Xcode 26+), `Info.plist`, and ad-hoc code signing.
 
 ---
 
@@ -138,7 +193,7 @@ make build                              # production binary
 CGO_ENABLED=1 GOARCH=amd64 make build   # explicit arch target
 ```
 
-The resulting binary is `./neoviolet` — statically linked Go code with dynamically linked system audio and optional libopenmpt.
+Produces `./neoviolet`, `./apecli` (if cargo is available), and `./neoviolet-gui` (if cargo is available). The Go binary is statically linked Go code with dynamically linked system audio and optional libopenmpt.
 
 ### macOS
 
@@ -227,14 +282,17 @@ make build
 
 **Collect DLLs for distribution:**
 
+Both `neoviolet.exe` and `neoviolet-gui.exe` (if built) need their transitive DLLs collected:
 
 ```bash
 mkdir -p dist
 cp neoviolet.exe dist/
+cp neoviolet-gui.exe dist/ 2>/dev/null || true
 # Use objdump to find required DLLs and copy them from $MSYSTEM_PREFIX/bin
+# See .github/workflows/build.yml for the full recursive DLL collection script
 ```
 
-The resulting bundle is `dist/` containing `neoviolet.exe` and all required DLLs.
+The resulting bundle is `dist/` containing `neoviolet.exe`, `neoviolet-gui.exe` (if built), and all required DLLs.
 
 ---
 
@@ -244,15 +302,17 @@ The resulting bundle is `dist/` containing `neoviolet.exe` and all required DLLs
 
 ```bash
 make build
-# Step 1: cargo build --release in tools/apecli/  (if cargo is available)
-# Step 2: go build -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
+# Step 1: cargo build --release in tools/apecli/     (if cargo is available)
+# Step 2: cargo build --release in tools/neoviolet-gui/ (if cargo is available)
+# Step 3: go build -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
 # With openmpt tag: go build -tags openmpt -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
 ```
 
 - Builds the `apecli` Rust helper automatically (if cargo is available)
+- Builds the `neoviolet-gui` Rust GUI automatically (if cargo is available)
 - Strips debug info (`-s -w`)
 - Auto-detects `libopenmpt` and adds `openmpt` build tag if available
-- Output: `./neoviolet` (or `./neoviolet.exe` on Windows)
+- Output: `./neoviolet`, `./neoviolet-gui`, `./apecli` (or `.exe` on Windows)
 
 ### Debug Build (`make build/debug`)
 
@@ -424,6 +484,63 @@ cd tools/apecli && cargo build --release
 ```
 
 If `cargo` is missing, install [rustup](https://rustup.rs/) and retry.
+
+### GUI Build Failure — Missing X11 Libraries (Linux)
+
+```
+error: linking with `cc` failed: exit status: 1
+  = note: /usr/bin/ld: cannot find -lxcb
+  = note: /usr/bin/ld: cannot find -lxkbcommon
+```
+
+The GUI (`gpui-ce`) requires X11 development headers on Linux. Install them:
+
+```bash
+# Debian / Ubuntu
+sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+
+# Fedora
+sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel
+
+# Arch
+sudo pacman -S libxcb libxkbcommon libxkbcommon-x11
+```
+
+After installing, re-run `make gui` or `make build`.
+
+### GUI Build Failure — Metal Shader Compilation (macOS)
+
+```
+error: failed to run `xcrun metal` …
+```
+
+`gpui-ce` compiles GPU shaders ahead of time by default, which requires the full Xcode Metal Toolchain (cannot be detected sometimes even though you have installed). The Makefile avoids this by adding `--no-default-features -F gpui/runtime_shaders` on macOS, compiling shaders at runtime instead via the system Metal framework. If you invoke `cargo build` directly, pass the flag manually:
+
+```bash
+cargo build --release --no-default-features -F gpui/runtime_shaders
+```
+
+### GUI Can't Find neoviolet Binary
+
+```
+Error: neoviolet binary not found
+```
+
+Place `neoviolet` next to `neoviolet-gui` (sibling in the same directory), or ensure it's on `$PATH`:
+
+```bash
+cp neoviolet "$(dirname "$(which neoviolet-gui)")/"
+# Windows (MSYS2):
+cp neoviolet.exe "$(dirname "$(which neoviolet-gui.exe)")/"
+```
+
+### GUI Window Fails to Open (Linux)
+
+```
+Error: X11 connection broken / Wayland protocol error
+```
+
+`gpui-ce` natively supports both X11 and Wayland (both are default features). If the window fails to open, ask related communities for help.
 
 ### Go Version Mismatch
 

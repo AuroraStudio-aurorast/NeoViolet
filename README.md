@@ -19,11 +19,9 @@
 > [!IMPORTANT]
 > This program is work in progress!
 
-## Features
+## Supported Formats
 
-### Supported Formats
-
-#### Audio File
+### Audio File
 
 | Format | Description | Note |
 |--------|-------------|---------|
@@ -42,7 +40,7 @@
 | `s3m` | ScreamTracker 3 Module |  |
 | [Tracker](https://openmpt.org/features#modules) | More Tracker Module | require `libopenmpt` |
 
-#### Lyrics File
+### Lyrics File
 
 | Format | Description | Note |
 |--------|-------------|---------|
@@ -55,21 +53,55 @@
 | `lys` | LYS Lyrics File | EXPERIMENTAL |
 | `smi` | Synchronized Accessible Media Interchange | EXPERIMENTAL |
 
+## OS Integration
+
+| OS | API | Status |
+|--------|-------------|---------|
+| macOS | Now Playing | Available |
+| Linux | MPRIS | Lack tests |
+| Windows | SMTP | TODO |
+
 ## Usage
+
+### TUI
+
+> [!TIP]
+> **Modern terminal emulators like Windows Terminal, Konsole, iTerm2 or Ghostty is recommended!**
+> Issues may occurred when using this program on outdated terminal emulators like xterm.
+
+#### *nix:
 
 Simply run:
 ~~~bash
 ./neoviolet /path/to/audiofile
 ~~~
 
-> [!TIP]
-> **Modern terminal emulators like Windows Terminal, Konsole, iTerm2 or Ghostty is recommended!**
-> Issues may occurred when using this program on outdated terminal emulators like xterm.
+#### Windows:
+
+Simply run:
+~~~bash
+neoviolet.exe /path/to/audiofile
+~~~
+
+### GUI
+
+GUI can provide you Desktop Lyric experience!
+
+#### Universal
+
+Same as TUI, but change `neoviolet` to `neoviolet-gui`
+
+#### macOS
+
+We provide App Bundle for macOS, you can simply drag your audio file to the app!
 
 ## Build
 
-Checkout [`BUILD.md`](./docs/BUILD.md) for more infomation!
+Check out [`BUILD.md`](./docs/BUILD.md) for more infomation!
 
 ## License
 
-This application is open source under the **MIT license**. For the licenses of its dependencies, please refer to [`ACKNOWLEDGEMENTS.md`](./docs/ACKNOWLEDGEMENTS.md).
+- TUI is licensed under **MIT License**
+- GUI is licensed under **GPLv3 License**
+
+For the licenses of its dependencies, please refer to [`ACKNOWLEDGEMENTS.md`](./docs/ACKNOWLEDGEMENTS.md).
