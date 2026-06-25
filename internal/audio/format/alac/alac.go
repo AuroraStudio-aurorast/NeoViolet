@@ -71,6 +71,13 @@ func NewDecoder(cookie []byte) (*Decoder, error) {
 		d.Cookie_86 = 0x00069fe4
 	}
 
+	// Validate ALAC cookie parameters to prevent division by zero and
+	// out-of-bounds access. If invalid, fall back to safe defaults.
+	validSampleSizes := map[uint8]bool{8: true, 16: true, 20: true, 24: true, 32: true}
+	if !validSampleSizes[d.CookieSampleSize] {
+		d.CookieSampleSize = 16
+	}
+
 	d.numChannels = 2 // stereo is the norm for ALAC; mono is rare
 	d.sampleSize = int(d.CookieSampleSize)
 	d.bytesPerSample = (d.sampleSize / 8) * d.numChannels
@@ -82,6 +89,9 @@ func NewDecoder(cookie []byte) (*Decoder, error) {
 // SetNumChannels overrides the channel count. ALAC files are almost always
 // stereo (2 channels). Call this before the first Decode if the file is mono.
 func (d *Decoder) SetNumChannels(n int) {
+	if n < 1 || n > 8 {
+		n = 2
+	}
 	d.numChannels = n
 	d.bytesPerSample = (d.sampleSize / 8) * d.numChannels
 }
@@ -175,6 +185,11 @@ func (d *Decoder) allocateBuffers() {
 
 // readbits_16 supports reading 1 to 16 bits in big-endian format.
 func (d *Decoder) readbits_16(bits int) uint32 {
+	// Guard: need at least 3 bytes for any 16-bit read.
+	if d.input_buffer_index+3 > len(d.input_buffer) {
+		// Not enough data — return 0 and prevent further index advancement.
+		return 0
+	}
 	result := (uint32(d.input_buffer[d.input_buffer_index]) << 16)
 	if len(d.input_buffer)-d.input_buffer_index > 1 {
 		result |= (uint32(d.input_buffer[d.input_buffer_index+1]) << 8)
@@ -204,6 +219,10 @@ func (d *Decoder) readbits(bits int) uint32 {
 }
 
 func (d *Decoder) readbit() int {
+	// Guard: need at least 1 byte available.
+	if d.input_buffer_index >= len(d.input_buffer) {
+		return 0
+	}
 	result := int(d.input_buffer[d.input_buffer_index])
 	result = result << uint(d.input_buffer_bitaccumulator)
 	result = result >> 7 & 1

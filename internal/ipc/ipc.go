@@ -95,11 +95,24 @@ func NewServer() (*Server, error) {
 	secret := hex.EncodeToString(tokenBytes)
 
 	addr := listener.Addr().String()
-	// Write address + token to port file
-	data := fmt.Sprintf("%s\n%s", addr, secret)
-	if err := os.WriteFile(portFilePath(), []byte(data), 0600); err != nil {
+	// Write address + token to port file atomically.
+	// O_EXCL prevents symlink attacks by failing if the file already exists.
+	portPath := portFilePath()
+	f, err := os.OpenFile(portPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		listener.Close()
+		return nil, fmt.Errorf("ipc create port file: %w", err)
+	}
+	if _, err := fmt.Fprintf(f, "%s\n%s", addr, secret); err != nil {
+		f.Close()
+		os.Remove(portPath)
 		listener.Close()
 		return nil, fmt.Errorf("ipc write port file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(portPath)
+		listener.Close()
+		return nil, fmt.Errorf("ipc close port file: %w", err)
 	}
 
 	logger.Info("IPC server listening", "addr", addr)
@@ -194,6 +207,8 @@ func (s *Server) Close() {
 func (s *Server) readLoop(conn net.Conn) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
+	// Limit maximum IPC message size to 10 MB to prevent memory exhaustion.
+	scanner.Buffer(make([]byte, 4096), 10*1024*1024)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -213,7 +228,10 @@ func (s *Server) readLoop(conn net.Conn) {
 }
 
 // portFilePath returns the temp file path where the TCP address and
-// authentication token are stored.
+// authentication token are stored. The filename uses PID so the GUI
+// (which knows the TUI child PID) can discover it. Symlink attacks are
+// mitigated by O_EXCL in NewServer — if the file already exists the
+// write fails, indicating possible tampering.
 func portFilePath() string {
 	dir := os.TempDir()
 	return filepath.Join(dir, fmt.Sprintf("neoviolet-ipc-%d", os.Getpid()))

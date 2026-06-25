@@ -15,7 +15,7 @@ mod terminal;
 mod util;
 
 use gpui::*;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use yororen_ui::assets::UiAsset;
 use yororen_ui::component;
 use yororen_ui::i18n::{I18n, Locale};
@@ -26,48 +26,55 @@ use neo_violet_app::NeoVioletApp;
 use state::AppState;
 
 fn main() {
-    // Sync macOS launch environment
+    // Sync macOS launch environment (runs at most once, before any threads).
     #[cfg(target_os = "macos")]
     {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-        if let Ok(output) = std::process::Command::new(&shell)
-            .args(["-l", "-c", "env -0"])
-            .output()
-        {
-            if output.status.success() {
-                for entry in output.stdout.split(|b| *b == 0) {
-                    if entry.is_empty() {
-                        continue;
-                    }
-                    let Some(eq) = entry.iter().position(|b| *b == b'=') else {
-                        continue;
-                    };
-                    let Ok(key) = std::str::from_utf8(&entry[..eq]) else {
-                        continue;
-                    };
-                    let Ok(value) = std::str::from_utf8(&entry[eq + 1..]) else {
-                        continue;
-                    };
-                    let should_import = matches!(
-                        key,
-                        "PATH"
-                            | "LANG"
-                            | "LC_ALL"
-                            | "LC_CTYPE"
-                            | "SHELL"
-                            | "HOME"
-                            | "HOMEBREW_PREFIX"
-                            | "HOMEBREW_CELLAR"
-                            | "HOMEBREW_REPOSITORY"
-                    ) || key.starts_with("LC_");
-                    if should_import {
-                        unsafe {
-                            std::env::set_var(key, value);
+        static ENV_SYNC: OnceLock<()> = OnceLock::new();
+        ENV_SYNC.get_or_init(|| {
+            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+            if let Ok(output) = std::process::Command::new(&shell)
+                .args(["-l", "-c", "env -0"])
+                .output()
+            {
+                if output.status.success() {
+                    for entry in output.stdout.split(|b| *b == 0) {
+                        if entry.is_empty() {
+                            continue;
+                        }
+                        let Some(eq) = entry.iter().position(|b| *b == b'=') else {
+                            continue;
+                        };
+                        let Ok(key) = std::str::from_utf8(&entry[..eq]) else {
+                            continue;
+                        };
+                        let Ok(value) = std::str::from_utf8(&entry[eq + 1..]) else {
+                            continue;
+                        };
+                        let should_import = matches!(
+                            key,
+                            "PATH"
+                                | "LANG"
+                                | "LC_ALL"
+                                | "LC_CTYPE"
+                                | "LC_MESSAGES"
+                                | "LC_MONETARY"
+                                | "LC_NUMERIC"
+                                | "LC_TIME"
+                                | "SHELL"
+                                | "HOME"
+                                | "HOMEBREW_PREFIX"
+                                | "HOMEBREW_CELLAR"
+                                | "HOMEBREW_REPOSITORY"
+                        );
+                        if should_import {
+                            unsafe {
+                                std::env::set_var(key, value);
+                            }
                         }
                     }
                 }
             }
-        }
+        });
     }
 
     env_logger::init();

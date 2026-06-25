@@ -26,7 +26,7 @@ func (p *eslrcParser) FindSidecar(audioPath string) string {
 }
 
 func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
-	data, err := io.ReadAll(r)
+	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read eslrc: %w", err)
 	}

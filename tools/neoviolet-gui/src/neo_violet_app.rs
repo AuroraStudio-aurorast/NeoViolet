@@ -219,7 +219,7 @@ impl Render for NeoVioletApp {
                             state.title = msg.title.unwrap_or_default();
                             state.artist = msg.artist.unwrap_or_default();
                             state.dirty = true;
-                            log::debug!(
+                            log::trace!(
                                 "[lyrics] updated: title={:?} artist={:?} elapsed={:.1} lines={}",
                                 state.title,
                                 state.artist,

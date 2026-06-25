@@ -25,7 +25,6 @@ pub static GUI_VER: &str = env!("CARGO_PKG_VERSION");
 pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     // Cache CLI version asynchronously — never block startup.
     let configured_path = neoviolet_path.map(|s| s.to_string());
-    let _ = CLI_VER.set(String::new()); // placeholder
     let version_tx = {
         let state = cx.global::<AppState>();
         state.cli_version.clone()

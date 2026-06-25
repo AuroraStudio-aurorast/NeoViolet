@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -97,6 +98,16 @@ func Decode(file *os.File, path string) (*Streamer, beep.Format, error) {
 	}
 
 	return nil, beep.Format{}, fmt.Errorf("ape: all backends failed: %w", err)
+}
+
+// sanitizeFileArg prefixes a user-supplied file path with "./" when it
+// begins with "-", preventing it from being interpreted as a command-line
+// flag by subprocess backends (ffmpeg, ffprobe, apecli, mac).
+func sanitizeFileArg(path string) string {
+	if strings.HasPrefix(path, "-") {
+		return "./" + path
+	}
+	return path
 }
 
 // probeBackends discovers available backends in priority order.
@@ -294,7 +305,7 @@ func (b *apeCLIBackend) Open(path string, seekSamples int) (*StreamInfo, error) 
 	defer b.mu.Unlock()
 	b.path = path
 
-	args := []string{path}
+	args := []string{sanitizeFileArg(path)}
 	if seekSamples >= 0 {
 		args = append([]string{"--seek", fmt.Sprintf("%d", seekSamples)}, args...)
 	}
@@ -457,7 +468,7 @@ stopped:
 		close(b.chunkChan)
 	}
 
-	_, err := b.startProcess([]string{"--seek", fmt.Sprintf("%d", samples), b.path})
+	_, err := b.startProcess([]string{"--seek", fmt.Sprintf("%d", samples), sanitizeFileArg(b.path)})
 	return err
 }
 
@@ -532,6 +543,7 @@ func probeFFmpegMetadata(path string) (*StreamInfo, error) {
 		"-v", "quiet",
 		"-print_format", "json",
 		"-show_streams",
+		"--",
 		path,
 	}
 	cmd := exec.Command("ffprobe", args...)
@@ -595,7 +607,7 @@ func (b *ffmpegBackend) startProcess(path string, seekSamples int) (*StreamInfo,
 	// We request s16le PCM output (ffmpeg's most compatible format) at the
 	// file's native sample rate and channel count.
 	args := []string{
-		"-i", path,
+		"-i", sanitizeFileArg(path),
 		"-f", "s16le",
 		"-acodec", "pcm_s16le",
 		"-ac", fmt.Sprintf("%d", info.Channels),

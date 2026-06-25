@@ -92,8 +92,16 @@ fn main() {
     let stdout = io::stdout();
     let mut stdout_lock = stdout.lock();
 
-    // Safety: transmute is OK here because OutputHeader is packed and Copy.
-    let header_bytes: [u8; 28] = unsafe { std::mem::transmute(header) };
+    // Serialize header field-by-field to avoid unsafe transmute on a packed struct.
+    let mut header_bytes = [0u8; 28];
+    header_bytes[0..4].copy_from_slice(&header.magic);
+    header_bytes[4..8].copy_from_slice(&header.header_size.to_le_bytes());
+    header_bytes[8..12].copy_from_slice(&header.sample_rate.to_le_bytes());
+    header_bytes[12..14].copy_from_slice(&header.channels.to_le_bytes());
+    header_bytes[14..16].copy_from_slice(&header.bits_per_sample.to_le_bytes());
+    header_bytes[16..24].copy_from_slice(&header.total_samples.to_le_bytes());
+    header_bytes[24..26].copy_from_slice(&header.block_align.to_le_bytes());
+    header_bytes[26..28].copy_from_slice(&header.reserved.to_le_bytes());
     if let Err(e) = stdout_lock.write_all(&header_bytes) {
         eprintln!("Error writing header to stdout: {}", e);
         process::exit(1);

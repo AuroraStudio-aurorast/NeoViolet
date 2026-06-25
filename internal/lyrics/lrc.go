@@ -44,7 +44,7 @@ func lrcParseFile(path string) (*LyricsData, error) {
 }
 
 func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
-	data, err := io.ReadAll(r)
+	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read lyrics: %w", err)
 	}

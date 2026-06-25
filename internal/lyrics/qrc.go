@@ -31,7 +31,7 @@ func (p *qrcParser) FindSidecar(audioPath string) string {
 }
 
 func (p *qrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
-	data, err := io.ReadAll(r)
+	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read qrc: %w", err)
 	}

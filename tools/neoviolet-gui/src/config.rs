@@ -155,7 +155,11 @@ pub fn load_or_create() -> GuiConfig {
     // fields that were filled in by Default during deserialization.
     if pre_existed {
         if let Ok(toml_str) = toml::to_string_pretty(&cfg) {
-            let _ = std::fs::write(&config_path, toml_str);
+            // Atomic write: write to a temporary file, then rename
+            let tmp_path = config_path.with_extension("tmp");
+            if std::fs::write(&tmp_path, &toml_str).is_ok() {
+                let _ = std::fs::rename(&tmp_path, &config_path);
+            }
         }
     }
 

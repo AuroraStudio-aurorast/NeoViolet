@@ -67,6 +67,11 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 				switch ipcMsg.Type {
 				case "open":
 					if ipcMsg.Path != "" {
+						if !isValidAudioPath(ipcMsg.Path) {
+							logger.Warn("IPC: invalid audio path from GUI", "path", ipcMsg.Path)
+							m.Error.Set("Invalid or unsupported audio file: "+ipcMsg.Path, 180)
+							break
+						}
 						logger.Info("IPC: loading track", "path", ipcMsg.Path)
 						_, loadCmd := handleLoadTrack(m, LoadTrackMsg{Path: ipcMsg.Path})
 						return m, tea.Batch(loadCmd,

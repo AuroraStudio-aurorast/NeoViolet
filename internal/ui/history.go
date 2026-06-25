@@ -90,7 +90,7 @@ func saveHistory(m *Model) {
 		return
 	}
 
-	if err := os.WriteFile(path, []byte(data), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		logger.Warn("Failed to write history file", "path", path, "err", err)
 		return
 	}

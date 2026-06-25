@@ -31,7 +31,7 @@ func (p *yrcParser) FindSidecar(audioPath string) string {
 }
 
 func (p *yrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
-	data, err := io.ReadAll(r)
+	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read yrc: %w", err)
 	}

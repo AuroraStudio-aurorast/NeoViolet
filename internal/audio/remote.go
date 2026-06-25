@@ -33,6 +33,7 @@ type remoteReadSeeker struct {
 	cancel       context.CancelFunc
 	body         io.ReadCloser
 	cacheFile    *os.File
+	tempDir      string
 	size         int64
 	pos          int64
 	written      int64
@@ -45,8 +46,16 @@ type remoteReadSeeker struct {
 
 func newRemoteReadSeeker(resp *http.Response) (*remoteReadSeeker, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	f, err := os.CreateTemp("", "neoviolet-*.tmp")
+	// Use a private temp directory so other local users cannot read cached audio.
+	tempDir, err := os.MkdirTemp("", "neoviolet-*")
 	if err != nil {
+		resp.Body.Close()
+		cancel()
+		return nil, fmt.Errorf("create temp dir: %w", err)
+	}
+	f, err := os.CreateTemp(tempDir, "cache-*.tmp")
+	if err != nil {
+		os.RemoveAll(tempDir)
 		resp.Body.Close()
 		cancel()
 		return nil, fmt.Errorf("create temp cache: %w", err)
@@ -57,6 +66,7 @@ func newRemoteReadSeeker(resp *http.Response) (*remoteReadSeeker, error) {
 		cancel:    cancel,
 		body:      resp.Body,
 		cacheFile: f,
+		tempDir:   tempDir,
 		size:      resp.ContentLength,
 	}
 	r.cond = sync.NewCond(&r.mu)
@@ -181,6 +191,9 @@ func (r *remoteReadSeeker) Close() error {
 	name := r.cacheFile.Name()
 	r.cacheFile.Close()
 	os.Remove(name)
+	if r.tempDir != "" {
+		os.RemoveAll(r.tempDir)
+	}
 	return nil
 }
 

@@ -90,7 +90,7 @@ type ttmlSpan struct {
 
 func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 	decoder := xml.NewDecoder(r)
-	decoder.Strict = false
+	decoder.Strict = true
 
 	var tt ttmlTT
 	if err := decoder.Decode(&tt); err != nil {

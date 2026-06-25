@@ -61,11 +61,21 @@ func loadAudioFromStdin(player *audio.Player, generation int) tea.Msg {
 		}
 	}
 
-	data, err := io.ReadAll(os.Stdin)
+	// Limit stdin read to 500 MB to prevent memory exhaustion from
+	// accidentally piped large files or /dev/zero.
+	const maxStdinSize = 500 * 1024 * 1024
+	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinSize+1))
 	os.Stdin.Close()
 	if err != nil {
 		logger.Error("Failed to read stdin", "err", err)
 		return ErrorMsg{Message: fmt.Sprintf("Failed to read stdin: %v", err), Timer: 120, Generation: generation}
+	}
+	if len(data) > maxStdinSize {
+		return ErrorMsg{
+			Message:    "Stdin input exceeds 500 MB limit",
+			Timer:      180,
+			Generation: generation,
+		}
 	}
 
 	if err := player.OpenReader("stdin", data); err != nil {
