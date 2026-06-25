@@ -40,8 +40,8 @@ for bin in neoviolet-gui neoviolet apecli; do
     cp "$PROJECT_ROOT/$bin" "$MACOS_DIR/"
 done
 
-cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE-GPL" "$RESOURCES_DIR/LICENSE-GPL"
-cp "$PROJECT_ROOT/tools/apecli/LICENSE-MIT"       "$RESOURCES_DIR/LICENSE-MIT"
+cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GPL"
+cp "$PROJECT_ROOT/tools/apecli/LICENSE"       "$RESOURCES_DIR/LICENSE-MIT"
 cp "$PROJECT_ROOT/docs/ACKNOWLEDGEMENTS.md"       "$RESOURCES_DIR/ACKNOWLEDGEMENTS.md"
 
 # ── Icon: compile (Xcode ≥ 26) else pre-compiled ──────────────────────────
