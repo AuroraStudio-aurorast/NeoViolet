@@ -32,9 +32,6 @@ pub struct DesktopLyricsConfig {
     /// Hex color for the current (active) lyric line.
     #[serde(default = "default_desktop_lyrics_highlight_color")]
     pub highlight_color: String,
-    /// Keep the lyrics window above other windows.
-    #[serde(default = "default_desktop_lyrics_always_on_top")]
-    pub always_on_top: bool,
     /// Last saved window X position (None = auto-center).
     #[serde(default)]
     pub position_x: Option<i32>,
@@ -63,8 +60,6 @@ fn default_desktop_lyrics_show_song_info() -> bool { true }
 fn default_desktop_lyrics_num_lines() -> u32 { 1 }
 fn default_desktop_lyrics_text_color() -> String { "#FFFFFF".into() }
 fn default_desktop_lyrics_highlight_color() -> String { "#FFD700".into() }
-fn default_desktop_lyrics_always_on_top() -> bool { true }
-
 impl Default for DesktopLyricsConfig {
     fn default() -> Self {
         Self {
@@ -78,7 +73,6 @@ impl Default for DesktopLyricsConfig {
             num_lines: 1,
             text_color: "#FFFFFF".into(),
             highlight_color: "#FFD700".into(),
-            always_on_top: true,
             position_x: None,
             position_y: None,
         }

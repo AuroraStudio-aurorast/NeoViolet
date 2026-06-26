@@ -22,6 +22,22 @@ actions!(
 pub static CLI_VER: OnceLock<String> = OnceLock::new();
 pub static GUI_VER: &str = env!("CARGO_PKG_VERSION");
 
+// ── Keybindings ──
+
+fn register_bindings(cx: &mut App) {
+    let prefix = if cfg!(target_os = "macos") { "cmd" } else { "ctrl" };
+    cx.bind_keys(vec![
+        KeyBinding::new(&format!("{}-q", prefix), QuitApp, None),
+        KeyBinding::new(&format!("{}-,", prefix), Preferences, None),
+        KeyBinding::new(&format!("{}-o", prefix), OpenFile, None),
+        KeyBinding::new(&format!("{}-shift-l", prefix), ToggleDesktopLyrics, None),
+        KeyBinding::new(&format!("{}-+", prefix), ZoomIn, None),
+        KeyBinding::new(&format!("{}-=", prefix), ZoomIn, None),
+        KeyBinding::new(&format!("{}--", prefix), ZoomOut, None),
+        KeyBinding::new(&format!("{}-0", prefix), ZoomReset, None),
+    ]);
+}
+
 pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     // Cache CLI version asynchronously — never block startup.
     let configured_path = neoviolet_path.map(|s| s.to_string());
@@ -187,7 +203,12 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
                 titlebar: None,
                 focus: false,
                 window_background: WindowBackgroundAppearance::Transparent,
-                kind: WindowKind::Normal,
+                kind: if cfg!(target_os = "macos") { WindowKind::Normal } else { WindowKind::PopUp },
+                window_decorations: if cfg!(target_os = "linux") {
+                    Some(WindowDecorations::Client)
+                } else {
+                    None
+                },
                 ..Default::default()
             };
 
@@ -208,16 +229,7 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         }
     });
 
-    cx.bind_keys([
-        KeyBinding::new("cmd-q", QuitApp, None),
-        KeyBinding::new("cmd-,", Preferences, None),
-        KeyBinding::new("cmd-o", OpenFile, None),
-        KeyBinding::new("cmd-shift-l", ToggleDesktopLyrics, None),
-        KeyBinding::new("cmd-+", ZoomIn, None),
-        KeyBinding::new("cmd-=", ZoomIn, None),
-        KeyBinding::new("cmd--", ZoomOut, None),
-        KeyBinding::new("cmd-0", ZoomReset, None),
-    ]);
+    register_bindings(cx);
 
     #[cfg(target_os = "macos")]
     cx.set_menus(vec![

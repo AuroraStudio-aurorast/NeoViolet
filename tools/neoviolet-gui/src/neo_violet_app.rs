@@ -250,7 +250,12 @@ impl Render for NeoVioletApp {
                                         titlebar: None,
                                         focus: false,
                                         window_background: WindowBackgroundAppearance::Transparent,
-                                        kind: WindowKind::Normal,
+                                        kind: if cfg!(target_os = "macos") { WindowKind::Normal } else { WindowKind::PopUp },
+                                        window_decorations: if cfg!(target_os = "linux") {
+                                            Some(WindowDecorations::Client)
+                                        } else {
+                                            None
+                                        },
                                         ..Default::default()
                                     };
                                     // Defer window creation to avoid crashing during render.
