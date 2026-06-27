@@ -174,21 +174,6 @@ func (s *Server) SendJSON(m Message) error {
 	return nil
 }
 
-// Send writes a raw string message (legacy, prefer SendJSON).
-func (s *Server) Send(msg string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.conn == nil {
-		return fmt.Errorf("ipc: no client connected")
-	}
-	_, err := fmt.Fprintf(s.conn, "%s\n", msg)
-	if err != nil {
-		logger.Warn("IPC send failed", "err", err)
-	}
-	return err
-}
-
 // Close shuts down the listener and connection, and removes the port file.
 func (s *Server) Close() {
 	s.mu.Lock()

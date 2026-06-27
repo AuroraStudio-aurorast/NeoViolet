@@ -76,6 +76,36 @@ func NewPlayerWithDeps(decoder *format.FormatDecoder, tagReader *format.Metadata
 	}
 }
 
+// isSynthActive returns true when a synthetic (MIDI/tracker) stream is active.
+func (p *Player) isSynthActive() bool {
+	return p.synthActive && p.synthCtrl != nil
+}
+
+// setupStreamer sets the common streamer, ctrl, volume fields after opening audio.
+// Must be called with p.mu held (the caller's Open/OpenReader/openURL holds it).
+func (p *Player) setupStreamer(streamer beep.StreamSeekCloser, f beep.Format, file io.Closer, path string, ctrlStreamer beep.Streamer) {
+	p.streamer = streamer
+	p.format = f
+	p.file = file
+	p.isPaused = true
+	p.isPlaying = false
+	p.path = path
+	p.synthActive = false
+
+	p.ctrl = &beep.Ctrl{
+		Streamer: ctrlStreamer,
+		Paused:   true,
+	}
+
+	p.volume = &effects.Volume{
+		Streamer: p.ctrl,
+		Base:     2,
+		Silent:   false,
+	}
+
+	p.applyLinearVolumeLocked()
+}
+
 func (p *Player) SetSoundfontPath(sfPath string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -147,26 +177,7 @@ func (p *Player) Open(path string) error {
 
 	logger.Info("Audio file opened", "path", path, "format", format.SampleRate)
 
-	p.streamer = streamer
-	p.format = format
-	p.file = file
-	p.isPaused = true
-	p.isPlaying = false
-	p.path = path
-	p.synthActive = false
-
-	p.ctrl = &beep.Ctrl{
-		Streamer: ctrlStreamer,
-		Paused:   true,
-	}
-
-	p.volume = &effects.Volume{
-		Streamer: p.ctrl,
-		Base:     2,
-		Silent:   false,
-	}
-
-	p.applyLinearVolumeLocked()
+	p.setupStreamer(streamer, format, file, path, ctrlStreamer)
 
 	p.readTags(path)
 
@@ -299,26 +310,7 @@ func (p *Player) OpenReader(name string, data []byte) error {
 
 	logger.Info("Audio loaded from stdin", "name", name, "format", format.SampleRate)
 
-	p.streamer = streamer
-	p.format = format
-	p.file = decReader
-	p.isPaused = true
-	p.isPlaying = false
-	p.path = name
-	p.synthActive = false
-
-	p.ctrl = &beep.Ctrl{
-		Streamer: ctrlStreamer,
-		Paused:   true,
-	}
-
-	p.volume = &effects.Volume{
-		Streamer: p.ctrl,
-		Base:     2,
-		Silent:   false,
-	}
-
-	p.applyLinearVolumeLocked()
+	p.setupStreamer(streamer, format, decReader, name, ctrlStreamer)
 
 	// If no title detected from tags, use the display name
 	if p.title == "" {
@@ -347,7 +339,7 @@ func (p *Player) Play() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		logger.Debug("Synth play")
 		return p.playSynthetic()
 	}
@@ -397,7 +389,7 @@ func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		logger.Debug("Synth pause")
 		p.synthCtrl.Pause()
 		p.isPaused = true
@@ -418,7 +410,7 @@ func (p *Player) Resume() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		logger.Debug("Synth resume")
 		p.synthCtrl.Play()
 		p.isPaused = false
@@ -439,7 +431,7 @@ func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		logger.Debug("Synth stop")
 		p.synthCtrl.Stop()
 		p.isPlaying = false
@@ -454,7 +446,7 @@ func (p *Player) Stop() {
 }
 
 func (p *Player) Toggle() {
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		if p.isPaused || !p.isPlaying {
 			p.Play()
 		} else {
@@ -473,7 +465,7 @@ func (p *Player) Seek(position time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		logger.Debug("Synth seek", "position", position)
 		return p.synthCtrl.Seek(position)
 	}
@@ -537,7 +529,7 @@ func (p *Player) SetVolume(vol float64) {
 	}
 	p.linearVolume = vol
 
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		p.synthCtrl.SetVolume(vol)
 	}
 	logger.Debug("Volume set", "volume", vol)
@@ -559,7 +551,7 @@ func (p *Player) IsPlaying() bool {
 func (p *Player) Duration() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		return p.synthCtrl.Duration()
 	}
 	if p.streamer == nil {
@@ -571,7 +563,7 @@ func (p *Player) Duration() time.Duration {
 func (p *Player) Position() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		return p.synthCtrl.Position()
 	}
 	if p.streamer == nil {
@@ -584,7 +576,7 @@ func (p *Player) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		logger.Debug("Player.Close (synth)")
 		return p.synthCtrl.Close()
 	}
@@ -637,7 +629,7 @@ func (p *Player) Path() string {
 func (p *Player) Title() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		return p.synthCtrl.Title()
 	}
 	return p.title
@@ -646,7 +638,7 @@ func (p *Player) Title() string {
 func (p *Player) Artist() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		return p.synthCtrl.Artist()
 	}
 	return p.artist
@@ -661,7 +653,7 @@ func (p *Player) Album() string {
 func (p *Player) CoverImage() image.Image {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		return p.synthCtrl.CoverImage()
 	}
 	return p.coverImage
@@ -670,7 +662,7 @@ func (p *Player) CoverImage() image.Image {
 func (p *Player) Format() beep.Format {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.synthActive && p.synthCtrl != nil {
+	if p.isSynthActive() {
 		return p.synthCtrl.Streamer().Format()
 	}
 	return p.format

@@ -12,21 +12,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gopxl/beep/v2"
-	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/speaker"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
-		"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 func isURL(path string) bool {
 	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
 }
 
-func detectFormatFromContentType(ct string) string {
-	return format.MIMETypeToExt(ct)
-}
+
 
 type remoteReadSeeker struct {
 	ctx          context.Context
@@ -218,7 +214,7 @@ func (p *Player) openURL(urlStr string) error {
 	}
 
 	if ext == "" {
-		ext = detectFormatFromContentType(resp.Header.Get("Content-Type"))
+		ext = format.MIMETypeToExt(resp.Header.Get("Content-Type"))
 	}
 	if ext == "" {
 		resp.Body.Close()
@@ -260,25 +256,7 @@ func (p *Player) openURL(urlStr string) error {
 
 	logger.Info("Remote audio opened", "url", urlStr, "format", format.SampleRate)
 
-	p.streamer = streamer
-	p.format = format
-	p.file = rrs
-	p.isPaused = true
-	p.isPlaying = false
-	p.path = urlStr
-
-	p.ctrl = &beep.Ctrl{
-		Streamer: ctrlStreamer,
-		Paused:   true,
-	}
-
-	p.volume = &effects.Volume{
-		Streamer: p.ctrl,
-		Base:     2,
-		Silent:   false,
-	}
-
-	p.applyLinearVolumeLocked()
+	p.setupStreamer(streamer, format, rrs, urlStr, ctrlStreamer)
 
 	display := urlStr
 	if u.Scheme != "" {

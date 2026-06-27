@@ -3,9 +3,6 @@ package lyrics
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -27,13 +24,7 @@ var channelToAgent = map[int]string{
 }
 
 func (p *lysParser) FindSidecar(audioPath string) string {
-	ext := filepath.Ext(audioPath)
-	base := audioPath[:len(audioPath)-len(ext)]
-	path := base + ".lys"
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	return ""
+	return findSidecarWithExt(audioPath, ".lys")
 }
 
 func (p *lysParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
@@ -113,9 +104,7 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		return nil, fmt.Errorf("no valid lys lines found")
 	}
 
-	sort.SliceStable(lines, func(i, j int) bool {
-		return lines[i].Time < lines[j].Time
-	})
+	sortLyricLines(lines)
 
 	lyrics.Lines = lines
 

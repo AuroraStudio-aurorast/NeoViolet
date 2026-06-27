@@ -3,10 +3,7 @@ package lyrics
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,13 +18,7 @@ func init() {
 type yrcParser struct{}
 
 func (p *yrcParser) FindSidecar(audioPath string) string {
-	ext := filepath.Ext(audioPath)
-	base := audioPath[:len(audioPath)-len(ext)]
-	path := base + ".yrc"
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	return ""
+	return findSidecarWithExt(audioPath, ".yrc")
 }
 
 func (p *yrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
@@ -61,28 +52,7 @@ func (p *yrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		}
 
 		body := parts[1]
-		matches := yrcWordRe.FindAllStringSubmatch(body, -1)
-		if len(matches) == 0 {
-			continue
-		}
-
-		var words []WordFragment
-		var fullText strings.Builder
-
-		for _, m := range matches {
-			wordStart, _ := strconv.Atoi(m[1])
-			_ = m[2] // duration, unused
-			_ = m[3] // flag, unused
-			wordText := m[4]
-
-			words = append(words, WordFragment{
-				Time: time.Duration(wordStart) * time.Millisecond,
-				Text: wordText,
-			})
-			fullText.WriteString(wordText)
-		}
-
-		text := fullText.String()
+		words, text := parseYRCWordTimedLine(body)
 		if text == "" {
 			continue
 		}
@@ -98,9 +68,7 @@ func (p *yrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		return nil, fmt.Errorf("no valid yrc lines found")
 	}
 
-	sort.SliceStable(lines, func(i, j int) bool {
-		return lines[i].Time < lines[j].Time
-	})
+	sortLyricLines(lines)
 
 	lyrics.Lines = lines
 	return lyrics, nil

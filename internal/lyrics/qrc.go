@@ -3,10 +3,7 @@ package lyrics
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,13 +18,7 @@ func init() {
 type qrcParser struct{}
 
 func (p *qrcParser) FindSidecar(audioPath string) string {
-	ext := filepath.Ext(audioPath)
-	base := audioPath[:len(audioPath)-len(ext)]
-	path := base + ".qrc"
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	return ""
+	return findSidecarWithExt(audioPath, ".qrc")
 }
 
 func (p *qrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
@@ -61,26 +52,7 @@ func (p *qrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		}
 
 		body := parts[1]
-		matches := qrcWordRe.FindAllStringSubmatch(body, -1)
-		if len(matches) == 0 {
-			continue
-		}
-
-		var words []WordFragment
-		var fullText strings.Builder
-
-		for _, m := range matches {
-			wordText := m[1]
-			wordStart, _ := strconv.Atoi(m[2])
-
-			words = append(words, WordFragment{
-				Time: time.Duration(wordStart) * time.Millisecond,
-				Text: wordText,
-			})
-			fullText.WriteString(wordText)
-		}
-
-		text := fullText.String()
+		words, text := parseQRCWordTimedLine(body)
 		if strings.TrimSpace(text) == "" {
 			continue
 		}
@@ -96,9 +68,7 @@ func (p *qrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		return nil, fmt.Errorf("no valid qrc lines found")
 	}
 
-	sort.SliceStable(lines, func(i, j int) bool {
-		return lines[i].Time < lines[j].Time
-	})
+	sortLyricLines(lines)
 
 	lyrics.Lines = lines
 	return lyrics, nil

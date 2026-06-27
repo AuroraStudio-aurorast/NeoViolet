@@ -105,19 +105,7 @@ impl DesktopLyricsView {
             if let Some(bounds) = this.last_bounds {
                 let x = f32::from(bounds.origin.x) as i32;
                 let y = f32::from(bounds.origin.y) as i32;
-                let state = app.global_mut::<AppState>();
-                state.config.desktop_lyrics.position_x = Some(x);
-                state.config.desktop_lyrics.position_y = Some(y);
-                let path = crate::config::config_dir_path().join("neoviolet_gui.toml");
-                if let Ok(content) = std::fs::read_to_string(&path)
-                    && let Ok(mut cfg) = toml::from_str::<crate::config::GuiConfig>(&content)
-                {
-                    cfg.desktop_lyrics.position_x = Some(x);
-                    cfg.desktop_lyrics.position_y = Some(y);
-                    if let Ok(out) = toml::to_string_pretty(&cfg) {
-                        let _ = std::fs::write(&path, out);
-                    }
-                }
+                Self::persist_lyrics_position(x, y, app);
             }
         })
         .detach();
@@ -194,13 +182,14 @@ impl DesktopLyricsView {
         let bounds = window.bounds();
         let x = f32::from(bounds.origin.x) as i32;
         let y = f32::from(bounds.origin.y) as i32;
+        Self::persist_lyrics_position(x, y, cx);
+    }
 
-        // Update in-memory config so next open reads the saved position.
-        {
-            let state = cx.global_mut::<AppState>();
-            state.config.desktop_lyrics.position_x = Some(x);
-            state.config.desktop_lyrics.position_y = Some(y);
-        }
+    /// Persist lyrics window position (x, y) to config and TOML on disk.
+    fn persist_lyrics_position(x: i32, y: i32, cx: &mut App) {
+        let state = cx.global_mut::<AppState>();
+        state.config.desktop_lyrics.position_x = Some(x);
+        state.config.desktop_lyrics.position_y = Some(y);
 
         let path = crate::config::config_dir_path().join("neoviolet_gui.toml");
         let Ok(content) = std::fs::read_to_string(&path) else { return };

@@ -89,8 +89,6 @@ func (c *Config) Normalize() bool {
 	return c.DefaultVolume != orig.DefaultVolume
 }
 
-func boolPtr(v bool) *bool { return &v }
-
 func DefaultConfig() Config {
 	return Config{
 		IconTheme:      "nerd",
@@ -122,7 +120,7 @@ func DefaultConfig() Config {
 			Duration: 90,
 		},
 		Accent: AccentConfig{
-			AutoAccent: boolPtr(true),
+			AutoAccent: func() *bool { v := true; return &v }(),
 		},
 	}
 }

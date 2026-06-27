@@ -32,7 +32,7 @@ pub struct LyricLineData {
 }
 
 /// JSON message exchanged between GUI and TUI.
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct IpcMessage {
     #[serde(rename = "type")]
     pub msg_type: String,
@@ -61,12 +61,7 @@ impl IpcMessage {
         Self {
             msg_type: "open".into(),
             path: Some(path.to_string()),
-            dialog: None,
-            enable: None,
-            lines: None,
-            elapsed: None,
-            title: None,
-            artist: None,
+            ..Default::default()
         }
     }
 
@@ -74,13 +69,8 @@ impl IpcMessage {
     pub fn enable_desktop_lyrics(enabled: bool) -> Self {
         Self {
             msg_type: "desktop_lyrics".into(),
-            path: None,
-            dialog: None,
             enable: Some(enabled),
-            lines: None,
-            elapsed: None,
-            title: None,
-            artist: None,
+            ..Default::default()
         }
     }
 
@@ -88,13 +78,7 @@ impl IpcMessage {
     pub fn play_pause() -> Self {
         Self {
             msg_type: "play_pause".into(),
-            path: None,
-            dialog: None,
-            enable: None,
-            lines: None,
-            elapsed: None,
-            title: None,
-            artist: None,
+            ..Default::default()
         }
     }
 }

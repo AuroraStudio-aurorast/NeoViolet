@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -10,7 +11,7 @@ import (
 )
 
 var (
-	logger  *log.Logger
+	logger  *log.Logger = log.New(io.Discard)
 	logFile *os.File
 )
 
@@ -40,50 +41,29 @@ func Close() error {
 }
 
 func Debug(msg string, keyvals ...any) {
-	if logger == nil {
-		return
-	}
 	logger.Debug(msg, keyvals...)
 }
 
 func Info(msg string, keyvals ...any) {
-	if logger == nil {
-		return
-	}
 	logger.Info(msg, keyvals...)
 }
 
 func Warn(msg string, keyvals ...any) {
-	if logger == nil {
-		return
-	}
 	logger.Warn(msg, keyvals...)
 }
 
 func Error(msg string, keyvals ...any) {
-	if logger == nil {
-		return
-	}
 	logger.Error(msg, keyvals...)
 }
 
 func Fatal(msg string, keyvals ...any) {
-	if logger == nil {
-		return
-	}
 	logger.Fatal(msg, keyvals...)
 }
 
 func Printf(format string, args ...any) {
-	if logger == nil {
-		return
-	}
 	logger.Printf(format, args...)
 }
 
 func With(keyvals ...any) *log.Logger {
-	if logger == nil {
-		return &log.Logger{}
-	}
 	return logger.With(keyvals...)
 }

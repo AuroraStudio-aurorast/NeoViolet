@@ -175,19 +175,22 @@ type ComponentState struct {
 	CommandInput textinput.Model
 }
 
-type ErrorState struct {
+// ErrorState is a deprecated alias for MessageState, kept for test compatibility.
+// MessageState shows a transient text message that auto-dismisses.
+// Used for both error (red) and info (green) status updates.
+type MessageState struct {
 	Message string
 	Timer   int
 	Visible bool
 }
 
-func (e *ErrorState) Set(msg string, timer int) {
+func (e *MessageState) Set(msg string, timer int) {
 	e.Message = msg
 	e.Timer = timer
 	e.Visible = true
 }
 
-func (e *ErrorState) Tick() {
+func (e *MessageState) Tick() {
 	if e.Visible && e.Timer > 0 {
 		e.Timer--
 		if e.Timer <= 0 {
@@ -197,37 +200,19 @@ func (e *ErrorState) Tick() {
 	}
 }
 
-// InfoState shows green status messages that auto-dismiss.
-// Separate from ErrorState so status updates don't look like errors.
-type InfoState struct {
-	Message string
-	Timer   int
-	Visible bool
-}
+// ErrorState is a deprecated alias for MessageState, kept for test compatibility.
+type ErrorState = MessageState
 
-func (info *InfoState) Set(msg string, timer int) {
-	info.Message = msg
-	info.Timer = timer
-	info.Visible = true
-}
-
-func (info *InfoState) Tick() {
-	if info.Visible && info.Timer > 0 {
-		info.Timer--
-		if info.Timer <= 0 {
-			info.Visible = false
-			info.Message = ""
-		}
-	}
-}
+// InfoState is a deprecated alias for MessageState, kept for test compatibility.
+type InfoState = MessageState
 
 // Model represents the main application state
 type Model struct {
 	Audio          *AudioState
 	UI             *UIState
 	Components     *ComponentState
-	Error          *ErrorState
-	Info           *InfoState
+	Error          *MessageState
+	Info           *MessageState
 	Config         *config.Config
 	Icons          IconSet
 	Accent         *accent.Accent

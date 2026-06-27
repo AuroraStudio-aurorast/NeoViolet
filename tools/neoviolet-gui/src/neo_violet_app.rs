@@ -242,22 +242,7 @@ impl Render for NeoVioletApp {
                                     let state = cx.global::<AppState>();
                                     let lyrics_cfg = state.config.desktop_lyrics.clone();
                                     let handle_slot = state.lyrics_window_handle.clone();
-                                    let window_opts = WindowOptions {
-                                        window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                                            point(px(lyrics_cfg.position_x.unwrap_or(100) as f32), px(lyrics_cfg.position_y.unwrap_or(100) as f32)),
-                                            size(px(lyrics_cfg.window_width as f32), px(lyrics_cfg.window_height as f32)),
-                                        ))),
-                                        titlebar: None,
-                                        focus: false,
-                                        window_background: WindowBackgroundAppearance::Transparent,
-                                        kind: if cfg!(target_os = "macos") { WindowKind::Normal } else { WindowKind::PopUp },
-                                        window_decorations: if cfg!(target_os = "linux") {
-                                            Some(WindowDecorations::Client)
-                                        } else {
-                                            None
-                                        },
-                                        ..Default::default()
-                                    };
+                                    let window_opts = components::lyrics_window_options(&lyrics_cfg);
                                     // Defer window creation to avoid crashing during render.
                                     cx.spawn(async move |_, cx| {
                                         cx.background_executor()

@@ -3,9 +3,6 @@ package lyrics
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 )
 
@@ -16,13 +13,7 @@ func init() {
 type eslrcParser struct{}
 
 func (p *eslrcParser) FindSidecar(audioPath string) string {
-	ext := filepath.Ext(audioPath)
-	base := audioPath[:len(audioPath)-len(ext)]
-	path := base + ".eslrc"
-	if _, err := os.Stat(path); err == nil {
-		return path
-	}
-	return ""
+	return findSidecarWithExt(audioPath, ".eslrc")
 }
 
 func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
@@ -109,9 +100,7 @@ func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error)
 		return nil, fmt.Errorf("no valid eslrc lines found")
 	}
 
-	sort.SliceStable(lines, func(i, j int) bool {
-		return lines[i].Time < lines[j].Time
-	})
+	sortLyricLines(lines)
 
 	lyrics.Lines = lines
 	return lyrics, nil

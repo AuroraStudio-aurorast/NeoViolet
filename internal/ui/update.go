@@ -352,25 +352,7 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	m.Audio.Close()
 
 	// Reset audio state but preserve volume
-	savedVolume := m.Audio.Volume
-	m.Audio.Player = nil
-	m.Audio.CurrentSong = ""
-	m.Audio.Artist = ""
-	m.Audio.Album = ""
-	m.Audio.Progress = 0
-	m.Audio.Duration = 0
-	m.Audio.Elapsed = 0
-	m.Audio.IsPlaying = false
-	m.Audio.Lyrics = nil
-	m.Audio.LyricIndex = -1
-	m.Audio.LyricScrollOffset = 0
-	m.Audio.LyricScrollTick = 0
-	m.Audio.LastLyricIndex = 0
-	m.Audio.ActiveLyricLines = nil
-	m.Audio.lastActiveSig = ""
-	m.Audio.LyricNextIndex = -1
-	m.Audio.LyricGapDuration = 0
-	m.Audio.Volume = savedVolume
+	m.Audio.Reset()
 
 	// Reset accent
 	m.Accent = nil

@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -144,25 +143,18 @@ func findApeCLI() string {
 		return ""
 	}
 
+	// Try next to executable, then dev build dir, then system PATH.
+	// exec.LookPath handles platform-specific binary extensions (.exe on Windows).
 	exe, err := os.Executable()
 	if err == nil {
 		dir := filepath.Dir(exe)
-		candidate := filepath.Join(dir, "apecli")
-		if runtime.GOOS == "windows" {
-			candidate += ".exe"
-		}
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
-		}
-
-		// Also check tools/apecli/target/release/ relative to project root
-		// (common during development)
-		devCandidate := filepath.Join(dir, "tools", "apecli", "target", "release", "apecli")
-		if runtime.GOOS == "windows" {
-			devCandidate += ".exe"
-		}
-		if _, err := os.Stat(devCandidate); err == nil {
-			return devCandidate
+		for _, c := range []string{
+			filepath.Join(dir, "apecli"),
+			filepath.Join(dir, "tools", "apecli", "target", "release", "apecli"),
+		} {
+			if path, err := exec.LookPath(c); err == nil {
+				return path
+			}
 		}
 	}
 

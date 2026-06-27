@@ -34,6 +34,29 @@ func (a *AudioState) Close() {
 	}
 }
 
+// Reset clears all audio state fields except Volume (which is preserved).
+func (a *AudioState) Reset() {
+	savedVolume := a.Volume
+	a.Player = nil
+	a.CurrentSong = ""
+	a.Artist = ""
+	a.Album = ""
+	a.Progress = 0
+	a.Duration = 0
+	a.Elapsed = 0
+	a.IsPlaying = false
+	a.Lyrics = nil
+	a.LyricIndex = -1
+	a.LyricScrollOffset = 0
+	a.LyricScrollTick = 0
+	a.LastLyricIndex = 0
+	a.ActiveLyricLines = nil
+	a.lastActiveSig = ""
+	a.LyricNextIndex = -1
+	a.LyricGapDuration = 0
+	a.Volume = savedVolume
+}
+
 func clampVolume(v float64) float64 {
 	if v > 1.0 {
 		return 1.0

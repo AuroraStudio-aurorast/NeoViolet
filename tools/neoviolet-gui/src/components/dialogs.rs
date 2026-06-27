@@ -1,8 +1,31 @@
-use gpui::{div, prelude::*, px, App, ClickEvent, IntoElement, Window};
+use gpui::{div, prelude::*, px, App, Bounds, ClickEvent, IntoElement, Window, WindowBounds, WindowDecorations, WindowOptions, WindowBackgroundAppearance, WindowKind, point, size};
 use yororen_ui::component::{button, modal, modal_actions_row};
 use yororen_ui::theme::ActiveTheme;
 
+use crate::config::DesktopLyricsConfig;
 use crate::state::AppState;
+
+// ── Shared helpers ──
+
+/// Build WindowOptions for a desktop lyrics overlay window from config.
+pub fn lyrics_window_options(cfg: &DesktopLyricsConfig) -> WindowOptions {
+    WindowOptions {
+        window_bounds: Some(WindowBounds::Windowed(Bounds::new(
+            point(px(cfg.position_x.unwrap_or(100) as f32), px(cfg.position_y.unwrap_or(100) as f32)),
+            size(px(cfg.window_width as f32), px(cfg.window_height as f32)),
+        ))),
+        titlebar: None,
+        focus: false,
+        window_background: WindowBackgroundAppearance::Transparent,
+        kind: if cfg!(target_os = "macos") { WindowKind::Normal } else { WindowKind::PopUp },
+        window_decorations: if cfg!(target_os = "linux") {
+            Some(WindowDecorations::Client)
+        } else {
+            None
+        },
+        ..Default::default()
+    }
+}
 
 // ── Public helpers ──
 

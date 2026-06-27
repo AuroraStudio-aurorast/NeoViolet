@@ -18,29 +18,29 @@ import (
 // Tries dhowden/tag first (MP3/FLAC/OGG/MP4), then falls back to APEv2
 // tag parsing (Monkey's Audio .ape files).
 func ExtractFromFile(path string) (image.Image, error) {
-	// 1. Try dhowden/tag (supports most common formats).
-	img, err := extractViaDhowden(path)
-	if err == nil {
-		return img, nil
-	}
-
-	// 2. Fall back to APEv2 for files with APEv2 tags (.ape).
-	img, err = extractViaAPEv2(path)
-	if err == nil {
-		return img, nil
-	}
-
-	return nil, fmt.Errorf("cover: no cover art found")
-}
-
-func extractViaDhowden(path string) (image.Image, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
 
-	return extractCoverFromReader(f)
+	// 1. Try dhowden/tag (supports most common formats).
+	img, err := extractCoverFromReader(f)
+	if err == nil {
+		return img, nil
+	}
+
+	// 2. Fall back to APEv2 for files with APEv2 tags (.ape).
+	f.Seek(0, io.SeekStart)
+	tags, apErr := apetag.Parse(f)
+	if apErr == nil && len(tags.CoverData) > 0 {
+		img, _, decodeErr := image.Decode(bytes.NewReader(tags.CoverData))
+		if decodeErr == nil {
+			return img, nil
+		}
+	}
+
+	return nil, fmt.Errorf("cover: no cover art found")
 }
 
 // ExtractFromReader extracts cover art from an io.ReadSeeker (e.g. bytes.Reader).
@@ -61,18 +61,5 @@ func extractCoverFromReader(r io.ReadSeeker) (image.Image, error) {
 	}
 
 	img, _, err := image.Decode(bytes.NewReader(pic.Data))
-	return img, err
-}
-
-func extractViaAPEv2(path string) (image.Image, error) {
-	tags, err := apetag.ParseFile(path)
-	if err != nil {
-		return nil, err
-	}
-	if len(tags.CoverData) == 0 {
-		return nil, fmt.Errorf("no APEv2 cover art")
-	}
-
-	img, _, err := image.Decode(bytes.NewReader(tags.CoverData))
 	return img, err
 }

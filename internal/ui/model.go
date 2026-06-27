@@ -224,8 +224,8 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 		},
 		Config:      cfg,
 		Icons:       activeIcons,
-		Error:       &ErrorState{},
-		Info:        &InfoState{},
+		Error:       &MessageState{},
+		Info:        &MessageState{},
 		Loading:     filePath != "",
 		pendingPath: filePath,
 	}

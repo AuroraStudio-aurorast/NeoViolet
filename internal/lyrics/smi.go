@@ -3,10 +3,7 @@ package lyrics
 import (
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -35,15 +32,7 @@ func init() {
 type smiParser struct{}
 
 func (p *smiParser) FindSidecar(audioPath string) string {
-	ext := filepath.Ext(audioPath)
-	base := audioPath[:len(audioPath)-len(ext)]
-	for _, candidate := range []string{".smi", ".sami"} {
-		path := base + candidate
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-	return ""
+	return findSidecarWithExt(audioPath, ".smi", ".sami")
 }
 
 func (p *smiParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
@@ -187,9 +176,7 @@ func (p *smiParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 		return nil, fmt.Errorf("no valid smi lines found")
 	}
 
-	sort.SliceStable(lines, func(i, j int) bool {
-		return lines[i].Time < lines[j].Time
-	})
+	sortLyricLines(lines)
 
 	lyrics.Lines = lines
 	return lyrics, nil

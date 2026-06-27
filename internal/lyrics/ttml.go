@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
-	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,15 +19,7 @@ func init() {
 type ttmlParser struct{}
 
 func (p *ttmlParser) FindSidecar(audioPath string) string {
-	ext := filepath.Ext(audioPath)
-	base := audioPath[:len(audioPath)-len(ext)]
-	for _, ext := range []string{".ttml", ".xml"} {
-		path := base + ext
-		if _, err := os.Stat(path); err == nil {
-			return path
-		}
-	}
-	return ""
+	return findSidecarWithExt(audioPath, ".ttml", ".xml")
 }
 
 type ttmlTT struct {
@@ -217,9 +206,7 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 		return nil, fmt.Errorf("no valid ttml paragraphs found")
 	}
 
-	sort.SliceStable(lines, func(i, j int) bool {
-		return lines[i].Time < lines[j].Time
-	})
+	sortLyricLines(lines)
 
 	lyrics.Lines = lines
 	return lyrics, nil

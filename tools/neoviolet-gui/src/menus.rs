@@ -25,16 +25,15 @@ pub static GUI_VER: &str = env!("CARGO_PKG_VERSION");
 // ── Keybindings ──
 
 fn register_bindings(cx: &mut App) {
-    let prefix = if cfg!(target_os = "macos") { "cmd" } else { "ctrl" };
     cx.bind_keys(vec![
-        KeyBinding::new(&format!("{}-q", prefix), QuitApp, None),
-        KeyBinding::new(&format!("{}-,", prefix), Preferences, None),
-        KeyBinding::new(&format!("{}-o", prefix), OpenFile, None),
-        KeyBinding::new(&format!("{}-shift-l", prefix), ToggleDesktopLyrics, None),
-        KeyBinding::new(&format!("{}-+", prefix), ZoomIn, None),
-        KeyBinding::new(&format!("{}-=", prefix), ZoomIn, None),
-        KeyBinding::new(&format!("{}--", prefix), ZoomOut, None),
-        KeyBinding::new(&format!("{}-0", prefix), ZoomReset, None),
+        KeyBinding::new("secondary-q", QuitApp, None),
+        KeyBinding::new("secondary-,", Preferences, None),
+        KeyBinding::new("secondary-o", OpenFile, None),
+        KeyBinding::new("secondary-shift-l", ToggleDesktopLyrics, None),
+        KeyBinding::new("secondary-+", ZoomIn, None),
+        KeyBinding::new("secondary-=", ZoomIn, None),
+        KeyBinding::new("secondary--", ZoomOut, None),
+        KeyBinding::new("secondary-0", ZoomReset, None),
     ]);
 }
 
@@ -78,11 +77,11 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     });
 
     // Zoom — updates AppState + live TerminalApp
-    cx.on_action(move |_: &ZoomIn, cx: &mut App| {
+    let zoom_handler = move |delta: fn(&mut u32), cx: &mut App| {
         let (new_fs, weak_opt, root_eid) = {
             let state = cx.global::<AppState>();
             let mut fs = state.font_size.lock().unwrap();
-            *fs = (*fs + 2).min(48);
+            delta(&mut fs);
             let new_fs = *fs as f32;
             let weak = state.terminal_child.lock().unwrap().clone();
             let eid = *state.root_entity_id.lock().unwrap();
@@ -99,51 +98,18 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         if let Some(eid) = root_eid {
             cx.notify(eid);
         }
+    };
+
+    cx.on_action(move |_: &ZoomIn, cx: &mut App| {
+        zoom_handler(|fs| *fs = (*fs + 2).min(48), cx);
     });
 
     cx.on_action(move |_: &ZoomOut, cx: &mut App| {
-        let (new_fs, weak_opt, root_eid) = {
-            let state = cx.global::<AppState>();
-            let mut fs = state.font_size.lock().unwrap();
-            *fs = (*fs).saturating_sub(2).max(8);
-            let new_fs = *fs as f32;
-            let weak = state.terminal_child.lock().unwrap().clone();
-            let eid = *state.root_entity_id.lock().unwrap();
-            (new_fs, weak, eid)
-        };
-        if let Some(ref weak) = weak_opt {
-            if let Some(terminal) = weak.upgrade() {
-                terminal.update(cx, |t, cx| {
-                    t.terminal_font_size = new_fs;
-                    cx.notify();
-                });
-            }
-        }
-        if let Some(eid) = root_eid {
-            cx.notify(eid);
-        }
+        zoom_handler(|fs| *fs = (*fs).saturating_sub(2).max(8), cx);
     });
 
     cx.on_action(move |_: &ZoomReset, cx: &mut App| {
-        let (new_fs, weak_opt, root_eid) = {
-            let state = cx.global::<AppState>();
-            *state.font_size.lock().unwrap() = 14;
-            let new_fs = 14.0_f32;
-            let weak = state.terminal_child.lock().unwrap().clone();
-            let eid = *state.root_entity_id.lock().unwrap();
-            (new_fs, weak, eid)
-        };
-        if let Some(ref weak) = weak_opt {
-            if let Some(terminal) = weak.upgrade() {
-                terminal.update(cx, |t, cx| {
-                    t.terminal_font_size = new_fs;
-                    cx.notify();
-                });
-            }
-        }
-        if let Some(eid) = root_eid {
-            cx.notify(eid);
-        }
+        zoom_handler(|fs| *fs = 14, cx);
     });
 
     cx.on_action(|_: &OpenRepository, _cx: &mut App| {
@@ -195,22 +161,7 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
 
             // Open the lyrics overlay window and store its handle
             let handle_for_close = cx.global::<AppState>().lyrics_window_handle.clone();
-            let window_opts = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                    point(px(lyrics_cfg.position_x.unwrap_or(100) as f32), px(lyrics_cfg.position_y.unwrap_or(100) as f32)),
-                    size(px(lyrics_cfg.window_width as f32), px(lyrics_cfg.window_height as f32)),
-                ))),
-                titlebar: None,
-                focus: false,
-                window_background: WindowBackgroundAppearance::Transparent,
-                kind: if cfg!(target_os = "macos") { WindowKind::Normal } else { WindowKind::PopUp },
-                window_decorations: if cfg!(target_os = "linux") {
-                    Some(WindowDecorations::Client)
-                } else {
-                    None
-                },
-                ..Default::default()
-            };
+            let window_opts = components::lyrics_window_options(&lyrics_cfg);
 
             let _ = cx.open_window(window_opts, move |window, cx| {
                 let root = cx.new(|cx| crate::desktop_lyrics::DesktopLyricsView::new(cx));

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -25,22 +23,7 @@ func init() {
 type lrcParser struct{}
 
 func (p *lrcParser) FindSidecar(audioPath string) string {
-	ext := filepath.Ext(audioPath)
-	lrcPath := audioPath[:len(audioPath)-len(ext)] + ".lrc"
-	if _, err := os.Stat(lrcPath); err == nil {
-		return lrcPath
-	}
-	return ""
-}
-
-func lrcParseFile(path string) (*LyricsData, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("open lyrics file: %w", err)
-	}
-	defer f.Close()
-	var p lrcParser
-	return p.Parse(f, path)
+	return findSidecarWithExt(audioPath, ".lrc")
 }
 
 func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
@@ -175,9 +158,7 @@ func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 
 	lines = mergeSameTimestamp(lines)
 
-	sort.SliceStable(lines, func(i, j int) bool {
-		return lines[i].Time < lines[j].Time
-	})
+	sortLyricLines(lines)
 
 	lyrics.Lines = lines
 	return lyrics, nil
