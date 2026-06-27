@@ -435,6 +435,29 @@ impl TerminalApp {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // Zoom via scroll wheel: Ctrl+Scroll (non-macOS) or Cmd+Scroll (macOS)
+        // Only active when zoom_via_scroll is enabled in config (disabled by default).
+        if event.modifiers.secondary()
+            && cx.global::<AppState>().config.zoom_via_scroll
+        {
+            let delta = match event.delta {
+                ScrollDelta::Lines(point) => point.y as f32,
+                ScrollDelta::Pixels(point) => f32::from(point.y) / 100.0,
+            };
+            if delta != 0.0 {
+                let new_size = (self.terminal_font_size + delta.signum() * 0.5)
+                    .clamp(8.0, 48.0);
+                self.terminal_font_size = new_size;
+                // Sync AppState so menu zoom actions stay consistent
+                let state = cx.global::<AppState>();
+                *state.font_size.lock().unwrap() = new_size.round() as u32;
+                cx.notify();
+            }
+            window.prevent_default();
+            cx.stop_propagation();
+            return;
+        }
+
         let grid_point = self.terminal_grid_point_and_side(event.position);
         let line_height = self.terminal_line_height();
 

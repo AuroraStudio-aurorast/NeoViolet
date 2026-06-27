@@ -42,6 +42,7 @@ pub struct DesktopLyricsConfig {
 
 // ── Default value helpers for serde ──
 
+fn default_zoom_via_scroll() -> bool { false }
 fn default_desktop_lyrics_enabled() -> bool { false }
 fn default_desktop_lyrics_font_family() -> String {
     if cfg!(target_os = "macos") {
@@ -87,6 +88,9 @@ pub struct GuiConfig {
     pub window_height: u32,
     pub opacity: f32,
     pub neoviolet_path: Option<String>,
+    /// Enable zoom via Ctrl+scroll (non-macOS) or Cmd+scroll (macOS).
+    #[serde(default = "default_zoom_via_scroll")]
+    pub zoom_via_scroll: bool,
     #[serde(default)]
     pub desktop_lyrics: DesktopLyricsConfig,
 }
@@ -100,6 +104,7 @@ impl Default for GuiConfig {
             window_height: 600,
             opacity: 1.0,
             neoviolet_path: None,
+            zoom_via_scroll: false,
             desktop_lyrics: DesktopLyricsConfig::default(),
         }
     }
