@@ -73,6 +73,14 @@ type (
 		Command mediactl.Command
 	}
 
+	// MediaCtlReadyMsg is sent once after the Bubble Tea program starts
+	// to lazily initialize the OS media controller. Deferring init avoids
+	// AppKit-related issues when the first-run wizard runs before the main
+	// program on macOS.
+	MediaCtlReadyMsg struct {
+		Controller mediactl.Controller
+	}
+
 	// LoadTrackMsg requests loading a new audio track at runtime.
 	// Sent by the stdin listener or :open command.
 	LoadTrackMsg struct {

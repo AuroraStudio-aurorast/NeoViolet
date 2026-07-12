@@ -55,8 +55,8 @@ func loadAudioFromStdin(player *audio.Player, generation int) tea.Msg {
 	}
 	if info.Mode()&os.ModeNamedPipe == 0 && info.Mode()&os.ModeCharDevice != 0 {
 		return ErrorMsg{
-			Message: "stdin is a terminal; pipe audio data or provide a file path",
-			Timer:   180,
+			Message:    "stdin is a terminal; pipe audio data or provide a file path",
+			Timer:      180,
 			Generation: generation,
 		}
 	}
@@ -232,13 +232,6 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 
 	if len(seekTo) > 0 && seekTo[0] > 0 {
 		m.pendingSeek = seekTo[0]
-	}
-
-	// Initialize OS media control layer (MPRIS on Linux, no-op elsewhere)
-	var mediaCtlErr error
-	m.MediaCtl, mediaCtlErr = mediactl.New()
-	if mediaCtlErr != nil {
-		logger.Warn("mediactl init failed", "err", mediaCtlErr)
 	}
 
 	// Initialize IPC server for bidirectional GUI communication.

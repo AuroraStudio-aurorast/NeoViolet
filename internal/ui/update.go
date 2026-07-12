@@ -40,6 +40,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleAccentApply(m, msg)
 	case MediaCtlMsg:
 		return handleMediaCtlCmd(m, msg)
+	case MediaCtlReadyMsg:
+		return handleMediaCtlReady(m, msg)
 	case LoadTrackMsg:
 		return handleLoadTrack(m, msg)
 	default:
@@ -285,6 +287,12 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {
 	m.Accent = msg.Accent
 	m.rebuildProgressBar()
+	return m, nil
+}
+
+func handleMediaCtlReady(m *Model, msg MediaCtlReadyMsg) (tea.Model, tea.Cmd) {
+	m.MediaCtl = msg.Controller
+	logger.Debug("Media control layer initialized")
 	return m, nil
 }
 
