@@ -87,14 +87,13 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
             let eid = *state.root_entity_id.lock().unwrap();
             (new_fs, weak, eid)
         };
-        if let Some(ref weak) = weak_opt {
-            if let Some(terminal) = weak.upgrade() {
+        if let Some(ref weak) = weak_opt
+            && let Some(terminal) = weak.upgrade() {
                 terminal.update(cx, |t, cx| {
                     t.terminal_font_size = new_fs;
                     cx.notify();
                 });
             }
-        }
         if let Some(eid) = root_eid {
             cx.notify(eid);
         }
@@ -130,13 +129,11 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         });
 
         cx.spawn(async move |_cx| {
-            if let Ok(Ok(Some(paths))) = rx.await {
-                if let Some(path) = paths.into_iter().next() {
-                    if let Err(e) = ipc.send_open(&path.to_string_lossy()) {
+            if let Ok(Ok(Some(paths))) = rx.await
+                && let Some(path) = paths.into_iter().next()
+                    && let Err(e) = ipc.send_open(&path.to_string_lossy()) {
                         log::error!("[open-file] IPC send failed: {}", e);
                     }
-                }
-            }
         })
         .detach();
     });
@@ -164,7 +161,7 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
             let window_opts = components::lyrics_window_options(&lyrics_cfg);
 
             let _ = cx.open_window(window_opts, move |window, cx| {
-                let root = cx.new(|cx| crate::desktop_lyrics::DesktopLyricsView::new(cx));
+                let root = cx.new(crate::desktop_lyrics::DesktopLyricsView::new);
                 // Store window handle for programmatic close via spawn loop.
                 *handle_for_close.lock().unwrap() = Some(window.window_handle());
                 root

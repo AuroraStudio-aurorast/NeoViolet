@@ -8,7 +8,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use portable_pty::{CommandBuilder, PtySize, native_pty_system};
+use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 
 use crate::platform;
 use crate::terminal::{BackendCommand, BackendEvent};
@@ -20,6 +20,7 @@ pub fn spawn_neoviolet_terminal(
     events: Sender<BackendEvent>,
     launch_args: &[String],
     child_pid: Arc<Mutex<Option<u32>>>,
+    monospace_font: &str,
 ) -> Result<Sender<BackendCommand>> {
     let pty_system = native_pty_system();
     let pair = pty_system
@@ -53,6 +54,7 @@ pub fn spawn_neoviolet_terminal(
         std::env::var("COLORTERM").unwrap_or_else(|_| "truecolor".into()),
     );
     cmd.env("TERM_PROGRAM", "neoviolet-gui");
+    cmd.env("NEOVIOLET_FONT", monospace_font);
     if let Ok(path) = std::env::var("PATH") {
         cmd.env("PATH", path);
     }

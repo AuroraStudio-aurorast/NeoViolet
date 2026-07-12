@@ -41,12 +41,7 @@ fn url_to_file_path(raw: &str) -> Option<String> {
     }
 
     // Reject non-file URL schemes
-    let without_scheme = if let Some(rest) = trimmed.strip_prefix("file://") {
-        rest
-    } else {
-        // Unknown scheme — not a file
-        return None;
-    };
+    let without_scheme = trimmed.strip_prefix("file://")?;
 
     // Strip optional "localhost" authority
     let path_part = without_scheme
@@ -66,12 +61,11 @@ fn percent_decode(input: &str) -> String {
     while let Some(c) = chars.next() {
         if c == '%' {
             let hex: String = chars.by_ref().take(2).collect();
-            if hex.len() == 2 {
-                if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+            if hex.len() == 2
+                && let Ok(byte) = u8::from_str_radix(&hex, 16) {
                     result.push(byte as char);
                     continue;
                 }
-            }
             // Invalid escape — keep literal
             result.push('%');
             result.push_str(&hex);

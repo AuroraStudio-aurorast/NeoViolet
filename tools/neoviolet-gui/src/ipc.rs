@@ -8,6 +8,7 @@
 //! GUI → TUI:  {"type":"open","path":"..."}
 //!             {"type":"desktop_lyrics","enable":true|false}
 //!             {"type":"play_pause"}
+//!             {"type":"set_font","font_name":"..."}
 //! TUI → GUI:  {"type":"quit","dialog":true|false}
 //!             {"type":"lyrics","lines":[...],"elapsed":12.3,"title":"...","artist":"..."}
 
@@ -54,6 +55,10 @@ pub struct IpcMessage {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artist: Option<String>,
+
+    // set_font: font name reported by the GUI
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub font_name: Option<String>,
 }
 
 impl IpcMessage {
@@ -81,6 +86,15 @@ impl IpcMessage {
             ..Default::default()
         }
     }
+
+    /// Notify the TUI of the GUI's configured font.
+    pub fn set_font(font_name: &str) -> Self {
+        Self {
+            msg_type: "set_font".into(),
+            font_name: Some(font_name.to_string()),
+            ..Default::default()
+        }
+    }
 }
 
 /// Wraps an authenticated TcpStream connection.
@@ -102,16 +116,13 @@ impl IpcClient {
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
 
         let (addr, token) = loop {
-            match std::fs::read_to_string(&port_path) {
-                Ok(s) => {
-                    let mut lines = s.lines();
-                    let addr = lines.next().unwrap_or("").trim().to_string();
-                    let token = lines.next().unwrap_or("").trim().to_string();
-                    if !addr.is_empty() && !token.is_empty() {
-                        break (addr, token);
-                    }
+            if let Ok(s) = std::fs::read_to_string(&port_path) {
+                let mut lines = s.lines();
+                let addr = lines.next().unwrap_or("").trim().to_string();
+                let token = lines.next().unwrap_or("").trim().to_string();
+                if !addr.is_empty() && !token.is_empty() {
+                    break (addr, token);
                 }
-                Err(_) => {}
             }
             if std::time::Instant::now() > deadline {
                 return Err(format!("IPC port file not ready after 5 s: {}", port_path));
@@ -193,8 +204,9 @@ impl IpcClient {
                             }
                         }
                     }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock
-                        || e.kind() == std::io::ErrorKind::TimedOut => {}
+                    Err(e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock
+                            || e.kind() == std::io::ErrorKind::TimedOut => {}
                     Err(e) => {
                         log::warn!("[ipc] reader error: {}", e);
                         break;

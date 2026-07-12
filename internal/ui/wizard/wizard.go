@@ -66,10 +66,16 @@ func logoGradient() string {
 }
 
 func Run() (*config.Config, error) {
-	var selected iconOption
 	var sfPath string
 
 	home, _ := os.UserHomeDir()
+
+	// Detect Nerd Font support: preselect Nerd Font if terminal has it,
+	// otherwise fall back to Fallback for maximum compatibility.
+	selected := IconFallback
+	if detectNerdFont() {
+		selected = IconNerd
+	}
 
 	descriptions := map[iconOption]string{
 		IconNerd:     "Nerd Font: Requires a Nerd Font. (Recommended)",

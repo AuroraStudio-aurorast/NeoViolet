@@ -78,7 +78,7 @@ impl NeoVioletApp {
             *state.terminal_child.lock().unwrap() = None;
         }
 
-        let new_child = cx.new(|cx| TerminalApp::new(cx));
+        let new_child = cx.new(TerminalApp::new);
         cx.global::<AppState>()
             .terminal_child
             .lock()
@@ -250,7 +250,7 @@ impl Render for NeoVioletApp {
                                             .await;
                                         let _ = cx.update(|cx| {
                                             cx.open_window(window_opts, move |window, cx| {
-                                                let root = cx.new(|cx| crate::desktop_lyrics::DesktopLyricsView::new(cx));
+                                                let root = cx.new(crate::desktop_lyrics::DesktopLyricsView::new);
                                                 *handle_slot.lock().unwrap() = Some(window.window_handle());
                                                 root
                                             })

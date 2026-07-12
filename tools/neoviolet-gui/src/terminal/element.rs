@@ -451,8 +451,8 @@ impl Element for TerminalElement {
             cx,
         );
 
-        if let Some(marked_text) = self.marked_text.as_ref().filter(|text| !text.is_empty()) {
-            if let Some(cursor) = prepaint.cursor {
+        if let Some(marked_text) = self.marked_text.as_ref().filter(|text| !text.is_empty())
+            && let Some(cursor) = prepaint.cursor {
                 let pos = point(
                     prepaint.bounds.origin.x + prepaint.metrics.cell_width * cursor.col as f32,
                     prepaint.bounds.origin.y + prepaint.metrics.line_height * cursor.row as f32,
@@ -477,7 +477,6 @@ impl Element for TerminalElement {
                 window.paint_quad(fill(bg_bounds, cx.theme().surface.canvas));
                 shaped.paint(pos, prepaint.metrics.line_height, window, cx).ok();
             }
-        }
 
         if let Some(cursor) = prepaint.cursor {
             if self.marked_text.as_ref().is_some_and(|text| !text.is_empty()) {

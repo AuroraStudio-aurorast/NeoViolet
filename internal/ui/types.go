@@ -244,6 +244,9 @@ type Model struct {
 	// via Unix domain socket. nil when running standalone.
 	ipcServer *ipc.Server
 
+	// IpcFontName stores the font name received from the GUI via IPC.
+	IpcFontName string
+
 	// DesktopLyricsEnabled controls whether the TUI streams lyric data
 	// to the GUI for the desktop lyrics overlay window.
 	DesktopLyricsEnabled bool

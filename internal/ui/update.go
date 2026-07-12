@@ -88,6 +88,11 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 				case "play_pause":
 					logger.Debug("IPC: play_pause from GUI")
 					m.togglePlayback()
+				case "set_font":
+					if ipcMsg.FontName != "" {
+						m.IpcFontName = ipcMsg.FontName
+						logger.Info("IPC: font from GUI", "name", ipcMsg.FontName)
+					}
 				default:
 					logger.Debug("IPC: unhandled message type", "type", ipcMsg.Type)
 				}
@@ -390,6 +395,7 @@ func lyricSig(lines []ipc.LyricLineJSON, elapsed time.Duration, nextIdx int) str
 	}
 	return sb.String()
 }
+
 // Includes all agents (AgentFilter temporarily cleared), plus up to 2 previous
 // and 2 next lines for context (so the GUI can show surrounding lyrics).
 func buildLyricLinesJSON(data *lyrics.LyricsData, elapsed time.Duration) []ipc.LyricLineJSON {

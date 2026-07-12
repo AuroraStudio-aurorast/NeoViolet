@@ -35,8 +35,7 @@ fn main() {
             if let Ok(output) = std::process::Command::new(&shell)
                 .args(["-l", "-c", "env -0"])
                 .output()
-            {
-                if output.status.success() {
+                && output.status.success() {
                     for entry in output.stdout.split(|b| *b == 0) {
                         if entry.is_empty() {
                             continue;
@@ -73,7 +72,6 @@ fn main() {
                         }
                     }
                 }
-            }
         });
     }
 
@@ -182,7 +180,7 @@ fn main() {
                     false
                 });
 
-                let terminal_child = cx.new(|cx| TerminalApp::new(cx));
+                let terminal_child = cx.new(TerminalApp::new);
                 cx.global::<AppState>()
                     .terminal_child
                     .lock()

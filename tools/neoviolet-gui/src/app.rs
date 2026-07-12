@@ -53,19 +53,31 @@ impl TerminalApp {
             (fs, ff, args, ro, pid)
         };
 
-        let backend_tx =
-            backend::spawn_neoviolet_terminal(tab_id.clone(), 100, 30, events_tx.clone(), &launch_args, child_pid.clone())
-                .expect("failed to spawn neoviolet terminal");
+        let backend_tx = backend::spawn_neoviolet_terminal(
+            tab_id.clone(),
+            100,
+            30,
+            events_tx.clone(),
+            &launch_args,
+            child_pid.clone(),
+            &font_family,
+        )
+        .expect("failed to spawn neoviolet terminal");
 
         // Connect IPC client to the TUI's TCP endpoint (retries up to 5 s),
-        // then start a reader thread to receive messages from the TUI.
+        // then send the font info and start a reader thread.
         if let Some(pid) = *child_pid.lock().unwrap() {
             let ipc = cx.global::<AppState>().ipc.clone();
             let incoming = cx.global::<AppState>().ipc_incoming.clone();
+            let ipc_font = font_family.clone();
             std::thread::spawn(move || {
                 if let Err(e) = ipc.connect(pid) {
                     log::warn!("[ipc] connect failed: {}", e);
                     return;
+                }
+                // Notify the TUI of the configured font so it can detect Nerd Font
+                if let Err(e) = ipc.send(&crate::ipc::IpcMessage::set_font(&ipc_font)) {
+                    log::warn!("[ipc] set_font send failed: {}", e);
                 }
                 ipc.start_reader(incoming);
             });
@@ -242,26 +254,21 @@ impl TerminalApp {
         // Cmd+C: copy selection
         if event.keystroke.modifiers.secondary()
             && event.keystroke.key.eq_ignore_ascii_case("c")
-        {
-            if let Some(text) = self.tab.selection_text() {
+            && let Some(text) = self.tab.selection_text() {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
                 window.prevent_default();
                 cx.stop_propagation();
                 return;
             }
-        }
 
         // Cmd+V: paste
         if event.keystroke.modifiers.secondary()
             && event.keystroke.key.eq_ignore_ascii_case("v")
-        {
-            if let Some(clipboard) = cx.read_from_clipboard() {
-                if let Some(text) = clipboard.text() {
+            && let Some(clipboard) = cx.read_from_clipboard()
+                && let Some(text) = clipboard.text() {
                     self.paste_into_terminal(&text, window, cx);
                     return;
                 }
-            }
-        }
 
         // Character input — defer to the IME/InputHandler system.
         // The EntityInputHandler will commit the final text via replace_text_in_range.
@@ -363,13 +370,12 @@ impl TerminalApp {
         }
 
         // Right-click: copy selection to clipboard (no paste).
-        if let Some(text) = self.tab.selection_text() {
-            if !text.is_empty() {
+        if let Some(text) = self.tab.selection_text()
+            && !text.is_empty() {
                 cx.write_to_clipboard(ClipboardItem::new_string(text));
                 self.tab.clear_selection();
                 cx.notify();
             }
-        }
     }
 
     fn begin_terminal_selection(
@@ -423,7 +429,7 @@ impl TerminalApp {
     ) {
         // If the terminal has mouse tracking, report the release.
         // In SGR mode bit 7 signals release; in normal mode button 3 = release.
-        self.send_mouse_report(0 | 0x80, event.position, window, cx);
+        self.send_mouse_report(0x80, event.position, window, cx);
 
         self.terminal_selecting = false;
         cx.notify();
@@ -441,7 +447,7 @@ impl TerminalApp {
             && cx.global::<AppState>().config.zoom_via_scroll
         {
             let delta = match event.delta {
-                ScrollDelta::Lines(point) => point.y as f32,
+                ScrollDelta::Lines(point) => point.y,
                 ScrollDelta::Pixels(point) => f32::from(point.y) / 100.0,
             };
             if delta != 0.0 {

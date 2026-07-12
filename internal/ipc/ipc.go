@@ -50,6 +50,9 @@ type Message struct {
 	Duration float64         `json:"duration,omitempty"` // seconds (unused in Phase 1)
 	Title    string          `json:"title,omitempty"`
 	Artist   string          `json:"artist,omitempty"`
+
+	// set_font: font name reported by the GUI
+	FontName string `json:"font_name,omitempty"`
 }
 
 // LyricLineJSON is a single lyric line serialized for IPC.
