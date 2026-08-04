@@ -20,15 +20,17 @@ const (
 	contentOffset = tabsHeight + footerHeight + helpHeight
 )
 
+// loadingFrames is the animated spinner shown during track loading.
+var loadingFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
 var appLayoutStyle = lipgloss.NewStyle()
 
 func renderMainView(m *Model) tea.View {
 	if m.Loading && !m.switchingTrack {
 		// Full-screen loading: only for initial startup load.
 		// Runtime track switches keep the main UI visible.
-		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		idx := m.loadingTick / 6 % len(frames)
-		return tea.NewView(loadingStyle.Render(frames[idx] + " Loading..."))
+		idx := m.loadingTick / 6 % len(loadingFrames)
+		return tea.NewView(loadingStyle.Render(loadingFrames[idx] + " Loading..."))
 	}
 
 	if m.UI.Width < minWidth || m.UI.Height < minHeight {
@@ -336,9 +338,8 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.switchingTrack {
-		frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
-		idx := m.loadingTick / 6 % len(frames)
-		return infoStyle.Width(m.UI.Width).Render(" " + frames[idx] + " Loading...")
+		idx := m.loadingTick / 6 % len(loadingFrames)
+		return infoStyle.Width(m.UI.Width).Render(" " + loadingFrames[idx] + " Loading...")
 	}
 
 	if m.Info.Message != "" && m.Info.Visible {

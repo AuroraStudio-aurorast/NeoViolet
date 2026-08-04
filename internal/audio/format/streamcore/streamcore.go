@@ -39,6 +39,12 @@ func (sc *Core) ResetBuffer() {
 	sc.Pos = 0
 }
 
+// Len returns the total number of samples in the stream.
+func (sc *Core) Len() int { return sc.TotalSamples }
+
+// Position returns the current absolute sample position.
+func (sc *Core) Position() int { return sc.CurrentSample }
+
 // Err implements beep.StreamSeekCloser.Err — always nil for these streamers.
 func (sc *Core) Err() error { return nil }
 
@@ -51,4 +57,26 @@ func MinInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// Int16ToFloat64 converts interleaved int16 PCM samples into stereo float64
+// pairs in [-1, 1]. Mono input is duplicated to both channels. Decoders that
+// produce raw bytes (alac) or already-normalized floats (mp2) keep their own
+// conversions.
+func Int16ToFloat64(pcm []int16, numChannels int) []float64 {
+	if len(pcm) == 0 {
+		return nil
+	}
+	numFrames := len(pcm) / numChannels
+	out := make([]float64, numFrames*2)
+
+	for i := 0; i < numFrames; i++ {
+		for ch := 0; ch < numChannels && ch < 2; ch++ {
+			out[i*2+ch] = float64(pcm[i*numChannels+ch]) / 32768.0
+		}
+		if numChannels == 1 {
+			out[i*2+1] = out[i*2]
+		}
+	}
+	return out
 }

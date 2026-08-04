@@ -45,9 +45,7 @@ type Backend interface {
 	Close() error
 }
 
-// ---------------------------------------------------------------------------
 // Streamer (wraps any Backend, implements beep.StreamSeekCloser)
-// ---------------------------------------------------------------------------
 
 // Streamer implements beep.StreamSeekCloser for APE-encoded audio.
 type Streamer struct {
@@ -165,7 +163,7 @@ func findApeCLI() string {
 	return ""
 }
 
-// --- Streamer methods ---
+// Streamer methods
 
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	if s.Closed {
@@ -245,9 +243,7 @@ func (s *Streamer) Close() error {
 	return s.backend.Close()
 }
 
-// ---------------------------------------------------------------------------
 // apecli pipe backend
-// ---------------------------------------------------------------------------
 
 type apeCLIBackend struct {
 	binary string
@@ -502,9 +498,7 @@ func (b *apeCLIBackend) kill() {
 	b.stdout = nil
 }
 
-// ---------------------------------------------------------------------------
 // ffmpeg pipe backend
-// ---------------------------------------------------------------------------
 
 type ffmpegBackend struct {
 	path   string // original .ape file path
@@ -770,9 +764,7 @@ func (b *ffmpegBackend) kill() {
 	b.stdout = nil
 }
 
-// ---------------------------------------------------------------------------
 // mac (Monkey's Audio Console) backend — uses temp file
-// ---------------------------------------------------------------------------
 
 type macBackend struct {
 	cmd     *exec.Cmd
@@ -945,9 +937,7 @@ func (b *macBackend) cleanup() error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
 // PCM conversion helpers
-// ---------------------------------------------------------------------------
 
 // convertPCMToFloat64 converts raw PCM bytes to float64 samples and stores
 // them in the provided buffer (which must be large enough). Supports 8, 16,

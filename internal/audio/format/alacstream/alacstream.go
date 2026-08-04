@@ -117,6 +117,8 @@ func (s *Streamer) decodeFrame(index uint32) ([]byte, error) {
 }
 
 // pcmToFloat64 converts little-endian PCM bytes to float64 samples in [-1, 1].
+// Unlike streamcore.Int16ToFloat64, it handles 8/16/24/32-bit raw sample
+// sizes and cannot go through the shared int16 path without precision loss.
 func pcmToFloat64(pcm []byte, numChannels, sampleSize int) []float64 {
 	bytesPerSample := sampleSize / 8
 	if bytesPerSample == 0 {
@@ -158,10 +160,6 @@ func pcmToFloat64(pcm []byte, numChannels, sampleSize int) []float64 {
 	}
 	return out
 }
-
-func (s *Streamer) Len() int { return s.TotalSamples }
-
-func (s *Streamer) Position() int { return s.CurrentSample }
 
 func (s *Streamer) Seek(samples int) error {
 	if s.Closed {

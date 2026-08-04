@@ -93,6 +93,8 @@ func DecodeMP2(r io.ReadSeeker) (*Streamer, beep.Format, error) {
 }
 
 // toFrame converts an mpeg.Samples into a cachedFrame with float64 stereo pairs.
+// The mpeg library already yields normalized float32 samples, so this only
+// widens them to float64 (unlike streamcore.Int16ToFloat64).
 func toFrame(s *mpeg.Samples, numChannels int) cachedFrame {
 	in := s.Interleaved
 	if len(in) == 0 {
@@ -146,14 +148,6 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	}
 
 	return totalFilled, true
-}
-
-func (s *Streamer) Len() int {
-	return s.TotalSamples
-}
-
-func (s *Streamer) Position() int {
-	return s.CurrentSample
 }
 
 func (s *Streamer) Seek(samples int) error {

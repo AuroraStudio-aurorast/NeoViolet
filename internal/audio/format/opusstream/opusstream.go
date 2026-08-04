@@ -142,7 +142,7 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 			continue
 		}
 
-		s.Buf = int16ToFloat64(out, s.NumChannels)
+		s.Buf = streamcore.Int16ToFloat64(out, s.NumChannels)
 		s.BufSamples = len(s.Buf) / 2
 		s.Pos = 0
 		s.packetIndex++
@@ -150,28 +150,6 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 
 	return totalFilled, true
 }
-
-func int16ToFloat64(pcm []int16, numChannels int) []float64 {
-	if len(pcm) == 0 {
-		return nil
-	}
-	numFrames := len(pcm) / numChannels
-	out := make([]float64, numFrames*2)
-
-	for i := 0; i < numFrames; i++ {
-		for ch := 0; ch < numChannels && ch < 2; ch++ {
-			out[i*2+ch] = float64(pcm[i*numChannels+ch]) / 32768.0
-		}
-		if numChannels == 1 {
-			out[i*2+1] = out[i*2]
-		}
-	}
-	return out
-}
-
-func (s *Streamer) Len() int { return s.TotalSamples }
-
-func (s *Streamer) Position() int { return s.CurrentSample }
 
 func (s *Streamer) Seek(samples int) error {
 	if s.Closed {

@@ -140,7 +140,7 @@ func pickBest(items []Track, meta TrackMeta) *Track {
 			continue
 		}
 		if strings.TrimSpace(t.SyncedLyrics) == "" {
-			continue // plain-only candidates are abandoned (D2)
+			continue // plain-only candidates are abandoned
 		}
 		delta := 0.0
 		if meta.Duration > 0 {
@@ -160,40 +160,31 @@ func pickBest(items []Track, meta TrackMeta) *Track {
 
 // lyricsFromTrack parses a fetched track into LyricsData.
 func lyricsFromTrack(t Track) (*lyrics.LyricsData, error) {
-	parsed, err := lyrics.ParseLRC(strings.NewReader(cleanControl(t.SyncedLyrics)))
-	if err != nil {
-		return nil, fmt.Errorf("parse fetched lyrics: %w", err)
-	}
-	parsed.Format = "lrclib"
-	parsed.Path = fmt.Sprintf("lrclib://%d", t.ID)
-	if parsed.Title == "" {
-		parsed.Title = t.TrackName
-	}
-	if parsed.Artist == "" {
-		parsed.Artist = t.ArtistName
-	}
-	if parsed.Album == "" {
-		parsed.Album = t.AlbumName
-	}
-	return parsed, nil
+	return lyricsFromData(t.ID, t.SyncedLyrics, t.TrackName, t.ArtistName, t.AlbumName)
 }
 
 // lyricsFromCacheFile rebuilds LyricsData from a disk cache record.
 func lyricsFromCacheFile(cf *CacheFile) (*lyrics.LyricsData, error) {
-	parsed, err := lyrics.ParseLRC(strings.NewReader(cf.SyncedLyrics))
+	return lyricsFromData(cf.TrackID, cf.SyncedLyrics, cf.TrackName, cf.ArtistName, cf.AlbumName)
+}
+
+// lyricsFromData parses LRC text and fills in metadata fallbacks from the
+// source record (fetched track or disk cache).
+func lyricsFromData(id int64, synced, title, artist, album string) (*lyrics.LyricsData, error) {
+	parsed, err := lyrics.ParseLRC(strings.NewReader(cleanControl(synced)))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse fetched lyrics: %w", err)
 	}
 	parsed.Format = "lrclib"
-	parsed.Path = fmt.Sprintf("lrclib://%d", cf.TrackID)
+	parsed.Path = fmt.Sprintf("lrclib://%d", id)
 	if parsed.Title == "" {
-		parsed.Title = cf.TrackName
+		parsed.Title = title
 	}
 	if parsed.Artist == "" {
-		parsed.Artist = cf.ArtistName
+		parsed.Artist = artist
 	}
 	if parsed.Album == "" {
-		parsed.Album = cf.AlbumName
+		parsed.Album = album
 	}
 	return parsed, nil
 }
