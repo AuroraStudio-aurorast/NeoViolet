@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
@@ -21,10 +24,26 @@ var useXDG atomic.Bool
 func SetXDGConfig(enabled bool) { useXDG.Store(enabled) }
 
 type LyricsConfig struct {
-	Enabled        bool     `json:"enabled"`
-	ScrollSpeed    int      `json:"scroll_speed"`
-	FormatPriority []string `json:"format_priority"`
+	Enabled        bool               `json:"enabled"`
+	ScrollSpeed    int                `json:"scroll_speed"`
+	FormatPriority []string           `json:"format_priority"`
+	Fetch          LyricsFetchConfig  `json:"fetch"`
 }
+
+// LyricsFetchConfig controls online lyrics fetching (LRCLIB-compatible API).
+type LyricsFetchConfig struct {
+	Enabled     bool   `json:"enabled"`      // online fetch master switch (required for auto-fetch)
+	BaseURL     string `json:"base_url"`     // API root; empty = DefaultBaseURL
+	Timeout     int    `json:"timeout"`      // per-request timeout in seconds
+	Security    string `json:"security"`     // "strict" | "basic"
+	InsecureTLS bool   `json:"insecure_tls"` // skip TLS certificate verification
+}
+
+const (
+	DefaultBaseURL      = "https://lrclib.net"
+	DefaultFetchTimeout = 10
+	DefaultSecurity     = "strict"
+)
 
 type ProgressBarConfig struct {
 	Fill           []string `json:"fill"`
@@ -86,7 +105,74 @@ func (c *Config) Normalize() bool {
 	if normalized != c.DefaultVolume {
 		c.DefaultVolume = normalized
 	}
-	return c.DefaultVolume != orig.DefaultVolume
+
+	f := &c.Lyrics.Fetch
+
+	// base_url: accept only http/https with a non-empty host; strip trailing slash.
+	// Invalid values fall back to empty (meaning DefaultBaseURL) so a bad config
+	// never blocks the app.
+	if f.BaseURL != "" {
+		u, err := url.Parse(f.BaseURL)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+			logger.Warn("invalid lyrics fetch base_url, falling back to default", "url", f.BaseURL)
+			f.BaseURL = ""
+		} else {
+			f.BaseURL = strings.TrimRight(f.BaseURL, "/")
+		}
+	}
+
+	// timeout: <=0 falls back to default.
+	if f.Timeout <= 0 {
+		f.Timeout = DefaultFetchTimeout
+	}
+
+	// security: only "strict"/"basic" are accepted.
+	if f.Security != "strict" && f.Security != "basic" {
+		f.Security = DefaultSecurity
+	}
+
+	if f.InsecureTLS {
+		logger.Warn("lyrics fetch: TLS certificate verification disabled")
+	}
+
+	// Plain http (non-localhost) is not recommended.
+	if u, err := url.Parse(f.BaseURL); err == nil && u.Scheme == "http" && !isLocalHost(u.Hostname()) {
+		logger.Warn("lyrics fetch over plain http (not recommended)", "url", f.BaseURL)
+	}
+
+	// A private/local base_url may be an accidental SSRF target; warn but do not
+	// block, since self-hosted instances may legitimately live on a LAN.
+	if u, err := url.Parse(f.BaseURL); err == nil && isPrivateHost(u.Hostname()) {
+		logger.Warn("lyrics fetch base_url points to private/local address", "url", f.BaseURL)
+	}
+
+	volumeChanged := c.DefaultVolume != orig.DefaultVolume
+	fetchChanged := f.Enabled != orig.Lyrics.Fetch.Enabled ||
+		f.BaseURL != orig.Lyrics.Fetch.BaseURL ||
+		f.Timeout != orig.Lyrics.Fetch.Timeout ||
+		f.Security != orig.Lyrics.Fetch.Security ||
+		f.InsecureTLS != orig.Lyrics.Fetch.InsecureTLS
+	return volumeChanged || fetchChanged
+}
+
+// isLocalHost reports whether host is localhost/127.x/::1 (plain http allowed).
+func isLocalHost(host string) bool {
+	return host == "localhost" || strings.HasPrefix(host, "127.") || host == "::1"
+}
+
+// isPrivateHost reports whether host is a private/loopback/link-local IP or a
+// local-domain suffix. Used for warnings only; requests are never blocked.
+func isPrivateHost(host string) bool {
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast()
+	}
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	for _, suf := range []string{".local", ".internal", ".lan", ".home", ".localhost"} {
+		if strings.HasSuffix(host, suf) {
+			return true
+		}
+	}
+	return host == "localhost"
 }
 
 func DefaultConfig() Config {
@@ -101,7 +187,12 @@ func DefaultConfig() Config {
 		Lyrics: LyricsConfig{
 			Enabled:        true,
 			ScrollSpeed:    6,
-			FormatPriority: []string{"embedded", "lrc", "ttml", "qrc", "yrc", "eslrc", "lys"},
+			FormatPriority: []string{"embedded", "lrc", "ttml", "qrc", "yrc", "eslrc", "lys", "online"},
+			Fetch: LyricsFetchConfig{
+				Enabled:  true,
+				Timeout:  DefaultFetchTimeout,
+				Security: DefaultSecurity,
+			},
 		},
 		VolumeBar: VolumeBarConfig{
 			Width:          16,
@@ -198,7 +289,7 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.Normalize() {
-		logger.Info("Volume auto-repaired", "default_volume", cfg.DefaultVolume)
+		logger.Info("Config auto-repaired")
 		if saveErr := cfg.Save(); saveErr != nil {
 			logger.Warn("Failed to save auto-repaired config", "err", saveErr)
 		}
