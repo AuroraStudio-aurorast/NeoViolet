@@ -332,6 +332,13 @@ func (m *Model) maybeFetchLyrics(path string) tea.Cmd {
 	m.LyricsFetching = true
 
 	meta := fetch.TrackMeta{Title: title, Artist: artist, Album: m.Audio.Album, Duration: m.Audio.Duration.Seconds()}
+	return m.buildFetchCmd(meta, sig, baseURL)
+}
+
+// buildFetchCmd returns a tea.Cmd that runs FetchLyrics and reports the result
+// via FetchLyricsResultMsg. Shared by auto-fetch and :lrc switch online.
+func (m *Model) buildFetchCmd(meta fetch.TrackMeta, sig, baseURL string) tea.Cmd {
+	fetchCfg := m.Config.Lyrics.Fetch
 	opts := fetch.FetchOpts{
 		BaseURL:     baseURL,
 		Timeout:     time.Duration(fetchCfg.Timeout) * time.Second,

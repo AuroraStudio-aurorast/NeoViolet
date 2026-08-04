@@ -13,6 +13,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 )
 
 var (
@@ -481,6 +482,9 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		format := parts[2]
+		if format == "online" {
+			return m, m.fetchLyricsManual()
+		}
 		data, err := lyrics.FindAndParse(m.Audio.Player.Path(), []string{format})
 		if err != nil {
 			m.Error.Set(fmt.Sprintf("Failed to parse %s lyrics: %v", format, err), m.Config.Error.Duration)
@@ -543,4 +547,35 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, agent, or desktop)", subcmd), m.Config.Error.Duration)
 		return m, nil
 	}
+}
+
+// fetchLyricsManual implements :lrc switch online. Unlike auto-fetch it
+// bypasses the negative cache but never the provider cooldown.
+func (m *Model) fetchLyricsManual() tea.Cmd {
+	baseURL := effectiveBaseURL(m.Config.Lyrics.Fetch.BaseURL)
+	if m.fetchRateLimit.Blocked(baseURL) {
+		m.Error.Set(fmt.Sprintf("Rate limited, retry in %s", shortDur(m.fetchRateLimit.Remaining(baseURL))), m.Config.Error.Duration)
+		return nil
+	}
+	title, artist := m.Audio.CurrentSong, m.Audio.Artist
+	if title == "" || artist == "" || artist == "Unknown Artist" {
+		m.Error.Set("Cannot fetch online lyrics: missing track metadata", m.Config.Error.Duration)
+		return nil
+	}
+	sig := m.currentSig()
+	m.fetchCache.Clear(sig) // bypass negative cache on explicit request
+	m.fetchCache.Store(sig, fetch.CachePending, nil)
+	m.LyricsFetching = true
+
+	meta := fetch.TrackMeta{Title: title, Artist: artist, Album: m.Audio.Album, Duration: m.Audio.Duration.Seconds()}
+	return m.buildFetchCmd(meta, sig, baseURL)
+}
+
+// shortDur renders a duration as "3m 12s" or "45s".
+func shortDur(d time.Duration) string {
+	d = d.Round(time.Second)
+	if mins := int(d.Minutes()); mins > 0 {
+		return fmt.Sprintf("%dm %ds", mins, int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%ds", int(d.Seconds()))
 }

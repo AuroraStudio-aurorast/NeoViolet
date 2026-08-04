@@ -185,3 +185,77 @@ func TestHandleFetchLyricsResultTransientClearsPending(t *testing.T) {
 		t.Error("transient error left pending cache entry")
 	}
 }
+
+func TestFetchLyricsManual(t *testing.T) {
+	m := newFetchTestModel()
+	m.Audio.CurrentSong = "Shelter"
+	m.Audio.Artist = "Porter Robinson"
+	m.Audio.Duration = 219 * time.Second
+
+	// negative cache present: manual fetch must bypass it
+	sig := m.currentSig()
+	m.fetchCache.Store(sig, fetch.CacheNotFound, nil)
+
+	cmd := m.fetchLyricsManual()
+	if cmd == nil {
+		t.Fatal("fetchLyricsManual() = nil, want cmd")
+	}
+	if !m.LyricsFetching {
+		t.Error("LyricsFetching not set")
+	}
+	if _, _, ok := m.fetchCache.Lookup(sig); !ok {
+		t.Error("pending marker not stored")
+	}
+}
+
+func TestFetchLyricsManualCooldown(t *testing.T) {
+	m := newFetchTestModel()
+	m.Audio.CurrentSong = "Shelter"
+	m.Audio.Artist = "Porter Robinson"
+	m.Audio.Duration = 219 * time.Second
+
+	rl, err := fetch.LoadRateLimit(t.TempDir())
+	if err != nil {
+		t.Fatalf("LoadRateLimit: %v", err)
+	}
+	m.fetchRateLimit = rl
+	if err := rl.SetRateLimited(config.DefaultBaseURL, time.Hour); err != nil {
+		t.Fatalf("SetRateLimited: %v", err)
+	}
+
+	if cmd := m.fetchLyricsManual(); cmd != nil {
+		t.Error("fetchLyricsManual() during cooldown = cmd, want nil")
+	}
+	if m.Error.Message == "" {
+		t.Error("cooldown should set an error message with remaining time")
+	}
+}
+
+func TestFetchLyricsManualMissingMetadata(t *testing.T) {
+	m := newFetchTestModel()
+	m.Audio.CurrentSong = ""
+	m.Audio.Artist = "Unknown Artist"
+
+	if cmd := m.fetchLyricsManual(); cmd != nil {
+		t.Error("fetchLyricsManual() without metadata = cmd, want nil")
+	}
+	if m.Error.Message == "" {
+		t.Error("missing metadata should set an error message")
+	}
+}
+
+func TestShortDur(t *testing.T) {
+	tests := []struct {
+		in   time.Duration
+		want string
+	}{
+		{45 * time.Second, "45s"},
+		{3*time.Minute + 12*time.Second, "3m 12s"},
+		{0, "0s"},
+	}
+	for _, tt := range tests {
+		if got := shortDur(tt.in); got != tt.want {
+			t.Errorf("shortDur(%v) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
