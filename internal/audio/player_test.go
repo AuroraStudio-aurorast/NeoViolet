@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+func TestIsSyntheticFormat(t *testing.T) {
+	// Core tracker/MIDI formats are always synthetic; openmpt-only extensions
+	// (.mptm etc.) depend on build tags, so they are not asserted here.
+	for _, ext := range []string{".mid", ".midi", ".mod", ".xm", ".s3m", ".it"} {
+		if !IsSyntheticFormat(ext) {
+			t.Errorf("IsSyntheticFormat(%q) = false, want true", ext)
+		}
+	}
+	for _, ext := range []string{".mp3", ".flac", ".wav", ".ogg", ".ape"} {
+		if IsSyntheticFormat(ext) {
+			t.Errorf("IsSyntheticFormat(%q) = true, want false", ext)
+		}
+	}
+}
+
 func TestPlayerPlayPauseResume(t *testing.T) {
 	if os.Getenv("TEST_AUDIO") == "" {
 		t.Skip("Set TEST_AUDIO=1 and provide file via TEST_FILE to run audio tests")

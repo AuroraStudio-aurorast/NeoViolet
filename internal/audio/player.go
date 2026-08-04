@@ -707,6 +707,10 @@ func isSyntheticFormat(ext string) bool {
 	return false
 }
 
+// IsSyntheticFormat reports whether ext is a synthesized format (MIDI/tracker)
+// that typically carries no lyrics, so online lyric fetch is skipped for it.
+func IsSyntheticFormat(ext string) bool { return isSyntheticFormat(ext) }
+
 func (p *Player) openSynthetic(path, ext string) error {
 	logger.Info("Opening synthetic", "path", path, "ext", ext)
 
