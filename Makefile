@@ -9,7 +9,7 @@ ifeq ($(GOOS),windows)
 endif
 
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS   = -s -w -X github.com/AuroraStudio-aurorast/neoviolet/cmd/neoviolet/cmd.Version=$(VERSION)
+LDFLAGS   = -s -w -X github.com/AuroraStudio-aurorast/neoviolet/cmd/neoviolet/cmd.Version=$(VERSION) -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=$(VERSION)
 BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
 TEST_FLAGS  ?= -count=1
 
