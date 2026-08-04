@@ -254,6 +254,29 @@ func configPath() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
+// CacheDir returns the directory for cached data (e.g. fetched lyrics).
+// XDG mode: $XDG_CACHE_HOME/neoviolet/lyrics, falling back to ~/.cache/neoviolet/lyrics.
+// Non-XDG:  <ConfigDir()>/caches/lyrics.
+func CacheDir() (string, error) {
+	if useXDG.Load() {
+		xdgCache := os.Getenv("XDG_CACHE_HOME")
+		if xdgCache == "" || !filepath.IsAbs(xdgCache) {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", fmt.Errorf("get home dir for XDG cache: %w", err)
+			}
+			xdgCache = filepath.Join(home, ".cache")
+		}
+		return filepath.Join(xdgCache, "neoviolet", "lyrics"), nil
+	}
+
+	dir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "caches", "lyrics"), nil
+}
+
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
 	path, err := configPath()

@@ -2,6 +2,8 @@ package config
 
 import (
 	"encoding/json"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -208,5 +210,52 @@ func TestIsPrivateHost(t *testing.T) {
 		if isPrivateHost(host) {
 			t.Errorf("isPrivateHost(%q) = true, want false", host)
 		}
+	}
+}
+
+func TestCacheDirXDG(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "/tmp/nv-cache")
+	t.Setenv("XDG_CONFIG_HOME", "/tmp/nv-config")
+	SetXDGConfig(true)
+	defer SetXDGConfig(false)
+
+	dir, err := CacheDir()
+	if err != nil {
+		t.Fatalf("CacheDir() error: %v", err)
+	}
+	want := "/tmp/nv-cache/neoviolet/lyrics"
+	if dir != want {
+		t.Errorf("CacheDir() = %q, want %q", dir, want)
+	}
+}
+
+func TestCacheDirXDGFallback(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	SetXDGConfig(true)
+	defer SetXDGConfig(false)
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir, err := CacheDir()
+	if err != nil {
+		t.Fatalf("CacheDir() error: %v", err)
+	}
+	want := home + "/.cache/neoviolet/lyrics"
+	if dir != want {
+		t.Errorf("CacheDir() = %q, want %q", dir, want)
+	}
+}
+
+func TestCacheDirNonXDG(t *testing.T) {
+	SetXDGConfig(false)
+
+	dir, err := CacheDir()
+	if err != nil {
+		t.Fatalf("CacheDir() error: %v", err)
+	}
+	if !strings.HasSuffix(dir, string(filepath.Separator)+"caches"+string(filepath.Separator)+"lyrics") {
+		t.Errorf("CacheDir() = %q, want .../caches/lyrics suffix", dir)
 	}
 }
