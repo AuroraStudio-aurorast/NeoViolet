@@ -160,12 +160,12 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 // errFromResponse converts a non-200 response into an error.
 func (c *Client) errFromResponse(resp *http.Response) error {
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrNotFound
+	}
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxFetchResponse))
 	var api APIError
 	if json.Unmarshal(body, &api) == nil && api.Code != 0 {
-		if resp.StatusCode == http.StatusNotFound {
-			return ErrNotFound
-		}
 		return fmt.Errorf("%w: %s (status %d)", ErrUnexpectedResponse, api.Message, resp.StatusCode)
 	}
 	return fmt.Errorf("%w: status %d", ErrUnexpectedResponse, resp.StatusCode)

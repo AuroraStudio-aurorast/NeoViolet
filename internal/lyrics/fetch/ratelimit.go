@@ -28,13 +28,16 @@ type RateLimit struct {
 	until map[string]time.Time
 }
 
+// NewRateLimit returns an empty rate limit state with no persisted file.
+func NewRateLimit() *RateLimit {
+	return &RateLimit{until: make(map[string]time.Time)}
+}
+
 // LoadRateLimit loads cooldowns from dir/ratelimit.json. A missing or corrupt
 // file yields an empty state, never an error.
 func LoadRateLimit(dir string) (*RateLimit, error) {
-	r := &RateLimit{
-		file:  filepath.Join(dir, rateLimitFileName),
-		until: make(map[string]time.Time),
-	}
+	r := NewRateLimit()
+	r.file = filepath.Join(dir, rateLimitFileName)
 	data, err := os.ReadFile(r.file)
 	if err != nil {
 		return r, nil
