@@ -9,6 +9,7 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 	neoviolet "github.com/AuroraStudio-aurorast/neoviolet/internal/ui"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ui/wizard"
@@ -87,6 +88,15 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			logger.Warn("Failed to load config", "err", err)
 		}
+
+		// Sweep expired online-lyrics cache files at startup (best effort).
+		go func() {
+			if dir, err := config.CacheDir(); err == nil {
+				if n, err := fetch.CleanupExpired(dir); err == nil && n > 0 {
+					logger.Info("lyrics cache cleanup", "removed", n)
+				}
+			}
+		}()
 
 		// Apply --vol flag: override config default if explicitly set
 		if flagVolume > 0 {
