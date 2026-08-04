@@ -573,3 +573,25 @@ func TestParse_FourLanguageExtendedBracketMerge(t *testing.T) {
 		t.Error("extended bracket multilingual merge not found")
 	}
 }
+
+func TestParseLRC(t *testing.T) {
+	input := "[00:01.00]first line\n[00:02.00]second line\n"
+	d, err := ParseLRC(strings.NewReader(input))
+	if err != nil {
+		t.Fatalf("ParseLRC() error: %v", err)
+	}
+	if len(d.Lines) != 2 {
+		t.Fatalf("ParseLRC() lines = %d, want 2", len(d.Lines))
+	}
+	if d.Lines[0].Text != "first line" || d.Lines[1].Text != "second line" {
+		t.Errorf("ParseLRC() texts = %q, %q", d.Lines[0].Text, d.Lines[1].Text)
+	}
+}
+
+func TestParseLRCEmpty(t *testing.T) {
+	// Empty input has no valid lyric lines; the parser reports an error
+	// rather than returning an empty result (existing parser behavior).
+	if _, err := ParseLRC(strings.NewReader("")); err == nil {
+		t.Error("ParseLRC() error = nil, want error for empty input")
+	}
+}

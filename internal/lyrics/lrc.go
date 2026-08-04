@@ -238,3 +238,9 @@ func (d *LyricsData) CurrentLine(elapsed time.Duration) int {
 	})
 	return idx - 1
 }
+
+// ParseLRC parses standard LRC text from r. It is the exported entry point for
+// code outside this package (e.g. online lyric fetch) that receives raw LRC.
+func ParseLRC(r io.Reader) (*LyricsData, error) {
+	return (&lrcParser{}).Parse(r, "")
+}
