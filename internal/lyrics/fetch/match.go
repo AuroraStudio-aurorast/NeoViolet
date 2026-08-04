@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	bracketRe = regexp.MustCompile(`\([^()]*\)|\[[^\]]*\]`)
-	featRe    = regexp.MustCompile(`(?i)\b\s*(feat\.?|ft\.?|featuring)\b.*$`)
-	artistSep = regexp.MustCompile(`(?i)\s*(,|;|、|/|&|\x00|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*`)
+	bracketRe  = regexp.MustCompile(`\([^()]*\)|\[[^\]]*\]`)
+	featRe     = regexp.MustCompile(`(?i)\b\s*(feat\.?|ft\.?|featuring)\b.*$`)
+	artistSep  = regexp.MustCompile(`(?i)\s*(,|;|、|/|&|\x00|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bwith\b)\s*`)
 	punctChars = "`~!@#$%^&*()_|+=?;:.,<>{}[]\\/"
 )
 

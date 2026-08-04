@@ -65,7 +65,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 
 	// no .tmp residue
-	matches, err := filepath.Glob(filepath.Join(cacheFilePathOrDie(t, "sig-rt")+".tmp"))
+	matches, err := filepath.Glob(filepath.Join(cacheFilePathOrDie(t, "sig-rt") + ".tmp"))
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}

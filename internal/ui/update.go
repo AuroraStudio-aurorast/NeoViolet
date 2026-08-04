@@ -303,7 +303,6 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-
 // maybeFetchLyrics starts an async online lyric fetch when the track has no
 // local lyrics and all auto-fetch preconditions hold. Returns nil otherwise.
 func (m *Model) maybeFetchLyrics(path string) tea.Cmd {

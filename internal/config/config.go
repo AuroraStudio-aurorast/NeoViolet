@@ -24,10 +24,10 @@ var useXDG atomic.Bool
 func SetXDGConfig(enabled bool) { useXDG.Store(enabled) }
 
 type LyricsConfig struct {
-	Enabled        bool               `json:"enabled"`
-	ScrollSpeed    int                `json:"scroll_speed"`
-	FormatPriority []string           `json:"format_priority"`
-	Fetch          LyricsFetchConfig  `json:"fetch"`
+	Enabled        bool              `json:"enabled"`
+	ScrollSpeed    int               `json:"scroll_speed"`
+	FormatPriority []string          `json:"format_priority"`
+	Fetch          LyricsFetchConfig `json:"fetch"`
 }
 
 // LyricsFetchConfig controls online lyrics fetching (LRCLIB-compatible API).

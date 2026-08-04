@@ -197,7 +197,10 @@ func TestClientThrottle(t *testing.T) {
 }
 
 func TestParseRetryAfter(t *testing.T) {
-	tests := []struct{ in string; want time.Duration }{
+	tests := []struct {
+		in   string
+		want time.Duration
+	}{
 		{"", defaultRetryAfter},
 		{"3", 3 * time.Second},
 		{"-1", defaultRetryAfter},
@@ -211,7 +214,10 @@ func TestParseRetryAfter(t *testing.T) {
 }
 
 func TestClampDuration(t *testing.T) {
-	tests := []struct{ in float64; want int }{
+	tests := []struct {
+		in   float64
+		want int
+	}{
 		{0, 0},
 		{219.01, 219},
 		{0.4, 1},
