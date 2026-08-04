@@ -5,6 +5,7 @@
 config.json
 history.txt
 *.log
+caches/
 
 .DS_Store
 .DS_Store?
