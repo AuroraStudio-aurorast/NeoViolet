@@ -123,12 +123,11 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 		if sig != m.Audio.LastSentLyricSig {
 			m.Audio.LastSentLyricSig = sig
 			lyricMsg := ipc.Message{
-				Type:     "lyrics",
-				Lines:    lines,
-				Elapsed:  m.Audio.Elapsed.Seconds(),
-				Duration: m.Audio.Duration.Seconds(),
-				Title:    m.Audio.CurrentSong,
-				Artist:   m.Audio.Artist,
+				Type:    "lyrics",
+				Lines:   lines,
+				Elapsed: m.Audio.Elapsed.Seconds(),
+				Title:   m.Audio.CurrentSong,
+				Artist:  m.Audio.Artist,
 			}
 			_ = m.ipcServer.SendJSON(lyricMsg)
 		}

@@ -235,8 +235,8 @@ func TestAudioState_SetVolumeNoPlayer(t *testing.T) {
 	}
 }
 
-func TestErrorState_Tick_Empty(t *testing.T) {
-	e := &ErrorState{Visible: true}
+func TestMessageState_Tick_Empty(t *testing.T) {
+	e := &MessageState{Visible: true}
 	e.Tick() // Timer = 0, no decrement
 	if !e.Visible {
 		t.Error("Visible should remain true when Timer is 0")

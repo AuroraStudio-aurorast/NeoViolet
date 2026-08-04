@@ -45,11 +45,10 @@ type Message struct {
 	Enable *bool `json:"enable,omitempty"`
 
 	// lyrics: streaming payload from TUI to GUI
-	Lines    []LyricLineJSON `json:"lines,omitempty"`
-	Elapsed  float64         `json:"elapsed,omitempty"`  // seconds
-	Duration float64         `json:"duration,omitempty"` // seconds (unused in Phase 1)
-	Title    string          `json:"title,omitempty"`
-	Artist   string          `json:"artist,omitempty"`
+	Lines   []LyricLineJSON `json:"lines,omitempty"`
+	Elapsed float64         `json:"elapsed,omitempty"` // seconds
+	Title   string          `json:"title,omitempty"`
+	Artist  string          `json:"artist,omitempty"`
 
 	// set_font: font name reported by the GUI
 	FontName string `json:"font_name,omitempty"`

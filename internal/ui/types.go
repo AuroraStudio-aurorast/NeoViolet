@@ -192,7 +192,6 @@ type ComponentState struct {
 	CommandInput textinput.Model
 }
 
-// ErrorState is a deprecated alias for MessageState, kept for test compatibility.
 // MessageState shows a transient text message that auto-dismisses.
 // Used for both error (red) and info (green) status updates.
 type MessageState struct {
@@ -216,12 +215,6 @@ func (e *MessageState) Tick() {
 		}
 	}
 }
-
-// ErrorState is a deprecated alias for MessageState, kept for test compatibility.
-type ErrorState = MessageState
-
-// InfoState is a deprecated alias for MessageState, kept for test compatibility.
-type InfoState = MessageState
 
 // Model represents the main application state
 type Model struct {
@@ -281,6 +274,5 @@ type Model struct {
 	// handleAudioLoaded, where it is batched with other startup commands.
 	fetchCmd tea.Cmd
 
-	MediaCtl  mediactl.Controller
-	mediaChan chan mediactl.Command
+	MediaCtl mediactl.Controller
 }
