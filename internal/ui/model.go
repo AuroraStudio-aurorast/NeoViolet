@@ -19,6 +19,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
 
@@ -232,6 +233,19 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 
 	if len(seekTo) > 0 && seekTo[0] > 0 {
 		m.pendingSeek = seekTo[0]
+	}
+
+	// Online lyric fetch state: session cache + persisted provider cooldown.
+	m.fetchCache = fetch.NewCache()
+	if dir, err := config.CacheDir(); err == nil {
+		if rl, rlErr := fetch.LoadRateLimit(dir); rlErr == nil {
+			m.fetchRateLimit = rl
+		} else {
+			logger.Warn("failed to load rate limit state", "err", rlErr)
+		}
+	}
+	if m.fetchRateLimit == nil {
+		m.fetchRateLimit = fetch.NewRateLimit()
 	}
 
 	// Initialize IPC server for bidirectional GUI communication.

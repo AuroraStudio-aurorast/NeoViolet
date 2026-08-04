@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,9 +14,12 @@ import (
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
 
@@ -44,6 +49,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleMediaCtlReady(m, msg)
 	case LoadTrackMsg:
 		return handleLoadTrack(m, msg)
+	case FetchLyricsResultMsg:
+		return handleFetchLyricsResult(m, msg)
 	default:
 		return m, nil
 	}
@@ -217,6 +224,8 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 
 	m.Loading = false
 	m.switchingTrack = false
+	// Clear any in-flight lyric fetch indicator from a previous track.
+	m.LyricsFetching = false
 	// Clear loading line from normal screen
 	fmt.Fprint(os.Stdout, "\033[2K\r")
 	// Hide ConEmu progress bar
@@ -269,11 +278,19 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 			m.Audio.Lyrics = data
 			m.Audio.LyricIndex = -1
 			m.Audio.ShowLyrics = true
+		} else if cmd := m.maybeFetchLyrics(msg.Path); cmd != nil {
+			m.fetchCmd = cmd
 		}
 	}
 
 	if m.Config.Accent.IsEnabled() {
-		return m, loadAccentCmd(msg.Player)
+		accentCmd := loadAccentCmd(msg.Player)
+		if m.fetchCmd != nil {
+			cmd := tea.Batch(m.fetchCmd, accentCmd)
+			m.fetchCmd = nil
+			return m, cmd
+		}
+		return m, accentCmd
 	}
 
 	// Push initial track metadata to OS media control layer
@@ -281,7 +298,110 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		m.MediaCtl.Update(m.buildPlayState())
 	}
 
+	cmd := m.fetchCmd
+	m.fetchCmd = nil
+	return m, cmd
+}
+
+
+// maybeFetchLyrics starts an async online lyric fetch when the track has no
+// local lyrics and all auto-fetch preconditions hold. Returns nil otherwise.
+func (m *Model) maybeFetchLyrics(path string) tea.Cmd {
+	fetchCfg := m.Config.Lyrics.Fetch
+	if !fetchCfg.Enabled || !hasOnlineEntry(m.Config.Lyrics.FormatPriority) {
+		return nil
+	}
+	title := m.Audio.CurrentSong
+	artist := m.Audio.Artist
+	if title == "" || artist == "" || artist == "Unknown Artist" {
+		return nil
+	}
+	if audio.IsSyntheticFormat(filepath.Ext(path)) {
+		return nil
+	}
+	baseURL := effectiveBaseURL(fetchCfg.BaseURL)
+	if m.fetchRateLimit.Blocked(baseURL) {
+		logger.Debug("lyrics fetch skipped: provider cooling down", "base_url", baseURL)
+		return nil
+	}
+	sig := m.currentSig()
+	if _, _, ok := m.fetchCache.Lookup(sig); ok {
+		return nil // found / negative / cooling / pending: nothing to do
+	}
+	m.fetchCache.Store(sig, fetch.CachePending, nil)
+	m.LyricsFetching = true
+
+	meta := fetch.TrackMeta{Title: title, Artist: artist, Album: m.Audio.Album, Duration: m.Audio.Duration.Seconds()}
+	opts := fetch.FetchOpts{
+		BaseURL:     baseURL,
+		Timeout:     time.Duration(fetchCfg.Timeout) * time.Second,
+		InsecureTLS: fetchCfg.InsecureTLS,
+		Basic:       fetchCfg.Security == "basic",
+		Cache:       m.fetchCache,
+		RateLimit:   m.fetchRateLimit,
+	}
+	return func() tea.Msg {
+		data, err := fetch.FetchLyrics(context.Background(), meta, opts)
+		return FetchLyricsResultMsg{Data: data, Err: err, Sig: sig}
+	}
+}
+
+// handleFetchLyricsResult mounts fetched lyrics, guarding against stale
+// results from a superseded track switch.
+func handleFetchLyricsResult(m *Model, msg FetchLyricsResultMsg) (tea.Model, tea.Cmd) {
+	if msg.Err != nil {
+		// Transient failures must not poison the cache or the pending marker;
+		// negative results were already cached inside FetchLyrics.
+		if !errors.Is(msg.Err, fetch.ErrNotFound) && !errors.Is(msg.Err, fetch.ErrNoMatch) {
+			m.fetchCache.Clear(msg.Sig)
+		}
+		if msg.Sig != m.currentSig() {
+			return m, nil
+		}
+		switch {
+		case errors.Is(msg.Err, fetch.ErrOffline):
+			logger.Debug("lyrics fetch offline, skipped")
+		case errors.Is(msg.Err, fetch.ErrRateLimited):
+			logger.Warn("lyrics fetch rate limited")
+		default:
+			logger.Debug("lyrics fetch failed", "err", msg.Err)
+		}
+		m.LyricsFetching = false
+		return m, nil
+	}
+	if msg.Sig != m.currentSig() {
+		return m, nil // stale success: cache was written, display is dropped
+	}
+	m.LyricsFetching = false
+	if msg.Data != nil {
+		m.Audio.Lyrics = msg.Data
+		m.Audio.LyricIndex = -1
+		m.Audio.ShowLyrics = true
+	}
 	return m, nil
+}
+
+// currentSig returns the normalized signature of the current track.
+func (m *Model) currentSig() string {
+	return fetch.Sign(m.Audio.CurrentSong, m.Audio.Artist, m.Audio.Album, m.Audio.Duration.Seconds())
+}
+
+// hasOnlineEntry reports whether "online" is present in the priority list.
+func hasOnlineEntry(priority []string) bool {
+	for _, f := range priority {
+		if f == "online" {
+			return true
+		}
+	}
+	return false
+}
+
+// effectiveBaseURL returns the configured provider URL or the default.
+func effectiveBaseURL(cfgBase string) string {
+	if cfgBase != "" {
+		return cfgBase
+	}
+	return config.DefaultBaseURL
 }
 
 func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {

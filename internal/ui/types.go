@@ -8,12 +8,14 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/progress"
 	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
 
@@ -67,6 +69,13 @@ type (
 
 	AccentApplyMsg struct {
 		Accent *accent.Accent
+	}
+
+	// FetchLyricsResultMsg carries the outcome of an async online lyric fetch.
+	FetchLyricsResultMsg struct {
+		Data *lyrics.LyricsData
+		Err  error
+		Sig  string // normalized track signature; stale results are dropped
 	}
 
 	MediaCtlMsg struct {
@@ -258,6 +267,19 @@ type Model struct {
 	// DesktopLyricsEnabled controls whether the TUI streams lyric data
 	// to the GUI for the desktop lyrics overlay window.
 	DesktopLyricsEnabled bool
+
+	// fetchCache and fetchRateLimit back online lyric fetching. They are
+	// session-scoped and shared between auto-fetch and :lrc switch online.
+	fetchCache     *fetch.Cache
+	fetchRateLimit *fetch.RateLimit
+
+	// LyricsFetching is true while an online fetch for the current track is
+	// in flight, so the footer can show a fetching indicator.
+	LyricsFetching bool
+
+	// fetchCmd holds the pending online lyric fetch command until the end of
+	// handleAudioLoaded, where it is batched with other startup commands.
+	fetchCmd tea.Cmd
 
 	MediaCtl  mediactl.Controller
 	mediaChan chan mediactl.Command

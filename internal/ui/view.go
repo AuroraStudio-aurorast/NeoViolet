@@ -112,7 +112,7 @@ func renderContent(m *Model) string {
 	// When lyrics are rendered in the footer, they take 1 row (footerHeight=6).
 	// Without lyrics the footer is only 5 rows, so content gets that row back.
 	offset := contentOffset
-	if !(m.Audio.Lyrics != nil && m.Audio.ShowLyrics) {
+	if !(m.Audio.Lyrics != nil && m.Audio.ShowLyrics) && !m.LyricsFetching {
 		offset = contentOffset - 1
 	}
 
@@ -195,7 +195,9 @@ func renderFooter(m *Model) string {
 	var lyricText string
 	maxWidth := m.UI.Width - 6
 
-	if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
+	if m.LyricsFetching && !(m.Audio.Lyrics != nil && m.Audio.ShowLyrics) {
+		lyricText = "[Fetching lyrics...]"
+	} else if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
 		if len(m.Audio.ActiveLyricLines) > 0 {
 			active := m.Audio.ActiveLyricLines
 			parts := make([]string, 0, len(active))
