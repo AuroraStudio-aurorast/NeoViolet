@@ -22,12 +22,12 @@ import (
 )
 
 const (
-	maxFetchResponse   = 2 << 20 // 2 MiB response cap
-	minRequestGap      = 200 * time.Millisecond
-	dialTimeout        = 3 * time.Second
+	maxFetchResponse    = 2 << 20 // 2 MiB response cap
+	minRequestGap       = 200 * time.Millisecond
+	dialTimeout         = 3 * time.Second
 	maxRateLimitRetries = 1
-	defaultRetryAfter  = 2 * time.Second
-	maxRedirects       = 5
+	defaultRetryAfter   = 2 * time.Second
+	maxRedirects        = 5
 )
 
 // Error values returned by the fetch package.
@@ -73,7 +73,10 @@ func NewClient(baseURL string, timeout time.Duration, insecureTLS bool, rateLimi
 	transport.DialContext = (&net.Dialer{Timeout: dialTimeout, KeepAlive: 30 * time.Second}).DialContext
 	if insecureTLS {
 		//nolint:gosec // explicit opt-in via config; warned about at config load
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12,
+		}
 	}
 	httpClient := &http.Client{
 		Transport: transport,
