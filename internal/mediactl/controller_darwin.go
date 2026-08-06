@@ -7,8 +7,7 @@
 //
 // The ObjC bridge pattern (dynamic class registration, MPRemoteCommand handler
 // wiring, MPNowPlayingInfoCenter dictionary building) is derived from
-//
-// See acknowledgement at `/docs/ACKNOWLEDGMENTS.md#github-com-go-musicfox-go-musicfox`.
+// go-musicfox; see /docs/ACKNOWLEDGMENTS.md#github-com-go-musicfox-go-musicfox.
 
 package mediactl
 
@@ -26,11 +25,9 @@ import (
 	"github.com/ebitengine/purego/objc"
 )
 
-// =========================================================================
 // autorelease pool — ObjC objects created with "autorelease" need a pool
 // on their thread. AppKit creates pools for the main event loop but our
-// Bubble Tea goroutine has none. We create explicit pools via libobjc.
-// =========================================================================
+// Bubble Tea goroutine has none. We create explicit pools via libobjc
 
 var (
 	_objcLib                 uintptr
@@ -46,9 +43,7 @@ func autoPool(body func()) {
 	body()
 }
 
-// =========================================================================
 // ObjC constants (NSInteger → int32 for purego ABI compat on arm64)
-// =========================================================================
 
 const (
 	cmdHandlerSuccess       int32 = 0
@@ -63,18 +58,14 @@ const (
 	playbackStateInterrupted              // 4
 )
 
-// =========================================================================
 // Global reference for ObjC handler callbacks
-// =========================================================================
 
 var (
 	_darwinCtrlMu sync.Mutex
 	_darwinCtrl   *darwinCtrl
 )
 
-// =========================================================================
 // ObjC selector cache — all registered once at init()
-// =========================================================================
 
 var (
 	sel_alloc              objc.SEL
@@ -125,12 +116,13 @@ var (
 	}{}
 
 	// App delegate selectors
-	sel_finishLaunching      objc.SEL
+	sel_finishLaunching       objc.SEL
 	sel_appDidFinishLaunching objc.SEL
 	sel_appShouldTerminate    objc.SEL
 )
 
 // ObjC class handles
+
 var (
 	class_NSString               objc.Class
 	class_NSNumber               objc.Class
@@ -164,7 +156,7 @@ func init() {
 	purego.RegisterLibFunc(&_objcAutoreleasePoolPush, _objcLib, "objc_autoreleasePoolPush")
 	purego.RegisterLibFunc(&_objcAutoreleasePoolPop, _objcLib, "objc_autoreleasePoolPop")
 
-	// ---- selectors -------------------------------------------------------
+	// selectors
 	sel_alloc = objc.RegisterName("alloc")
 	sel_init = objc.RegisterName("init")
 	sel_release = objc.RegisterName("release")
@@ -222,7 +214,7 @@ func init() {
 	sel_appDidFinishLaunching = objc.RegisterName("applicationDidFinishLaunching:")
 	sel_appShouldTerminate = objc.RegisterName("applicationShouldTerminateAfterLastWindowClosed:")
 
-	// ---- classes ---------------------------------------------------------
+	// classes
 	class_NSString = objc.GetClass("NSString")
 	class_NSNumber = objc.GetClass("NSNumber")
 	class_NSMutableDictionary = objc.GetClass("NSMutableDictionary")
@@ -235,7 +227,7 @@ func init() {
 	class_MPRemoteCommandCenter = objc.GetClass("MPRemoteCommandCenter")
 	class_MPMediaItemArtwork = objc.GetClass("MPMediaItemArtwork")
 
-	// ---- custom ObjC classes ---------------------------------------------
+	// custom ObjC classes
 	var err error
 
 	class_MPRemoteCommandHandler, err = objc.RegisterClass(
@@ -271,9 +263,7 @@ func init() {
 	}
 }
 
-// =========================================================================
 // NSApplication delegate — bootstraps the app inside [NSApp run]
-// =========================================================================
 
 var (
 	_bootstrapMu   sync.Mutex
@@ -313,6 +303,7 @@ func appShouldTerminate(id objc.ID, cmd objc.SEL, notification objc.ID) bool { r
 // MacOSRun initialises NSApplication, registers a delegate, and blocks on
 // [NSApp run] until the callback fn returns (which triggers terminate:).
 // Must be called from the main thread.
+
 func MacOSRun(fn func()) {
 	nsApp := objc.ID(class_NSApplication).Send(sel_sharedApplication)
 	nsApp.Send(sel_setActivationPolicy, 2) // Prohibited
@@ -336,9 +327,7 @@ func MacOSRun(fn func()) {
 	nsApp.Send(sel_run)
 }
 
-// =========================================================================
 // ObjC convenience helpers
-// =========================================================================
 
 func nsString(s string) objc.ID {
 	id := objc.ID(class_NSString).Send(sel_alloc).Send(sel_initWithUTF8String, s)
@@ -361,15 +350,13 @@ func nsMutableDict() objc.ID {
 }
 
 // dictSetKV is the hot path — called ~12× per Update tick.
+
 func dictSetKV(dict, key, val objc.ID) {
 	dict.Send(sel_setValueForKey, val, key)
 }
 
-// =========================================================================
-// Command handler callbacks — called by ObjC runtime from NSApp event loop
-// =========================================================================
+// Command handler callbacks — called by ObjC runtime from NSApp event loop// sendCmd is the shared implementation for all MPRemoteCommand handlers.
 
-// sendCmd is the shared implementation for all MPRemoteCommand handlers.
 func sendCmd(ct CommandType) int32 {
 	_darwinCtrlMu.Lock()
 	c := _darwinCtrl
@@ -422,9 +409,7 @@ func handleSleep(id objc.ID, cmd objc.SEL, notification objc.ID) {
 
 func handleWake(id objc.ID, cmd objc.SEL, notification objc.ID) {}
 
-// =========================================================================
 // darwinCtrl
-// =========================================================================
 
 type darwinCtrl struct {
 	mu         sync.Mutex
@@ -473,6 +458,7 @@ func (c *darwinCtrl) Start() (<-chan Command, error) {
 
 // registerCommands wires MPRemoteCommandCenter to our handler.
 // Caller MUST be inside an autorelease pool.
+
 func (c *darwinCtrl) registerCommands() {
 	skip := nsDouble(15.0)
 	arr := objc.ID(class_NSArray).Send(sel_arrayWithObject, skip)
@@ -496,6 +482,7 @@ func (c *darwinCtrl) registerCommands() {
 
 // registerNotifications observes sleep/power-off/wake notifications.
 // Caller MUST be inside an autorelease pool.
+
 func (c *darwinCtrl) registerNotifications() {
 	nc := objc.ID(class_NSWorkspace).Send(sel_sharedWorkspace).Send(sel_notificationCenter)
 	zero := objc.ID(0)
@@ -513,6 +500,7 @@ func (c *darwinCtrl) registerNotifications() {
 // Caches by image identity — re-encoding only happens when the cover
 // image object actually changes, not on every Update() tick.
 // Caller MUST be inside an autorelease pool.
+
 func (c *darwinCtrl) buildArtwork(cover image.Image) objc.ID {
 	if cover == nil {
 		return 0

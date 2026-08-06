@@ -33,7 +33,7 @@ func (p *embeddedParser) Parse(r io.Reader, sourcePath string) (*LyricsData, err
 		return nil, nil
 	}
 
-	// CHECK 1 — USLT (MP3) / LYRICS (Vorbis)
+	// USLT (MP3) / LYRICS (Vorbis)
 	if lyricsText := m.Lyrics(); lyricsText != "" {
 		var lrc lrcParser
 		data, err := lrc.Parse(strings.NewReader(lyricsText), sourcePath)
@@ -45,7 +45,7 @@ func (p *embeddedParser) Parse(r io.Reader, sourcePath string) (*LyricsData, err
 		}
 	}
 
-	// CHECK 1.5 — TXXX with USLT/lyrics description (ffmpeg workaround, MP3 only)
+	// TXXX with USLT/lyrics description (ffmpeg workaround, MP3 only)
 	if m.FileType() == tag.MP3 {
 		raw := m.Raw()
 		if lyricsText := extractTXXXLyrics(raw); lyricsText != "" {
@@ -55,7 +55,7 @@ func (p *embeddedParser) Parse(r io.Reader, sourcePath string) (*LyricsData, err
 		}
 	}
 
-	// CHECK 2 — SYLT (MP3 only)
+	// SYLT (MP3 only)
 	if m.FileType() == tag.MP3 {
 		raw := m.Raw()
 		for _, key := range []string{"SYLT", "SLT"} {
@@ -69,7 +69,7 @@ func (p *embeddedParser) Parse(r io.Reader, sourcePath string) (*LyricsData, err
 		}
 	}
 
-	// CHECK 3 — UNSYNCEDLYRICS (Vorbis only)
+	// UNSYNCEDLYRICS (Vorbis only)
 	if m.Format() == tag.VORBIS {
 		raw := m.Raw()
 		if rawVal, ok := raw["unsyncedlyrics"]; ok {

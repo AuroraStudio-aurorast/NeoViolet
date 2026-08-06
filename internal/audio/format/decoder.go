@@ -23,7 +23,7 @@ func NewFormatDecoder() *FormatDecoder {
 	return &FormatDecoder{}
 }
 
-// ---- Format probe infrastructure ----
+// Format probe infrastructure
 
 // FormatProbe inspects raw bytes and reports whether it recognizes the format.
 // It returns the extension and true on match; otherwise "", false.
@@ -43,7 +43,7 @@ func registerMPEGProbe(fn FormatProbe)  { mpegProbes = append(mpegProbes, fn) }
 func registerID3Probe(fn FormatProbe)   { id3Probes = append(id3Probes, fn) }
 func registerMagicProbe(fn FormatProbe) { magicProbes = append(magicProbes, fn) }
 
-// ---- Format registration ----
+// Format registration
 
 var formatTable []formatHandler
 

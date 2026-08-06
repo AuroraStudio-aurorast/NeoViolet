@@ -63,9 +63,7 @@ func (d *Demuxer) FindALACTrack() (*ALACTrack, error) {
 	}, nil
 }
 
-// ---------------------------------------------------------------------------
 // Box iteration
-// ---------------------------------------------------------------------------
 
 var containerBoxes = map[string]bool{
 	"moov": true, "trak": true, "mdia": true, "minf": true,
@@ -197,9 +195,7 @@ func (d *Demuxer) findFirstInside(parentOffset int64, target string) (int64, err
 	return 0, fmt.Errorf("box %s not found inside parent at %d", target, parentOffset)
 }
 
-// ---------------------------------------------------------------------------
 // findALACInStsd
-// ---------------------------------------------------------------------------
 
 func (d *Demuxer) findALACInStsd(moovOffset int64) (cookie []byte, channels uint16, sampleSize uint16, err error) {
 	stsdOffset, err := d.findFirstInside(moovOffset, "stsd")
@@ -235,9 +231,7 @@ func (d *Demuxer) parseSTSD(stsdOffset int64) (cookie []byte, channels uint16, s
 	return nil, 0, 0, fmt.Errorf("no alac entry in stsd")
 }
 
-// ---------------------------------------------------------------------------
 // Sample table parsing
-// ---------------------------------------------------------------------------
 
 func (d *Demuxer) parseSampleTable(moovOffset int64) (*SampleTable, error) {
 	stbl := &SampleTable{}
