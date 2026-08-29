@@ -237,6 +237,7 @@ func (o *mprisPlayerObj) Stop() *dbus.Error { o.ctrl.cmdChan <- Command{Type: Cm
 func (o *mprisPlayerObj) Play() *dbus.Error { o.ctrl.cmdChan <- Command{Type: CmdPlay}; return nil }
 
 // Seek seeks relative to the current position (MPRIS x: Offset, microseconds).
+//
 // the go vet stdmethods warning about an io.Seeker signature is a false positive.
 //
 //nolint:stdmethods // D-Bus method name Seek intentionally shadows io.Seeker;
@@ -254,12 +255,8 @@ func (o *mprisPlayerObj) SetPosition(trackID dbus.ObjectPath, pos int64) *dbus.E
 	dur := o.ctrl.state.Duration
 	o.ctrl.mu.Unlock()
 
-	if trackID != curID {
-		// Stale track ID (track changed since the client read it) — ignore.
-		return nil
-	}
-	if pos < 0 || (dur > 0 && pos > int64(dur/time.Microsecond)) {
-		// Out of [0, track length] — do nothing.
+	if !validSetPosition(trackID, curID, pos, dur) {
+		// Stale track ID or out-of-range position — do nothing per spec.
 		return nil
 	}
 	o.ctrl.cmdChan <- Command{Type: CmdSetPosition, Value: pos}

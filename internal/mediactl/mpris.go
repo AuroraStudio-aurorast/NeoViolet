@@ -1,4 +1,7 @@
-//go:build linux
+// MPRIS pure logic. This file is intentionally NOT linux-gated: the functions
+// here only build dbus.Variant values and validate arguments, so they compile
+// and are unit-tested on every platform; the linux-only D-Bus wiring lives in
+// controller_linux.go.
 
 package mediactl
 
@@ -25,6 +28,20 @@ func playbackStatus(playing, hasTrack bool) string {
 // CanQuit is false because this player exposes no quit path; CanSetFullscreen
 // and Fullscreen are false since there is no windowing support; OpenUri is
 // unsupported, so SupportedUriSchemes is empty.
+// validSetPosition reports whether an MPRIS SetPosition call should be acted
+// on per spec: the track ID must match the currently-playing track, and the
+// position must lie in [0, track length] (an unknown length allows any
+// non-negative position).
+func validSetPosition(trackID, curID dbus.ObjectPath, pos int64, dur time.Duration) bool {
+	if trackID != curID {
+		return false
+	}
+	if pos < 0 || (dur > 0 && pos > int64(dur/time.Microsecond)) {
+		return false
+	}
+	return true
+}
+
 func rootProps() map[string]dbus.Variant {
 	return map[string]dbus.Variant{
 		"CanQuit":             dbus.MakeVariant(false),

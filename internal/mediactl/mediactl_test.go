@@ -1,4 +1,6 @@
-//go:build linux
+// MPRIS pure-logic tests. NOT linux-gated: these exercise playbackStatus,
+// playerProps, buildMetadata, rootProps and validSetPosition, which compile
+// on every platform (the D-Bus wiring itself is tested under a linux tag).
 
 package mediactl
 
@@ -133,82 +135,28 @@ func TestRootProps(t *testing.T) {
 	}
 }
 
-func TestSetPositionValidation(t *testing.T) {
-	// No D-Bus bus needed: exercise the staleness/range guards directly.
-	c := &linuxController{
-		trackID: "/neoviolet/track/1",
-		cmdChan: make(chan Command, 4),
-		state:   PlayState{Duration: 2 * time.Minute},
-	}
-	o := &mprisPlayerObj{ctrl: c}
+func TestValidSetPosition(t *testing.T) {
+	cur := dbus.ObjectPath("/neoviolet/track/1")
+	dur := 2 * time.Minute
 
-	// Valid: matching track ID, position inside [0, length].
-	if err := o.SetPosition("/neoviolet/track/1", 30_000_000); err != nil {
-		t.Fatalf("SetPosition valid call error: %v", err)
+	cases := []struct {
+		name    string
+		trackID dbus.ObjectPath
+		pos     int64
+		dur     time.Duration
+		want    bool
+	}{
+		{"valid in range", cur, 30_000_000, dur, true},
+		{"exactly at length", cur, int64(2 * time.Minute / time.Microsecond), dur, true},
+		{"stale track id", dbus.ObjectPath("/neoviolet/track/0"), 30_000_000, dur, false},
+		{"negative position", cur, -1, dur, false},
+		{"beyond length", cur, int64(3 * time.Minute / time.Microsecond), dur, false},
+		{"unknown length, any non-negative", cur, 1_000_000_000, 0, true},
 	}
-	if got := <-c.cmdChan; got.Type != CmdSetPosition || got.Value != 30_000_000 {
-		t.Errorf("valid call: got %+v, want CmdSetPosition 30000000", got)
-	}
-
-	// Stale track ID → ignored (no command, no error).
-	if err := o.SetPosition("/neoviolet/track/0", 30_000_000); err != nil {
-		t.Errorf("stale track ID error: %v", err)
-	}
-	select {
-	case got := <-c.cmdChan:
-		t.Errorf("stale track ID: unexpected command %+v", got)
-	default:
-	}
-
-	// Negative position → ignored.
-	if err := o.SetPosition("/neoviolet/track/1", -1); err != nil {
-		t.Errorf("negative position error: %v", err)
-	}
-	select {
-	case got := <-c.cmdChan:
-		t.Errorf("negative position: unexpected command %+v", got)
-	default:
-	}
-
-	// Position beyond track length → ignored.
-	if err := o.SetPosition("/neoviolet/track/1", int64(3*time.Minute/time.Microsecond)); err != nil {
-		t.Errorf("out-of-range position error: %v", err)
-	}
-	select {
-	case got := <-c.cmdChan:
-		t.Errorf("out-of-range position: unexpected command %+v", got)
-	default:
-	}
-
-	// Unknown track length (Duration 0): any non-negative position is allowed.
-	c.state = PlayState{}
-	if err := o.SetPosition("/neoviolet/track/1", 1_000_000_000); err != nil {
-		t.Fatalf("unknown-length call error: %v", err)
-	}
-	if got := <-c.cmdChan; got.Type != CmdSetPosition || got.Value != 1_000_000_000 {
-		t.Errorf("unknown-length call: got %+v, want CmdSetPosition 1000000000", got)
-	}
-}
-
-func TestStubController(t *testing.T) {
-	c, err := newController()
-	if err != nil {
-		t.Fatalf("newController() error: %v", err)
-	}
-
-	ch, err := c.Start()
-	if err != nil {
-		t.Fatalf("Start() error: %v", err)
-	}
-
-	c.Update(PlayState{Title: "test"})
-
-	if err := c.Close(); err != nil {
-		t.Errorf("Close() error: %v", err)
-	}
-
-	_, ok := <-ch
-	if ok {
-		t.Error("channel should be closed after Close()")
+	for _, tc := range cases {
+		if got := validSetPosition(tc.trackID, cur, tc.pos, tc.dur); got != tc.want {
+			t.Errorf("%s: validSetPosition(%q, %q, %d, %v) = %v, want %v",
+				tc.name, tc.trackID, cur, tc.pos, tc.dur, got, tc.want)
+		}
 	}
 }
