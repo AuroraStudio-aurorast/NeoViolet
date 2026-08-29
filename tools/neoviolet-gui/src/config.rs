@@ -186,3 +186,22 @@ pub fn config_dir_path() -> std::path::PathBuf {
         })
         .join("neoviolet")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn defaults_are_sane() {
+        let c = GuiConfig::default();
+        assert!(c.desktop_lyrics.enabled == false);
+        assert!(c.desktop_lyrics.font_size > 0);
+        assert!(c.desktop_lyrics.opacity > 0.0 && c.desktop_lyrics.opacity <= 1.0);
+    }
+
+    #[test]
+    fn malformed_toml_falls_back_to_defaults() {
+        let cfg = toml::from_str::<GuiConfig>("not valid toml [[[").unwrap_or_default();
+        assert!(cfg.desktop_lyrics.font_size > 0);
+    }
+}
