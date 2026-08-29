@@ -128,8 +128,8 @@ func Remove(sig string) error {
 	return nil
 }
 
-// CleanupExpired removes expired or corrupt cache files in dir (startup sweep;
-// see plan §2.11 ⑥). Non-cache files are left untouched.
+// CleanupExpired removes expired or corrupt cache files in dir (startup sweep).
+// Non-cache files are left untouched.
 func CleanupExpired(dir string) (int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

@@ -59,11 +59,3 @@ func Error(msg string, keyvals ...any) {
 func Fatal(msg string, keyvals ...any) {
 	logger.Fatal(msg, keyvals...)
 }
-
-func Printf(format string, args ...any) {
-	logger.Printf(format, args...)
-}
-
-func With(keyvals ...any) *log.Logger {
-	return logger.With(keyvals...)
-}

@@ -51,20 +51,6 @@ func TestDebugNilLogger(t *testing.T) {
 	Info("info msg", "k", "v")
 	Warn("warn msg", "k", "v")
 	Error("error msg", "k", "v")
-	Printf("printf %s", "test")
-	_ = With("key", "value")
-}
-
-func TestWithReturnsLogger(t *testing.T) {
-	if err := Init(); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-	defer Close()
-
-	l := With("module", "test")
-	if l == nil {
-		t.Error("With() returned nil")
-	}
 }
 
 func TestInitCleansUpOldLog(t *testing.T) {
