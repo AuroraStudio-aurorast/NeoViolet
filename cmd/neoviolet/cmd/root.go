@@ -13,6 +13,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 	neoviolet "github.com/AuroraStudio-aurorast/neoviolet/internal/ui"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ui/wizard"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 )
 
 // rootCmd is the root CLI command for NeoViolet.
@@ -28,7 +29,7 @@ Use "-" as the file path to read audio data from stdin, e.g.:
 	// SilenceErrors lets us control error output in Execute().
 	SilenceErrors: true,
 	// Version enables the --version flag.
-	Version: Version,
+	Version: version.Version,
 	RunE:    runRoot,
 }
 
