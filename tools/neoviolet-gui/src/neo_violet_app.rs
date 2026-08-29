@@ -5,8 +5,8 @@
 //! dialog is intentionally NOT ESC-dismissable — it requires an explicit
 //! button click (Restart or Close).
 
-use gpui::*;
 use gpui::prelude::*;
+use gpui::*;
 use std::sync::{Arc, Mutex};
 use yororen_ui::theme::ActiveTheme;
 
@@ -33,11 +33,7 @@ pub struct NeoVioletApp {
 }
 
 impl NeoVioletApp {
-    pub fn new(
-        terminal_child: Entity<TerminalApp>,
-        opacity: f32,
-        cx: &mut Context<Self>,
-    ) -> Self {
+    pub fn new(terminal_child: Entity<TerminalApp>, opacity: f32, cx: &mut Context<Self>) -> Self {
         Self::attach_terminal_observer(&terminal_child, cx);
 
         let initial_title = terminal_child.read(cx).current_title().to_string();
@@ -60,10 +56,7 @@ impl NeoVioletApp {
     /// whenever TerminalApp changes. The actual status inspection happens
     /// in `render()`, which runs at most once per frame and is naturally
     /// guarded against double-triggering.
-    fn attach_terminal_observer(
-        child: &Entity<TerminalApp>,
-        cx: &mut Context<Self>,
-    ) {
+    fn attach_terminal_observer(child: &Entity<TerminalApp>, cx: &mut Context<Self>) {
         cx.observe(child, |_: &mut NeoVioletApp, _child, cx| {
             cx.notify();
         })
@@ -97,7 +90,11 @@ impl NeoVioletApp {
         self.exit_is_bad_args = false;
         self.exit_output.clear();
         // Reset diagnostics buffer and timer for the new process
-        cx.global::<AppState>().recent_output.lock().unwrap().clear();
+        cx.global::<AppState>()
+            .recent_output
+            .lock()
+            .unwrap()
+            .clear();
         *cx.global::<AppState>().process_start.lock().unwrap() = None;
         cx.notify();
     }
@@ -135,44 +132,36 @@ impl Render for NeoVioletApp {
             let pending = cx.global::<AppState>().pending_file_paths.clone();
             let root_eid = cx.entity_id();
             window.on_mouse_event(
-                move |event: &FileDropEvent, _phase, _window, cx| {
-                    match event {
-                        FileDropEvent::Entered { paths, .. } => {
-                            let file_paths: Vec<String> = paths
-                                .paths()
-                                .iter()
-                                .map(|p| p.to_string_lossy().to_string())
-                                .collect();
-                            log::info!(
-                                "[drag-drop] entered with {} file(s)",
-                                file_paths.len()
-                            );
-                            if let Ok(mut guard) = drop_cache.lock() {
-                                *guard = file_paths;
-                            }
+                move |event: &FileDropEvent, _phase, _window, cx| match event {
+                    FileDropEvent::Entered { paths, .. } => {
+                        let file_paths: Vec<String> = paths
+                            .paths()
+                            .iter()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .collect();
+                        log::info!("[drag-drop] entered with {} file(s)", file_paths.len());
+                        if let Ok(mut guard) = drop_cache.lock() {
+                            *guard = file_paths;
                         }
-                        FileDropEvent::Submit { .. } => {
-                            if let Ok(mut guard) = drop_cache.lock() {
-                                let paths: Vec<String> = guard.drain(..).collect();
-                                if !paths.is_empty() {
-                                    log::info!(
-                                        "[drag-drop] submit {} file(s)",
-                                        paths.len()
-                                    );
-                                    if let Ok(mut p) = pending.lock() {
-                                        *p = paths;
-                                    }
-                                    cx.notify(root_eid);
-                                }
-                            }
-                        }
-                        FileDropEvent::Exited => {
-                            if let Ok(mut guard) = drop_cache.lock() {
-                                guard.clear();
-                            }
-                        }
-                        _ => {}
                     }
+                    FileDropEvent::Submit { .. } => {
+                        if let Ok(mut guard) = drop_cache.lock() {
+                            let paths: Vec<String> = guard.drain(..).collect();
+                            if !paths.is_empty() {
+                                log::info!("[drag-drop] submit {} file(s)", paths.len());
+                                if let Ok(mut p) = pending.lock() {
+                                    *p = paths;
+                                }
+                                cx.notify(root_eid);
+                            }
+                        }
+                    }
+                    FileDropEvent::Exited => {
+                        if let Ok(mut guard) = drop_cache.lock() {
+                            guard.clear();
+                        }
+                    }
+                    _ => {}
                 },
             );
         }
@@ -229,7 +218,11 @@ impl Render for NeoVioletApp {
                         }
                         Ok(msg) if msg.msg_type == "desktop_lyrics" => {
                             if let Some(enable) = msg.enable {
-                                let mut guard = cx.global::<AppState>().desktop_lyrics_enabled.lock().unwrap();
+                                let mut guard = cx
+                                    .global::<AppState>()
+                                    .desktop_lyrics_enabled
+                                    .lock()
+                                    .unwrap();
                                 let was_enabled = *guard;
                                 if enable == was_enabled {
                                     continue;
@@ -242,7 +235,8 @@ impl Render for NeoVioletApp {
                                     let state = cx.global::<AppState>();
                                     let lyrics_cfg = state.config.desktop_lyrics.clone();
                                     let handle_slot = state.lyrics_window_handle.clone();
-                                    let window_opts = components::lyrics_window_options(&lyrics_cfg);
+                                    let window_opts =
+                                        components::lyrics_window_options(&lyrics_cfg);
                                     // Defer window creation to avoid crashing during render.
                                     cx.spawn(async move |_, cx| {
                                         cx.background_executor()
@@ -250,8 +244,11 @@ impl Render for NeoVioletApp {
                                             .await;
                                         let _ = cx.update(|cx| {
                                             cx.open_window(window_opts, move |window, cx| {
-                                                let root = cx.new(crate::desktop_lyrics::DesktopLyricsView::new);
-                                                *handle_slot.lock().unwrap() = Some(window.window_handle());
+                                                let root = cx.new(
+                                                    crate::desktop_lyrics::DesktopLyricsView::new,
+                                                );
+                                                *handle_slot.lock().unwrap() =
+                                                    Some(window.window_handle());
                                                 root
                                             })
                                         });
@@ -298,8 +295,11 @@ impl Render for NeoVioletApp {
                         .unwrap_or(false)
                 };
                 if is_non_zero && is_quick {
-                    let raw = cx.global::<AppState>()
-                        .recent_output.lock().unwrap()
+                    let raw = cx
+                        .global::<AppState>()
+                        .recent_output
+                        .lock()
+                        .unwrap()
                         .clone();
                     let cleaned = crate::util::strip_ansi_escapes(&raw);
                     if !cleaned.trim().is_empty() {
@@ -347,14 +347,12 @@ impl Render for NeoVioletApp {
             cx.notify();
         });
         let do_quit = cx.listener(|_: &mut NeoVioletApp, _: &ClickEvent, _w, cx| cx.quit());
-        let restart_terminal =
-            cx.listener(|this: &mut NeoVioletApp, _: &ClickEvent, _w, cx| {
-                // Clear launch args for a clean restart
-                cx.global::<AppState>().launch_args.lock().unwrap().clear();
-                this.restart_terminal(cx);
-            });
-        let dismiss_exit =
-            cx.listener(|_: &mut NeoVioletApp, _: &ClickEvent, _w, cx| cx.quit());
+        let restart_terminal = cx.listener(|this: &mut NeoVioletApp, _: &ClickEvent, _w, cx| {
+            // Clear launch args for a clean restart
+            cx.global::<AppState>().launch_args.lock().unwrap().clear();
+            this.restart_terminal(cx);
+        });
+        let dismiss_exit = cx.listener(|_: &mut NeoVioletApp, _: &ClickEvent, _w, cx| cx.quit());
 
         // ── ESC key handler ──
         // Dismisses About and Close dialogs. The exit-error dialog is
@@ -388,9 +386,7 @@ impl Render for NeoVioletApp {
             || self.exit_reason.contains("exited")
         {
             "NeoViolet has exited.\nClose GUI or restart?".to_string()
-        } else if self.exit_reason.contains("exit code")
-            || self.exit_reason.contains("killed")
-        {
+        } else if self.exit_reason.contains("exit code") || self.exit_reason.contains("killed") {
             format!("NeoViolet crashed with {}.", self.exit_reason)
         } else if self.exit_reason.is_empty() {
             "NeoViolet has ended.".to_string()
@@ -443,14 +439,12 @@ impl Render for NeoVioletApp {
                             )
                             .on_mouse_down(
                                 MouseButton::Left,
-                                cx.listener(
-                                    move |_t, ev: &MouseDownEvent, w, cx| {
-                                        if ev.click_count > 1 {
-                                            w.zoom_window();
-                                            cx.notify();
-                                        }
-                                    },
-                                ),
+                                cx.listener(move |_t, ev: &MouseDownEvent, w, cx| {
+                                    if ev.click_count > 1 {
+                                        w.zoom_window();
+                                        cx.notify();
+                                    }
+                                }),
                             ),
                     )
                 },
@@ -477,11 +471,7 @@ impl Render for NeoVioletApp {
         };
 
         let base = if show_close {
-            base.child(components::render_close_dialog(
-                cx,
-                cancel_close,
-                do_quit,
-            ))
+            base.child(components::render_close_dialog(cx, cancel_close, do_quit))
         } else {
             base
         };

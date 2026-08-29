@@ -1,14 +1,14 @@
 use std::{
     io::{Read, Write},
     sync::{
-        mpsc::{self, Sender},
         Arc, Mutex,
+        mpsc::{self, Sender},
     },
     thread,
 };
 
 use anyhow::{Context, Result};
-use portable_pty::{native_pty_system, CommandBuilder, PtySize};
+use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 
 use crate::platform;
 use crate::terminal::{BackendCommand, BackendEvent};

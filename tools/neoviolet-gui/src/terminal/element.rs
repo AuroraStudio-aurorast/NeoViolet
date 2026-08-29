@@ -13,15 +13,15 @@ use alacritty_terminal::{
 use gpui::{
     App, Bounds, Element, ElementId, Entity, FocusHandle, Font, FontStyle, FontWeight,
     GlobalElementId, Hsla, InspectorElementId, IntoElement, LayoutId, Pixels, Point, Rgba,
-    SharedString, StrikethroughStyle, Style, TextRun, TextStyle, UnderlineStyle, UTF16Selection,
+    SharedString, StrikethroughStyle, Style, TextRun, TextStyle, UTF16Selection, UnderlineStyle,
     Window, fill, point, px, rgb, size,
 };
 use yororen_ui::theme::ActiveTheme as _;
 
 use crate::app::TerminalApp;
 use crate::terminal::{
-    custom_blocks::{is_custom_block_supported, paint_custom_block},
     RenderSnapshot, ViewportSelection,
+    custom_blocks::{is_custom_block_supported, paint_custom_block},
 };
 
 // ── Metrics & layout types ──
@@ -63,7 +63,14 @@ struct BatchedTextRun {
 
 impl BatchedTextRun {
     fn new(row: i32, col: i32, ch: char, style: TextRun, font_size: Pixels) -> Self {
-        Self { row, col, cell_count: 1, text: ch.to_string(), style, font_size }
+        Self {
+            row,
+            col,
+            cell_count: 1,
+            text: ch.to_string(),
+            style,
+            font_size,
+        }
     }
 
     fn can_append(&self, other: &TextRun, row: i32, col: i32) -> bool {
@@ -88,7 +95,13 @@ impl BatchedTextRun {
         }
     }
 
-    fn paint(&self, origin: Point<Pixels>, metrics: TerminalMetrics, window: &mut Window, cx: &mut App) {
+    fn paint(
+        &self,
+        origin: Point<Pixels>,
+        metrics: TerminalMetrics,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
         let pos = point(
             origin.x + metrics.cell_width * self.col as f32,
             origin.y + metrics.line_height * self.row as f32,
@@ -156,12 +169,18 @@ struct TerminalInputHandler {
 
 impl gpui::InputHandler for TerminalInputHandler {
     fn selected_text_range(
-        &mut self, _ignore_disabled_input: bool, _window: &mut Window, cx: &mut App,
+        &mut self,
+        _ignore_disabled_input: bool,
+        _window: &mut Window,
+        cx: &mut App,
     ) -> Option<UTF16Selection> {
-        self.view.read(cx).terminal_accepts_text_input().then_some(UTF16Selection {
-            range: 0..0,
-            reversed: false,
-        })
+        self.view
+            .read(cx)
+            .terminal_accepts_text_input()
+            .then_some(UTF16Selection {
+                range: 0..0,
+                reversed: false,
+            })
     }
 
     fn marked_text_range(&mut self, _window: &mut Window, cx: &mut App) -> Option<Range<usize>> {
@@ -169,22 +188,34 @@ impl gpui::InputHandler for TerminalInputHandler {
     }
 
     fn text_for_range(
-        &mut self, _range_utf16: Range<usize>, _adjusted_range: &mut Option<Range<usize>>,
-        _window: &mut Window, _cx: &mut App,
+        &mut self,
+        _range_utf16: Range<usize>,
+        _adjusted_range: &mut Option<Range<usize>>,
+        _window: &mut Window,
+        _cx: &mut App,
     ) -> Option<String> {
         None
     }
 
     fn replace_text_in_range(
-        &mut self, _replacement_range: Option<Range<usize>>, text: &str,
-        window: &mut Window, cx: &mut App,
+        &mut self,
+        _replacement_range: Option<Range<usize>>,
+        text: &str,
+        window: &mut Window,
+        cx: &mut App,
     ) {
-        self.view.update(cx, |view, cx| view.commit_terminal_ime_text(text, window, cx));
+        self.view.update(cx, |view, cx| {
+            view.commit_terminal_ime_text(text, window, cx)
+        });
     }
 
     fn replace_and_mark_text_in_range(
-        &mut self, _range_utf16: Option<Range<usize>>, new_text: &str,
-        _new_selected_range: Option<Range<usize>>, window: &mut Window, cx: &mut App,
+        &mut self,
+        _range_utf16: Option<Range<usize>>,
+        new_text: &str,
+        _new_selected_range: Option<Range<usize>>,
+        window: &mut Window,
+        cx: &mut App,
     ) {
         self.view.update(cx, |view, cx| {
             view.set_terminal_marked_text(new_text.to_string(), window, cx);
@@ -192,19 +223,29 @@ impl gpui::InputHandler for TerminalInputHandler {
     }
 
     fn unmark_text(&mut self, window: &mut Window, cx: &mut App) {
-        self.view.update(cx, |view, cx| view.clear_terminal_marked_text(window, cx));
+        self.view
+            .update(cx, |view, cx| view.clear_terminal_marked_text(window, cx));
     }
 
     fn bounds_for_range(
-        &mut self, range_utf16: Range<usize>, _window: &mut Window, cx: &mut App,
+        &mut self,
+        range_utf16: Range<usize>,
+        _window: &mut Window,
+        cx: &mut App,
     ) -> Option<Bounds<Pixels>> {
         self.view.read(cx).terminal_ime_bounds_for_range(
-            range_utf16, self.element_bounds, self.cell_width, self.line_height,
+            range_utf16,
+            self.element_bounds,
+            self.cell_width,
+            self.line_height,
         )
     }
 
     fn character_index_for_point(
-        &mut self, _point: Point<Pixels>, _window: &mut Window, _cx: &mut App,
+        &mut self,
+        _point: Point<Pixels>,
+        _window: &mut Window,
+        _cx: &mut App,
     ) -> Option<usize> {
         None
     }
@@ -270,30 +311,52 @@ impl TerminalElement {
             fg.a *= 0.7;
         }
 
-        let underline = cell.flags.intersects(Flags::ALL_UNDERLINES).then(|| UnderlineStyle {
-            color: Some(fg),
-            thickness: px(1.0),
-            wavy: cell.flags.contains(Flags::UNDERCURL),
-        });
-        let strikethrough = cell.flags.contains(Flags::STRIKEOUT).then(|| StrikethroughStyle {
-            color: Some(fg),
-            thickness: px(1.0),
-        });
+        let underline = cell
+            .flags
+            .intersects(Flags::ALL_UNDERLINES)
+            .then(|| UnderlineStyle {
+                color: Some(fg),
+                thickness: px(1.0),
+                wavy: cell.flags.contains(Flags::UNDERCURL),
+            });
+        let strikethrough = cell
+            .flags
+            .contains(Flags::STRIKEOUT)
+            .then(|| StrikethroughStyle {
+                color: Some(fg),
+                thickness: px(1.0),
+            });
 
-        let weight = if cell.flags.intersects(Flags::BOLD) { FontWeight::BOLD } else { FontWeight::NORMAL };
-        let style = if cell.flags.intersects(Flags::ITALIC) { FontStyle::Italic } else { FontStyle::Normal };
+        let weight = if cell.flags.intersects(Flags::BOLD) {
+            FontWeight::BOLD
+        } else {
+            FontWeight::NORMAL
+        };
+        let style = if cell.flags.intersects(Flags::ITALIC) {
+            FontStyle::Italic
+        } else {
+            FontStyle::Normal
+        };
 
         TextRun {
             len: cell.c.len_utf8(),
             color: fg,
             background_color: None,
-            font: Font { family: self.font_family.clone(), weight, style, ..Font::default() },
+            font: Font {
+                family: self.font_family.clone(),
+                weight,
+                style,
+                ..Font::default()
+            },
             underline,
             strikethrough,
         }
     }
 
-    fn layout_grid(&self, cx: &App) -> (Vec<LayoutRect>, Vec<BatchedTextRun>, Vec<LayoutCustomBlock>) {
+    fn layout_grid(
+        &self,
+        cx: &App,
+    ) -> (Vec<LayoutRect>, Vec<BatchedTextRun>, Vec<LayoutCustomBlock>) {
         let mut rects = Vec::new();
         let mut runs = Vec::new();
         let mut custom_blocks = Vec::new();
@@ -301,7 +364,9 @@ impl TerminalElement {
 
         for render_cell in &self.snapshot.cells {
             let cell = &render_cell.cell;
-            if cell.flags.intersects(Flags::HIDDEN | Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+            if cell.flags.intersects(
+                Flags::HIDDEN | Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER,
+            ) {
                 continue;
             }
 
@@ -313,7 +378,11 @@ impl TerminalElement {
                 rects.push(LayoutRect {
                     row: render_cell.row,
                     col: render_cell.col,
-                    cells: if cell.flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 },
+                    cells: if cell.flags.contains(Flags::WIDE_CHAR) {
+                        2
+                    } else {
+                        1
+                    },
                     color: if selected {
                         cx.theme().content.primary
                     } else if cell.flags.contains(Flags::INVERSE) {
@@ -325,19 +394,27 @@ impl TerminalElement {
             }
 
             if is_blank(cell) {
-                if let Some(run) = current_run.take() { runs.push(run); }
+                if let Some(run) = current_run.take() {
+                    runs.push(run);
+                }
                 continue;
             }
 
             let style = self.cell_run_style(cell, cx);
 
             if is_custom_block_supported(cell.c) {
-                if let Some(run) = current_run.take() { runs.push(run); }
+                if let Some(run) = current_run.take() {
+                    runs.push(run);
+                }
                 custom_blocks.push(LayoutCustomBlock {
                     c: cell.c,
                     row: render_cell.row,
                     col: render_cell.col,
-                    cells: if cell.flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 },
+                    cells: if cell.flags.contains(Flags::WIDE_CHAR) {
+                        2
+                    } else {
+                        1
+                    },
                     color: style.color,
                 });
                 continue;
@@ -350,9 +427,17 @@ impl TerminalElement {
                 continue;
             }
 
-            if let Some(run) = current_run.take() { runs.push(run); }
+            if let Some(run) = current_run.take() {
+                runs.push(run);
+            }
 
-            let mut run = BatchedTextRun::new(render_cell.row, render_cell.col, cell.c, style, self.font_size);
+            let mut run = BatchedTextRun::new(
+                render_cell.row,
+                render_cell.col,
+                cell.c,
+                style,
+                self.font_size,
+            );
             if let Some(chars) = cell.zerowidth() {
                 for ch in chars {
                     run.text.push(*ch);
@@ -362,7 +447,9 @@ impl TerminalElement {
             current_run = Some(run);
         }
 
-        if let Some(run) = current_run { runs.push(run); }
+        if let Some(run) = current_run {
+            runs.push(run);
+        }
 
         (merge_rects(rects), runs, custom_blocks)
     }
@@ -379,20 +466,29 @@ impl TerminalElement {
 
 impl IntoElement for TerminalElement {
     type Element = Self;
-    fn into_element(self) -> Self::Element { self }
+    fn into_element(self) -> Self::Element {
+        self
+    }
 }
 
 impl Element for TerminalElement {
     type RequestLayoutState = ();
     type PrepaintState = PrepaintState;
 
-    fn id(&self) -> Option<ElementId> { None }
+    fn id(&self) -> Option<ElementId> {
+        None
+    }
 
-    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> { None }
+    fn source_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        None
+    }
 
     fn request_layout(
-        &mut self, _id: Option<&GlobalElementId>, _inspector_id: Option<&InspectorElementId>,
-        window: &mut Window, cx: &mut App,
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        window: &mut Window,
+        cx: &mut App,
     ) -> (LayoutId, Self::RequestLayoutState) {
         let mut style = Style::default();
         style.size.width = gpui::relative(1.).into();
@@ -401,9 +497,13 @@ impl Element for TerminalElement {
     }
 
     fn prepaint(
-        &mut self, _id: Option<&GlobalElementId>, _inspector_id: Option<&InspectorElementId>,
-        bounds: Bounds<Pixels>, _request_layout: &mut Self::RequestLayoutState,
-        _window: &mut Window, cx: &mut App,
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        _window: &mut Window,
+        cx: &mut App,
     ) -> Self::PrepaintState {
         let _ = self.base_text_style(cx);
         let (rects, runs, custom_blocks) = self.layout_grid(cx);
@@ -424,7 +524,10 @@ impl Element for TerminalElement {
 
         PrepaintState {
             bounds,
-            metrics: TerminalMetrics { cell_width: self.cell_width, line_height: self.line_height },
+            metrics: TerminalMetrics {
+                cell_width: self.cell_width,
+                line_height: self.line_height,
+            },
             rects,
             runs,
             custom_blocks,
@@ -433,9 +536,14 @@ impl Element for TerminalElement {
     }
 
     fn paint(
-        &mut self, _id: Option<&GlobalElementId>, _inspector_id: Option<&InspectorElementId>,
-        _bounds: Bounds<Pixels>, _request_layout: &mut Self::RequestLayoutState,
-        prepaint: &mut Self::PrepaintState, window: &mut Window, cx: &mut App,
+        &mut self,
+        _id: Option<&GlobalElementId>,
+        _inspector_id: Option<&InspectorElementId>,
+        _bounds: Bounds<Pixels>,
+        _request_layout: &mut Self::RequestLayoutState,
+        prepaint: &mut Self::PrepaintState,
+        window: &mut Window,
+        cx: &mut App,
     ) {
         for rect in &prepaint.rects {
             rect.paint(prepaint.bounds.origin, prepaint.metrics, window);
@@ -449,7 +557,10 @@ impl Element for TerminalElement {
             let y = f32::from(prepaint.bounds.origin.y)
                 + block.row as f32 * f32::from(prepaint.metrics.line_height);
             paint_custom_block(
-                window, block.c, x, y,
+                window,
+                block.c,
+                x,
+                y,
                 f32::from(prepaint.metrics.cell_width) * block.cells as f32,
                 f32::from(prepaint.metrics.line_height),
                 block.color,
@@ -468,34 +579,46 @@ impl Element for TerminalElement {
         );
 
         if let Some(marked_text) = self.marked_text.as_ref().filter(|text| !text.is_empty())
-            && let Some(cursor) = prepaint.cursor {
-                let pos = point(
-                    prepaint.bounds.origin.x + prepaint.metrics.cell_width * cursor.col as f32,
-                    prepaint.bounds.origin.y + prepaint.metrics.line_height * cursor.row as f32,
-                );
-                let mut base_style = self.base_text_style(cx);
-                base_style.underline = Some(UnderlineStyle {
-                    color: Some(base_style.color), thickness: px(1.0), wavy: false,
-                });
-                let shaped = window.text_system().shape_line(
-                    marked_text.clone().into(),
-                    self.font_size,
-                    &[TextRun {
-                        len: marked_text.len(),
-                        font: Font { family: self.font_family.clone(), ..Font::default() },
-                        color: base_style.color,
-                        underline: base_style.underline,
-                        ..Default::default()
-                    }],
-                    None,
-                );
-                let bg_bounds = Bounds::new(pos, size(shaped.width, prepaint.metrics.line_height));
-                window.paint_quad(fill(bg_bounds, cx.theme().surface.canvas));
-                shaped.paint(pos, prepaint.metrics.line_height, window, cx).ok();
-            }
+            && let Some(cursor) = prepaint.cursor
+        {
+            let pos = point(
+                prepaint.bounds.origin.x + prepaint.metrics.cell_width * cursor.col as f32,
+                prepaint.bounds.origin.y + prepaint.metrics.line_height * cursor.row as f32,
+            );
+            let mut base_style = self.base_text_style(cx);
+            base_style.underline = Some(UnderlineStyle {
+                color: Some(base_style.color),
+                thickness: px(1.0),
+                wavy: false,
+            });
+            let shaped = window.text_system().shape_line(
+                marked_text.clone().into(),
+                self.font_size,
+                &[TextRun {
+                    len: marked_text.len(),
+                    font: Font {
+                        family: self.font_family.clone(),
+                        ..Font::default()
+                    },
+                    color: base_style.color,
+                    underline: base_style.underline,
+                    ..Default::default()
+                }],
+                None,
+            );
+            let bg_bounds = Bounds::new(pos, size(shaped.width, prepaint.metrics.line_height));
+            window.paint_quad(fill(bg_bounds, cx.theme().surface.canvas));
+            shaped
+                .paint(pos, prepaint.metrics.line_height, window, cx)
+                .ok();
+        }
 
         if let Some(cursor) = prepaint.cursor {
-            if self.marked_text.as_ref().is_some_and(|text| !text.is_empty()) {
+            if self
+                .marked_text
+                .as_ref()
+                .is_some_and(|text| !text.is_empty())
+            {
                 return;
             }
             let x = prepaint.bounds.origin.x + prepaint.metrics.cell_width * cursor.col as f32;
@@ -518,9 +641,16 @@ impl Element for TerminalElement {
                     ));
                 }
                 CursorShape::Block | CursorShape::HollowBlock => {
-                    let alpha = if matches!(cursor.shape, CursorShape::HollowBlock) { 0.18 } else { 0.32 };
+                    let alpha = if matches!(cursor.shape, CursorShape::HollowBlock) {
+                        0.18
+                    } else {
+                        0.32
+                    };
                     window.paint_quad(fill(
-                        Bounds::new(point(x, y), size(prepaint.metrics.cell_width, prepaint.metrics.line_height)),
+                        Bounds::new(
+                            point(x, y),
+                            size(prepaint.metrics.cell_width, prepaint.metrics.line_height),
+                        ),
                         cursor.color.opacity(alpha),
                     ));
                 }
@@ -551,8 +681,12 @@ fn merge_rects(mut rects: Vec<LayoutRect>) -> Vec<LayoutRect> {
 fn selection_contains(selection: ViewportSelection, row: i32, col: i32) -> bool {
     let row = row.max(0) as usize;
     let col = col.max(0) as usize;
-    if row < selection.start_row || row > selection.end_row { return false; }
-    if selection.is_block { return col >= selection.start_col && col <= selection.end_col; }
+    if row < selection.start_row || row > selection.end_row {
+        return false;
+    }
+    if selection.is_block {
+        return col >= selection.start_col && col <= selection.end_col;
+    }
     let after_start = row > selection.start_row || col >= selection.start_col;
     let before_end = row < selection.end_row || col <= selection.end_col;
     after_start && before_end
@@ -561,16 +695,26 @@ fn selection_contains(selection: ViewportSelection, row: i32, col: i32) -> bool 
 fn is_blank(cell: &alacritty_terminal::term::cell::Cell) -> bool {
     cell.c == ' '
         && cell.zerowidth().is_none()
-        && !cell.flags.intersects(Flags::ALL_UNDERLINES | Flags::STRIKEOUT)
+        && !cell
+            .flags
+            .intersects(Flags::ALL_UNDERLINES | Flags::STRIKEOUT)
 }
 
 fn is_default_bg(color: alacritty_terminal::vte::ansi::Color) -> bool {
-    matches!(color, alacritty_terminal::vte::ansi::Color::Named(NamedColor::Background))
+    matches!(
+        color,
+        alacritty_terminal::vte::ansi::Color::Named(NamedColor::Background)
+    )
 }
 
 fn color_to_hsla(color: alacritty_terminal::vte::ansi::Color, foreground: bool, cx: &App) -> Hsla {
     match color {
-        AnsiColor::Spec(rgb) => Hsla::from(Rgba { r: rgb.r as f32 / 255.0, g: rgb.g as f32 / 255.0, b: rgb.b as f32 / 255.0, a: 1.0 }),
+        AnsiColor::Spec(rgb) => Hsla::from(Rgba {
+            r: rgb.r as f32 / 255.0,
+            g: rgb.g as f32 / 255.0,
+            b: rgb.b as f32 / 255.0,
+            a: 1.0,
+        }),
         AnsiColor::Indexed(index) => ansi_index_color(index, cx),
         AnsiColor::Named(named) => named_color(named, foreground, cx),
     }
@@ -578,22 +722,32 @@ fn color_to_hsla(color: alacritty_terminal::vte::ansi::Color, foreground: bool, 
 
 fn ansi_index_color(index: u8, _cx: &App) -> Hsla {
     const ANSI_16: [u32; 16] = [
-        0x1f2430, 0xff5c57, 0x5af78e, 0xf3f99d, 0x57c7ff, 0xff6ac1, 0x9aedfe, 0xf1f1f0,
-        0x686868, 0xff5c57, 0x5af78e, 0xf3f99d, 0x57c7ff, 0xff6ac1, 0x9aedfe, 0xffffff,
+        0x1f2430, 0xff5c57, 0x5af78e, 0xf3f99d, 0x57c7ff, 0xff6ac1, 0x9aedfe, 0xf1f1f0, 0x686868,
+        0xff5c57, 0x5af78e, 0xf3f99d, 0x57c7ff, 0xff6ac1, 0x9aedfe, 0xffffff,
     ];
     if (index as usize) < ANSI_16.len() {
         return Hsla::from(rgb(ANSI_16[index as usize]));
     }
     if index >= 232 {
         let gray = 8 + (index - 232) * 10;
-        return Hsla::from(Rgba { r: gray as f32 / 255.0, g: gray as f32 / 255.0, b: gray as f32 / 255.0, a: 1.0 });
+        return Hsla::from(Rgba {
+            r: gray as f32 / 255.0,
+            g: gray as f32 / 255.0,
+            b: gray as f32 / 255.0,
+            a: 1.0,
+        });
     }
     let i = index - 16;
     let r = i / 36;
     let g = (i % 36) / 6;
     let b = i % 6;
     let conv = |v: u8| if v == 0 { 0 } else { 55 + v * 40 };
-    Hsla::from(Rgba { r: conv(r) as f32 / 255.0, g: conv(g) as f32 / 255.0, b: conv(b) as f32 / 255.0, a: 1.0 })
+    Hsla::from(Rgba {
+        r: conv(r) as f32 / 255.0,
+        g: conv(g) as f32 / 255.0,
+        b: conv(b) as f32 / 255.0,
+        a: 1.0,
+    })
 }
 
 fn named_color(named: NamedColor, _foreground: bool, cx: &App) -> Hsla {

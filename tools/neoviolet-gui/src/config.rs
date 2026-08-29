@@ -42,8 +42,12 @@ pub struct DesktopLyricsConfig {
 
 // ── Default value helpers for serde ──
 
-fn default_zoom_via_scroll() -> bool { false }
-fn default_desktop_lyrics_enabled() -> bool { false }
+fn default_zoom_via_scroll() -> bool {
+    false
+}
+fn default_desktop_lyrics_enabled() -> bool {
+    false
+}
 fn default_desktop_lyrics_font_family() -> String {
     if cfg!(target_os = "macos") {
         "Helvetica Neue".into()
@@ -53,14 +57,30 @@ fn default_desktop_lyrics_font_family() -> String {
         "Sans".into()
     }
 }
-fn default_desktop_lyrics_font_size() -> u32 { 18 }
-fn default_desktop_lyrics_window_width() -> u32 { 600 }
-fn default_desktop_lyrics_window_height() -> u32 { 80 }
-fn default_desktop_lyrics_opacity() -> f32 { 0.85 }
-fn default_desktop_lyrics_show_song_info() -> bool { true }
-fn default_desktop_lyrics_num_lines() -> u32 { 1 }
-fn default_desktop_lyrics_text_color() -> String { "#FFFFFF".into() }
-fn default_desktop_lyrics_highlight_color() -> String { "#FFD700".into() }
+fn default_desktop_lyrics_font_size() -> u32 {
+    18
+}
+fn default_desktop_lyrics_window_width() -> u32 {
+    600
+}
+fn default_desktop_lyrics_window_height() -> u32 {
+    80
+}
+fn default_desktop_lyrics_opacity() -> f32 {
+    0.85
+}
+fn default_desktop_lyrics_show_song_info() -> bool {
+    true
+}
+fn default_desktop_lyrics_num_lines() -> u32 {
+    1
+}
+fn default_desktop_lyrics_text_color() -> String {
+    "#FFFFFF".into()
+}
+fn default_desktop_lyrics_highlight_color() -> String {
+    "#FFD700".into()
+}
 impl Default for DesktopLyricsConfig {
     fn default() -> Self {
         Self {
@@ -152,14 +172,13 @@ pub fn load_or_create() -> GuiConfig {
 
     // If the config file pre-existed, re-serialize to capture any new
     // fields that were filled in by Default during deserialization.
-    if pre_existed
-        && let Ok(toml_str) = toml::to_string_pretty(&cfg) {
-            // Atomic write: write to a temporary file, then rename
-            let tmp_path = config_path.with_extension("tmp");
-            if std::fs::write(&tmp_path, &toml_str).is_ok() {
-                let _ = std::fs::rename(&tmp_path, &config_path);
-            }
+    if pre_existed && let Ok(toml_str) = toml::to_string_pretty(&cfg) {
+        // Atomic write: write to a temporary file, then rename
+        let tmp_path = config_path.with_extension("tmp");
+        if std::fs::write(&tmp_path, &toml_str).is_ok() {
+            let _ = std::fs::rename(&tmp_path, &config_path);
         }
+    }
 
     cfg
 }
@@ -178,11 +197,8 @@ pub fn config_dir_path() -> std::path::PathBuf {
         .map(std::path::PathBuf::from)
         .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
         .unwrap_or_else(|| {
-            dirs::config_dir().unwrap_or_else(|| {
-                dirs::home_dir()
-                    .unwrap_or_default()
-                    .join(".config")
-            })
+            dirs::config_dir()
+                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
         })
         .join("neoviolet")
 }
@@ -194,7 +210,7 @@ mod tests {
     #[test]
     fn defaults_are_sane() {
         let c = GuiConfig::default();
-        assert!(c.desktop_lyrics.enabled == false);
+        assert!(!c.desktop_lyrics.enabled);
         assert!(c.desktop_lyrics.font_size > 0);
         assert!(c.desktop_lyrics.opacity > 0.0 && c.desktop_lyrics.opacity <= 1.0);
     }

@@ -1,4 +1,7 @@
-use gpui::{div, prelude::*, px, App, Bounds, ClickEvent, IntoElement, Window, WindowBounds, WindowDecorations, WindowOptions, WindowBackgroundAppearance, WindowKind, point, size};
+use gpui::{
+    App, Bounds, ClickEvent, IntoElement, Window, WindowBackgroundAppearance, WindowBounds,
+    WindowDecorations, WindowKind, WindowOptions, div, point, prelude::*, px, size,
+};
 use yororen_ui::component::{button, modal, modal_actions_row};
 use yororen_ui::theme::ActiveTheme;
 
@@ -11,13 +14,20 @@ use crate::state::AppState;
 pub fn lyrics_window_options(cfg: &DesktopLyricsConfig) -> WindowOptions {
     WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-            point(px(cfg.position_x.unwrap_or(100) as f32), px(cfg.position_y.unwrap_or(100) as f32)),
+            point(
+                px(cfg.position_x.unwrap_or(100) as f32),
+                px(cfg.position_y.unwrap_or(100) as f32),
+            ),
             size(px(cfg.window_width as f32), px(cfg.window_height as f32)),
         ))),
         titlebar: None,
         focus: false,
         window_background: WindowBackgroundAppearance::Transparent,
-        kind: if cfg!(target_os = "macos") { WindowKind::Normal } else { WindowKind::PopUp },
+        kind: if cfg!(target_os = "macos") {
+            WindowKind::Normal
+        } else {
+            WindowKind::PopUp
+        },
         window_decorations: if cfg!(target_os = "linux") {
             Some(WindowDecorations::Client)
         } else {
@@ -35,7 +45,9 @@ pub fn open_about(cx: &mut App) {
         *state.show_about.lock().unwrap() = true;
         *state.root_entity_id.lock().unwrap()
     };
-    if let Some(eid) = eid { cx.notify(eid); }
+    if let Some(eid) = eid {
+        cx.notify(eid);
+    }
 }
 
 pub fn open_close(cx: &mut App) {
@@ -44,7 +56,9 @@ pub fn open_close(cx: &mut App) {
         *state.show_close.lock().unwrap() = true;
         *state.root_entity_id.lock().unwrap()
     };
-    if let Some(eid) = eid { cx.notify(eid); }
+    if let Some(eid) = eid {
+        cx.notify(eid);
+    }
 }
 
 // ── About dialog ──
@@ -60,9 +74,12 @@ pub fn render_about_dialog(
 
     div()
         .id("aria:dialog:about")
-        .absolute().size_full()
+        .absolute()
+        .size_full()
         .bg(gpui::rgba(0x000000cc))
-        .flex().items_center().justify_center()
+        .flex()
+        .items_center()
+        .justify_center()
         .child(
             modal()
                 .id("aria:dialog:about:modal")
@@ -70,20 +87,36 @@ pub fn render_about_dialog(
                 .width(px(400.))
                 .bg(theme.surface.raised)
                 .content(
-                    div().flex().flex_col().gap_2()
-                        .child(div().id("aria:about:version").text_sm()
-                            .text_color(theme.content.secondary)
-                            .child(format!("GUI {}; CLI {}", gui_ver, cli_ver)))
-                        .child(div().id("aria:about:credits").text_sm()
-                            .text_color(theme.content.tertiary)
-                            .child("GUI Credits:\nGPUI-CE, Yororen UI, Alacritty, etc."))
-                        .child(div().id("aria:about:license").text_sm()
-                            .text_color(theme.content.tertiary)
-                            .child("GUI License: GPL-3.0\nCLI License: MIT License")),
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_2()
+                        .child(
+                            div()
+                                .id("aria:about:version")
+                                .text_sm()
+                                .text_color(theme.content.secondary)
+                                .child(format!("GUI {}; CLI {}", gui_ver, cli_ver)),
+                        )
+                        .child(
+                            div()
+                                .id("aria:about:credits")
+                                .text_sm()
+                                .text_color(theme.content.tertiary)
+                                .child("GUI Credits:\nGPUI-CE, Yororen UI, Alacritty, etc."),
+                        )
+                        .child(
+                            div()
+                                .id("aria:about:license")
+                                .text_sm()
+                                .text_color(theme.content.tertiary)
+                                .child("GUI License: GPL-3.0\nCLI License: MIT License"),
+                        ),
                 )
-                .actions(modal_actions_row([
-                    button("aria:btn:about-ok").child("OK").on_click(on_dismiss).into_any_element()
-                ])),
+                .actions(modal_actions_row([button("aria:btn:about-ok")
+                    .child("OK")
+                    .on_click(on_dismiss)
+                    .into_any_element()])),
         )
 }
 
@@ -137,18 +170,27 @@ pub fn render_error_dialog(
     let mut actions: Vec<gpui::AnyElement> = Vec::new();
     if let Some(dismiss) = on_dismiss {
         actions.push(
-            button("aria:btn:dismiss").child("Close").on_click(dismiss).into_any_element(),
+            button("aria:btn:dismiss")
+                .child("Close")
+                .on_click(dismiss)
+                .into_any_element(),
         );
     }
     actions.push(
-        button("aria:btn:restart").child(button_label).on_click(on_action).into_any_element(),
+        button("aria:btn:restart")
+            .child(button_label)
+            .on_click(on_action)
+            .into_any_element(),
     );
 
     div()
         .id("aria:dialog:error")
-        .absolute().size_full()
+        .absolute()
+        .size_full()
         .bg(gpui::rgba(0x000000cc))
-        .flex().items_center().justify_center()
+        .flex()
+        .items_center()
+        .justify_center()
         .child(
             modal()
                 .id("aria:dialog:error:modal")
@@ -156,7 +198,9 @@ pub fn render_error_dialog(
                 .width(px(420.))
                 .bg(theme.surface.raised)
                 .content(
-                    div().id("aria:error:message").text_sm()
+                    div()
+                        .id("aria:error:message")
+                        .text_sm()
                         .text_color(theme.content.secondary)
                         .child(message),
                 )

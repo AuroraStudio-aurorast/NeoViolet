@@ -1,14 +1,14 @@
 use std::{
     ops::Range,
-    sync::{mpsc, Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
 };
 
 use alacritty_terminal::{index::Side, selection::SelectionType};
 use gpui::{
-    App, Bounds, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
-    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta,
-    ScrollWheelEvent, SharedString, Styled, Window, div, point, px, size,
+    App, Bounds, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement,
+    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
+    ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, SharedString, Styled,
+    Window, div, point, px, size,
 };
 use yororen_ui::theme::ActiveTheme as _;
 
@@ -196,7 +196,11 @@ impl TerminalApp {
         cx.notify();
     }
 
-    pub(crate) fn clear_terminal_marked_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn clear_terminal_marked_text(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         if self.terminal_marked_text.take().is_some() {
             window.invalidate_character_coordinates();
             cx.notify();
@@ -235,7 +239,10 @@ impl TerminalApp {
             + px(cell_width) * cursor.col as f32
             + px(cell_width) * range_utf16.start as f32;
         let y = element_bounds.origin.y + px(line_height) * cursor.row as f32;
-        Some(Bounds::new(point(x, y), size(px(cell_width), px(line_height))))
+        Some(Bounds::new(
+            point(x, y),
+            size(px(cell_width), px(line_height)),
+        ))
     }
 
     // ── Keyboard input ──
@@ -249,21 +256,23 @@ impl TerminalApp {
         // Cmd+C: copy selection
         if event.keystroke.modifiers.secondary()
             && event.keystroke.key.eq_ignore_ascii_case("c")
-            && let Some(text) = self.tab.selection_text() {
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
-                window.prevent_default();
-                cx.stop_propagation();
-                return;
-            }
+            && let Some(text) = self.tab.selection_text()
+        {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            window.prevent_default();
+            cx.stop_propagation();
+            return;
+        }
 
         // Cmd+V: paste
         if event.keystroke.modifiers.secondary()
             && event.keystroke.key.eq_ignore_ascii_case("v")
             && let Some(clipboard) = cx.read_from_clipboard()
-                && let Some(text) = clipboard.text() {
-                    self.paste_into_terminal(&text, window, cx);
-                    return;
-                }
+            && let Some(text) = clipboard.text()
+        {
+            self.paste_into_terminal(&text, window, cx);
+            return;
+        }
 
         // Character input — defer to the IME/InputHandler system.
         // The EntityInputHandler will commit the final text via replace_text_in_range.
@@ -313,9 +322,7 @@ impl TerminalApp {
 
         let mode = self.tab.term_mode();
         let is_mouse_tracking = mode.intersects(
-            TermMode::MOUSE_REPORT_CLICK
-                | TermMode::MOUSE_MOTION
-                | TermMode::MOUSE_DRAG,
+            TermMode::MOUSE_REPORT_CLICK | TermMode::MOUSE_MOTION | TermMode::MOUSE_DRAG,
         );
         if !is_mouse_tracking {
             return false;
@@ -329,8 +336,7 @@ impl TerminalApp {
                 let release_char = if button >= 0x80 { 'm' } else { 'M' };
                 let btn = button & 0x7F;
                 bytes.extend_from_slice(
-                    format!("\x1b[<{};{};{}{}", btn, col + 1, row + 1, release_char)
-                        .as_bytes(),
+                    format!("\x1b[<{};{};{}{}", btn, col + 1, row + 1, release_char).as_bytes(),
                 );
             } else {
                 // Normal mouse tracking (X10 encoding):
@@ -366,11 +372,12 @@ impl TerminalApp {
 
         // Right-click: copy selection to clipboard (no paste).
         if let Some(text) = self.tab.selection_text()
-            && !text.is_empty() {
-                cx.write_to_clipboard(ClipboardItem::new_string(text));
-                self.tab.clear_selection();
-                cx.notify();
-            }
+            && !text.is_empty()
+        {
+            cx.write_to_clipboard(ClipboardItem::new_string(text));
+            self.tab.clear_selection();
+            cx.notify();
+        }
     }
 
     fn begin_terminal_selection(
@@ -438,16 +445,13 @@ impl TerminalApp {
     ) {
         // Zoom via scroll wheel: Ctrl+Scroll (non-macOS) or Cmd+Scroll (macOS)
         // Only active when zoom_via_scroll is enabled in config (disabled by default).
-        if event.modifiers.secondary()
-            && cx.global::<AppState>().config.zoom_via_scroll
-        {
+        if event.modifiers.secondary() && cx.global::<AppState>().config.zoom_via_scroll {
             let delta = match event.delta {
                 ScrollDelta::Lines(point) => point.y,
                 ScrollDelta::Pixels(point) => f32::from(point.y) / 100.0,
             };
             if delta != 0.0 {
-                let new_size = (self.terminal_font_size + delta.signum() * 0.5)
-                    .clamp(8.0, 48.0);
+                let new_size = (self.terminal_font_size + delta.signum() * 0.5).clamp(8.0, 48.0);
                 self.terminal_font_size = new_size;
                 // Sync AppState so menu zoom actions stay consistent
                 let state = cx.global::<AppState>();
@@ -593,11 +597,9 @@ impl Render for TerminalApp {
             .size_full()
             .bg(cx.theme().surface.canvas)
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(
-                |this, event: &KeyDownEvent, window, cx| {
-                    this.on_terminal_key_down(event, window, cx);
-                },
-            ))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                this.on_terminal_key_down(event, window, cx);
+            }))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(|this, event: &MouseDownEvent, window, cx| {
@@ -606,43 +608,33 @@ impl Render for TerminalApp {
             )
             .on_mouse_down(
                 MouseButton::Right,
-                cx.listener(
-                    |this, event: &MouseDownEvent, window, cx| {
-                        this.on_terminal_right_click(event, window, cx);
-                    },
-                ),
+                cx.listener(|this, event: &MouseDownEvent, window, cx| {
+                    this.on_terminal_right_click(event, window, cx);
+                }),
             )
-            .on_mouse_move(cx.listener(
-                |this, event: &MouseMoveEvent, window, cx| {
-                    this.on_terminal_mouse_move(event, window, cx);
-                },
-            ))
+            .on_mouse_move(cx.listener(|this, event: &MouseMoveEvent, window, cx| {
+                this.on_terminal_mouse_move(event, window, cx);
+            }))
             .on_mouse_up(
                 MouseButton::Left,
-                cx.listener(
-                    |this, event: &MouseUpEvent, window, cx| {
-                        this.on_terminal_mouse_up(event, window, cx);
-                    },
-                ),
+                cx.listener(|this, event: &MouseUpEvent, window, cx| {
+                    this.on_terminal_mouse_up(event, window, cx);
+                }),
             )
-            .on_scroll_wheel(cx.listener(
-                |this, event: &ScrollWheelEvent, window, cx| {
-                    this.on_terminal_scroll(event, window, cx);
+            .on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
+                this.on_terminal_scroll(event, window, cx);
+            }))
+            .child(TerminalElement::new(
+                snapshot,
+                marked_text,
+                TerminalRenderParams {
+                    font_family,
+                    font_size,
+                    line_height,
+                    cell_width,
                 },
+                cx.entity().clone(),
+                focus_handle,
             ))
-            .child(
-                TerminalElement::new(
-                    snapshot,
-                    marked_text,
-                    TerminalRenderParams {
-                        font_family,
-                        font_size,
-                        line_height,
-                        cell_width,
-                    },
-                    cx.entity().clone(),
-                    focus_handle,
-                ),
-            )
     }
 }

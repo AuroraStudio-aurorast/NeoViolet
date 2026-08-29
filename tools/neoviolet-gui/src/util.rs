@@ -1,6 +1,6 @@
 //! Miscellaneous utilities for the GUI wrapper.
 
-use gpui::{rgb, Hsla};
+use gpui::{Hsla, rgb};
 
 /// Strip common ANSI escape sequences from a byte slice, returning a plain
 /// UTF-8 `String`. Handles SGR (`\x1b[...m`), erase (`\x1b[...J`/`K`),
@@ -15,7 +15,7 @@ pub fn strip_ansi_escapes(bytes: &[u8]) -> String {
         if bytes[i] == 0x1b && i + 1 < len && bytes[i + 1] == b'[' {
             // CSI sequence: ESC [ ... <final byte>
             i += 2; // skip ESC [
-                    // Skip parameter bytes (0x30-0x3F) and intermediate bytes (0x20-0x2F)
+            // Skip parameter bytes (0x30-0x3F) and intermediate bytes (0x20-0x2F)
             while i < len
                 && ((0x30..=0x3F).contains(&bytes[i]) || (0x20..=0x2F).contains(&bytes[i]))
             {

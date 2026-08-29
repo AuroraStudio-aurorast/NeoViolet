@@ -51,8 +51,7 @@ fn char_width(c: char) -> usize {
         | '\u{20000}'..='\u{2A6DF}'
         | '\u{2A700}'..='\u{2B73F}'
         | '\u{2B740}'..='\u{2B81F}'
-        | '\u{2F800}'..='\u{2FA1F}'
-        => 2,
+        | '\u{2F800}'..='\u{2FA1F}' => 2,
         _ => 1,
     }
 }
@@ -97,7 +96,16 @@ impl DesktopLyricsView {
                 hex_to_hsla(&c.highlight_color),
             )
         };
-        let (lyrics_state, enabled_flag, font_family, font_size, opacity, show_song_info, text_color, highlight_color) = cfg;
+        let (
+            lyrics_state,
+            enabled_flag,
+            font_family,
+            font_size,
+            opacity,
+            show_song_info,
+            text_color,
+            highlight_color,
+        ) = cfg;
         let ipc_client = cx.global::<AppState>().ipc.clone();
 
         // Save position on app quit (entity released = window destroyed).
@@ -165,10 +173,16 @@ impl DesktopLyricsView {
         .detach();
 
         Self {
-            lyrics_state, enabled_flag, ipc_client,
+            lyrics_state,
+            enabled_flag,
+            ipc_client,
             focus_handle: cx.focus_handle(),
-            font_family, font_size, opacity, show_song_info,
-            text_color, highlight_color,
+            font_family,
+            font_size,
+            opacity,
+            show_song_info,
+            text_color,
+            highlight_color,
             scroll_offset: 0.0,
             last_active_text: String::new(),
             last_line_count: 0,
@@ -192,8 +206,12 @@ impl DesktopLyricsView {
         state.config.desktop_lyrics.position_y = Some(y);
 
         let path = crate::config::config_dir_path().join("neoviolet_gui.toml");
-        let Ok(content) = std::fs::read_to_string(&path) else { return };
-        let Ok(mut cfg) = toml::from_str::<crate::config::GuiConfig>(&content) else { return };
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return;
+        };
+        let Ok(mut cfg) = toml::from_str::<crate::config::GuiConfig>(&content) else {
+            return;
+        };
         cfg.desktop_lyrics.position_x = Some(x);
         cfg.desktop_lyrics.position_y = Some(y);
         if let Ok(out) = toml::to_string_pretty(&cfg) {
@@ -222,7 +240,12 @@ impl Render for DesktopLyricsView {
 
         let (title, artist, elapsed, lines) = {
             let g = self.lyrics_state.lock().unwrap();
-            (g.title.clone(), g.artist.clone(), g.elapsed, g.lines.clone())
+            (
+                g.title.clone(),
+                g.artist.clone(),
+                g.elapsed,
+                g.lines.clone(),
+            )
         };
 
         let font = self.font_family.clone();
@@ -251,8 +274,13 @@ impl Render for DesktopLyricsView {
             children.push(
                 centered()
                     .child(shadow(
-                        &song_info, font.clone(), (size * 0.65).max(12.0),
-                        text_c, shadow_c, FontWeight::NORMAL, 0.7,
+                        &song_info,
+                        font.clone(),
+                        (size * 0.65).max(12.0),
+                        text_c,
+                        shadow_c,
+                        FontWeight::NORMAL,
+                        0.7,
                     ))
                     .into_any_element(),
             );
@@ -263,8 +291,16 @@ impl Render for DesktopLyricsView {
             for (idx, text) in active_lines.iter().enumerate() {
                 let primary = idx == 0;
                 let color = if primary { highlight_c } else { text_c };
-                let sz = if primary { size } else { (size * 0.72).max(13.0) };
-                let w = if primary { FontWeight::BOLD } else { FontWeight::NORMAL };
+                let sz = if primary {
+                    size
+                } else {
+                    (size * 0.72).max(13.0)
+                };
+                let w = if primary {
+                    FontWeight::BOLD
+                } else {
+                    FontWeight::NORMAL
+                };
                 let o: f32 = if primary { 1.0 } else { 0.7 };
 
                 let display = if primary && display_width(text) > max_chars {
@@ -274,17 +310,24 @@ impl Render for DesktopLyricsView {
                 };
 
                 parts.push(
-                    shadow(&display, font.clone(), sz, color, shadow_c, w, o)
-                        .into_any_element(),
+                    shadow(&display, font.clone(), sz, color, shadow_c, w, o).into_any_element(),
                 );
             }
             children.push(centered().children(parts).into_any_element());
         } else {
             children.push(
-                div().flex().flex_row().justify_center()
+                div()
+                    .flex()
+                    .flex_row()
+                    .justify_center()
                     .child(shadow(
-                        "\u{2014}", font.clone(), size * 0.7,
-                        text_c, shadow_c, FontWeight::NORMAL, 0.35,
+                        "\u{2014}",
+                        font.clone(),
+                        size * 0.7,
+                        text_c,
+                        shadow_c,
+                        FontWeight::NORMAL,
+                        0.35,
                     ))
                     .into_any_element(),
             );
@@ -293,31 +336,34 @@ impl Render for DesktopLyricsView {
         div()
             .size_full()
             .opacity(self.opacity)
-            .flex().flex_col().items_center().justify_center()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
             .px(px(H_PADDING))
             .track_focus(&self.focus_handle)
-            .on_key_down(cx.listener(
-                |this, event: &KeyDownEvent, window, cx| {
-                    if event.keystroke.key.eq_ignore_ascii_case("space") {
-                        log::debug!("[desktop-lyrics] space pressed → play/pause");
-                        let _ = this.ipc_client.send(&crate::ipc::IpcMessage::play_pause());
-                        window.prevent_default();
-                        cx.stop_propagation();
-                    }
-                },
-            ))
-            .on_mouse_down(MouseButton::Left, cx.listener(
-                |_this, _ev: &MouseDownEvent, window, _cx| window.start_window_move(),
-            ))
-            .on_mouse_down(MouseButton::Right, cx.listener(
-                |this, _ev: &MouseDownEvent, _window, cx| {
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if event.keystroke.key.eq_ignore_ascii_case("space") {
+                    log::debug!("[desktop-lyrics] space pressed → play/pause");
+                    let _ = this.ipc_client.send(&crate::ipc::IpcMessage::play_pause());
+                    window.prevent_default();
+                    cx.stop_propagation();
+                }
+            }))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|_this, _ev: &MouseDownEvent, window, _cx| window.start_window_move()),
+            )
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(|this, _ev: &MouseDownEvent, _window, cx| {
                     log::info!("[desktop-lyrics] right-click: closing");
                     *this.enabled_flag.lock().unwrap() = false;
                     let ipc = cx.global::<AppState>().ipc.clone();
                     let _ = ipc.send(&crate::ipc::IpcMessage::enable_desktop_lyrics(false));
                     cx.notify();
-                },
-            ))
+                }),
+            )
             .children(children)
             .into_any_element()
     }
@@ -345,21 +391,30 @@ fn shadow(
     opacity: f32,
 ) -> impl IntoElement {
     let t = text.to_string();
-    div().relative()
+    div()
+        .relative()
         .child(
-            div().absolute()
-                .left(px(SHADOW_OFFSET)).top(px(SHADOW_OFFSET))
-                .text_size(px(size_px)).font_family(font.clone())
-                .font_weight(weight).text_color(shadow_c)
-                .overflow_x_hidden().whitespace_nowrap()
+            div()
+                .absolute()
+                .left(px(SHADOW_OFFSET))
+                .top(px(SHADOW_OFFSET))
+                .text_size(px(size_px))
+                .font_family(font.clone())
+                .font_weight(weight)
+                .text_color(shadow_c)
+                .overflow_x_hidden()
+                .whitespace_nowrap()
                 .child(t.clone()),
         )
         .child(
             div()
-                .text_size(px(size_px)).font_family(font)
-                .font_weight(weight).text_color(color)
+                .text_size(px(size_px))
+                .font_family(font)
+                .font_weight(weight)
+                .text_color(color)
                 .opacity(opacity)
-                .overflow_x_hidden().whitespace_nowrap()
+                .overflow_x_hidden()
+                .whitespace_nowrap()
                 .child(t),
         )
 }
@@ -403,7 +458,8 @@ fn find_active_lines(lines: &[LyricLineData], elapsed: f64) -> Vec<String> {
     let any_bounded = lines.iter().any(|l| l.end > 0.0);
 
     let raw: Vec<String> = if any_bounded {
-        lines.iter()
+        lines
+            .iter()
             .filter(|l| {
                 l.end > 0.0
                     && (l.time * 1000.0) as u64 <= elapsed_ms
@@ -412,7 +468,8 @@ fn find_active_lines(lines: &[LyricLineData], elapsed: f64) -> Vec<String> {
             .map(|l| l.text.clone())
             .collect()
     } else {
-        lines.iter()
+        lines
+            .iter()
             .rfind(|l| (l.time * 1000.0) as u64 <= elapsed_ms)
             .map(|l| l.text.clone())
             .into_iter()
@@ -439,7 +496,7 @@ fn active_text(lines: &[LyricLineData], elapsed: f64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{char_width, display_width, find_active_lines, marquee_text, MARQUEE_MARGIN};
+    use super::{MARQUEE_MARGIN, char_width, display_width, find_active_lines, marquee_text};
     use crate::ipc::LyricLineData;
 
     #[test]
@@ -468,9 +525,27 @@ mod tests {
     #[test]
     fn find_active_lines_picks_elapsed() {
         let lines = vec![
-            LyricLineData { time: 0.0, end: 0.0, text: "one".into(), agent: None, agent_name: None },
-            LyricLineData { time: 5.0, end: 0.0, text: "two".into(), agent: None, agent_name: None },
-            LyricLineData { time: 10.0, end: 0.0, text: "three".into(), agent: None, agent_name: None },
+            LyricLineData {
+                time: 0.0,
+                end: 0.0,
+                text: "one".into(),
+                agent: None,
+                agent_name: None,
+            },
+            LyricLineData {
+                time: 5.0,
+                end: 0.0,
+                text: "two".into(),
+                agent: None,
+                agent_name: None,
+            },
+            LyricLineData {
+                time: 10.0,
+                end: 0.0,
+                text: "three".into(),
+                agent: None,
+                agent_name: None,
+            },
         ];
         let active = find_active_lines(&lines, 6.0);
         assert!(active.iter().any(|t| t.contains("two")));

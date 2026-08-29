@@ -35,43 +35,44 @@ fn main() {
             if let Ok(output) = std::process::Command::new(&shell)
                 .args(["-l", "-c", "env -0"])
                 .output()
-                && output.status.success() {
-                    for entry in output.stdout.split(|b| *b == 0) {
-                        if entry.is_empty() {
-                            continue;
-                        }
-                        let Some(eq) = entry.iter().position(|b| *b == b'=') else {
-                            continue;
-                        };
-                        let Ok(key) = std::str::from_utf8(&entry[..eq]) else {
-                            continue;
-                        };
-                        let Ok(value) = std::str::from_utf8(&entry[eq + 1..]) else {
-                            continue;
-                        };
-                        let should_import = matches!(
-                            key,
-                            "PATH"
-                                | "LANG"
-                                | "LC_ALL"
-                                | "LC_CTYPE"
-                                | "LC_MESSAGES"
-                                | "LC_MONETARY"
-                                | "LC_NUMERIC"
-                                | "LC_TIME"
-                                | "SHELL"
-                                | "HOME"
-                                | "HOMEBREW_PREFIX"
-                                | "HOMEBREW_CELLAR"
-                                | "HOMEBREW_REPOSITORY"
-                        );
-                        if should_import {
-                            unsafe {
-                                std::env::set_var(key, value);
-                            }
+                && output.status.success()
+            {
+                for entry in output.stdout.split(|b| *b == 0) {
+                    if entry.is_empty() {
+                        continue;
+                    }
+                    let Some(eq) = entry.iter().position(|b| *b == b'=') else {
+                        continue;
+                    };
+                    let Ok(key) = std::str::from_utf8(&entry[..eq]) else {
+                        continue;
+                    };
+                    let Ok(value) = std::str::from_utf8(&entry[eq + 1..]) else {
+                        continue;
+                    };
+                    let should_import = matches!(
+                        key,
+                        "PATH"
+                            | "LANG"
+                            | "LC_ALL"
+                            | "LC_CTYPE"
+                            | "LC_MESSAGES"
+                            | "LC_MONETARY"
+                            | "LC_NUMERIC"
+                            | "LC_TIME"
+                            | "SHELL"
+                            | "HOME"
+                            | "HOMEBREW_PREFIX"
+                            | "HOMEBREW_CELLAR"
+                            | "HOMEBREW_REPOSITORY"
+                    );
+                    if should_import {
+                        unsafe {
+                            std::env::set_var(key, value);
                         }
                     }
                 }
+            }
         });
     }
 
@@ -187,7 +188,8 @@ fn main() {
                     .unwrap()
                     .replace(terminal_child.downgrade());
 
-                let root_entity = cx.new(|cx| NeoVioletApp::new(terminal_child, config_opacity, cx));
+                let root_entity =
+                    cx.new(|cx| NeoVioletApp::new(terminal_child, config_opacity, cx));
                 cx.global::<AppState>()
                     .root_entity_id
                     .lock()

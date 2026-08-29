@@ -24,22 +24,10 @@ pub enum BackendCommand {
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub enum BackendEvent {
-    Output {
-        tab_id: String,
-        bytes: Vec<u8>,
-    },
-    Status {
-        tab_id: String,
-        text: String,
-    },
-    Closed {
-        tab_id: String,
-        reason: String,
-    },
-    TerminalTitleChanged {
-        tab_id: String,
-        title: String,
-    },
+    Output { tab_id: String, bytes: Vec<u8> },
+    Status { tab_id: String, text: String },
+    Closed { tab_id: String, reason: String },
+    TerminalTitleChanged { tab_id: String, title: String },
 }
 
 #[allow(dead_code)]

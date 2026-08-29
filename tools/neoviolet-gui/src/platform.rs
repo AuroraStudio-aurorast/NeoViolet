@@ -4,7 +4,11 @@ use std::time::Duration;
 
 /// Returns the neoviolet binary name for this platform.
 pub fn binary_name() -> &'static str {
-    if cfg!(target_os = "windows") { "neoviolet.exe" } else { "neoviolet" }
+    if cfg!(target_os = "windows") {
+        "neoviolet.exe"
+    } else {
+        "neoviolet"
+    }
 }
 
 /// Locate the `neoviolet` binary.
@@ -104,7 +108,11 @@ fn try_extract_version(raw: &str) -> Option<String> {
 }
 
 fn truncate(s: String, max: usize) -> String {
-    if s.len() > max { s[..max].to_string() } else { s }
+    if s.len() > max {
+        s[..max].to_string()
+    } else {
+        s
+    }
 }
 
 fn run_version_command(bin: &str) -> String {

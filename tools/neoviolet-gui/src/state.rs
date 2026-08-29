@@ -4,8 +4,8 @@ use gpui::{AnyWindowHandle, EntityId, Global, WeakEntity};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use crate::config::GuiConfig;
 use crate::app::TerminalApp;
+use crate::config::GuiConfig;
 use crate::ipc::{IpcClient, LyricLineData};
 
 /// Runtime state for the desktop lyrics overlay, updated from IPC "lyrics" messages.

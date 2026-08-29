@@ -88,12 +88,13 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
             (new_fs, weak, eid)
         };
         if let Some(ref weak) = weak_opt
-            && let Some(terminal) = weak.upgrade() {
-                terminal.update(cx, |t, cx| {
-                    t.terminal_font_size = new_fs;
-                    cx.notify();
-                });
-            }
+            && let Some(terminal) = weak.upgrade()
+        {
+            terminal.update(cx, |t, cx| {
+                t.terminal_font_size = new_fs;
+                cx.notify();
+            });
+        }
         if let Some(eid) = root_eid {
             cx.notify(eid);
         }
@@ -113,7 +114,8 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
 
     cx.on_action(|_: &OpenRepository, _cx: &mut App| {
         let _ = std::process::Command::new("open")
-            .arg("https://github.com/AuroraStudio-aurorast/NeoViolet").spawn();
+            .arg("https://github.com/AuroraStudio-aurorast/NeoViolet")
+            .spawn();
     });
 
     // Open File — native file picker, sends path via IPC socket.
@@ -131,9 +133,10 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         cx.spawn(async move |_cx| {
             if let Ok(Ok(Some(paths))) = rx.await
                 && let Some(path) = paths.into_iter().next()
-                    && let Err(e) = ipc.send_open(&path.to_string_lossy()) {
-                        log::error!("[open-file] IPC send failed: {}", e);
-                    }
+                && let Err(e) = ipc.send_open(&path.to_string_lossy())
+            {
+                log::error!("[open-file] IPC send failed: {}", e);
+            }
         })
         .detach();
     });
@@ -193,9 +196,7 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         },
         Menu {
             name: "File".into(),
-            items: vec![
-                MenuItem::action("Open File…", OpenFile),
-            ],
+            items: vec![MenuItem::action("Open File…", OpenFile)],
         },
         Menu {
             name: "View".into(),
@@ -213,9 +214,7 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         },
         Menu {
             name: "Help".into(),
-            items: vec![
-                MenuItem::action("GitHub Repository", OpenRepository),
-            ],
+            items: vec![MenuItem::action("GitHub Repository", OpenRepository)],
         },
     ]);
 }
