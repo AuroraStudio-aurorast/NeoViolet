@@ -208,3 +208,39 @@ fn port_file_path(pid: u32) -> String {
     let path = dir.join(format!("neoviolet-ipc-{}", pid));
     path.to_string_lossy().to_string()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_serde_roundtrip() {
+        let m = IpcMessage::open("/tmp/a.flac");
+        let json = serde_json::to_string(&m).expect("serialize");
+        let back: IpcMessage = serde_json::from_str(&json).expect("deserialize");
+        // IpcMessage does not derive PartialEq, so compare fields individually.
+        assert_eq!(back.msg_type, m.msg_type);
+        assert_eq!(back.path, m.path);
+        assert_eq!(back.dialog, m.dialog);
+        assert_eq!(back.enable, m.enable);
+        assert_eq!(back.elapsed, m.elapsed);
+        assert_eq!(back.title, m.title);
+        assert_eq!(back.artist, m.artist);
+        // LyricLineData has no PartialEq either; open() leaves lines unset,
+        // so both sides must be None here.
+        assert!(m.lines.is_none());
+        assert!(back.lines.is_none());
+    }
+
+    #[test]
+    fn constructors_set_type_field() {
+        assert_eq!(IpcMessage::play_pause().msg_type, "play_pause");
+        assert_eq!(IpcMessage::open("x").path.as_deref(), Some("x"));
+    }
+
+    #[test]
+    fn port_file_path_is_absolute() {
+        let p = port_file_path(12345);
+        assert!(p.contains("12345"), "port path should embed pid: {p}");
+    }
+}
