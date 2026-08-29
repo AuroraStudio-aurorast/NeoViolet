@@ -94,7 +94,7 @@ func (b *apeCLIBackend) startProcess(args []string) (*StreamInfo, error) {
 	// Read stderr in background for debugging.
 	go func() {
 		var buf bytes.Buffer
-		io.Copy(&buf, stderr)
+		_, _ = io.Copy(&buf, stderr)
 		if buf.Len() > 0 {
 			logger.Debug("apecli stderr", "msg", buf.String())
 		}
@@ -259,11 +259,11 @@ func (b *apeCLIBackend) kill() {
 		close(b.cancel)
 	}
 	if b.cmd != nil && b.cmd.Process != nil {
-		b.cmd.Process.Kill()
-		b.cmd.Wait()
+		_ = b.cmd.Process.Kill()
+		_ = b.cmd.Wait()
 	}
 	if b.stdout != nil {
-		b.stdout.Close()
+		_ = b.stdout.Close()
 	}
 	b.cmd = nil
 	b.stdout = nil

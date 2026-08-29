@@ -132,7 +132,7 @@ func (r *RateLimit) writeLocked() error {
 		return fmt.Errorf("write ratelimit tmp: %w", err)
 	}
 	if err := os.Rename(tmp, r.file); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename ratelimit: %w", err)
 	}
 	return nil

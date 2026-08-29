@@ -39,7 +39,7 @@ func TestFindALACTrackRealSample(t *testing.T) {
 	if err != nil {
 		t.Skipf("testdata missing: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	d := NewDemuxer(f)
 	track, err := d.FindALACTrack()

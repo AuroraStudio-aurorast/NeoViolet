@@ -162,7 +162,7 @@ func (s *Streamer) Seek(samples int) error {
 		samples = s.TotalSamples
 	}
 
-	s.decoder.Init(48000, s.NumChannels)
+	_ = s.decoder.Init(48000, s.NumChannels)
 
 	accum := 0
 	for i, pkt := range s.packets {

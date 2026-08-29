@@ -1,3 +1,4 @@
+// Package cmd contains the command-line entry points for neoviolet.
 package cmd
 
 import (
@@ -25,9 +26,9 @@ func TestVersionCommandOutput(t *testing.T) {
 
 	// Restore stdout and close the write end so ReadAll gets EOF.
 	os.Stdout = oldStdout
-	w.Close()
+	_ = w.Close()
 	out, err := io.ReadAll(r)
-	r.Close()
+	_ = r.Close()
 	if err != nil {
 		t.Fatalf("read captured stdout: %v", err)
 	}

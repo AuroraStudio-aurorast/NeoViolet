@@ -171,7 +171,7 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer file.Seek(originalPos, io.SeekStart)
+	defer func() { _, _ = file.Seek(originalPos, io.SeekStart) }()
 
 	buffer := make([]byte, 1084)
 	n, err := file.Read(buffer)

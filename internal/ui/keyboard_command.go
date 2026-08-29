@@ -191,7 +191,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 			if m.Audio.Duration > 0 && pos > m.Audio.Duration {
 				pos = m.Audio.Duration
 			}
-			m.Audio.SeekPlayer(pos)
+			_ = m.Audio.SeekPlayer(pos)
 		default:
 			seconds, err := strconv.ParseFloat(arg, 64)
 			if err != nil {
@@ -205,7 +205,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 			if m.Audio.Duration > 0 && newPos > m.Audio.Duration {
 				newPos = m.Audio.Duration
 			}
-			m.Audio.SeekPlayer(newPos)
+			_ = m.Audio.SeekPlayer(newPos)
 		}
 		return m, nil
 

@@ -37,12 +37,13 @@ func (mr *MetadataReader) Read(path string) Metadata {
 }
 
 func readViaDhowden(path string) Metadata {
+	// #nosec G304 -- path is the user's own audio file being read for metadata.
 	file, err := os.Open(path)
 	if err != nil {
 		logger.Debug("Metadata read: open failed", "path", path, "err", err)
 		return Metadata{}
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	metadata, err := tag.ReadFrom(file)
 	if err != nil {

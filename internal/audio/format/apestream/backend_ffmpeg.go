@@ -70,12 +70,12 @@ func probeFFmpegMetadata(path string) (*StreamInfo, error) {
 	for _, s := range result.Streams {
 		if s.CodecType == "audio" {
 			var sampleRate int
-			fmt.Sscanf(s.SampleRate, "%d", &sampleRate)
+			_, _ = fmt.Sscanf(s.SampleRate, "%d", &sampleRate)
 
 			totalSamples := int(s.NbSamples)
 			if totalSamples == 0 && s.Duration != "" {
 				var duration float64
-				fmt.Sscanf(s.Duration, "%f", &duration)
+				_, _ = fmt.Sscanf(s.Duration, "%f", &duration)
 				totalSamples = int(duration*float64(sampleRate) + 0.5)
 			}
 
@@ -121,6 +121,8 @@ func (b *ffmpegBackend) startProcess(path string, seekSamples int) (*StreamInfo,
 	}
 	args = append(args, "pipe:1")
 
+	// #nosec G204 -- ffmpeg is a fixed binary name; args are a fixed flag set
+	// plus a sanitized file path.
 	cmd := exec.Command("ffmpeg", args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -142,7 +144,7 @@ func (b *ffmpegBackend) startProcess(path string, seekSamples int) (*StreamInfo,
 	// Capture stderr for diagnostics (ffmpeg logs there).
 	go func() {
 		var buf bytes.Buffer
-		io.Copy(&buf, stderr)
+		_, _ = io.Copy(&buf, stderr)
 		if buf.Len() > 0 {
 			logger.Debug("ffmpeg stderr", "msg", buf.String())
 		}
@@ -269,11 +271,11 @@ func (b *ffmpegBackend) kill() {
 		close(b.cancel)
 	}
 	if b.cmd != nil && b.cmd.Process != nil {
-		b.cmd.Process.Kill()
-		b.cmd.Wait()
+		_ = b.cmd.Process.Kill()
+		_ = b.cmd.Wait()
 	}
 	if b.stdout != nil {
-		b.stdout.Close()
+		_ = b.stdout.Close()
 	}
 	b.cmd = nil
 	b.stdout = nil

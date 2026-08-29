@@ -25,7 +25,7 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 		m.togglePlayback()
 	case mediactl.CmdPlay:
 		if !m.Audio.Player.IsPlaying() {
-			m.Audio.Player.Play()
+			_ = m.Audio.Player.Play()
 			m.Audio.IsPlaying = true
 		}
 	case mediactl.CmdPause:
@@ -36,7 +36,7 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 	case mediactl.CmdStop:
 		m.Audio.Player.Pause()
 		m.Audio.IsPlaying = false
-		m.Audio.Player.Seek(0)
+		_ = m.Audio.Player.Seek(0)
 	case mediactl.CmdNext:
 		// No tracklist — skip forward 10s as fallback
 		m.Audio.SeekRelative(10 * time.Second)
@@ -54,7 +54,7 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 	case mediactl.CmdSetPosition:
 		// MPRIS SetPosition is absolute position in microseconds
 		pos := time.Duration(msg.Command.Value) * time.Microsecond
-		m.Audio.SeekPlayer(pos)
+		_ = m.Audio.SeekPlayer(pos)
 		if m.MediaCtl != nil {
 			m.MediaCtl.Update(m.buildPlayState())
 		}

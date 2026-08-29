@@ -24,7 +24,7 @@ func TestDecodeM4A_Detection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	buf := make([]byte, 12)
 	_, err = f.Read(buf)
@@ -41,7 +41,7 @@ func TestDecodeM4A_Streamer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	streamer, format, err := DecodeM4A(f)
 	if err != nil {
@@ -106,7 +106,7 @@ func TestDecodeM4A_Streamer(t *testing.T) {
 	}
 }
 
-func TestDecodeM4A_ImplementsStreamSeekCloser(t *testing.T) {
+func TestDecodeM4A_ImplementsStreamSeekCloser(_ *testing.T) {
 	var _ beep.StreamSeekCloser = (*Streamer)(nil)
 }
 
@@ -115,7 +115,7 @@ func TestDecodeM4A_ErrMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	streamer, _, err := DecodeM4A(f)
 	if err != nil {

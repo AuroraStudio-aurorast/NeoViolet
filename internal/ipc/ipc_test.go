@@ -25,7 +25,7 @@ func TestServerLifecycle(t *testing.T) {
 	if err != nil {
 		t.Skipf("cannot dial ipc server (CI may restrict): %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		t.Fatalf("SetDeadline: %v", err)
 	}

@@ -50,10 +50,10 @@ func trackJSON(id int64, artist string, dur float64, synced string) string {
 
 func TestFetchLyricsGetHit(t *testing.T) {
 	var hits int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits++
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(trackJSON(1, "Porter Robinson & Madeon", 219, shelterLyrics)))
+		_, _ = w.Write([]byte(trackJSON(1, "Porter Robinson & Madeon", 219, shelterLyrics)))
 	}))
 	defer srv.Close()
 
@@ -87,10 +87,10 @@ func TestFetchLyricsGet404SearchFallback(t *testing.T) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/api/get"):
 			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"code":404,"name":"TrackNotFound","message":"nope"}`))
+			_, _ = w.Write([]byte(`{"code":404,"name":"TrackNotFound","message":"nope"}`))
 		case strings.HasPrefix(r.URL.Path, "/api/search"):
 			// two candidates; only the 2nd matches artists, with synced lyrics
-			w.Write([]byte(`[` +
+			_, _ = w.Write([]byte(`[` +
 				trackJSON(10, "Someone Else", 219, shelterLyrics) + `,` +
 				trackJSON(11, "Porter Robinson & Madeon", 221, shelterLyrics) + `]`))
 		}
@@ -114,7 +114,7 @@ func TestFetchLyricsNoMatchingCandidate(t *testing.T) {
 		if strings.HasPrefix(r.URL.Path, "/api/get") {
 			w.WriteHeader(http.StatusNotFound)
 		} else {
-			w.Write([]byte(`[` + trackJSON(10, "Completely Different", 100, shelterLyrics) + `]`))
+			_, _ = w.Write([]byte(`[` + trackJSON(10, "Completely Different", 100, shelterLyrics) + `]`))
 		}
 	}))
 	defer srv.Close()
@@ -134,7 +134,7 @@ func TestFetchLyricsPlainOnlyAbandoned(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		} else {
 			b, _ := json.Marshal(Track{ID: 10, TrackName: "Shelter", ArtistName: "Porter Robinson & Madeon", Duration: 219, PlainLyrics: "just text"})
-			w.Write([]byte(`[` + string(b) + `]`))
+			_, _ = w.Write([]byte(`[` + string(b) + `]`))
 		}
 	}))
 	defer srv.Close()
@@ -148,10 +148,10 @@ func TestFetchLyricsPlainOnlyAbandoned(t *testing.T) {
 }
 
 func TestFetchLyricsInstrumental(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		b, _ := json.Marshal(Track{ID: 1, TrackName: "Shelter", ArtistName: "Porter Robinson & Madeon", Duration: 219, Instrumental: true})
-		w.Write([]byte(string(b)))
+		_, _ = w.Write([]byte(string(b)))
 	}))
 	defer srv.Close()
 
@@ -165,10 +165,10 @@ func TestFetchLyricsInstrumental(t *testing.T) {
 
 func TestFetchLyricsDiskCacheHit(t *testing.T) {
 	var hits int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits++
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(trackJSON(1, "Porter Robinson & Madeon", 219, shelterLyrics)))
+		_, _ = w.Write([]byte(trackJSON(1, "Porter Robinson & Madeon", 219, shelterLyrics)))
 	}))
 	defer srv.Close()
 
@@ -197,9 +197,9 @@ func TestFetchLyricsDiskCacheHit(t *testing.T) {
 }
 
 func TestFetchLyricsInvalidPayloadNoCache(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":1,"trackName":"Shelter","artistName":"X","duration":10,"syncedLyrics":"not lrc at all"}`))
+		_, _ = w.Write([]byte(`{"id":1,"trackName":"Shelter","artistName":"X","duration":10,"syncedLyrics":"not lrc at all"}`))
 	}))
 	defer srv.Close()
 

@@ -209,9 +209,9 @@ func queryOSC50Font() string {
 	if err != nil {
 		return ""
 	}
-	defer term.Restore(fd, old)
+	defer func() { _ = term.Restore(fd, old) }()
 
-	os.Stdout.WriteString("\x1b]50;?\x07")
+	_, _ = os.Stdout.WriteString("\x1b]50;?\x07")
 
 	ch := make(chan string, 1)
 	go func() {

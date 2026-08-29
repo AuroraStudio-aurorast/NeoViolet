@@ -66,7 +66,7 @@ func loadAudioFromStdin(player *audio.Player, generation int) tea.Msg {
 	// accidentally piped large files or /dev/zero.
 	const maxStdinSize = 500 * 1024 * 1024
 	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinSize+1))
-	os.Stdin.Close()
+	_ = os.Stdin.Close()
 	if err != nil {
 		logger.Error("Failed to read stdin", "err", err)
 		return ErrorMsg{Message: fmt.Sprintf("Failed to read stdin: %v", err), Timer: 120, Generation: generation}
@@ -325,7 +325,7 @@ func (m *Model) cleanup() {
 	m.Audio.Close()
 	if m.MediaCtl != nil {
 		logger.Debug("Cleanup: closing media controller")
-		m.MediaCtl.Close()
+		_ = m.MediaCtl.Close()
 	}
 	if m.ipcServer != nil {
 		logger.Debug("Cleanup: closing IPC server")

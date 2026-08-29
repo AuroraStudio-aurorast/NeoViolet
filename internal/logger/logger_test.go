@@ -26,11 +26,12 @@ func TestInfoWritesToFile(t *testing.T) {
 	if err := Init(); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
-	defer Close()
+	defer func() { _ = Close() }()
 
 	Info("test message", "key", "value")
 
 	logPath := filepath.Join(os.TempDir(), "neoviolet.log")
+	// #nosec G304 -- fixed temp-dir log path used only by tests.
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("ReadFile error: %v", err)
@@ -45,7 +46,7 @@ func TestInfoWritesToFile(t *testing.T) {
 	}
 }
 
-func TestDebugNilLogger(t *testing.T) {
+func TestDebugNilLogger(_ *testing.T) {
 	// Ensure no panic when logger is nil
 	Debug("debug msg", "k", "v")
 	Info("info msg", "k", "v")
@@ -59,15 +60,16 @@ func TestInitCleansUpOldLog(t *testing.T) {
 		t.Fatalf("Init() error: %v", err)
 	}
 	Info("first message")
-	Close()
+	_ = Close()
 
 	if err := Init(); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
 	Info("second message")
-	Close()
+	_ = Close()
 
 	logPath := filepath.Join(os.TempDir(), "neoviolet.log")
+	// #nosec G304 -- fixed temp-dir log path used only by tests.
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatalf("ReadFile error: %v", err)

@@ -24,7 +24,7 @@ func TestDecodeMP2_Detection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	buf := make([]byte, 4)
 	_, err = f.Read(buf)
@@ -51,13 +51,13 @@ func TestDecodeMP2_Streamer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	streamer, format, err := DecodeMP2(f)
 	if err != nil {
 		t.Fatalf("DecodeMP2: %v", err)
 	}
-	defer streamer.Close()
+	defer func() { _ = streamer.Close() }()
 
 	if format.SampleRate == 0 {
 		t.Error("expected non-zero sample rate")
@@ -144,7 +144,7 @@ func TestDecodeMP2_Streamer(t *testing.T) {
 	}
 }
 
-func TestDecodeMP2_ImplementsStreamSeekCloser(t *testing.T) {
+func TestDecodeMP2_ImplementsStreamSeekCloser(_ *testing.T) {
 	var _ beep.StreamSeekCloser = (*Streamer)(nil)
 }
 
@@ -153,13 +153,13 @@ func TestDecodeMP2_ErrMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	streamer, _, err := DecodeMP2(f)
 	if err != nil {
 		t.Fatalf("DecodeMP2: %v", err)
 	}
-	defer streamer.Close()
+	defer func() { _ = streamer.Close() }()
 
 	if err := streamer.Err(); err != nil {
 		t.Errorf("expected no error, got: %v", err)
@@ -174,7 +174,7 @@ func TestDecodeMP2_Close(t *testing.T) {
 
 	streamer, _, err := DecodeMP2(f)
 	if err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatalf("DecodeMP2: %v", err)
 	}
 
@@ -201,11 +201,11 @@ func TestDecodeMP2_BadFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// Write garbage
-	f.Write([]byte("this is not an mp2 file"))
-	f.Seek(0, 0)
+	_, _ = f.Write([]byte("this is not an mp2 file"))
+	_, _ = f.Seek(0, 0)
 
 	_, _, err = DecodeMP2(f)
 	if err == nil {

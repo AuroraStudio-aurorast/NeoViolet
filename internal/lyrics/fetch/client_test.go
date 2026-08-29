@@ -44,7 +44,7 @@ func TestClientGet(t *testing.T) {
 }
 
 func TestClientGetNotFound(t *testing.T) {
-	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"code":404,"name":"TrackNotFound","message":"Failed to find specified track"}`))
 	}))
@@ -56,7 +56,7 @@ func TestClientGetNotFound(t *testing.T) {
 func TestClientGetRateLimitedRetry(t *testing.T) {
 	var attempts atomic.Int32
 	rl := &RateLimit{}
-	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		if attempts.Add(1) == 1 {
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusTooManyRequests)
@@ -84,7 +84,7 @@ func TestClientGetRateLimitedExhausted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadRateLimit() error: %v", err)
 	}
-	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Retry-After", "1")
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
@@ -105,7 +105,7 @@ func TestClientGetRateLimitedExhausted(t *testing.T) {
 }
 
 func TestClientContentTypeRejected(t *testing.T) {
-	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte(`<html>proxy error</html>`))
 	}))
@@ -115,7 +115,7 @@ func TestClientContentTypeRejected(t *testing.T) {
 }
 
 func TestClientResponseTooLarge(t *testing.T) {
-	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(make([]byte, maxFetchResponse+1024))
 	}))
@@ -175,7 +175,7 @@ func TestClientOfflineRefused(t *testing.T) {
 
 func TestClientThrottle(t *testing.T) {
 	var hits atomic.Int32
-	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":1,"trackName":"T","artistName":"A","duration":10,"syncedLyrics":"[00:01.00]x"}`))

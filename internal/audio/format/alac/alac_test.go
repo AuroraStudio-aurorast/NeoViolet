@@ -86,7 +86,7 @@ func TestDecodeRealSample(t *testing.T) {
 	if err != nil {
 		t.Skipf("testdata missing: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	demux := mp4.NewDemuxer(f)
 	track, err := demux.FindALACTrack()

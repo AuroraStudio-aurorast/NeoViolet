@@ -21,7 +21,7 @@ func (a *AudioState) TogglePlayback() {
 		a.IsPlaying = false
 	} else {
 		logger.Debug("TogglePlayback: play")
-		a.Player.Play()
+		_ = a.Player.Play()
 		a.IsPlaying = true
 	}
 }
@@ -29,7 +29,7 @@ func (a *AudioState) TogglePlayback() {
 func (a *AudioState) Close() {
 	if a.Player != nil {
 		logger.Debug("AudioState.Close")
-		a.Player.Close()
+		_ = a.Player.Close()
 		a.Player = nil
 	}
 }
@@ -128,7 +128,7 @@ func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
 		newPos = a.Duration
 	}
 	logger.Debug("SeekRelative", "delta", delta, "from", current, "to", newPos)
-	a.Player.Seek(newPos)
+	_ = a.Player.Seek(newPos)
 	return newPos
 }
 

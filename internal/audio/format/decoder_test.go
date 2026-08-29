@@ -12,14 +12,14 @@ func writeTempFile(t *testing.T, data []byte) *os.File {
 		t.Fatalf("CreateTemp: %v", err)
 	}
 	if _, err := f.Write(data); err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatalf("Write: %v", err)
 	}
 	if _, err := f.Seek(0, 0); err != nil {
-		f.Close()
+		_ = f.Close()
 		t.Fatalf("Seek: %v", err)
 	}
-	t.Cleanup(func() { f.Close() })
+	t.Cleanup(func() { _ = f.Close() })
 	return f
 }
 

@@ -24,7 +24,7 @@ func TestDecodeOpus_Detection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	buf := make([]byte, 37)
 	_, err = f.Read(buf)
@@ -44,13 +44,13 @@ func TestDecodeOpus_Streamer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	streamer, format, err := DecodeOGG(f)
 	if err != nil {
 		t.Fatalf("DecodeOGG: %v", err)
 	}
-	defer streamer.Close()
+	defer func() { _ = streamer.Close() }()
 
 	if format.SampleRate != 48000 {
 		t.Errorf("expected sample rate 48000, got %d", format.SampleRate)
@@ -111,7 +111,7 @@ func TestDecodeOpus_Streamer(t *testing.T) {
 	}
 }
 
-func TestDecodeOpus_ImplementsStreamSeekCloser(t *testing.T) {
+func TestDecodeOpus_ImplementsStreamSeekCloser(_ *testing.T) {
 	var _ beep.StreamSeekCloser = (*Streamer)(nil)
 }
 
@@ -120,13 +120,13 @@ func TestDecodeOpus_ErrMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open test file: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	streamer, _, err := DecodeOGG(f)
 	if err != nil {
 		t.Fatalf("DecodeOGG: %v", err)
 	}
-	defer streamer.Close()
+	defer func() { _ = streamer.Close() }()
 
 	if err := streamer.Err(); err != nil {
 		t.Errorf("expected no error, got: %v", err)

@@ -109,7 +109,7 @@ func TestCoreLifecycle(t *testing.T) {
 	if sc.Err() != nil {
 		t.Error("Err should be nil")
 	}
-	sc.Close()
+	_ = sc.Close()
 	if !sc.Closed {
 		t.Error("Close should set Closed")
 	}

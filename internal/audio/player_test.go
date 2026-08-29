@@ -66,7 +66,7 @@ func TestPlayerPlayPauseResume(t *testing.T) {
 		t.Error("After Play (resume), player should be playing")
 	}
 
-	p.Close()
+	_ = p.Close()
 	if p.IsPlaying() {
 		t.Error("After Close, player should not be playing")
 	}

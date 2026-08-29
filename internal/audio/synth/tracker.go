@@ -44,11 +44,12 @@ type TrackerPlayer struct {
 func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPlayer, error) {
 	logger.Info("Creating tracker player", "path", path, "ext", ext, "sampleRate", sampleRate)
 
+	// #nosec G304 -- path is the user's own tracker module being loaded.
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open tracker file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	songFmtKey := formatKeyFromExt(ext)
 	feats := []feature.Feature{
@@ -62,7 +63,7 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 	}
 
 	var us settings.UserSettings
-	songFmt.ConvertFeaturesToSettings(&us, feats)
+	_ = songFmt.ConvertFeaturesToSettings(&us, feats)
 
 	mach, err := machine.NewMachine(songData, us)
 	if err != nil {

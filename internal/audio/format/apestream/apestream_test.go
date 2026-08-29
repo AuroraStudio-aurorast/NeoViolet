@@ -169,12 +169,12 @@ func TestDecodeInvalidFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	if _, err := tmpFile.Write([]byte("not an APE file at all")); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	tmpFile.Seek(0, io.SeekStart)
+	_, _ = tmpFile.Seek(0, io.SeekStart)
 
 	// Decode should fail since this is not really an APE file.
 	// The backends should all fail and return an error.
@@ -185,7 +185,7 @@ func TestDecodeInvalidFile(t *testing.T) {
 	t.Logf("Decode error (expected): %v", err)
 }
 
-func TestStreamerInterface(t *testing.T) {
+func TestStreamerInterface(_ *testing.T) {
 	// Verify that *Streamer implements beep.StreamSeekCloser at compile time.
 	var _ interface {
 		Stream([][2]float64) (int, bool)
@@ -198,17 +198,18 @@ func TestStreamerInterface(t *testing.T) {
 
 func TestDecodeStereoAPE(t *testing.T) {
 	path := testFile("test_ape.ape")
+	// #nosec G304 -- test fixture path is a constant relative to the repo.
 	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("open test fixture: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	s, fmt, err := Decode(f, path)
 	if err != nil {
 		t.Skipf("no APE backend available (install ffmpeg or mac, or build apecli): %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	if fmt.SampleRate != 44100 {
 		t.Errorf("SampleRate = %d, want 44100", fmt.SampleRate)
@@ -239,17 +240,18 @@ func TestDecodeStereoAPE(t *testing.T) {
 
 func TestDecodeMonoAPE(t *testing.T) {
 	path := testFile("test_ape_mono.ape")
+	// #nosec G304 -- test fixture path is a constant relative to the repo.
 	f, err := os.Open(path)
 	if err != nil {
 		t.Fatalf("open test fixture: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	s, fmt, err := Decode(f, path)
 	if err != nil {
 		t.Skipf("no APE backend available: %v", err)
 	}
-	defer s.Close()
+	defer func() { _ = s.Close() }()
 
 	t.Logf("Mono format: %d Hz, %d ch, %d-bit", fmt.SampleRate, fmt.NumChannels, fmt.Precision)
 	if fmt.SampleRate != 44100 {

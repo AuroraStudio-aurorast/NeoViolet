@@ -19,6 +19,7 @@ func TestLoadRateLimitMissingFile(t *testing.T) {
 
 func TestLoadRateLimitCorruptFile(t *testing.T) {
 	dir := t.TempDir()
+	// #nosec G306 -- test fixture written to a private temp dir.
 	if err := os.WriteFile(filepath.Join(dir, rateLimitFileName), []byte("{bad"), 0o644); err != nil {
 		t.Fatalf("write corrupt: %v", err)
 	}
@@ -120,6 +121,7 @@ func TestLoadRateLimitExpiredEntriesPruned(t *testing.T) {
 
 func TestSetRateLimitedUnwritableDir(t *testing.T) {
 	blocker := filepath.Join(t.TempDir(), "blocker")
+	// #nosec G306 -- test fixture written to a private temp dir.
 	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
 		t.Fatalf("write blocker: %v", err)
 	}

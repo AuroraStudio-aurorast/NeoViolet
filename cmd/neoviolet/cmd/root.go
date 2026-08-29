@@ -47,11 +47,11 @@ func init() {
 	rootCmd.Flags().BoolVar(&flagXDGConfig, "xdg-config", false, "store config at XDG standard path (~/.config/neoviolet/config.json)")
 }
 
-func runRoot(cmd *cobra.Command, args []string) error {
+func runRoot(_ *cobra.Command, args []string) error {
 	if err := logger.Init(); err != nil {
 		return err
 	}
-	defer logger.Close()
+	defer func() { _ = logger.Close() }()
 
 	// Apply --xdg-config before any config access
 	config.SetXDGConfig(flagXDGConfig)

@@ -250,7 +250,7 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 			seekPos = m.Audio.Duration
 		}
 		logger.Info("Initial seek", "to", seekPos)
-		m.Audio.SeekPlayer(seekPos)
+		_ = m.Audio.SeekPlayer(seekPos)
 		m.pendingSeek = 0
 	}
 
