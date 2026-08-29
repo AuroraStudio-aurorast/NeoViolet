@@ -480,7 +480,7 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 
 	case "switch":
 		if len(parts) < 3 {
-			m.Error.Set("Usage: lrc switch <format> (e.g. lrc, ttml, qrc, embedded)", m.Config.Error.Duration)
+			m.Error.Set(fmt.Sprintf("Usage: lrc switch <format> (available: %s)", strings.Join(lyrics.AvailableParsers(), ", ")), m.Config.Error.Duration)
 			return m, nil
 		}
 		if m.Audio.Player == nil {
@@ -497,13 +497,27 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if data == nil {
-			m.Error.Set(fmt.Sprintf("No lyrics found for format: %s", format), m.Config.Error.Duration)
+			m.Error.Set(fmt.Sprintf("No lyrics found for format: %s (available: %s)", format, strings.Join(lyrics.AvailableParsers(), ", ")), m.Config.Error.Duration)
 			return m, nil
 		}
 		m.Audio.Lyrics = data
 		m.Audio.LyricIndex = -1
 		m.Audio.ShowLyrics = true
 		return m, nil
+
+	case "refresh":
+		// Bypass the disk cache (including negative "no lyrics" records) and
+		// refetch. The session cache is cleared inside fetchLyricsManual.
+		if m.Audio.Player == nil {
+			m.Error.Set("No audio loaded", m.Config.Error.Duration)
+			return m, nil
+		}
+		if err := fetch.RemoveCache(m.currentSig()); err != nil {
+			m.Error.Set(fmt.Sprintf("Failed to clear lyrics cache: %v", err), m.Config.Error.Duration)
+			return m, nil
+		}
+		m.Info.Set("Lyrics cache cleared, refetching", m.Config.Error.Duration)
+		return m, m.fetchLyricsManual()
 
 	case "agent":
 		if len(parts) < 3 {
@@ -550,7 +564,7 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	default:
-		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, agent, or desktop)", subcmd), m.Config.Error.Duration)
+		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, refresh, agent, or desktop)", subcmd), m.Config.Error.Duration)
 		return m, nil
 	}
 }

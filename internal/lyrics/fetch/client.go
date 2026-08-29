@@ -250,6 +250,8 @@ func (c *Client) Search(ctx context.Context, q string, meta TrackMeta) ([]Track,
 }
 
 // GetByID fetches a track by absolute LRCLIB id.
+// Not currently wired to the UI; reserved for a future search-result picker
+// that lets users choose among candidates instead of the pickBest heuristic.
 func (c *Client) GetByID(ctx context.Context, id int64) (Track, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		fmt.Sprintf("%s/api/get/%d", c.baseURL, id), nil)

@@ -116,8 +116,8 @@ func Save(cf CacheFile) error {
 	return nil
 }
 
-// Remove deletes the cache file for sig (manual refresh).
-func Remove(sig string) error {
+// RemoveCache deletes the cache file for sig (used by :lrc refresh).
+func RemoveCache(sig string) error {
 	path, err := cacheFilePath(sig)
 	if err != nil {
 		return err
