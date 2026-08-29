@@ -186,8 +186,10 @@ func (r *remoteReadSeeker) Close() error {
 
 	name := r.cacheFile.Name()
 	_ = r.cacheFile.Close()
+	// #nosec G703 -- name is a program-generated temp file path, not user input.
 	_ = os.Remove(name)
 	if r.tempDir != "" {
+		// #nosec G703 -- tempDir is a program-generated temp dir, not user input.
 		_ = os.RemoveAll(r.tempDir)
 	}
 	return nil

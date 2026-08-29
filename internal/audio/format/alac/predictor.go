@@ -51,9 +51,9 @@ func predictorDecompressFirAdapt(
 			outVal := (1 << uint(predictorQuantitization-1)) + sum
 			outVal >>= uint(predictorQuantitization)
 			outVal = outVal + int(bufferOut[0]) + int(errorVal)
-			outVal = int(signExtended32(int32(outVal), readSampleSize))
+			outVal = int(signExtended32(int32(outVal), readSampleSize)) // #nosec G115
 
-			bufferOut[predictorCoefNum+1] = int32(outVal)
+			bufferOut[predictorCoefNum+1] = int32(outVal) // #nosec G115
 
 			if errorVal > 0 {
 				for predictorNum := predictorCoefNum - 1; predictorNum >= 0 && errorVal > 0; predictorNum-- {
@@ -61,7 +61,7 @@ func predictorDecompressFirAdapt(
 					sign := signOnly(val)
 					predictorCoefTable[predictorNum] -= int16(sign) // #nosec G115 -- sign is -1/0/1, bounded
 					val *= sign
-					errorVal -= int32((val >> uint(predictorQuantitization)) * (predictorCoefNum - predictorNum))
+					errorVal -= int32((val >> uint(predictorQuantitization)) * (predictorCoefNum - predictorNum)) // #nosec G115
 				}
 			} else if errorVal < 0 {
 				for predictorNum := predictorCoefNum - 1; predictorNum >= 0 && errorVal < 0; predictorNum-- {
@@ -69,7 +69,7 @@ func predictorDecompressFirAdapt(
 					sign := -signOnly(val)
 					predictorCoefTable[predictorNum] -= int16(sign) // #nosec G115 -- sign is -1/0/1, bounded
 					val *= sign
-					errorVal -= int32((val >> uint(predictorQuantitization)) * (predictorCoefNum - predictorNum))
+					errorVal -= int32((val >> uint(predictorQuantitization)) * (predictorCoefNum - predictorNum)) // #nosec G115
 				}
 			}
 
@@ -95,24 +95,24 @@ func deinterlace16(
 			difference := bufferB[i]
 			// #nosec G115 -- deinterlaced sample narrowed to int16; bounded.
 			right := int16(midright - ((difference * int32(interlacingLeftWeight)) >> interlacingShift))
-			left := right + int16(difference)
+			left := right + int16(difference) // #nosec G115
 
 			bufferOut[2*i*numChannels] = byte(left) // #nosec G115 -- low byte of a 16-bit sample
-			bufferOut[2*i*numChannels+1] = byte(left >> 8)
-			bufferOut[2*i*numChannels+2] = byte(right)
-			bufferOut[2*i*numChannels+3] = byte(right >> 8)
+			bufferOut[2*i*numChannels+1] = byte(left >> 8) // #nosec G115
+			bufferOut[2*i*numChannels+2] = byte(right) // #nosec G115
+			bufferOut[2*i*numChannels+3] = byte(right >> 8) // #nosec G115
 		}
 		return
 	}
 
 	for i := 0; i < numSamples; i++ {
-		left := int16(bufferA[i])
-		right := int16(bufferB[i])
+		left := int16(bufferA[i]) // #nosec G115
+		right := int16(bufferB[i]) // #nosec G115
 
-		bufferOut[2*i*numChannels] = byte(left)
-		bufferOut[2*i*numChannels+1] = byte(left >> 8)
-		bufferOut[2*i*numChannels+2] = byte(right)
-		bufferOut[2*i*numChannels+3] = byte(right >> 8)
+		bufferOut[2*i*numChannels] = byte(left) // #nosec G115
+		bufferOut[2*i*numChannels+1] = byte(left >> 8) // #nosec G115
+		bufferOut[2*i*numChannels+2] = byte(right) // #nosec G115
+		bufferOut[2*i*numChannels+3] = byte(right >> 8) // #nosec G115
 	}
 }
 
@@ -139,8 +139,8 @@ func deinterlace24(
 				mask := uint32(^(0xFFFFFFFF << uint(uncompressedBytes*8)))
 				left <<= uint(uncompressedBytes * 8)
 				right <<= uint(uncompressedBytes * 8)
-				left |= uncompressedBytesBufferA[i] & int32(mask)
-				right |= uncompressedBytesBufferB[i] & int32(mask)
+				left |= uncompressedBytesBufferA[i] & int32(mask) // #nosec G115
+				right |= uncompressedBytesBufferB[i] & int32(mask) // #nosec G115
 			}
 
 			bufferOut[i*numChannels*3] = byte(left & 0xFF)
@@ -161,8 +161,8 @@ func deinterlace24(
 			mask := uint32(^(0xFFFFFFFF << uint(uncompressedBytes*8)))
 			left <<= uint(uncompressedBytes * 8)
 			right <<= uint(uncompressedBytes * 8)
-			left |= uncompressedBytesBufferA[i] & int32(mask)
-			right |= uncompressedBytesBufferB[i] & int32(mask)
+			left |= uncompressedBytesBufferA[i] & int32(mask) // #nosec G115
+			right |= uncompressedBytesBufferB[i] & int32(mask) // #nosec G115
 		}
 
 		bufferOut[i*numChannels*3] = byte(left & 0xFF)

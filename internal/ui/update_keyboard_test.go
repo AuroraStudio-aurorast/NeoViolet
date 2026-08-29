@@ -419,6 +419,7 @@ func TestHistoryPersistence(t *testing.T) {
 	setCommand(m, "vol 0.5")
 	executeCommand(m)
 
+	// #nosec G304 -- history file path is derived from the test config dir.
 	data, err := os.ReadFile(filepath.Join(cfgDir, "history.txt"))
 	if err != nil {
 		t.Fatal("history.txt should exist after command execution:", err)
@@ -435,9 +436,11 @@ func TestHistoryLoad(t *testing.T) {
 	// Pre-write a history file
 	historyContent := "seek 30\nvol 0.5\n"
 	historyPath := filepath.Join(cfgDir, "history.txt")
+	// #nosec G301 -- test fixture dir is world-readable, not a security concern.
 	if err := os.MkdirAll(cfgDir, 0755); err != nil {
 		t.Fatal(err)
 	}
+	// #nosec G306 -- test fixture written to a private temp dir.
 	if err := os.WriteFile(historyPath, []byte(historyContent), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -474,6 +477,7 @@ func TestHistoryMaxRespected(t *testing.T) {
 	}
 
 	// Verify file cap
+	// #nosec G304 -- history file path is derived from the test config dir.
 	data, err := os.ReadFile(filepath.Join(cfgDir, "history.txt"))
 	if err != nil {
 		t.Fatal("history.txt should exist:", err)

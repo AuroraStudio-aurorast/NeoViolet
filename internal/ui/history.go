@@ -36,6 +36,7 @@ func loadHistory(m *Model) {
 		return
 	}
 
+	// #nosec G304 -- path is the resolved history file for this app.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -85,6 +86,7 @@ func saveHistory(m *Model) {
 
 	// Ensure the directory exists
 	dir := filepath.Dir(path)
+	// #nosec G301 -- user config dir is intentionally world-readable (0755).
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		logger.Warn("Failed to create history directory", "dir", dir, "err", err)
 		return

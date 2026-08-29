@@ -36,6 +36,7 @@ func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sam
 	if soundFont != nil {
 		sf = soundFont
 	} else {
+		// #nosec G304 -- sfPath is the configured SoundFont file being loaded.
 		sfFile, err := os.Open(sfPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("open soundfont: %w", err)
@@ -55,6 +56,7 @@ func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sam
 	}
 	synthesizer.MasterVolume = 1.0
 
+	// #nosec G304 -- midiPath is the user's own MIDI file being loaded.
 	midFile, err := os.Open(midiPath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open midi file: %w", err)

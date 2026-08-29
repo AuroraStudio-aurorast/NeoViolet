@@ -134,6 +134,7 @@ func (p *Player) Open(path string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	// #nosec G304,G703 -- path is the user's own audio file being opened for playback.
 	file, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("open file: %w", err)

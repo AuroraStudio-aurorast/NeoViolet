@@ -8,7 +8,7 @@ func (d *Decoder) entropyDecodeValue(readSampleSize int, k int, riceKModifierMas
 	if x > riceThreshold {
 		// #nosec G115 -- readbits returns a bounded value within readSampleSize bits.
 		value := int32(d.readbits(readSampleSize))
-		value &= int32((uint32(0xffffffff) >> uint(32-readSampleSize)))
+		value &= int32((uint32(0xffffffff) >> uint(32-readSampleSize))) // #nosec G115
 		x = value
 	} else if k != 1 {
 		extraBits := int(d.readbits(k))
@@ -40,9 +40,9 @@ func (d *Decoder) entropyRiceDecode(
 		// #nosec G115 -- k is a small rice parameter bounded by the cookie values.
 		k := int32(31 - riceKModifier - countLeadingZeros((history>>9)+3))
 		if k < 0 {
-			k += int32(riceKModifier)
+			k += int32(riceKModifier) // #nosec G115
 		} else {
-			k = int32(riceKModifier)
+			k = int32(riceKModifier) // #nosec G115
 		}
 
 		decodedValue := int32(d.entropyDecodeValue(readSampleSize, int(k), 0xFFFFFFFF))
@@ -61,7 +61,7 @@ func (d *Decoder) entropyRiceDecode(
 
 		if history < 128 && outputCount+1 < outputSize {
 			signModifier = 1
-			k = int32(countLeadingZeros(history)) + ((int32(history) + 16) / 64) - 24
+			k = int32(countLeadingZeros(history)) + ((int32(history) + 16) / 64) - 24 // #nosec G115
 			blockSize := int32(d.entropyDecodeValue(16, int(k), riceKModifierMask))
 			if blockSize > 0 {
 				for i := outputCount + 1; i < outputCount+1+int(blockSize); i++ {

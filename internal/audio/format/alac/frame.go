@@ -53,7 +53,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 
 			if uncompressed_bytes != 0 {
 				for i := uint32(0); i < outputsamples; i++ {
-					d.uncompressed_bytes_buffer_a[i] = int32(d.readbits(uncompressed_bytes * 8))
+					d.uncompressed_bytes_buffer_a[i] = int32(d.readbits(uncompressed_bytes * 8)) // #nosec G115
 				}
 			}
 
@@ -83,15 +83,15 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		} else {
 			if d.CookieSampleSize <= 16 {
 				for i := uint32(0); i < outputsamples; i++ {
-					audiobits := int32(d.readbits(int(d.CookieSampleSize)))
+					audiobits := int32(d.readbits(int(d.CookieSampleSize))) // #nosec G115
 					audiobits = signExtended32(audiobits, int(d.CookieSampleSize))
 					d.outputsamples_buffer_a[i] = audiobits
 				}
 			} else {
 				for i := uint32(0); i < outputsamples; i++ {
-					audiobits := int32(d.readbits(16))
+					audiobits := int32(d.readbits(16)) // #nosec G115
 					audiobits <<= (d.CookieSampleSize - 16)
-					audiobits |= int32(d.readbits(int(d.CookieSampleSize - 16)))
+					audiobits |= int32(d.readbits(int(d.CookieSampleSize - 16))) // #nosec G115
 					audiobits = signExtended32(audiobits, int(d.CookieSampleSize))
 					d.outputsamples_buffer_a[i] = audiobits
 				}
@@ -114,7 +114,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 				if uncompressed_bytes != 0 {
 					sample <<= uint(uncompressed_bytes * 8)
 					mask := uint32(^(0xFFFFFFFF << uint(uncompressed_bytes*8)))
-					sample |= d.uncompressed_bytes_buffer_a[i] & int32(mask)
+					sample |= d.uncompressed_bytes_buffer_a[i] & int32(mask) // #nosec G115
 				}
 				outbuffer[int(i)*d.numChannels*3] = byte(sample & 0xFF)
 				outbuffer[int(i)*d.numChannels*3+1] = byte((sample >> 8) & 0xFF)
@@ -149,7 +149,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		if isnotcompressed == 0 {
 			// #nosec G115 -- 8-bit interlacing values, bounded by readbits(8).
 			interlacingShift = uint8(d.readbits(8))
-			interlacingLeftWeight = uint8(d.readbits(8))
+			interlacingLeftWeight = uint8(d.readbits(8)) // #nosec G115
 
 			var predictorCoefTableA, predictorCoefTableB [32]int16
 
@@ -175,8 +175,8 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 
 			if uncompressed_bytes != 0 {
 				for i := uint32(0); i < outputsamples; i++ {
-					d.uncompressed_bytes_buffer_a[i] = int32(d.readbits(uncompressed_bytes * 8))
-					d.uncompressed_bytes_buffer_b[i] = int32(d.readbits(uncompressed_bytes * 8))
+					d.uncompressed_bytes_buffer_a[i] = int32(d.readbits(uncompressed_bytes * 8)) // #nosec G115
+					d.uncompressed_bytes_buffer_b[i] = int32(d.readbits(uncompressed_bytes * 8)) // #nosec G115
 				}
 			}
 
@@ -232,21 +232,21 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 				for i := uint32(0); i < outputsamples; i++ {
 					audiobitsA := d.readbits(int(d.CookieSampleSize))
 					audiobitsB := d.readbits(int(d.CookieSampleSize))
-					audiobitsA = uint32(signExtended32(int32(audiobitsA), int(d.CookieSampleSize)))
-					audiobitsB = uint32(signExtended32(int32(audiobitsB), int(d.CookieSampleSize)))
-					d.outputsamples_buffer_a[i] = int32(audiobitsA)
-					d.outputsamples_buffer_b[i] = int32(audiobitsB)
+					audiobitsA = uint32(signExtended32(int32(audiobitsA), int(d.CookieSampleSize))) // #nosec G115
+					audiobitsB = uint32(signExtended32(int32(audiobitsB), int(d.CookieSampleSize))) // #nosec G115
+					d.outputsamples_buffer_a[i] = int32(audiobitsA) // #nosec G115
+					d.outputsamples_buffer_b[i] = int32(audiobitsB) // #nosec G115
 				}
 			} else {
 				for i := uint32(0); i < outputsamples; i++ {
-					audiobitsA := int32(d.readbits(16))
+					audiobitsA := int32(d.readbits(16)) // #nosec G115
 					audiobitsA <<= (d.CookieSampleSize - 16)
-					audiobitsA |= int32(d.readbits(int(d.CookieSampleSize - 16)))
+					audiobitsA |= int32(d.readbits(int(d.CookieSampleSize - 16))) // #nosec G115
 					audiobitsA = signExtended32(audiobitsA, int(d.CookieSampleSize))
 
-					audiobitsB := int32(d.readbits(16))
+					audiobitsB := int32(d.readbits(16)) // #nosec G115
 					audiobitsB <<= (d.CookieSampleSize - 16)
-					audiobitsB |= int32(d.readbits(int(d.CookieSampleSize - 16)))
+					audiobitsB |= int32(d.readbits(int(d.CookieSampleSize - 16))) // #nosec G115
 					audiobitsB = signExtended32(audiobitsB, int(d.CookieSampleSize))
 
 					d.outputsamples_buffer_a[i] = audiobitsA

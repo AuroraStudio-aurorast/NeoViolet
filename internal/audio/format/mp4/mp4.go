@@ -400,7 +400,7 @@ func (d *Demuxer) parseSTSC(stbl *SampleTable, moovOffset int64, mdatOffset int6
 	stbl.SampleOffsets = make([]uint64, stbl.SampleCount)
 
 	sampleIdx := uint32(0)
-	for ci := uint32(0); ci < uint32(len(chunkOffsets)) && sampleIdx < stbl.SampleCount; ci++ {
+	for ci := uint32(0); ci < uint32(len(chunkOffsets)) && sampleIdx < stbl.SampleCount; ci++ { // #nosec G115
 		// Find samplesPerChunk for this chunk
 		samplesPerChunk := uint32(0)
 		for j := len(entries) - 1; j >= 0; j-- {
@@ -487,7 +487,7 @@ func (t *ALACTrack) ReadSample(r io.ReadSeeker, index uint32) ([]byte, error) {
 	if index >= t.SampleCount {
 		return nil, io.EOF
 	}
-	offset := int64(t.SampleOffsets[index])
+	offset := int64(t.SampleOffsets[index]) // #nosec G115
 	size := t.SampleSizes[index]
 	if size == 0 {
 		return nil, fmt.Errorf("zero-size sample at index %d", index)

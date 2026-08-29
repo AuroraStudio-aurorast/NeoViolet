@@ -18,7 +18,8 @@ var (
 func Init() error {
 	tmpDir := os.TempDir()
 	logPath := filepath.Join(tmpDir, "neoviolet.log")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	// #nosec G304 -- logPath is a fixed file in the system temp dir.
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
 	if err != nil {
 		return fmt.Errorf("open log file %s: %w", logPath, err)
 	}

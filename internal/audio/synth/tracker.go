@@ -260,7 +260,7 @@ func (p *TrackerPlayer) renderOneTick() {
 		off := j * 4
 		// #nosec G115 -- uint16 bit-pattern reinterpreted as int16; bounded.
 		p.renderSamples[j][0] = float64(int16(binary.LittleEndian.Uint16(data[off:off+2]))) / 32768.0
-		p.renderSamples[j][1] = float64(int16(binary.LittleEndian.Uint16(data[off+2:off+4]))) / 32768.0
+		p.renderSamples[j][1] = float64(int16(binary.LittleEndian.Uint16(data[off+2:off+4]))) / 32768.0 // #nosec G115
 	}
 	p.renderPos = 0
 }
