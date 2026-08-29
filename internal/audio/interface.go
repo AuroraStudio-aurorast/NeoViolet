@@ -1,3 +1,4 @@
+// Package audio provides the playback engine and player abstractions.
 package audio
 
 import (

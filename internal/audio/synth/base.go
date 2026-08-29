@@ -1,3 +1,4 @@
+// Package synth provides synthesizer-based playback (MIDI and tracker modules).
 package synth
 
 import (

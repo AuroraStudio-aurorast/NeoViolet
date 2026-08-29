@@ -312,7 +312,7 @@ func (p *TrackerPlayer) Seek(pos time.Duration) error {
 	return nil
 }
 
-func (p *TrackerPlayer) Open(path string) error {
+func (p *TrackerPlayer) Open(_ string) error {
 	return fmt.Errorf("tracker player does not support Open, use NewTrackerPlayer")
 }
 

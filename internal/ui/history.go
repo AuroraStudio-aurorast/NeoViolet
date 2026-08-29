@@ -58,9 +58,9 @@ func loadHistory(m *Model) {
 	}
 
 	// Respect max — trim oldest entries from the front
-	max := m.Config.CommandHistory.Max
-	if max > 0 && len(history) > max {
-		history = history[len(history)-max:]
+	maxHistory := m.Config.CommandHistory.Max
+	if maxHistory > 0 && len(history) > maxHistory {
+		history = history[len(history)-maxHistory:]
 	}
 
 	m.CommandHistory = history

@@ -28,7 +28,7 @@ func TestMaybeFetchLyricsPreconditions(t *testing.T) {
 		mutate func(*Model)
 		want   bool
 	}{
-		{"all satisfied", func(m *Model) {}, true},
+		{"all satisfied", func(_ *Model) {}, true},
 		{"fetch disabled", func(m *Model) {
 			m.Config.Lyrics.Fetch.Enabled = false
 		}, false},

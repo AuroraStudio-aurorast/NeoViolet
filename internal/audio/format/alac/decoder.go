@@ -9,32 +9,32 @@ package alac
 // Decoder is an Apple Lossless (ALAC) decoder with configurable parameters.
 // It decodes ALAC frames into little-endian PCM samples.
 type Decoder struct {
-	input_buffer                []byte
-	input_buffer_index          int
-	input_buffer_bitaccumulator int
+	inputBuffer                []byte
+	inputBufferIndex          int
+	inputBufferBitaccumulator int
 
 	sampleSize     int
 	numChannels    int
 	bytesPerSample int
 
-	predicterror_buffer_a       []int32
-	predicterror_buffer_b       []int32
-	outputsamples_buffer_a      []int32
-	outputsamples_buffer_b      []int32
-	uncompressed_bytes_buffer_a []int32
-	uncompressed_bytes_buffer_b []int32
+	predicterrorBufferA       []int32
+	predicterrorBufferB       []int32
+	outputsamplesBufferA      []int32
+	outputsamplesBufferB      []int32
+	uncompressedBytesBufferA []int32
+	uncompressedBytesBufferB []int32
 
 	// ALAC magic cookie parameters (from the "alac" box in MP4)
 	MaxSamplesPerFrame       uint32
-	Cookie_7a                uint8
+	Cookie7a                uint8
 	CookieSampleSize         uint8
 	CookieRiceHistoryMult    uint8
 	CookieRiceInitialHistory uint8
 	CookieRiceKModifier      uint8
-	Cookie_7f                uint8
-	Cookie_80                uint16
-	Cookie_82                uint32
-	Cookie_86                uint32
+	Cookie7f                uint8
+	Cookie80                uint16
+	Cookie82                uint32
+	Cookie86                uint32
 	CookieSampleRate         uint32
 }
 
@@ -46,7 +46,7 @@ type Decoder struct {
 //
 //	MaxSamplesPerFrame=4096, CookieSampleSize=16,
 //	CookieRiceHistoryMult=40, CookieRiceInitialHistory=10,
-//	CookieRiceKModifier=14, Cookie_7f=2, Cookie_80=255,
+//	CookieRiceKModifier=14, Cookie7f=2, Cookie80=255,
 //	CookieSampleRate=44100
 func NewDecoder(cookie []byte) (*Decoder, error) {
 	d := &Decoder{}
@@ -60,11 +60,11 @@ func NewDecoder(cookie []byte) (*Decoder, error) {
 		d.CookieRiceHistoryMult = 40
 		d.CookieRiceInitialHistory = 10
 		d.CookieRiceKModifier = 14
-		d.Cookie_7f = 2
-		d.Cookie_80 = 255
+		d.Cookie7f = 2
+		d.Cookie80 = 255
 		d.CookieSampleRate = 44100
-		d.Cookie_82 = 0x000020e7
-		d.Cookie_86 = 0x00069fe4
+		d.Cookie82 = 0x000020e7
+		d.Cookie86 = 0x00069fe4
 	}
 
 	// Validate ALAC cookie parameters to prevent division by zero and
@@ -140,21 +140,21 @@ func (d *Decoder) parseCookie(cookie []byte) {
 		d.MaxSamplesPerFrame = 4096
 	}
 	if len(cookie) >= offset+5 {
-		d.Cookie_7a = cookie[offset+4]
+		d.Cookie7a = cookie[offset+4]
 		d.CookieSampleSize = cookie[offset+5]
 		d.CookieRiceHistoryMult = cookie[offset+6]
 		d.CookieRiceInitialHistory = cookie[offset+7]
 		d.CookieRiceKModifier = cookie[offset+8]
-		d.Cookie_7f = cookie[offset+9]
+		d.Cookie7f = cookie[offset+9]
 	}
 	if len(cookie) >= offset+12 {
-		d.Cookie_80 = readUint16BE(cookie[offset+10:])
+		d.Cookie80 = readUint16BE(cookie[offset+10:])
 	}
 	if len(cookie) >= offset+16 {
-		d.Cookie_82 = readUint32BE(cookie[offset+12:])
+		d.Cookie82 = readUint32BE(cookie[offset+12:])
 	}
 	if len(cookie) >= offset+20 {
-		d.Cookie_86 = readUint32BE(cookie[offset+16:])
+		d.Cookie86 = readUint32BE(cookie[offset+16:])
 	}
 	if len(cookie) >= offset+24 {
 		d.CookieSampleRate = readUint32BE(cookie[offset+20:])
@@ -163,10 +163,10 @@ func (d *Decoder) parseCookie(cookie []byte) {
 
 func (d *Decoder) allocateBuffers() {
 	n := d.MaxSamplesPerFrame * 4
-	d.predicterror_buffer_a = make([]int32, n)
-	d.predicterror_buffer_b = make([]int32, n)
-	d.outputsamples_buffer_a = make([]int32, n)
-	d.outputsamples_buffer_b = make([]int32, n)
-	d.uncompressed_bytes_buffer_a = make([]int32, n)
-	d.uncompressed_bytes_buffer_b = make([]int32, n)
+	d.predicterrorBufferA = make([]int32, n)
+	d.predicterrorBufferB = make([]int32, n)
+	d.outputsamplesBufferA = make([]int32, n)
+	d.outputsamplesBufferB = make([]int32, n)
+	d.uncompressedBytesBufferA = make([]int32, n)
+	d.uncompressedBytesBufferB = make([]int32, n)
 }

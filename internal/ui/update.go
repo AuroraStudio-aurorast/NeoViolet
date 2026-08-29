@@ -77,7 +77,7 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 						_, loadCmd := handleLoadTrack(m, LoadTrackMsg{Path: ipcMsg.Path})
 						return m, tea.Batch(loadCmd,
 							tea.Tick(time.Second/time.Duration(m.Config.TickRate),
-								func(t time.Time) tea.Msg { return TickMsg{} },
+								func(_ time.Time) tea.Msg { return TickMsg{} },
 							),
 						)
 					}
@@ -120,7 +120,7 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	return m, tea.Batch(cmd, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(t time.Time) tea.Msg {
+	return m, tea.Batch(cmd, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(_ time.Time) tea.Msg {
 		return TickMsg{}
 	}))
 }

@@ -1,3 +1,4 @@
+// Package wizard provides the first-run terminal capability detection flow.
 package wizard
 
 import (

@@ -24,7 +24,7 @@ type mockPlayer struct {
 	closeCalled bool
 }
 
-func (m *mockPlayer) Open(path string) error { return nil }
+func (m *mockPlayer) Open(_ string) error { return nil }
 func (m *mockPlayer) Play() error            { m.playing = true; m.playCalled = true; return nil }
 func (m *mockPlayer) Pause()                 { m.playing = false; m.pauseCalled = true }
 func (m *mockPlayer) Stop()                  { m.playing = false }
@@ -64,7 +64,7 @@ func TestAudioState_UpdatePosition(t *testing.T) {
 	}
 }
 
-func TestAudioState_UpdatePosition_NilPlayer(t *testing.T) {
+func TestAudioState_UpdatePosition_NilPlayer(_ *testing.T) {
 	a := &AudioState{}
 	a.UpdatePosition() // should not panic
 }
@@ -169,7 +169,7 @@ func TestAudioState_TogglePlayback(t *testing.T) {
 	}
 }
 
-func TestAudioState_TogglePlayback_NilPlayer(t *testing.T) {
+func TestAudioState_TogglePlayback_NilPlayer(_ *testing.T) {
 	a := &AudioState{}
 	a.TogglePlayback() // should not panic
 }
@@ -212,7 +212,7 @@ func TestAudioState_UpdateLyricIndex_Nil(t *testing.T) {
 	}
 }
 
-func TestAudioState_AdvanceLyricScroll_Nil(t *testing.T) {
+func TestAudioState_AdvanceLyricScroll_Nil(_ *testing.T) {
 	a := &AudioState{}
 	a.AdvanceLyricScroll(6, 80) // should not panic
 }

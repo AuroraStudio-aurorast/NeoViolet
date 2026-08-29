@@ -1,3 +1,4 @@
+// Package format provides audio format detection and decoding.
 package format
 
 import (

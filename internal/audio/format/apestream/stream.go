@@ -49,7 +49,7 @@ type Streamer struct {
 
 // Decode opens an APE file and returns a beep.StreamSeekCloser. It tries each
 // available backend in priority order: apecli (Rust binary), ffmpeg, mac.
-func Decode(file *os.File, path string) (*Streamer, beep.Format, error) {
+func Decode(_ *os.File, path string) (*Streamer, beep.Format, error) {
 	backends := probeBackends()
 	if len(backends) == 0 {
 		return nil, beep.Format{}, fmt.Errorf(

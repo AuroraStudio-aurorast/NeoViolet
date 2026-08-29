@@ -9,9 +9,9 @@ const riceThreshold = 8
 func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 	outputsamples := d.MaxSamplesPerFrame
 
-	d.input_buffer = inbuffer
-	d.input_buffer_index = 0
-	d.input_buffer_bitaccumulator = 0
+	d.inputBuffer = inbuffer
+	d.inputBufferIndex = 0
+	d.inputBufferBitaccumulator = 0
 
 	channels := d.readbits(3)
 	outputsize := int(outputsamples) * d.bytesPerSample
@@ -25,7 +25,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		d.readbits(12)
 
 		hassize := int(d.readbits(1))
-		uncompressed_bytes := int(d.readbits(2))
+		uncompressedBytes := int(d.readbits(2))
 		isnotcompressed := int(d.readbits(1))
 
 		if hassize > 0 {
@@ -33,32 +33,32 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			outputsize = int(outputsamples) * d.bytesPerSample
 		}
 
-		readsamplesize = int(d.CookieSampleSize) - (uncompressed_bytes * 8)
+		readsamplesize = int(d.CookieSampleSize) - (uncompressedBytes * 8)
 
 		if isnotcompressed == 0 {
-			var predictor_coef_table [32]int16
+			var predictorCoefTable [32]int16
 
 			d.readbits(8)
 			d.readbits(8)
 
-			prediction_type := int(d.readbits(4))
-			prediction_quantitization := int(d.readbits(4))
+			predictionType := int(d.readbits(4))
+			predictionQuantitization := int(d.readbits(4))
 			ricemodifier = int(d.readbits(3))
-			predictor_coef_num := int(d.readbits(5))
+			predictorCoefNum := int(d.readbits(5))
 
-			for i := 0; i < predictor_coef_num; i++ {
+			for i := 0; i < predictorCoefNum; i++ {
 				// #nosec G115 -- 16-bit coefficient, value is bounded.
-				predictor_coef_table[i] = int16(d.readbits(16))
+				predictorCoefTable[i] = int16(d.readbits(16))
 			}
 
-			if uncompressed_bytes != 0 {
+			if uncompressedBytes != 0 {
 				for i := uint32(0); i < outputsamples; i++ {
-					d.uncompressed_bytes_buffer_a[i] = int32(d.readbits(uncompressed_bytes * 8)) // #nosec G115
+					d.uncompressedBytesBufferA[i] = int32(d.readbits(uncompressedBytes * 8)) // #nosec G115
 				}
 			}
 
 			d.entropyRiceDecode(
-				d.predicterror_buffer_a,
+				d.predicterrorBufferA,
 				int(outputsamples),
 				readsamplesize,
 				int(d.CookieRiceInitialHistory),
@@ -67,25 +67,25 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 				(1<<d.CookieRiceKModifier)-1,
 			)
 
-			if prediction_type == 0 {
+			if predictionType == 0 {
 				predictorDecompressFirAdapt(
-					d.predicterror_buffer_a,
-					d.outputsamples_buffer_a,
+					d.predicterrorBufferA,
+					d.outputsamplesBufferA,
 					int(outputsamples),
 					readsamplesize,
-					predictor_coef_table,
-					predictor_coef_num,
-					prediction_quantitization,
+					predictorCoefTable,
+					predictorCoefNum,
+					predictionQuantitization,
 				)
 			} else {
-				logger.Debug("ALAC: unhandled prediction type", "type", prediction_type)
+				logger.Debug("ALAC: unhandled prediction type", "type", predictionType)
 			}
 		} else {
 			if d.CookieSampleSize <= 16 {
 				for i := uint32(0); i < outputsamples; i++ {
 					audiobits := int32(d.readbits(int(d.CookieSampleSize))) // #nosec G115
 					audiobits = signExtended32(audiobits, int(d.CookieSampleSize))
-					d.outputsamples_buffer_a[i] = audiobits
+					d.outputsamplesBufferA[i] = audiobits
 				}
 			} else {
 				for i := uint32(0); i < outputsamples; i++ {
@@ -93,10 +93,10 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 					audiobits <<= (d.CookieSampleSize - 16)
 					audiobits |= int32(d.readbits(int(d.CookieSampleSize - 16))) // #nosec G115
 					audiobits = signExtended32(audiobits, int(d.CookieSampleSize))
-					d.outputsamples_buffer_a[i] = audiobits
+					d.outputsamplesBufferA[i] = audiobits
 				}
 			}
-			uncompressed_bytes = 0
+			uncompressedBytes = 0
 		}
 
 		outbuffer := make([]byte, outputsize)
@@ -104,17 +104,17 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		case 16:
 			for i := uint32(0); i < outputsamples; i++ {
 				// #nosec G115 -- 16-bit sample narrowed from int32 buffer; bounded.
-				sample := int16(d.outputsamples_buffer_a[i])
+				sample := int16(d.outputsamplesBufferA[i])
 				outbuffer[2*int(i)*d.numChannels] = byte(sample)        // #nosec G115 -- low byte of a 16-bit sample
 				outbuffer[2*int(i)*d.numChannels+1] = byte(sample >> 8) // #nosec G115 -- high byte of a 16-bit sample
 			}
 		case 24:
 			for i := uint32(0); i < outputsamples; i++ {
-				sample := int32(d.outputsamples_buffer_a[i])
-				if uncompressed_bytes != 0 {
-					sample <<= uint(uncompressed_bytes * 8)
-					mask := uint32(^(0xFFFFFFFF << uint(uncompressed_bytes*8)))
-					sample |= d.uncompressed_bytes_buffer_a[i] & int32(mask) // #nosec G115
+				sample := int32(d.outputsamplesBufferA[i])
+				if uncompressedBytes != 0 {
+					sample <<= uint(uncompressedBytes * 8)
+					mask := uint32(^(0xFFFFFFFF << uint(uncompressedBytes*8)))
+					sample |= d.uncompressedBytesBufferA[i] & int32(mask) // #nosec G115
 				}
 				outbuffer[int(i)*d.numChannels*3] = byte(sample & 0xFF)
 				outbuffer[int(i)*d.numChannels*3+1] = byte((sample >> 8) & 0xFF)
@@ -129,14 +129,14 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		hassize := 0
 		isnotcompressed := 0
 		readsamplesize := 0
-		uncompressed_bytes := 0
+		uncompressedBytes := 0
 		var interlacingShift, interlacingLeftWeight uint8
 
 		d.readbits(4)
 		d.readbits(12)
 
 		hassize = int(d.readbits(1))
-		uncompressed_bytes = int(d.readbits(2))
+		uncompressedBytes = int(d.readbits(2))
 		isnotcompressed = int(d.readbits(1))
 
 		if hassize != 0 {
@@ -144,7 +144,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			outputsize = int(outputsamples) * d.bytesPerSample
 		}
 
-		readsamplesize = int(d.CookieSampleSize) - (uncompressed_bytes * 8) + 1
+		readsamplesize = int(d.CookieSampleSize) - (uncompressedBytes * 8) + 1
 
 		if isnotcompressed == 0 {
 			// #nosec G115 -- 8-bit interlacing values, bounded by readbits(8).
@@ -173,15 +173,15 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 				predictorCoefTableB[i] = int16(d.readbits(16))
 			}
 
-			if uncompressed_bytes != 0 {
+			if uncompressedBytes != 0 {
 				for i := uint32(0); i < outputsamples; i++ {
-					d.uncompressed_bytes_buffer_a[i] = int32(d.readbits(uncompressed_bytes * 8)) // #nosec G115
-					d.uncompressed_bytes_buffer_b[i] = int32(d.readbits(uncompressed_bytes * 8)) // #nosec G115
+					d.uncompressedBytesBufferA[i] = int32(d.readbits(uncompressedBytes * 8)) // #nosec G115
+					d.uncompressedBytesBufferB[i] = int32(d.readbits(uncompressedBytes * 8)) // #nosec G115
 				}
 			}
 
 			d.entropyRiceDecode(
-				d.predicterror_buffer_a,
+				d.predicterrorBufferA,
 				int(outputsamples),
 				readsamplesize,
 				int(d.CookieRiceInitialHistory),
@@ -192,8 +192,8 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 
 			if predictionTypeA == 0 {
 				predictorDecompressFirAdapt(
-					d.predicterror_buffer_a,
-					d.outputsamples_buffer_a,
+					d.predicterrorBufferA,
+					d.outputsamplesBufferA,
 					int(outputsamples),
 					readsamplesize,
 					predictorCoefTableA,
@@ -205,7 +205,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			}
 
 			d.entropyRiceDecode(
-				d.predicterror_buffer_b,
+				d.predicterrorBufferB,
 				int(outputsamples),
 				readsamplesize,
 				int(d.CookieRiceInitialHistory),
@@ -216,8 +216,8 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 
 			if predictionTypeB == 0 {
 				predictorDecompressFirAdapt(
-					d.predicterror_buffer_b,
-					d.outputsamples_buffer_b,
+					d.predicterrorBufferB,
+					d.outputsamplesBufferB,
 					int(outputsamples),
 					readsamplesize,
 					predictorCoefTableB,
@@ -234,8 +234,8 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 					audiobitsB := d.readbits(int(d.CookieSampleSize))
 					audiobitsA = uint32(signExtended32(int32(audiobitsA), int(d.CookieSampleSize))) // #nosec G115
 					audiobitsB = uint32(signExtended32(int32(audiobitsB), int(d.CookieSampleSize))) // #nosec G115
-					d.outputsamples_buffer_a[i] = int32(audiobitsA) // #nosec G115
-					d.outputsamples_buffer_b[i] = int32(audiobitsB) // #nosec G115
+					d.outputsamplesBufferA[i] = int32(audiobitsA) // #nosec G115
+					d.outputsamplesBufferB[i] = int32(audiobitsB) // #nosec G115
 				}
 			} else {
 				for i := uint32(0); i < outputsamples; i++ {
@@ -249,11 +249,11 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 					audiobitsB |= int32(d.readbits(int(d.CookieSampleSize - 16))) // #nosec G115
 					audiobitsB = signExtended32(audiobitsB, int(d.CookieSampleSize))
 
-					d.outputsamples_buffer_a[i] = audiobitsA
-					d.outputsamples_buffer_b[i] = audiobitsB
+					d.outputsamplesBufferA[i] = audiobitsA
+					d.outputsamplesBufferB[i] = audiobitsB
 				}
 			}
-			uncompressed_bytes = 0
+			uncompressedBytes = 0
 			interlacingShift = 0
 			interlacingLeftWeight = 0
 		}
@@ -262,8 +262,8 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		switch d.CookieSampleSize {
 		case 16:
 			deinterlace16(
-				d.outputsamples_buffer_a,
-				d.outputsamples_buffer_b,
+				d.outputsamplesBufferA,
+				d.outputsamplesBufferB,
 				outbuffer,
 				d.numChannels,
 				int(outputsamples),
@@ -272,11 +272,11 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			)
 		case 24:
 			deinterlace24(
-				d.outputsamples_buffer_a,
-				d.outputsamples_buffer_b,
-				uncompressed_bytes,
-				d.uncompressed_bytes_buffer_a,
-				d.uncompressed_bytes_buffer_b,
+				d.outputsamplesBufferA,
+				d.outputsamplesBufferB,
+				uncompressedBytes,
+				d.uncompressedBytesBufferA,
+				d.uncompressedBytesBufferB,
 				outbuffer,
 				d.numChannels,
 				int(outputsamples),

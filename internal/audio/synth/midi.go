@@ -274,6 +274,6 @@ func (p *MidiPlayer) Seek(pos time.Duration) error {
 	return nil
 }
 
-func (p *MidiPlayer) Open(path string) error {
+func (p *MidiPlayer) Open(_ string) error {
 	return fmt.Errorf("midi player does not support Open, use NewMidiPlayer")
 }

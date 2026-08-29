@@ -12,11 +12,11 @@ import (
 
 type OpenmptPlayer struct{}
 
-func NewOpenmptPlayer(path string, sampleRate beep.SampleRate) (*OpenmptPlayer, error) {
+func NewOpenmptPlayer(_ string, sampleRate beep.SampleRate) (*OpenmptPlayer, error) {
 	return nil, fmt.Errorf("openmpt not compiled (install libopenmpt and rebuild with -tags openmpt)")
 }
 
-func (p *OpenmptPlayer) Stream(samples [][2]float64) (int, bool) { return 0, false }
+func (p *OpenmptPlayer) Stream(_ [][2]float64) (int, bool) { return 0, false }
 func (p *OpenmptPlayer) Err() error                              { return nil }
 func (p *OpenmptPlayer) Play() error                             { return nil }
 func (p *OpenmptPlayer) Pause()                                  {}

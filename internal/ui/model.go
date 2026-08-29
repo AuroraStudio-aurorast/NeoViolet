@@ -300,7 +300,7 @@ func (m *Model) Init() tea.Cmd {
 		}()
 	}
 
-	cmds = append(cmds, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(t time.Time) tea.Msg {
+	cmds = append(cmds, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(_ time.Time) tea.Msg {
 		return TickMsg{}
 	}))
 

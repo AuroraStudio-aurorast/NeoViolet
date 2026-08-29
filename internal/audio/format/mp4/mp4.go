@@ -303,7 +303,7 @@ func (d *Demuxer) parseSTSZ(stbl *SampleTable, moovOffset int64) error {
 	return nil
 }
 
-func (d *Demuxer) parseSTCO(stbl *SampleTable, moovOffset int64, mdatOffset int64) error {
+func (d *Demuxer) parseSTCO(stbl *SampleTable, moovOffset int64, _ int64) error {
 	stcoOffset, err := d.findFirstInside(moovOffset, "stco")
 	if err != nil {
 		stcoOffset, err = d.findFirstInside(moovOffset, "co64")
@@ -353,7 +353,7 @@ func (d *Demuxer) parseCO64(stbl *SampleTable, co64Offset int64) error {
 }
 
 // parseSTSC: sample-to-chunk table. Converts chunk offsets to per-sample offsets.
-func (d *Demuxer) parseSTSC(stbl *SampleTable, moovOffset int64, mdatOffset int64) error {
+func (d *Demuxer) parseSTSC(stbl *SampleTable, moovOffset int64, _ int64) error {
 	stscOffset, err := d.findFirstInside(moovOffset, "stsc")
 	if err != nil {
 		// No stsc: assume 1 sample per chunk

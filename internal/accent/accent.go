@@ -1,3 +1,4 @@
+// Package accent extracts a prominent accent color from album artwork.
 package accent
 
 import (
