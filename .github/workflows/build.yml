@@ -17,6 +17,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  test:
+    name: test-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    env:
+      CGO_ENABLED: 1
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            apt: "clang pkg-config make libasound2-dev libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev"
+            install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
+          - os: macos-latest
+            brew: "pkg-config make libopenmpt"
+            install_cmd: "brew install"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: Install system dependencies
+        run: ${{ matrix.install_cmd }} ${{ matrix.apt || matrix.brew }}
+      - name: Setup Rust
+        run: rustup show || rustup default stable
+      - name: Go vet
+        run: go vet ./...
+      - name: Go tests (race)
+        run: go test -race -count=1 ./...
+      - name: Lint (golangci-lint)
+        uses: golangci/golangci-lint-action@v7
+        with:
+          version: latest
+      - name: Rust tests
+        run: |
+          cargo test --manifest-path tools/apecli/Cargo.toml
+          cargo test --manifest-path tools/neoviolet-gui/Cargo.toml
+      - name: Rust fmt + clippy
+        run: |
+          cd tools/neoviolet-gui && cargo fmt -- --check && cargo clippy --all-targets -- -D warnings
+      - name: Coverage gate
+        run: |
+          go test -count=1 -coverprofile=coverage.out ./...
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "total coverage: ${total}%"
+          if [ "$(echo "$total < 40" | bc)" = "1" ]; then
+            echo "::error::coverage ${total}% is below the 40% gate"
+            exit 1
+          fi
+      - name: go mod tidy check
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum || { echo "go.mod/go.sum out of date; run go mod tidy"; exit 1; }
+
   unix:
     name: ${{ matrix.os }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
