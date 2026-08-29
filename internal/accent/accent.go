@@ -17,11 +17,11 @@ type Accent struct {
 }
 
 // IsDark reports whether the main accent color is dark using the CIE L*a*b*
-// lightness channel (L*). The threshold of 50 is the perceptual midpoint of the
-// L* scale (0 = black, 100 = white).
+// lightness channel. go-colorful returns L* on a [0,1] scale; the threshold
+// 0.5 is the perceptual midpoint (0 = black, 1 = white).
 func (a Accent) IsDark() bool {
 	l, _, _ := a.Main.Lab()
-	return l < 50
+	return l < 0.5
 }
 
 func (a Accent) HexMain() string      { return a.Main.Hex() }
