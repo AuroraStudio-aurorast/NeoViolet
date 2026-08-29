@@ -354,6 +354,8 @@ func (m *Model) buildPlayState() mediactl.PlayState {
 		Duration: m.Audio.Duration,
 		Position: m.Audio.Elapsed,
 		Playing:  m.Audio.IsPlaying,
+		Volume:   m.Audio.Volume,
+		HasTrack: m.Audio.Player != nil,
 		Cover:    cover,
 	}
 }

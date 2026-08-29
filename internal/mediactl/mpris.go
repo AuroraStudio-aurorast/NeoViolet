@@ -8,21 +8,45 @@ import (
 	"github.com/godbus/dbus/v5"
 )
 
-func playbackStatus(playing bool) string {
-	if playing {
+// playbackStatus maps the TUI playback state to the MPRIS Playback_Status
+// enum: no track loaded is "Stopped", otherwise Playing/Paused.
+func playbackStatus(playing, hasTrack bool) string {
+	switch {
+	case !hasTrack:
+		return "Stopped"
+	case playing:
 		return "Playing"
+	default:
+		return "Paused"
 	}
-	return "Paused"
+}
+
+// rootProps returns the org.mpris.MediaPlayer2 (Root) interface properties.
+// CanQuit is false because this player exposes no quit path; CanSetFullscreen
+// and Fullscreen are false since there is no windowing support; OpenUri is
+// unsupported, so SupportedUriSchemes is empty.
+func rootProps() map[string]dbus.Variant {
+	return map[string]dbus.Variant{
+		"CanQuit":             dbus.MakeVariant(false),
+		"CanRaise":            dbus.MakeVariant(false),
+		"CanSetFullscreen":    dbus.MakeVariant(false),
+		"Fullscreen":          dbus.MakeVariant(false),
+		"HasTrackList":        dbus.MakeVariant(false),
+		"Identity":            dbus.MakeVariant("NeoViolet"),
+		"DesktopEntry":        dbus.MakeVariant("neoviolet"),
+		"SupportedUriSchemes": dbus.MakeVariant([]string{}),
+		"SupportedMimeTypes":  dbus.MakeVariant([]string{}),
+	}
 }
 
 func playerProps(s PlayState, trackID string) map[string]dbus.Variant {
 	return map[string]dbus.Variant{
-		"PlaybackStatus": dbus.MakeVariant(playbackStatus(s.Playing)),
+		"PlaybackStatus": dbus.MakeVariant(playbackStatus(s.Playing, s.HasTrack)),
 		"LoopStatus":     dbus.MakeVariant("None"),
 		"Rate":           dbus.MakeVariant(1.0),
 		"Shuffle":        dbus.MakeVariant(false),
 		"Metadata":       dbus.MakeVariant(buildMetadata(s, trackID)),
-		"Volume":         dbus.MakeVariant(1.0),
+		"Volume":         dbus.MakeVariant(s.Volume),
 		"Position":       dbus.MakeVariant(int64(s.Position / time.Microsecond)),
 		"MinimumRate":    dbus.MakeVariant(1.0),
 		"MaximumRate":    dbus.MakeVariant(1.0),

@@ -148,8 +148,12 @@ func (c *linuxController) Update(state PlayState) {
 		c.trackID = fmt.Sprintf("/neoviolet/track/%d", c.trackSeq)
 	}
 
-	if !sameTrack || c.state.Playing != state.Playing {
-		changed["PlaybackStatus"] = dbus.MakeVariant(playbackStatus(state.Playing))
+	if !sameTrack || c.state.Playing != state.Playing || c.state.HasTrack != state.HasTrack {
+		changed["PlaybackStatus"] = dbus.MakeVariant(playbackStatus(state.Playing, state.HasTrack))
+	}
+
+	if !sameTrack || c.state.Volume != state.Volume {
+		changed["Volume"] = dbus.MakeVariant(state.Volume)
 	}
 
 	if !sameTrack {
@@ -209,35 +213,64 @@ func (c *linuxController) Close() error {
 
 type mprisRoot struct{}
 
-func (r *mprisRoot) CanQuit() bool                 { return true }
-func (r *mprisRoot) CanRaise() bool                { return false }
-func (r *mprisRoot) HasTrackList() bool            { return false }
-func (r *mprisRoot) Identity() string              { return "NeoViolet" }
-func (r *mprisRoot) DesktopEntry() string          { return "neoviolet" }
-func (r *mprisRoot) SupportedUriSchemes() []string { return []string{"file"} }
-func (r *mprisRoot) SupportedMimeTypes() []string  { return nil }
-func (r *mprisRoot) Quit() *dbus.Error             { return nil }
-func (r *mprisRoot) Raise() *dbus.Error            { return nil }
+// Quit is intentionally a no-op: CanQuit is false (see rootProps), so
+// spec-compliant clients should not call it.
+func (r *mprisRoot) Quit() *dbus.Error { return nil }
+
+// Raise is a no-op: CanRaise is false (see rootProps).
+func (r *mprisRoot) Raise() *dbus.Error { return nil }
 
 type mprisPlayerObj struct {
 	ctrl *linuxController
 }
 
-func (o *mprisPlayerObj) Next() *dbus.Error      { o.ctrl.cmdChan <- Command{Type: CmdNext}; return nil }
-func (o *mprisPlayerObj) Previous() *dbus.Error  { o.ctrl.cmdChan <- Command{Type: CmdPrev}; return nil }
-func (o *mprisPlayerObj) Pause() *dbus.Error     { o.ctrl.cmdChan <- Command{Type: CmdPause}; return nil }
-func (o *mprisPlayerObj) PlayPause() *dbus.Error { o.ctrl.cmdChan <- Command{Type: CmdPlayPause}; return nil }
-func (o *mprisPlayerObj) Stop() *dbus.Error      { o.ctrl.cmdChan <- Command{Type: CmdStop}; return nil }
-func (o *mprisPlayerObj) Play() *dbus.Error      { o.ctrl.cmdChan <- Command{Type: CmdPlay}; return nil }
+// Next skips forward 10s: there is no tracklist support, so the TUI maps
+// CmdNext/CmdPrev to SeekRelative(±10s) as a fallback.
+func (o *mprisPlayerObj) Next() *dbus.Error     { o.ctrl.cmdChan <- Command{Type: CmdNext}; return nil }
+func (o *mprisPlayerObj) Previous() *dbus.Error { o.ctrl.cmdChan <- Command{Type: CmdPrev}; return nil }
+func (o *mprisPlayerObj) Pause() *dbus.Error    { o.ctrl.cmdChan <- Command{Type: CmdPause}; return nil }
+func (o *mprisPlayerObj) PlayPause() *dbus.Error {
+	o.ctrl.cmdChan <- Command{Type: CmdPlayPause}
+	return nil
+}
+func (o *mprisPlayerObj) Stop() *dbus.Error { o.ctrl.cmdChan <- Command{Type: CmdStop}; return nil }
+func (o *mprisPlayerObj) Play() *dbus.Error { o.ctrl.cmdChan <- Command{Type: CmdPlay}; return nil }
+
+// Seek seeks relative to the current position (MPRIS x: Offset, microseconds).
+// the go vet stdmethods warning about an io.Seeker signature is a false positive.
+//
+//nolint:stdmethods // D-Bus method name Seek intentionally shadows io.Seeker;
 func (o *mprisPlayerObj) Seek(offset int64) *dbus.Error {
 	o.ctrl.cmdChan <- Command{Type: CmdSeek, Value: offset}
 	return nil
 }
+
+// SetPosition seeks to an absolute position (MPRIS o: TrackId, x: Position).
+// Per spec: a stale track ID is ignored, and positions outside [0, length]
+// do nothing.
 func (o *mprisPlayerObj) SetPosition(trackID dbus.ObjectPath, pos int64) *dbus.Error {
+	o.ctrl.mu.Lock()
+	curID := dbus.ObjectPath(o.ctrl.trackID)
+	dur := o.ctrl.state.Duration
+	o.ctrl.mu.Unlock()
+
+	if trackID != curID {
+		// Stale track ID (track changed since the client read it) — ignore.
+		return nil
+	}
+	if pos < 0 || (dur > 0 && pos > int64(dur/time.Microsecond)) {
+		// Out of [0, track length] — do nothing.
+		return nil
+	}
 	o.ctrl.cmdChan <- Command{Type: CmdSetPosition, Value: pos}
 	return nil
 }
-func (o *mprisPlayerObj) OpenUri(uri string) *dbus.Error { return nil }
+
+// OpenUri is not supported: SupportedUriSchemes is empty (see rootProps), so
+// spec-compliant clients should not call it; report the error honestly.
+func (o *mprisPlayerObj) OpenUri(uri string) *dbus.Error {
+	return dbus.NewError("org.freedesktop.DBus.Error.NotSupported", []any{"OpenUri is not supported"})
+}
 
 func errDBus(msg string) *dbus.Error {
 	return dbus.NewError("org.freedesktop.DBus.Error.InvalidArgs", []any{msg})
@@ -248,34 +281,50 @@ func errReadOnly(prop string) *dbus.Error {
 }
 
 func (o *mprisPlayerObj) Get(iface, prop string) (dbus.Variant, *dbus.Error) {
-	if iface != mprisPlayerIface {
-		return dbus.Variant{}, errDBus("unknown interface")
-	}
-	o.ctrl.mu.Lock()
-	s := o.ctrl.state
-	tid := o.ctrl.trackID
-	o.ctrl.mu.Unlock()
+	switch iface {
+	case mprisPlayerIface:
+		o.ctrl.mu.Lock()
+		s := o.ctrl.state
+		tid := o.ctrl.trackID
+		o.ctrl.mu.Unlock()
 
-	p := playerProps(s, tid)
-	if v, ok := p[prop]; ok {
-		return v, nil
+		if v, ok := playerProps(s, tid)[prop]; ok {
+			return v, nil
+		}
+		return dbus.Variant{}, errDBus("unknown property")
+	case mprisRootIface:
+		if v, ok := rootProps()[prop]; ok {
+			return v, nil
+		}
+		return dbus.Variant{}, errDBus("unknown property")
 	}
-	return dbus.Variant{}, errDBus("unknown property")
+	return dbus.Variant{}, errDBus("unknown interface")
 }
 
 func (o *mprisPlayerObj) GetAll(iface string) (map[string]dbus.Variant, *dbus.Error) {
-	if iface != mprisPlayerIface {
-		return nil, errDBus("unknown interface")
-	}
-	o.ctrl.mu.Lock()
-	s := o.ctrl.state
-	tid := o.ctrl.trackID
-	o.ctrl.mu.Unlock()
+	switch iface {
+	case mprisPlayerIface:
+		o.ctrl.mu.Lock()
+		s := o.ctrl.state
+		tid := o.ctrl.trackID
+		o.ctrl.mu.Unlock()
 
-	return playerProps(s, tid), nil
+		return playerProps(s, tid), nil
+	case mprisRootIface:
+		return rootProps(), nil
+	}
+	return nil, errDBus("unknown interface")
 }
 
 func (o *mprisPlayerObj) Set(iface, prop string, val dbus.Variant) *dbus.Error {
+	if iface == mprisPlayerIface && prop == "Volume" {
+		v, ok := val.Value().(float64)
+		if !ok {
+			return errDBus("Volume must be a double")
+		}
+		o.ctrl.cmdChan <- Command{Type: CmdSetVolume, Volume: v}
+		return nil
+	}
 	return errReadOnly(prop)
 }
 

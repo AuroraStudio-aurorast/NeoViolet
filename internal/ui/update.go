@@ -459,6 +459,8 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 		if m.MediaCtl != nil {
 			m.MediaCtl.Update(m.buildPlayState())
 		}
+	case mediactl.CmdSetVolume:
+		m.Audio.SetVolume(msg.Command.Volume)
 	}
 
 	return m, nil

@@ -15,7 +15,7 @@ import (
 type CommandType int
 
 const (
-	CmdPlayPause  CommandType = iota
+	CmdPlayPause CommandType = iota
 	CmdPlay
 	CmdPause
 	CmdStop
@@ -23,12 +23,14 @@ const (
 	CmdPrev
 	CmdSeek        // Value: offset in microseconds (relative)
 	CmdSetPosition // Value: target position in microseconds (absolute)
+	CmdSetVolume   // Volume: 0-1 (Linux MPRIS Volume property)
 )
 
 // Command carries a media-control command and optional payload.
 type Command struct {
-	Type  CommandType
-	Value int64 // microseconds for Seek/SetPosition; zero for other commands
+	Type   CommandType
+	Value  int64   // microseconds for Seek/SetPosition; zero for other commands
+	Volume float64 // 0-1 for CmdSetVolume; zero for other commands
 }
 
 // PlayState carries the current playback info pushed to the OS.
@@ -39,6 +41,8 @@ type PlayState struct {
 	Duration time.Duration
 	Position time.Duration
 	Playing  bool
+	Volume   float64     // 0-1; used by Linux MPRIS, ignored elsewhere
+	HasTrack bool        // true when a track is loaded (Linux MPRIS distinguishes Paused/Stopped)
 	Cover    image.Image // nil if no cover art available
 }
 
