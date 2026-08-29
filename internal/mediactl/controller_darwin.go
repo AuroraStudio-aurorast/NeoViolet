@@ -12,13 +12,10 @@
 package mediactl
 
 import (
-	"bytes"
 	"fmt"
 	"image"
-	"image/png"
 	"runtime"
 	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/ebitengine/purego"
@@ -327,88 +324,6 @@ func MacOSRun(fn func()) {
 	nsApp.Send(sel_run)
 }
 
-// ObjC convenience helpers
-
-func nsString(s string) objc.ID {
-	id := objc.ID(class_NSString).Send(sel_alloc).Send(sel_initWithUTF8String, s)
-	id.Send(sel_autorelease)
-	return id
-}
-
-func nsInt(v int32) objc.ID {
-	return objc.ID(class_NSNumber).Send(sel_numberWithInt, v)
-}
-
-func nsDouble(v float64) objc.ID {
-	return objc.ID(class_NSNumber).Send(sel_numberWithDouble, v)
-}
-
-func nsMutableDict() objc.ID {
-	id := objc.ID(class_NSMutableDictionary).Send(sel_alloc).Send(sel_init)
-	id.Send(sel_autorelease)
-	return id
-}
-
-// dictSetKV is the hot path — called ~12× per Update tick.
-
-func dictSetKV(dict, key, val objc.ID) {
-	dict.Send(sel_setValueForKey, val, key)
-}
-
-// Command handler callbacks — called by ObjC runtime from NSApp event loop// sendCmd is the shared implementation for all MPRemoteCommand handlers.
-
-func sendCmd(ct CommandType) int32 {
-	_darwinCtrlMu.Lock()
-	c := _darwinCtrl
-	_darwinCtrlMu.Unlock()
-	if c == nil {
-		return cmdHandlerCommandFailed
-	}
-	select {
-	case c.cmdChan <- Command{Type: ct}:
-	default:
-	}
-	return cmdHandlerSuccess
-}
-
-func handlePlay(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdPlay) }
-func handlePause(id objc.ID, cmd objc.SEL, event objc.ID) int32  { return sendCmd(CmdPause) }
-func handleStop(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdStop) }
-func handleToggle(id objc.ID, cmd objc.SEL, event objc.ID) int32 { return sendCmd(CmdPlayPause) }
-func handleNext(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdNext) }
-func handlePrev(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdPrev) }
-
-func handleChangePos(id objc.ID, cmd objc.SEL, event objc.ID) int32 {
-	_darwinCtrlMu.Lock()
-	c := _darwinCtrl
-	_darwinCtrlMu.Unlock()
-	if c == nil {
-		return cmdHandlerCommandFailed
-	}
-	pos := objc.Send[float64](event, objc.RegisterName("positionTime"))
-	us := int64(pos * float64(time.Second/time.Microsecond))
-	select {
-	case c.cmdChan <- Command{Type: CmdSetPosition, Value: us}:
-	default:
-	}
-	return cmdHandlerSuccess
-}
-
-func handleSleep(id objc.ID, cmd objc.SEL, notification objc.ID) {
-	_darwinCtrlMu.Lock()
-	c := _darwinCtrl
-	_darwinCtrlMu.Unlock()
-	if c == nil {
-		return
-	}
-	select {
-	case c.cmdChan <- Command{Type: CmdPause}:
-	default:
-	}
-}
-
-func handleWake(id objc.ID, cmd objc.SEL, notification objc.ID) {}
-
 // darwinCtrl
 
 type darwinCtrl struct {
@@ -454,143 +369,6 @@ func (c *darwinCtrl) Start() (<-chan Command, error) {
 	_darwinCtrlMu.Unlock()
 
 	return ch, nil
-}
-
-// registerCommands wires MPRemoteCommandCenter to our handler.
-// Caller MUST be inside an autorelease pool.
-
-func (c *darwinCtrl) registerCommands() {
-	skip := nsDouble(15.0)
-	arr := objc.ID(class_NSArray).Send(sel_arrayWithObject, skip)
-
-	c.remoteCmd.Send(_cmdSels.skipBackward).Send(sel_setPreferredIntervals, arr)
-	c.remoteCmd.Send(_cmdSels.skipForward).Send(sel_setPreferredIntervals, arr)
-
-	pairs := []struct{ cmd, handler objc.SEL }{
-		{_cmdSels.play, _handlerSels.play},
-		{_cmdSels.pause, _handlerSels.pause},
-		{_cmdSels.stop, _handlerSels.stop},
-		{_cmdSels.toggle, _handlerSels.toggle},
-		{_cmdSels.next, _handlerSels.next},
-		{_cmdSels.prev, _handlerSels.prev},
-		{_cmdSels.changePos, _handlerSels.changePos},
-	}
-	for _, p := range pairs {
-		c.remoteCmd.Send(p.cmd).Send(sel_addTargetAction, c.handler, p.handler)
-	}
-}
-
-// registerNotifications observes sleep/power-off/wake notifications.
-// Caller MUST be inside an autorelease pool.
-
-func (c *darwinCtrl) registerNotifications() {
-	nc := objc.ID(class_NSWorkspace).Send(sel_sharedWorkspace).Send(sel_notificationCenter)
-	zero := objc.ID(0)
-
-	for _, name := range []string{
-		"NSWorkspaceWillSleepNotification",
-		"NSWorkspaceWillPowerOffNotification",
-	} {
-		nc.Send(sel_addObserverSelectorName, c.handler, _handlerSels.sleep, nsString(name), zero)
-	}
-	nc.Send(sel_addObserverSelectorName, c.handler, _handlerSels.wake, nsString("NSWorkspaceDidWakeNotification"), zero)
-}
-
-// buildArtwork converts cover → PNG → NSImage → MPMediaItemArtwork.
-// Caches by image identity — re-encoding only happens when the cover
-// image object actually changes, not on every Update() tick.
-// Caller MUST be inside an autorelease pool.
-
-func (c *darwinCtrl) buildArtwork(cover image.Image) objc.ID {
-	if cover == nil {
-		return 0
-	}
-
-	// Fast path: same image object as last time — reuse cached artwork.
-	if cover == c.lastCoverImg && c.coverArtwork != 0 {
-		return c.coverArtwork
-	}
-
-	// Encode to PNG (only when cover has changed).
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, cover); err != nil {
-		return 0
-	}
-	pngBytes := buf.Bytes()
-	if len(pngBytes) == 0 {
-		return 0
-	}
-
-	// Release previous artwork
-	if c.coverArtwork != 0 {
-		c.coverArtwork.Send(sel_release)
-		c.coverArtwork = 0
-	}
-
-	nsData := objc.ID(class_NSData).Send(sel_dataWithBytes, uintptr(unsafe.Pointer(&pngBytes[0])), uint(len(pngBytes)))
-	nsImage := objc.ID(class_NSImage).Send(sel_alloc).Send(sel_initWithData, nsData)
-	artwork := objc.ID(class_MPMediaItemArtwork).Send(sel_alloc).Send(sel_initWithImage, nsImage)
-	nsImage.Send(sel_release)
-
-	c.lastCoverImg = cover
-	c.coverArtwork = artwork
-	return artwork
-}
-
-func (c *darwinCtrl) Update(state PlayState) {
-	if state.Title == "" {
-		return
-	}
-
-	c.mu.Lock()
-	if c.closed || c.nowPlaying == 0 {
-		c.mu.Unlock()
-		return
-	}
-	np := c.nowPlaying
-	c.mu.Unlock()
-
-	autoPool(func() {
-		dict := nsMutableDict()
-		dur := state.Duration.Seconds()
-		pos := state.Position.Seconds()
-		prog := 0.0
-		if dur > 0 {
-			prog = pos / dur
-		}
-
-		dictSetKV(dict, nsString("MPNowPlayingInfoPropertyElapsedPlaybackTime"), nsDouble(pos))
-		dictSetKV(dict, nsString("MPNowPlayingInfoPropertyPlaybackRate"), nsDouble(1.0))
-		dictSetKV(dict, nsString("MPNowPlayingInfoPropertyDefaultPlaybackRate"), nsDouble(1.0))
-		dictSetKV(dict, nsString("MPNowPlayingInfoPropertyPlaybackProgress"), nsDouble(prog))
-		dictSetKV(dict, nsString("MPNowPlayingInfoPropertyMediaType"), nsInt(1))
-		dictSetKV(dict, nsString("persistentID"), nsInt(1))
-		dictSetKV(dict, nsString("title"), nsString(state.Title))
-		dictSetKV(dict, nsString("artist"), nsString(state.Artist))
-		dictSetKV(dict, nsString("albumTitle"), nsString(state.Album))
-		dictSetKV(dict, nsString("albumArtist"), nsString(state.Artist))
-		dictSetKV(dict, nsString("playbackDuration"), nsDouble(dur))
-		dictSetKV(dict, nsString("mediaType"), nsInt(1))
-
-		if art := c.buildArtwork(state.Cover); art != 0 {
-			dictSetKV(dict, nsString("artwork"), art)
-		}
-
-		st := playbackStatePaused
-		if state.Playing {
-			st = playbackStatePlaying
-		}
-		np.Send(sel_setPlaybackState, st)
-		np.Send(sel_setNowPlayingInfo, dict)
-
-		// Re-register commands after SetNowPlayingInfo — macOS may
-		// invalidate previous registrations (observed on macOS 26+).
-		c.mu.Lock()
-		if !c.closed {
-			c.registerCommands()
-		}
-		c.mu.Unlock()
-	})
 }
 
 func (c *darwinCtrl) Close() error {
