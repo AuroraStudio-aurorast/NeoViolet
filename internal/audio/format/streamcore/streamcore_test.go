@@ -42,6 +42,53 @@ func TestCopyToOutputMono(t *testing.T) {
 	}
 }
 
+func TestCopyToOutputWithOffset(t *testing.T) {
+	// totalFilled > 0: CopyToOutput must start writing at samples[totalFilled]
+	// and leave the already-filled prefix untouched.
+	sc := &Core{
+		Buf:          []float64{1, 2, 3, 4, 5, 6, 7, 8},
+		BufSamples:   4,
+		NumChannels:  2,
+		TotalSamples: 4,
+	}
+	out := [][2]float64{{100, 100}, {200, 200}, {0, 0}, {0, 0}}
+	n := sc.CopyToOutput(out, 4, 2)
+	if n != 2 {
+		t.Errorf("CopyToOutput returned %d, want 2", n)
+	}
+	if out[2] != [2]float64{1, 2} || out[3] != [2]float64{3, 4} {
+		t.Errorf("copy did not start at samples[2]: out = %v", out)
+	}
+	if out[0] != [2]float64{100, 100} || out[1] != [2]float64{200, 200} {
+		t.Errorf("pre-filled prefix was overwritten: out = %v", out[:2])
+	}
+	if sc.Pos != 2 || sc.CurrentSample != 2 {
+		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 2/2", sc.Pos, sc.CurrentSample)
+	}
+}
+
+func TestCopyToOutputTruncated(t *testing.T) {
+	// Output buffer smaller than the remaining data: framesToCopy must be
+	// capped by totalNeeded-totalFilled so the copy count is limited.
+	sc := &Core{
+		Buf:          []float64{1, 2, 3, 4, 5, 6, 7, 8},
+		BufSamples:   4,
+		NumChannels:  2,
+		TotalSamples: 4,
+	}
+	out := make([][2]float64, 1)
+	n := sc.CopyToOutput(out, 1, 0)
+	if n != 1 {
+		t.Errorf("CopyToOutput returned %d, want 1 (capped by output capacity)", n)
+	}
+	if out[0] != [2]float64{1, 2} {
+		t.Errorf("out[0] = %v, want {1 2}", out[0])
+	}
+	if sc.Pos != 1 || sc.CurrentSample != 1 {
+		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 1/1", sc.Pos, sc.CurrentSample)
+	}
+}
+
 func TestCoreLifecycle(t *testing.T) {
 	sc := &Core{TotalSamples: 100, CurrentSample: 42}
 	if sc.Len() != 100 {
