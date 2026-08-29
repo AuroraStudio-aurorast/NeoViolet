@@ -38,3 +38,6 @@ tools/neoviolet-gui/target/
 
 reasonix.toml
 /dist/
+
+# AI agent working docs (superpowers specs/plans) — not part of the repo
+/docs/superpowers/
