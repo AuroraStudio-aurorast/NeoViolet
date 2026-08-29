@@ -8,7 +8,6 @@
 //! GUI → TUI:  {"type":"open","path":"..."}
 //!             {"type":"desktop_lyrics","enable":true|false}
 //!             {"type":"play_pause"}
-//!             {"type":"set_font","font_name":"..."}
 //! TUI → GUI:  {"type":"quit","dialog":true|false}
 //!             {"type":"lyrics","lines":[...],"elapsed":12.3,"title":"...","artist":"..."}
 
@@ -55,10 +54,6 @@ pub struct IpcMessage {
     pub title: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artist: Option<String>,
-
-    // set_font: font name reported by the GUI
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub font_name: Option<String>,
 }
 
 impl IpcMessage {
@@ -83,15 +78,6 @@ impl IpcMessage {
     pub fn play_pause() -> Self {
         Self {
             msg_type: "play_pause".into(),
-            ..Default::default()
-        }
-    }
-
-    /// Notify the TUI of the GUI's configured font.
-    pub fn set_font(font_name: &str) -> Self {
-        Self {
-            msg_type: "set_font".into(),
-            font_name: Some(font_name.to_string()),
             ..Default::default()
         }
     }

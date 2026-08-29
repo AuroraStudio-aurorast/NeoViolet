@@ -97,11 +97,6 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 				case "play_pause":
 					logger.Debug("IPC: play_pause from GUI")
 					m.togglePlayback()
-				case "set_font":
-					if ipcMsg.FontName != "" {
-						m.IpcFontName = ipcMsg.FontName
-						logger.Info("IPC: font from GUI", "name", ipcMsg.FontName)
-					}
 				default:
 					logger.Debug("IPC: unhandled message type", "type", ipcMsg.Type)
 				}

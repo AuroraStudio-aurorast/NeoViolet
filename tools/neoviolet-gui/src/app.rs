@@ -69,15 +69,10 @@ impl TerminalApp {
         if let Some(pid) = *child_pid.lock().unwrap() {
             let ipc = cx.global::<AppState>().ipc.clone();
             let incoming = cx.global::<AppState>().ipc_incoming.clone();
-            let ipc_font = font_family.clone();
             std::thread::spawn(move || {
                 if let Err(e) = ipc.connect(pid) {
                     log::warn!("[ipc] connect failed: {}", e);
                     return;
-                }
-                // Notify the TUI of the configured font so it can detect Nerd Font
-                if let Err(e) = ipc.send(&crate::ipc::IpcMessage::set_font(&ipc_font)) {
-                    log::warn!("[ipc] set_font send failed: {}", e);
                 }
                 ipc.start_reader(incoming);
             });
