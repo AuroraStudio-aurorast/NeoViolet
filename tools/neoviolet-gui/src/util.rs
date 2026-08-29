@@ -97,4 +97,20 @@ mod tests {
         let input = b"\x1b]0;neoviolet --help\x07Output";
         assert_eq!(strip_ansi_escapes(input), "Output");
     }
+
+    #[test]
+    fn hex_to_hsla_parses() {
+        // Green (#00FF00) has a non-zero hue in gpui's HSL conversion;
+        // pure red (#FF0000) maps to hue 0.0.
+        let c = hex_to_hsla("#00FF00");
+        assert!(c.h > 0.0, "green hue should be > 0");
+    }
+
+    #[test]
+    fn hex_to_hsla_invalid_returns_zero() {
+        // Unparseable input falls back to opaque white (h = 0, s = 0).
+        let c = hex_to_hsla("nonsense");
+        assert_eq!(c.h, 0.0);
+        assert_eq!(c.s, 0.0);
+    }
 }
