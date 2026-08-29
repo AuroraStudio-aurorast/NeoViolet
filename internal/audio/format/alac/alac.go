@@ -7,7 +7,7 @@
 package alac
 
 import (
-	"fmt"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 // Decoder is an Apple Lossless (ALAC) decoder with configurable parameters.
@@ -626,7 +626,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 					prediction_quantitization,
 				)
 			} else {
-				fmt.Printf("FIXME: unhandled prediction type: %d\n", prediction_type)
+				logger.Debug("ALAC: unhandled prediction type", "type", prediction_type)
 			}
 		} else {
 			if d.CookieSampleSize <= 16 {
@@ -668,7 +668,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 				outbuffer[int(i)*d.numChannels*3+2] = byte((sample >> 16) & 0xFF)
 			}
 		case 20, 32:
-			fmt.Printf("FIXME: unimplemented sample size %d\n", d.CookieSampleSize)
+			logger.Debug("ALAC: unimplemented sample size", "size", d.CookieSampleSize)
 		}
 		return outbuffer
 
@@ -745,7 +745,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 					predictionQuantitizationA,
 				)
 			} else {
-				fmt.Printf("FIXME: unhandled prediction type: %d\n", predictionTypeA)
+				logger.Debug("ALAC: unhandled prediction type", "type", predictionTypeA)
 			}
 
 			d.entropyRiceDecode(
@@ -769,7 +769,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 					predictionQuantitizationB,
 				)
 			} else {
-				fmt.Printf("FIXME: unhandled prediction type: %d\n", predictionTypeB)
+				logger.Debug("ALAC: unhandled prediction type", "type", predictionTypeB)
 			}
 		} else {
 			if d.CookieSampleSize <= 16 {
@@ -828,12 +828,12 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 				interlacingLeftWeight,
 			)
 		case 20, 32:
-			fmt.Printf("FIXME: unimplemented sample size %d\n", d.CookieSampleSize)
+			logger.Debug("ALAC: unimplemented sample size", "size", d.CookieSampleSize)
 		}
 		return outbuffer
 
 	default:
-		fmt.Printf("unimplemented channel count %d\n", channels+1)
+		logger.Debug("ALAC: unimplemented channel count", "channels", channels+1)
 	}
 
 	return nil
