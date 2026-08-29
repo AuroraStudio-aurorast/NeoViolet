@@ -34,7 +34,7 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: all build build/race build/debug build/noopenmpt build/osxappbundle run test test/race test/verbose test/short test/cover clean lint vet tidy install apetools apetools/debug gui gui/debug run/gui help
+.PHONY: all build build/race build/debug build/noopenmpt build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
 
 all: build
 
@@ -87,7 +87,7 @@ run/gui: gui
 
 # --- Test ---
 
-test:
+test: test/rust
 	$(GO) test $(TEST_FLAGS) ./...
 
 test/race:
@@ -99,6 +99,15 @@ test/verbose:
 test/short:
 	$(GO) test -short $(TEST_FLAGS) ./...
 
+test/rust:
+	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, skipping Rust tests"; exit 0; fi
+	cd $(APECLI_DIR) && cargo test
+	cd $(GUI_DIR) && cargo test
+
+lint/rust:
+	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, skipping Rust lint"; exit 0; fi
+	cd $(GUI_DIR) && cargo fmt --check && cargo clippy --all-targets -- -D warnings
+
 test/cover:
 	$(GO) test -coverprofile=coverage.out ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
@@ -109,7 +118,16 @@ vet:
 	$(GO) vet ./...
 
 lint:
-	golangci-lint run ./... 2>/dev/null || $(GO) vet ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		echo "WARNING: golangci-lint not found, falling back to go vet"; \
+		$(GO) vet ./...; \
+	fi
+
+# Aggregate quality gate used by CI and local dev.
+check: vet lint lint/rust test
+	@echo "All checks passed."
 
 tidy:
 	$(GO) mod tidy
@@ -171,6 +189,9 @@ help:
 	@echo "  vet                Run go vet"
 	@echo "  lint               Run golangci-lint (fallback: go vet)"
 	@echo "  tidy               Run go mod tidy"
+	@echo "  check              Run vet + lint + Rust checks + tests (CI gate)"
+	@echo "  test/rust          Run Rust unit tests (GUI + apecli)"
+	@echo "  lint/rust          Run cargo fmt --check + clippy -D warnings"
 	@echo ""
 	@echo "GUI (gpui-ce + yororen-ui):"
 	@echo "  gui                Build neoviolet-gui (cargo required)"
