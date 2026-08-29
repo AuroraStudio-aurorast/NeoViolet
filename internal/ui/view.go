@@ -79,12 +79,12 @@ func renderTabs(m *Model) string {
 		}
 		tabContent += name + " "
 		if i == m.UI.ActiveTab {
-			accented := activeTabStyle.Copy().BorderForeground(lipgloss.Color(accentOrDefault(m.Accent, "57")))
+			accented := activeTabStyle.BorderForeground(lipgloss.Color(accentOrDefault(m.Accent, "57")))
 			tabs = append(tabs, accented.Width(m.UI.tabWidth).Render(tabContent))
 		} else {
 			s := tabStyle
 			if m.UI.Focus == FocusTabBar {
-				s = s.Copy().BorderForeground(lipgloss.Color("15"))
+				s = s.BorderForeground(lipgloss.Color("15"))
 			}
 			tabs = append(tabs, s.Width(m.UI.tabWidth).Render(tabContent))
 		}
@@ -106,7 +106,7 @@ func renderContent(m *Model) string {
 		descriptions[m.UI.ActiveTab],
 	)
 
-	s := contentStyle.Copy()
+	s := contentStyle
 	if m.UI.Focus == FocusContent {
 		s = s.BorderForeground(lipgloss.Color("15"))
 	}
@@ -114,7 +114,7 @@ func renderContent(m *Model) string {
 	// When lyrics are rendered in the footer, they take 1 row (footerHeight=6).
 	// Without lyrics the footer is only 5 rows, so content gets that row back.
 	offset := contentOffset
-	if !(m.Audio.Lyrics != nil && m.Audio.ShowLyrics) && !m.LyricsFetching {
+	if (m.Audio.Lyrics == nil || !m.Audio.ShowLyrics) && !m.LyricsFetching {
 		offset = contentOffset - 1
 	}
 
@@ -197,17 +197,18 @@ func renderFooter(m *Model) string {
 	var lyricText string
 	maxWidth := m.UI.Width - 6
 
-	if m.LyricsFetching && !(m.Audio.Lyrics != nil && m.Audio.ShowLyrics) {
+	if m.LyricsFetching && (m.Audio.Lyrics == nil || !m.Audio.ShowLyrics) {
 		lyricText = "[Fetching lyrics...]"
 	} else if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
-		if len(m.Audio.ActiveLyricLines) > 0 {
+		switch {
+		case len(m.Audio.ActiveLyricLines) > 0:
 			active := m.Audio.ActiveLyricLines
 			parts := make([]string, 0, len(active))
 			for _, line := range active {
 				parts = append(parts, m.Audio.Lyrics.LineDisplayText(line))
 			}
 			lyricText = strings.Join(parts, " | ")
-		} else if m.Audio.LyricNextIndex >= 0 && m.Audio.LyricNextIndex < len(m.Audio.Lyrics.Lines) {
+		case m.Audio.LyricNextIndex >= 0 && m.Audio.LyricNextIndex < len(m.Audio.Lyrics.Lines):
 			// Show waiting dots if the total gap (previous line end to next line start)
 			// exceeds 5 seconds, otherwise use a simple placeholder.
 			if m.Audio.LyricGapDuration > 5*time.Second {
@@ -221,7 +222,7 @@ func renderFooter(m *Model) string {
 			} else {
 				lyricText = "-"
 			}
-		} else {
+		default:
 			// Past end or no upcoming lyric: show placeholder
 			lyricText = "-"
 		}
@@ -234,12 +235,10 @@ func renderFooter(m *Model) string {
 
 	// Combine all lines vertically
 	elements := []string{songLine, progressLine, volumeLine}
-	for _, row := range lyricRows {
-		elements = append(elements, row)
-	}
+	elements = append(elements, lyricRows...)
 	content := lipgloss.JoinVertical(lipgloss.Top, elements...)
 
-	s := footerStyle.Copy()
+	s := footerStyle
 	if m.UI.Focus == FocusFooter {
 		s = s.BorderForeground(lipgloss.Color("15"))
 	}
@@ -300,11 +299,11 @@ func renderSingleLyricLine(lineText string, maxWidth int, scrollOffset int, acce
 		if padWidth > 0 {
 			visible += fmt.Sprintf("%*s", padWidth, "")
 		}
-		return lyricStyle.Copy().
+		return lyricStyle.
 			Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
 			Width(maxWidth).Render(visible)
 	}
-	return lyricStyle.Copy().
+	return lyricStyle.
 		Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
 		Width(maxWidth).Render(lineText)
 }

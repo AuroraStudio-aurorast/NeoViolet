@@ -45,14 +45,14 @@ func newRemoteReadSeeker(resp *http.Response) (*remoteReadSeeker, error) {
 	// Use a private temp directory so other local users cannot read cached audio.
 	tempDir, err := os.MkdirTemp("", "neoviolet-*")
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		cancel()
 		return nil, fmt.Errorf("create temp dir: %w", err)
 	}
 	f, err := os.CreateTemp(tempDir, "cache-*.tmp")
 	if err != nil {
-		os.RemoveAll(tempDir)
-		resp.Body.Close()
+		_ = os.RemoveAll(tempDir)
+		_ = resp.Body.Close()
 		cancel()
 		return nil, fmt.Errorf("create temp cache: %w", err)
 	}
@@ -97,7 +97,7 @@ func (r *remoteReadSeeker) download() {
 			r.downloadDone = true
 			r.cond.Broadcast()
 			r.mu.Unlock()
-			r.body.Close()
+			_ = r.body.Close()
 			return
 		}
 		if err != nil {
@@ -113,7 +113,7 @@ func (r *remoteReadSeeker) setError(err error) {
 	r.downloadDone = true
 	r.cond.Broadcast()
 	r.mu.Unlock()
-	r.body.Close()
+	_ = r.body.Close()
 }
 
 func (r *remoteReadSeeker) Read(p []byte) (int, error) {
@@ -182,13 +182,13 @@ func (r *remoteReadSeeker) Close() error {
 	r.mu.Unlock()
 
 	r.cancel()
-	r.body.Close()
+	_ = r.body.Close()
 
 	name := r.cacheFile.Name()
-	r.cacheFile.Close()
-	os.Remove(name)
+	_ = r.cacheFile.Close()
+	_ = os.Remove(name)
 	if r.tempDir != "" {
-		os.RemoveAll(r.tempDir)
+		_ = os.RemoveAll(r.tempDir)
 	}
 	return nil
 }
@@ -204,12 +204,14 @@ func (p *Player) openURL(urlStr string) error {
 	ext := strings.ToLower(filepath.Ext(u.Path))
 
 	client := &http.Client{Timeout: 30 * time.Second}
+	// #nosec G704 -- fetching a user-supplied remote audio URL is the core
+	// feature of remote playback; the URL comes from the user's own input.
 	resp, err := client.Get(urlStr)
 	if err != nil {
 		return fmt.Errorf("HTTP GET: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 	}
 
@@ -217,12 +219,12 @@ func (p *Player) openURL(urlStr string) error {
 		ext = format.MIMETypeToExt(resp.Header.Get("Content-Type"))
 	}
 	if ext == "" {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("cannot detect audio format from URL or Content-Type")
 	}
 
 	if isSyntheticFormat(ext) {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("remote playback of %s format is not supported", ext)
 	}
 
@@ -232,7 +234,7 @@ func (p *Player) openURL(urlStr string) error {
 	}
 	if p.streamer != nil {
 		if p.file != nil {
-			p.file.Close()
+			_ = p.file.Close()
 		}
 	}
 
@@ -243,12 +245,12 @@ func (p *Player) openURL(urlStr string) error {
 
 	streamer, format, err := p.decoder.DecodeFromReader(rrs, ext)
 	if err != nil {
-		rrs.Close()
+		_ = rrs.Close()
 		return err
 	}
 
 	if err := ensureSpeakerInit(format.SampleRate); err != nil {
-		rrs.Close()
+		_ = rrs.Close()
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 

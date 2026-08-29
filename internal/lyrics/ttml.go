@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-const ttmlNamespace = "http://www.w3.org/ns/ttml"
-
 func init() {
 	RegisterParser("ttml", &ttmlParser{})
 }
@@ -77,7 +75,7 @@ type ttmlSpan struct {
 	XMLLang string `xml:"http://www.w3.org/XML/1998/namespace lang,attr"`
 }
 
-func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	decoder := xml.NewDecoder(r)
 	decoder.Strict = true
 
@@ -89,7 +87,7 @@ func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) 
 	return tt.toLyricsData(sourcePath)
 }
 
-func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
+func (tt *ttmlTT) toLyricsData(sourcePath string) (*Data, error) {
 	tt.resolveRates()
 
 	lang := tt.Body.Div.XMLLang
@@ -141,8 +139,8 @@ func (tt *ttmlTT) toLyricsData(sourcePath string) (*LyricsData, error) {
 		}
 	}
 
-	// Build LyricsData metadata from properties
-	lyrics := &LyricsData{
+	// Build Data metadata from properties
+	lyrics := &Data{
 		Path:       sourcePath,
 		Agents:     agents,
 		Properties: props,
@@ -291,7 +289,7 @@ func parseOffsetTime(s string) (time.Duration, error) {
 	return 0, fmt.Errorf("unrecognized offset time: %s", s)
 }
 
-func parseClockTime(s string, tickRate, frameRate, frameRateMul, subFrameRate int) (time.Duration, error) {
+func parseClockTime(s string, _, frameRate, frameRateMul, subFrameRate int) (time.Duration, error) {
 	s = strings.TrimSpace(s)
 
 	var dur time.Duration
@@ -412,18 +410,12 @@ func (tt *ttmlTT) isCJKContent() bool {
 				continue
 			}
 			for _, r := range span.Text {
-				if isCJKRune(r) {
-					return true
-				}
-				return false
+				return isCJKRune(r)
 			}
 		}
 		if strings.TrimSpace(para.Text) != "" {
 			for _, r := range para.Text {
-				if isCJKRune(r) {
-					return true
-				}
-				return false
+				return isCJKRune(r)
 			}
 		}
 	}

@@ -83,7 +83,7 @@ const testLRC = `[ti:LRC Comprehensive Test - Special Chars 🎵]
 ; End
 [00:30.00]Test file complete.`
 
-func parseLRC(s string) (*LyricsData, error) {
+func parseLRC(s string) (*Data, error) {
 	var p lrcParser
 	return p.Parse(strings.NewReader(s), "")
 }
@@ -488,7 +488,7 @@ func TestCurrentLine(t *testing.T) {
 		{Time: 3000 * time.Millisecond, Text: "two"},
 		{Time: 5000 * time.Millisecond, Text: "three"},
 	}
-	d := &LyricsData{Lines: lines}
+	d := &Data{Lines: lines}
 
 	tests := []struct {
 		elapsed time.Duration
@@ -545,7 +545,7 @@ func TestParse_OnlyComments(t *testing.T) {
 }
 
 func TestCurrentLine_Empty(t *testing.T) {
-	d := &LyricsData{}
+	d := &Data{}
 	if idx := d.CurrentLine(5 * time.Second); idx != -1 {
 		t.Errorf("empty lyrics: got %d, want -1", idx)
 	}

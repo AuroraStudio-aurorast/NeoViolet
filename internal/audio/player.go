@@ -33,6 +33,9 @@ func ensureSpeakerInit(sampleRate beep.SampleRate) error {
 	return initSpeakerErr
 }
 
+// Player is the audio playback engine. It wraps a beep stream plus an
+// optional synthetic (MIDI/tracker) controller behind a single mutex-guarded
+// API used by the UI.
 type Player struct {
 	mu             sync.Mutex
 	streamer       beep.StreamSeekCloser
@@ -59,10 +62,13 @@ type Player struct {
 	tempFiles      []string // temp files to clean up in Close()
 }
 
+// NewPlayer creates a Player with the default format decoder and metadata reader.
 func NewPlayer() *Player {
 	return NewPlayerWithDeps(format.NewFormatDecoder(), format.NewMetadataReader())
 }
 
+// NewPlayerWithDeps creates a Player using the supplied decoder and tag reader.
+// It is used by tests to inject fakes without touching the real format backends.
 func NewPlayerWithDeps(decoder *format.FormatDecoder, tagReader *format.MetadataReader) *Player {
 	return &Player{
 		isPaused:     true,
@@ -103,18 +109,21 @@ func (p *Player) setupStreamer(streamer beep.StreamSeekCloser, f beep.Format, fi
 	p.applyLinearVolumeLocked()
 }
 
+// SetSoundfontPath configures the SoundFont path used for MIDI playback.
 func (p *Player) SetSoundfontPath(sfPath string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.sfPath = sfPath
 }
 
+// SetTrackerBackend selects the tracker playback backend (auto/gotracker/openmpt).
 func (p *Player) SetTrackerBackend(backend string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.trackerBackend = backend
 }
 
+// Open loads a local audio file (or remote URL) for playback.
 func (p *Player) Open(path string) error {
 	logger.Debug("Player.Open", "path", path)
 
@@ -137,7 +146,7 @@ func (p *Player) Open(path string) error {
 	}
 
 	if isSyntheticFormat(synthExt) {
-		file.Close()
+		_ = file.Close()
 		logger.Info("Detected synthetic format", "path", path, "ext", synthExt)
 		return p.openSynthetic(path, synthExt)
 	}
@@ -147,22 +156,22 @@ func (p *Player) Open(path string) error {
 		p.isPlaying = false
 	}
 	if p.streamer != nil && p.file != nil {
-		p.file.Close()
+		_ = p.file.Close()
 	}
 
 	if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("file seek: %w", seekErr)
 	}
 
 	streamer, format, err := p.decoder.Decode(file, path)
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return err
 	}
 
 	if err := ensureSpeakerInit(format.SampleRate); err != nil {
-		file.Close()
+		_ = file.Close()
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
@@ -188,7 +197,7 @@ func (p *Player) closeStreamer() {
 		p.isPlaying = false
 	}
 	if p.streamer != nil && p.file != nil {
-		p.file.Close()
+		_ = p.file.Close()
 		p.file = nil
 	}
 	p.streamer = nil
@@ -196,6 +205,7 @@ func (p *Player) closeStreamer() {
 	p.volume = nil
 }
 
+// Play starts or resumes playback.
 func (p *Player) Play() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -273,7 +283,7 @@ func (p *Player) Resume() {
 
 	if p.isSynthActive() {
 		logger.Debug("Synth resume")
-		p.synthCtrl.Play()
+		_ = p.synthCtrl.Play()
 		p.isPaused = false
 		return
 	}
@@ -309,14 +319,14 @@ func (p *Player) Stop() {
 func (p *Player) Toggle() {
 	if p.isSynthActive() {
 		if p.isPaused || !p.isPlaying {
-			p.Play()
+			_ = p.Play()
 		} else {
 			p.Pause()
 		}
 		return
 	}
 	if p.isPaused || !p.isPlaying {
-		p.Play()
+		_ = p.Play()
 	} else {
 		p.Pause()
 	}
@@ -420,7 +430,7 @@ func (p *Player) Close() error {
 	logger.Debug("Player.Close (audio)")
 	speaker.Clear()
 	if p.file != nil {
-		p.file.Close()
+		_ = p.file.Close()
 		p.file = nil
 	}
 	p.streamer = nil
@@ -432,7 +442,7 @@ func (p *Player) Close() error {
 	// Clean up any temp files created by OpenReader
 	for _, tmpPath := range p.tempFiles {
 		logger.Debug("Removing temp file", "path", tmpPath)
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 	}
 	p.tempFiles = nil
 

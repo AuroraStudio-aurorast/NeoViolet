@@ -144,6 +144,7 @@ func findBoxLocations(r io.ReadSeeker, start int64, target string) ([]int64, err
 				result = append(result, children...)
 			}
 		}
+		// #nosec G115 -- box size is bounded by the actual file length.
 		offset += int64(size)
 	}
 	if len(result) == 0 {
@@ -170,6 +171,7 @@ func (d *Demuxer) findFirstInside(parentOffset int64, target string) (int64, err
 	if err != nil {
 		return 0, err
 	}
+	// #nosec G115 -- box size is bounded by the actual file length.
 	parentEnd := parentOffset + int64(parentSize)
 
 	off := parentOffset + 8 // skip parent header
@@ -190,6 +192,7 @@ func (d *Demuxer) findFirstInside(parentOffset int64, target string) (int64, err
 				return found, nil
 			}
 		}
+		// #nosec G115 -- box size is bounded by the actual file length.
 		off += int64(size)
 	}
 	return 0, fmt.Errorf("box %s not found inside parent at %d", target, parentOffset)

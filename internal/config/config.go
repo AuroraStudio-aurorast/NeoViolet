@@ -1,3 +1,5 @@
+// Package config loads and saves the NeoViolet user configuration and
+// exposes helper paths for the config and cache directories.
 package config
 
 import (
@@ -23,6 +25,7 @@ var useXDG atomic.Bool
 // Must be called before Load, Save, or ConfigExists.
 func SetXDGConfig(enabled bool) { useXDG.Store(enabled) }
 
+// LyricsConfig holds the UI lyrics display and fetch settings.
 type LyricsConfig struct {
 	Enabled        bool              `json:"enabled"`
 	ScrollSpeed    int               `json:"scroll_speed"`
@@ -39,36 +42,43 @@ type LyricsFetchConfig struct {
 	InsecureTLS bool   `json:"insecure_tls"` // skip TLS certificate verification
 }
 
+// Default values for online lyrics fetching.
 const (
 	DefaultBaseURL      = "https://lrclib.net"
 	DefaultFetchTimeout = 10
 	DefaultSecurity     = "strict"
 )
 
+// ProgressBarConfig controls the progress bar rendering.
 type ProgressBarConfig struct {
 	Fill           []string `json:"fill"`
 	Scaled         bool     `json:"scaled"`
 	ShowPercentage bool     `json:"show_percentage"`
 }
 
+// VolumeBarConfig controls the volume bar rendering.
 type VolumeBarConfig struct {
 	Width          int      `json:"width"`
 	ShowPercentage bool     `json:"show_percentage"`
 	Fill           []string `json:"fill"`
 }
 
+// CommandHistoryConfig limits the command history size.
 type CommandHistoryConfig struct {
 	Max int `json:"max"`
 }
 
+// ErrorConfig controls error message display duration.
 type ErrorConfig struct {
 	Duration int `json:"duration"`
 }
 
+// AccentConfig controls terminal accent color auto-detection.
 type AccentConfig struct {
 	AutoAccent *bool `json:"auto_accent"`
 }
 
+// IsEnabled reports whether accent auto-detection is enabled.
 func (a AccentConfig) IsEnabled() bool {
 	if a.AutoAccent == nil {
 		return true
@@ -76,6 +86,7 @@ func (a AccentConfig) IsEnabled() bool {
 	return *a.AutoAccent
 }
 
+// Config is the root user configuration, persisted as JSON.
 type Config struct {
 	IconTheme      string               `json:"icon_theme"`
 	DefaultVolume  float64              `json:"default_volume"`
@@ -92,6 +103,8 @@ type Config struct {
 	Accent         AccentConfig         `json:"accent"`
 }
 
+// Normalize validates and repairs fields in place, returning true when any
+// value changed (so the caller can decide to re-save).
 func (c *Config) Normalize() bool {
 	orig := *c
 	if c.DefaultVolume < 0 || c.DefaultVolume > 1.0 {
@@ -175,6 +188,7 @@ func isPrivateHost(host string) bool {
 	return host == "localhost"
 }
 
+// DefaultConfig returns the built-in default configuration.
 func DefaultConfig() Config {
 	return Config{
 		IconTheme:      "nerd",
@@ -216,6 +230,7 @@ func DefaultConfig() Config {
 	}
 }
 
+// ConfigExists reports whether a config.json already exists on disk.
 func ConfigExists() bool {
 	path, err := configPath()
 	if err != nil {
@@ -225,8 +240,8 @@ func ConfigExists() bool {
 	return err == nil
 }
 
-// ConfigDir returns the directory holding config.json.
-func ConfigDir() (string, error) {
+// Dir returns the directory holding config.json.
+func Dir() (string, error) {
 	if useXDG.Load() {
 		xdgHome := os.Getenv("XDG_CONFIG_HOME")
 		if xdgHome == "" || !filepath.IsAbs(xdgHome) {
@@ -247,7 +262,7 @@ func ConfigDir() (string, error) {
 }
 
 func configPath() (string, error) {
-	dir, err := ConfigDir()
+	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
@@ -256,7 +271,7 @@ func configPath() (string, error) {
 
 // CacheDir returns the directory for cached data (e.g. fetched lyrics).
 // XDG mode: $XDG_CACHE_HOME/neoviolet/lyrics, falling back to ~/.cache/neoviolet/lyrics.
-// Non-XDG:  <ConfigDir()>/caches/lyrics.
+// Non-XDG:  <Dir()>/caches/lyrics.
 func CacheDir() (string, error) {
 	if useXDG.Load() {
 		xdgCache := os.Getenv("XDG_CACHE_HOME")
@@ -270,19 +285,21 @@ func CacheDir() (string, error) {
 		return filepath.Join(xdgCache, "neoviolet", "lyrics"), nil
 	}
 
-	dir, err := ConfigDir()
+	dir, err := Dir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, "caches", "lyrics"), nil
 }
 
+// Load reads the user configuration, creating it with defaults on first run.
 func Load() (*Config, error) {
 	cfg := DefaultConfig()
 	path, err := configPath()
 	if err != nil {
 		return &cfg, nil
 	}
+	// #nosec G304 -- path is the user's own config.json under the config dir.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -321,6 +338,7 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
+// Save writes the configuration to disk (creating parent dirs as needed).
 func (c *Config) Save() error {
 	path, err := configPath()
 	if err != nil {
@@ -330,6 +348,7 @@ func (c *Config) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshal config: %w", err)
 	}
+	// #nosec G301 -- config dir is intentionally world-readable (0755).
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("create config directory: %w", err)
 	}

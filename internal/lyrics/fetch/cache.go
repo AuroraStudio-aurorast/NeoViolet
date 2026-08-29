@@ -24,7 +24,7 @@ const (
 
 type cacheEntry struct {
 	state            CacheState
-	data             *lyrics.LyricsData
+	data             *lyrics.Data
 	at               time.Time
 	rateLimitedUntil time.Time
 }
@@ -40,7 +40,7 @@ func NewCache() *Cache { return &Cache{items: make(map[string]cacheEntry)} }
 
 // Lookup returns the state for sig. An expired rate-limited entry is treated
 // as a miss so the track can be retried.
-func (c *Cache) Lookup(sig string) (CacheState, *lyrics.LyricsData, bool) {
+func (c *Cache) Lookup(sig string) (CacheState, *lyrics.Data, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	e, ok := c.items[sig]
@@ -55,7 +55,7 @@ func (c *Cache) Lookup(sig string) (CacheState, *lyrics.LyricsData, bool) {
 }
 
 // Store records a result for sig.
-func (c *Cache) Store(sig string, state CacheState, data *lyrics.LyricsData) {
+func (c *Cache) Store(sig string, state CacheState, data *lyrics.Data) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.items[sig] = cacheEntry{state: state, data: data, at: time.Now()}

@@ -25,7 +25,7 @@ const testSRTDot = `1
 00:00:01.500 --> 00:00:03.000
 Dot-style timestamps`
 
-func parseSRT(s string) (*LyricsData, error) {
+func parseSRT(s string) (*Data, error) {
 	var p srtParser
 	return p.Parse(strings.NewReader(s), "")
 }

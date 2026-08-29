@@ -21,13 +21,13 @@ func (p *srtParser) FindSidecar(audioPath string) string {
 	return findSidecarWithExt(audioPath, ".srt")
 }
 
-func (p *srtParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *srtParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read srt: %w", err)
 	}
 
-	lyrics := &LyricsData{Path: sourcePath}
+	lyrics := &Data{Path: sourcePath}
 	var lines []LyricLine
 
 	content := string(data)

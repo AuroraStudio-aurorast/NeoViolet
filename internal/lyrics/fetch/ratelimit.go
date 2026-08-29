@@ -122,10 +122,12 @@ func (r *RateLimit) writeLocked() error {
 	if err != nil {
 		return err
 	}
+	// #nosec G301 -- user cache dir is intentionally world-readable (0755).
 	if err := os.MkdirAll(filepath.Dir(r.file), 0o755); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
 	}
 	tmp := r.file + ".tmp"
+	// #nosec G306 -- cache record is intentionally user-readable (0644).
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("write ratelimit tmp: %w", err)
 	}

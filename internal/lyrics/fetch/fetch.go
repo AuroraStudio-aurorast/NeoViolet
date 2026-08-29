@@ -11,8 +11,8 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
-// FetchOpts configures a FetchLyrics call.
-type FetchOpts struct {
+// Opts configures a Lyrics call.
+type Opts struct {
 	BaseURL     string
 	Timeout     time.Duration
 	InsecureTLS bool
@@ -22,16 +22,16 @@ type FetchOpts struct {
 }
 
 type fetcher struct {
-	opts    FetchOpts
+	opts    Opts
 	client  *Client
 	baseURL string
 }
 
-// FetchLyrics retrieves lyrics for meta from the provider at opts.BaseURL.
+// Lyrics retrieves lyrics for meta from the provider at opts.BaseURL.
 // On success it persists the result to the session and disk caches. Transient
 // errors (offline, rate limited, bad payload) are returned without caching so
 // a later attempt can succeed; "no lyrics" results are cached as negatives.
-func FetchLyrics(ctx context.Context, meta TrackMeta, opts FetchOpts) (*lyrics.LyricsData, error) {
+func Lyrics(ctx context.Context, meta TrackMeta, opts Opts) (*lyrics.Data, error) {
 	f := &fetcher{opts: opts, baseURL: strings.TrimRight(opts.BaseURL, "/")}
 	f.client = NewClient(f.baseURL, opts.Timeout, opts.InsecureTLS, opts.RateLimit)
 	sig := Sign(meta.Title, meta.Artist, meta.Album, meta.Duration)
@@ -61,7 +61,7 @@ func FetchLyrics(ctx context.Context, meta TrackMeta, opts FetchOpts) (*lyrics.L
 }
 
 // searchFallback queries /api/search and picks the best validated candidate.
-func (f *fetcher) searchFallback(ctx context.Context, meta TrackMeta, sig string) (*lyrics.LyricsData, error) {
+func (f *fetcher) searchFallback(ctx context.Context, meta TrackMeta, sig string) (*lyrics.Data, error) {
 	items, err := f.client.Search(ctx, "", meta)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func (f *fetcher) searchFallback(ctx context.Context, meta TrackMeta, sig string
 }
 
 // trackResult validates, parses and caches a matched track.
-func (f *fetcher) trackResult(ctx context.Context, track Track, meta TrackMeta, sig string, cache bool) (*lyrics.LyricsData, error) {
+func (f *fetcher) trackResult(_ context.Context, track Track, meta TrackMeta, sig string, cache bool) (*lyrics.Data, error) {
 	if IsInstrumental(track) {
 		f.storeNegative(sig, "instrumental")
 		return nil, ErrNotFound
@@ -94,7 +94,7 @@ func (f *fetcher) trackResult(ctx context.Context, track Track, meta TrackMeta, 
 }
 
 // storeFound persists a positive result to session and disk caches.
-func (f *fetcher) storeFound(sig string, track Track, data *lyrics.LyricsData) {
+func (f *fetcher) storeFound(sig string, track Track, data *lyrics.Data) {
 	cf := CacheFile{
 		Version:      cacheFileVersion,
 		Sig:          sig,
@@ -158,19 +158,19 @@ func pickBest(items []Track, meta TrackMeta) *Track {
 	return pass[0].track
 }
 
-// lyricsFromTrack parses a fetched track into LyricsData.
-func lyricsFromTrack(t Track) (*lyrics.LyricsData, error) {
+// lyricsFromTrack parses a fetched track into Data.
+func lyricsFromTrack(t Track) (*lyrics.Data, error) {
 	return lyricsFromData(t.ID, t.SyncedLyrics, t.TrackName, t.ArtistName, t.AlbumName)
 }
 
-// lyricsFromCacheFile rebuilds LyricsData from a disk cache record.
-func lyricsFromCacheFile(cf *CacheFile) (*lyrics.LyricsData, error) {
+// lyricsFromCacheFile rebuilds Data from a disk cache record.
+func lyricsFromCacheFile(cf *CacheFile) (*lyrics.Data, error) {
 	return lyricsFromData(cf.TrackID, cf.SyncedLyrics, cf.TrackName, cf.ArtistName, cf.AlbumName)
 }
 
 // lyricsFromData parses LRC text and fills in metadata fallbacks from the
 // source record (fetched track or disk cache).
-func lyricsFromData(id int64, synced, title, artist, album string) (*lyrics.LyricsData, error) {
+func lyricsFromData(id int64, synced, title, artist, album string) (*lyrics.Data, error) {
 	parsed, err := lyrics.ParseLRC(strings.NewReader(cleanControl(synced)))
 	if err != nil {
 		return nil, fmt.Errorf("parse fetched lyrics: %w", err)

@@ -311,7 +311,7 @@ func TestDispatcherLoadTrackMsg(t *testing.T) {
 	t.Run("preservesLyricFormat", func(t *testing.T) {
 		m := setupModel()
 		m.Audio.Volume = 0.5
-		m.Audio.Lyrics = &lyrics.LyricsData{Format: "lrc"}
+		m.Audio.Lyrics = &lyrics.Data{Format: "lrc"}
 
 		nm, cmd := dispatcherModel(t, m, LoadTrackMsg{Path: "/music/next.mp3"})
 		if cmd == nil {
@@ -486,11 +486,11 @@ func TestBuildLyricLinesJSON(t *testing.T) {
 	if got := buildLyricLinesJSON(nil, time.Second); got != nil {
 		t.Errorf("buildLyricLinesJSON(nil) = %v, want nil", got)
 	}
-	if got := buildLyricLinesJSON(&lyrics.LyricsData{}, time.Second); got != nil {
+	if got := buildLyricLinesJSON(&lyrics.Data{}, time.Second); got != nil {
 		t.Errorf("buildLyricLinesJSON(empty) = %v, want nil", got)
 	}
 
-	data := &lyrics.LyricsData{Lines: []lyrics.LyricLine{
+	data := &lyrics.Data{Lines: []lyrics.LyricLine{
 		{Time: 0, Text: "hello"},
 	}}
 	got := buildLyricLinesJSON(data, time.Second)

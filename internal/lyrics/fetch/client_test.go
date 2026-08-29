@@ -25,7 +25,7 @@ func TestClientGet(t *testing.T) {
 		gotURL = r.URL.String()
 		gotUA = r.Header.Get("User-Agent")
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":1,"trackName":"Shelter","artistName":"Porter Robinson & Madeon","duration":219,"syncedLyrics":"[00:01.00]hi"}`))
+		_, _ = w.Write([]byte(`{"id":1,"trackName":"Shelter","artistName":"Porter Robinson & Madeon","duration":219,"syncedLyrics":"[00:01.00]hi"}`))
 	}))
 
 	track, err := c.Get(context.Background(), TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Album: "Shelter", Duration: 219.01})
@@ -46,7 +46,7 @@ func TestClientGet(t *testing.T) {
 func TestClientGetNotFound(t *testing.T) {
 	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte(`{"code":404,"name":"TrackNotFound","message":"Failed to find specified track"}`))
+		_, _ = w.Write([]byte(`{"code":404,"name":"TrackNotFound","message":"Failed to find specified track"}`))
 	}))
 	if _, err := c.Get(context.Background(), TrackMeta{Title: "X", Artist: "Y"}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Get() error = %v, want ErrNotFound", err)
@@ -63,7 +63,7 @@ func TestClientGetRateLimitedRetry(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":1,"trackName":"T","artistName":"A","duration":10,"syncedLyrics":"[00:01.00]x"}`))
+		_, _ = w.Write([]byte(`{"id":1,"trackName":"T","artistName":"A","duration":10,"syncedLyrics":"[00:01.00]x"}`))
 	}))
 	c.rateLimit = rl
 
@@ -107,7 +107,7 @@ func TestClientGetRateLimitedExhausted(t *testing.T) {
 func TestClientContentTypeRejected(t *testing.T) {
 	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
-		w.Write([]byte(`<html>proxy error</html>`))
+		_, _ = w.Write([]byte(`<html>proxy error</html>`))
 	}))
 	if _, err := c.Get(context.Background(), TrackMeta{Title: "T", Artist: "A"}); !errors.Is(err, ErrUnexpectedResponse) {
 		t.Errorf("Get() error = %v, want ErrUnexpectedResponse", err)
@@ -117,7 +117,7 @@ func TestClientContentTypeRejected(t *testing.T) {
 func TestClientResponseTooLarge(t *testing.T) {
 	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write(make([]byte, maxFetchResponse+1024))
+		_, _ = w.Write(make([]byte, maxFetchResponse+1024))
 	}))
 	if _, err := c.Get(context.Background(), TrackMeta{Title: "T", Artist: "A"}); !errors.Is(err, ErrResponseTooLarge) {
 		t.Errorf("Get() error = %v, want ErrResponseTooLarge", err)
@@ -129,7 +129,7 @@ func TestClientSearch(t *testing.T) {
 	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[{"id":1,"trackName":"T","artistName":"A","duration":10}]`))
+		_, _ = w.Write([]byte(`[{"id":1,"trackName":"T","artistName":"A","duration":10}]`))
 	}))
 
 	items, err := c.Search(context.Background(), "", TrackMeta{Title: "T", Artist: "A"})
@@ -149,7 +149,7 @@ func TestClientSearchQueryPriority(t *testing.T) {
 	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`[]`))
+		_, _ = w.Write([]byte(`[]`))
 	}))
 	if _, err := c.Search(context.Background(), "query", TrackMeta{Title: "T", Artist: "A"}); err != nil {
 		t.Fatalf("Search() error: %v", err)
@@ -178,7 +178,7 @@ func TestClientThrottle(t *testing.T) {
 	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id":1,"trackName":"T","artistName":"A","duration":10,"syncedLyrics":"[00:01.00]x"}`))
+		_, _ = w.Write([]byte(`{"id":1,"trackName":"T","artistName":"A","duration":10,"syncedLyrics":"[00:01.00]x"}`))
 	}))
 
 	start := time.Now()

@@ -21,13 +21,13 @@ func (p *qrcParser) FindSidecar(audioPath string) string {
 	return findSidecarWithExt(audioPath, ".qrc")
 }
 
-func (p *qrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *qrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read qrc: %w", err)
 	}
 
-	lyrics := &LyricsData{Path: sourcePath}
+	lyrics := &Data{Path: sourcePath}
 	var lines []LyricLine
 
 	for _, line := range strings.Split(string(data), "\n") {

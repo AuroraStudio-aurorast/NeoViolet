@@ -35,7 +35,7 @@ func (p *smiParser) FindSidecar(audioPath string) string {
 	return findSidecarWithExt(audioPath, ".smi", ".sami")
 }
 
-func (p *smiParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *smiParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read smi: %w", err)
@@ -44,7 +44,7 @@ func (p *smiParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
 	content := string(data)
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 
-	lyrics := &LyricsData{Path: sourcePath}
+	lyrics := &Data{Path: sourcePath}
 
 	// Extract metadata from HEAD
 	if titleMatch := smiTitleRe.FindStringSubmatch(content); len(titleMatch) >= 2 {

@@ -33,6 +33,7 @@ func convertPCMToFloat64(pcm []byte, numChannels, bytesPerSample int, out []floa
 				// unsigned 8-bit → signed (-128 to 127)
 				sample = int32(pcm[sampleStart]) - 128
 			case 2:
+				// #nosec G115 -- uint16 bit-pattern reinterpreted as int16; bounded.
 				sample = int32(int16(binary.LittleEndian.Uint16(pcm[sampleStart:])))
 			case 3:
 				sample = int32(pcm[sampleStart]) |
@@ -42,6 +43,7 @@ func convertPCMToFloat64(pcm []byte, numChannels, bytesPerSample int, out []floa
 					sample |= ^0xffffff // sign extend
 				}
 			case 4:
+				// #nosec G115 -- uint32 bit-pattern reinterpreted as int32; bounded.
 				sample = int32(binary.LittleEndian.Uint32(pcm[sampleStart:]))
 			}
 			out[i*2+ch] = float64(sample) / float64(uint32(1)<<(bytesPerSample*8-1))

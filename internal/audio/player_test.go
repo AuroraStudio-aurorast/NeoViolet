@@ -86,7 +86,6 @@ func TestToggleLogic(t *testing.T) {
 type fakeStream struct {
 	pos   int
 	total int
-	ch    int
 	rate  beep.SampleRate
 	seeks []int // records seek positions for assertions
 }

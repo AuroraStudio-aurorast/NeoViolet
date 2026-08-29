@@ -14,7 +14,7 @@ func TestExtractFromFLAC(t *testing.T) {
 	if err != nil {
 		t.Skipf("testdata missing: %v", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	img, err := ExtractFromReader(f)
 	if err != nil {
 		t.Skipf("sample has no embedded cover art: %v", err)

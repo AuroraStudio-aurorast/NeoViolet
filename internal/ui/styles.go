@@ -21,7 +21,7 @@ var (
 			Padding(0, 1).
 			MarginRight(1)
 
-	activeTabStyle = tabStyle.Copy().
+	activeTabStyle = tabStyle.
 			BorderForeground(lipgloss.Color("57")).
 			Bold(true)
 
@@ -40,11 +40,6 @@ var (
 
 	footerTextStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245"))
-
-	// Help styling
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
-			Padding(0, 1)
 
 	// Loading & warning styles
 	loadingStyle = lipgloss.NewStyle().

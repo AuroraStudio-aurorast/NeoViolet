@@ -36,7 +36,7 @@ const testSMIHTML = `<SAMI>
 </BODY>
 </SAMI>`
 
-func parseSMI(s string) (*LyricsData, error) {
+func parseSMI(s string) (*Data, error) {
 	var p smiParser
 	return p.Parse(strings.NewReader(s), "")
 }

@@ -6,11 +6,13 @@ import (
 	"time"
 )
 
+// WordFragment is a single timed word within a lyric line.
 type WordFragment struct {
 	Time time.Duration
 	Text string
 }
 
+// LyricLine is a single timed lyric line, optionally with word fragments.
 type LyricLine struct {
 	Time  time.Duration
 	End   time.Duration // 0 means unbounded (legacy format behavior)
@@ -19,7 +21,8 @@ type LyricLine struct {
 	Agent string // agent ID (e.g. "v1", "v2") or "" for no agent
 }
 
-type LyricsData struct {
+// Data is the parsed lyric result returned by parsers.
+type Data struct {
 	Title   string
 	Artist  string
 	Album   string
@@ -50,7 +53,7 @@ type LyricsData struct {
 // returning at most one line whose Time is the greatest <= elapsed.
 //
 // When AgentFilter is set, only lines matching that agent are returned.
-func (d *LyricsData) ActiveLines(elapsed time.Duration) []LyricLine {
+func (d *Data) ActiveLines(elapsed time.Duration) []LyricLine {
 	if len(d.Lines) == 0 {
 		return nil
 	}
@@ -91,7 +94,7 @@ func (d *LyricsData) ActiveLines(elapsed time.Duration) []LyricLine {
 
 // LineDisplayText returns the display text for a lyric line,
 // including the agent prefix if applicable.
-func (d *LyricsData) LineDisplayText(line LyricLine) string {
+func (d *Data) LineDisplayText(line LyricLine) string {
 	if line.Agent == "" {
 		return line.Text
 	}

@@ -47,7 +47,7 @@ func TestDecodeM4A_Streamer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeM4A: %v", err)
 	}
-	defer streamer.Close()
+	defer func() { _ = streamer.Close() }()
 
 	if format.SampleRate != 44100 {
 		t.Errorf("expected sample rate 44100, got %d", format.SampleRate)
@@ -121,7 +121,7 @@ func TestDecodeM4A_ErrMethod(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeM4A: %v", err)
 	}
-	defer streamer.Close()
+	defer func() { _ = streamer.Close() }()
 
 	if err := streamer.Err(); err != nil {
 		t.Errorf("expected no error, got: %v", err)

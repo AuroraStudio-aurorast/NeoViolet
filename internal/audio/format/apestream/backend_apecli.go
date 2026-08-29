@@ -70,6 +70,8 @@ func (b *apeCLIBackend) Open(path string, seekSamples int) (*StreamInfo, error) 
 }
 
 func (b *apeCLIBackend) startProcess(args []string) (*StreamInfo, error) {
+	// #nosec G204 -- binary path is resolved from a trusted location (env var,
+	// executable dir, or PATH) and args are a sanitized file path + seek offset.
 	cmd := exec.Command(b.binary, args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -138,6 +140,7 @@ func (b *apeCLIBackend) startProcess(args []string) (*StreamInfo, error) {
 		SampleRate:    int(hdr.SampleRate),
 		Channels:      int(hdr.Channels),
 		BitsPerSample: int(hdr.BitsPerSample),
+		// #nosec G115 -- sample count fits in int for any real-world track.
 		TotalSamples:  int(hdr.TotalSamples),
 	}, nil
 }

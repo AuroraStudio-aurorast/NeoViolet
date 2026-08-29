@@ -174,14 +174,15 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if strings.HasPrefix(arg, "+") || strings.HasPrefix(arg, "-") {
+		switch {
+		case strings.HasPrefix(arg, "+") || strings.HasPrefix(arg, "-"):
 			rel, err := strconv.ParseFloat(arg, 64)
 			if err != nil {
 				m.Error.Set("Invalid seek offset", m.Config.Error.Duration)
 				return m, nil
 			}
 			m.Audio.SeekRelative(time.Duration(rel * float64(time.Second)))
-		} else if strings.Contains(arg, ":") {
+		case strings.Contains(arg, ":"):
 			pos, err := parseClockTime(arg)
 			if err != nil {
 				m.Error.Set(err.Error(), m.Config.Error.Duration)
@@ -191,7 +192,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 				pos = m.Audio.Duration
 			}
 			m.Audio.SeekPlayer(pos)
-		} else {
+		default:
 			seconds, err := strconv.ParseFloat(arg, 64)
 			if err != nil {
 				m.Error.Set("Invalid seek position", m.Config.Error.Duration)
@@ -239,7 +240,7 @@ func parseClockTime(s string) (time.Duration, error) {
 		mins, err1 := strconv.Atoi(parts[0])
 		secs, err2 := strconv.Atoi(parts[1])
 		if err1 != nil || err2 != nil || secs < 0 || secs >= 60 {
-			return 0, fmt.Errorf("Invalid time, use <mm>:<ss> where ss < 60")
+			return 0, fmt.Errorf("invalid time, use <mm>:<ss> where ss < 60")
 		}
 		if mins < 0 {
 			mins = 0
@@ -250,14 +251,14 @@ func parseClockTime(s string) (time.Duration, error) {
 		mins, err2 := strconv.Atoi(parts[1])
 		secs, err3 := strconv.Atoi(parts[2])
 		if err1 != nil || err2 != nil || err3 != nil || mins < 0 || mins >= 60 || secs < 0 || secs >= 60 {
-			return 0, fmt.Errorf("Invalid time, use <hh>:<mm>:<ss> where mm, ss < 60")
+			return 0, fmt.Errorf("invalid time, use <hh>:<mm>:<ss> where mm, ss < 60")
 		}
 		if hours < 0 {
 			hours = 0
 		}
 		totalSeconds = hours*3600 + mins*60 + secs
 	default:
-		return 0, fmt.Errorf("Invalid time format, use <mm>:<ss> or <hh>:<mm>:<ss>")
+		return 0, fmt.Errorf("invalid time format, use <mm>:<ss> or <hh>:<mm>:<ss>")
 	}
 	return time.Duration(totalSeconds) * time.Second, nil
 }

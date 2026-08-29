@@ -9,7 +9,7 @@ import (
 
 func TestCacheFound(t *testing.T) {
 	c := NewCache()
-	data := &lyrics.LyricsData{}
+	data := &lyrics.Data{}
 	c.Store("sig1", CacheFound, data)
 
 	state, got, ok := c.Lookup("sig1")

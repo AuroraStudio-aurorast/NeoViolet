@@ -22,9 +22,9 @@ func (d *Decoder) readbits_16(bits int) uint32 {
 	if len(d.input_buffer)-d.input_buffer_index > 2 {
 		result |= uint32(d.input_buffer[d.input_buffer_index+2])
 	}
-	result = result << uint(d.input_buffer_bitaccumulator)
-	result = result & 0x00ffffff
-	result = result >> uint(24-bits)
+	result <<= uint(d.input_buffer_bitaccumulator)
+	result &= 0x00ffffff
+	result >>= uint(24 - bits)
 
 	newAccumulator := d.input_buffer_bitaccumulator + bits
 	d.input_buffer_index += newAccumulator >> 3
@@ -37,9 +37,12 @@ func (d *Decoder) readbits(bits int) uint32 {
 	var result int32 = 0
 	if bits > 16 {
 		bits -= 16
+		// #nosec G115 -- 16-bit read sign-extended to int32; value is bounded.
 		result = int32(d.readbits_16(16) << uint(bits))
 	}
+	// #nosec G115 -- low bits reinterpreted as int32; value is bounded.
 	result |= int32(d.readbits_16(bits))
+	// #nosec G115 -- bit-pattern reinterpretation of a 32-bit value.
 	return uint32(result)
 }
 
@@ -49,7 +52,7 @@ func (d *Decoder) readbit() int {
 		return 0
 	}
 	result := int(d.input_buffer[d.input_buffer_index])
-	result = result << uint(d.input_buffer_bitaccumulator)
+	result <<= uint(d.input_buffer_bitaccumulator)
 	result = result >> 7 & 1
 	newAccumulator := d.input_buffer_bitaccumulator + 1
 	d.input_buffer_index += newAccumulator / 8

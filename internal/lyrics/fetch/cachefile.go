@@ -71,21 +71,23 @@ func Load(sig, provider string) (*CacheFile, bool) {
 	if err != nil {
 		return nil, false
 	}
+	// #nosec G304 -- path is derived from a SHA-256 signature under the
+	// user's own cache dir; reading it is the cache lookup itself.
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
 	var cf CacheFile
 	if err := json.Unmarshal(data, &cf); err != nil {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return nil, false
 	}
 	if cf.Version != cacheFileVersion || cf.Sig != sig || cf.Provider != provider {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return nil, false
 	}
 	if cf.expired() {
-		os.Remove(path)
+		_ = os.Remove(path)
 		return nil, false
 	}
 	return &cf, true
@@ -97,6 +99,8 @@ func Save(cf CacheFile) error {
 	if err != nil {
 		return err
 	}
+	// #nosec G301 -- user cache dir is intentionally world-readable so any
+	// local process can inspect cached lyrics.
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("create cache dir: %w", err)
 	}
@@ -106,11 +110,12 @@ func Save(cf CacheFile) error {
 		return err
 	}
 	tmp := path + ".tmp"
+	// #nosec G306 -- cache record is intentionally user-readable (0644).
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("write cache tmp: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return fmt.Errorf("rename cache: %w", err)
 	}
 	return nil
@@ -144,18 +149,19 @@ func CleanupExpired(dir string) (int, error) {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
+		// #nosec G304 -- same signature-derived cache path as Load.
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
 		var cf CacheFile
 		if err := json.Unmarshal(data, &cf); err != nil {
-			os.Remove(path)
+			_ = os.Remove(path)
 			removed++
 			continue
 		}
 		if cf.Version != cacheFileVersion || cf.expired() {
-			os.Remove(path)
+			_ = os.Remove(path)
 			removed++
 		}
 	}

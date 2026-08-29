@@ -27,6 +27,7 @@ func buildFooter(tagSize uint32, itemCount uint32, hasHeader bool) []byte {
 func buildItem(key, value string) []byte {
 	vdata := []byte(value)
 	item := make([]byte, 8+len(key)+1+len(vdata))
+	// #nosec G115 -- value size is bounded by the length of a test string.
 	binary.LittleEndian.PutUint32(item[0:4], uint32(len(vdata))) // value size
 	binary.LittleEndian.PutUint32(item[4:8], 0)                  // flags (string)
 	copy(item[8:], key)
@@ -51,6 +52,7 @@ func buildFileWithTags(tagItems [][]byte, hasHeader bool) []byte {
 	}
 
 	// Footer: tag_size = len(footer) + len(items)
+	// #nosec G115 -- tag/items sizes are bounded by small in-memory test data.
 	footer := buildFooter(uint32(32+len(items)), uint32(len(tagItems)), hasHeader)
 
 	// Assemble: [MAC audio garbage] [header?] [items] [footer]
@@ -187,12 +189,12 @@ func TestParseFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
-	defer tmpFile.Close()
+	defer func() { _ = tmpFile.Close() }()
 
 	if _, err := tmpFile.Write(data); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	tmpFile.Seek(0, 0)
+	_, _ = tmpFile.Seek(0, 0)
 
 	tags, err := ParseFile(tmpFile.Name())
 	if err != nil {
@@ -211,9 +213,9 @@ func TestParseFileNoTags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateTemp: %v", err)
 	}
-	defer tmpFile.Close()
-	tmpFile.Write([]byte("no tags here"))
-	tmpFile.Seek(0, 0)
+	defer func() { _ = tmpFile.Close() }()
+	_, _ = tmpFile.Write([]byte("no tags here"))
+	_, _ = tmpFile.Seek(0, 0)
 
 	_, err = ParseFile(tmpFile.Name())
 	if err != errNoTags {

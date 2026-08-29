@@ -51,12 +51,12 @@ func (p *Player) OpenReader(name string, data []byte) error {
 		}
 		tmpPath := tmpFile.Name()
 		if _, err := tmpFile.Write(data); err != nil {
-			tmpFile.Close()
-			os.Remove(tmpPath)
+			_ = tmpFile.Close()
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("write temp file: %w", err)
 		}
 		if err := tmpFile.Close(); err != nil {
-			os.Remove(tmpPath)
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("close temp file: %w", err)
 		}
 		// Track for cleanup
@@ -75,7 +75,7 @@ func (p *Player) OpenReader(name string, data []byte) error {
 		p.isPlaying = false
 	}
 	if p.streamer != nil && p.file != nil {
-		p.file.Close()
+		_ = p.file.Close()
 	}
 
 	// Read metadata from the buffer FIRST, before decoding.

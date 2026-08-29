@@ -19,11 +19,11 @@ func init() {
 		if n < 8 {
 			return "", false
 		}
-		ftype := string(buf[8:12])
 		knownTypes := map[string]bool{
+			//nolint:gocritic // "M4A " is the literal 4-byte MP4 brand with a trailing space.
 			"M4A ": true, "mp42": true, "isom": true, "M4B": true,
 		}
-		if knownTypes[ftype] {
+		if knownTypes[string(buf[8:12])] {
 			return ".m4a", true
 		}
 		if n >= 16 {

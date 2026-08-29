@@ -50,11 +50,11 @@ func (m *Model) maybeFetchLyrics(path string) tea.Cmd {
 	return m.buildFetchCmd(meta, sig, baseURL)
 }
 
-// buildFetchCmd returns a tea.Cmd that runs FetchLyrics and reports the result
+// buildFetchCmd returns a tea.Cmd that runs fetch.Lyrics and reports the result
 // via FetchLyricsResultMsg. Shared by auto-fetch and :lrc switch online.
 func (m *Model) buildFetchCmd(meta fetch.TrackMeta, sig, baseURL string) tea.Cmd {
 	fetchCfg := m.Config.Lyrics.Fetch
-	opts := fetch.FetchOpts{
+	opts := fetch.Opts{
 		BaseURL:     baseURL,
 		Timeout:     time.Duration(fetchCfg.Timeout) * time.Second,
 		InsecureTLS: fetchCfg.InsecureTLS,
@@ -63,7 +63,7 @@ func (m *Model) buildFetchCmd(meta fetch.TrackMeta, sig, baseURL string) tea.Cmd
 		RateLimit:   m.fetchRateLimit,
 	}
 	return func() tea.Msg {
-		data, err := fetch.FetchLyrics(context.Background(), meta, opts)
+		data, err := fetch.Lyrics(context.Background(), meta, opts)
 		return FetchLyricsResultMsg{Data: data, Err: err, Sig: sig}
 	}
 }
@@ -73,7 +73,7 @@ func (m *Model) buildFetchCmd(meta fetch.TrackMeta, sig, baseURL string) tea.Cmd
 func handleFetchLyricsResult(m *Model, msg FetchLyricsResultMsg) (tea.Model, tea.Cmd) {
 	if msg.Err != nil {
 		// Transient failures must not poison the cache or the pending marker;
-		// negative results were already cached inside FetchLyrics.
+		// negative results were already cached inside fetch.Lyrics.
 		if !errors.Is(msg.Err, fetch.ErrNotFound) && !errors.Is(msg.Err, fetch.ErrNoMatch) {
 			m.fetchCache.Clear(msg.Sig)
 		}
@@ -143,7 +143,7 @@ func lyricSig(lines []ipc.LyricLineJSON, elapsed time.Duration, nextIdx int) str
 
 // Includes all agents (AgentFilter temporarily cleared), plus up to 2 previous
 // and 2 next lines for context (so the GUI can show surrounding lyrics).
-func buildLyricLinesJSON(data *lyrics.LyricsData, elapsed time.Duration) []ipc.LyricLineJSON {
+func buildLyricLinesJSON(data *lyrics.Data, elapsed time.Duration) []ipc.LyricLineJSON {
 	if data == nil || len(data.Lines) == 0 {
 		return nil
 	}

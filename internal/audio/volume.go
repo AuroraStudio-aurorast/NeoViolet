@@ -21,6 +21,7 @@ func (p *Player) applyLinearVolumeLocked() {
 	}
 }
 
+// SetVolume sets the linear playback volume in the range [0, 1].
 func (p *Player) SetVolume(vol float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -40,6 +41,7 @@ func (p *Player) SetVolume(vol float64) {
 	p.applyLinearVolumeLocked()
 }
 
+// Volume returns the current linear playback volume in the range [0, 1].
 func (p *Player) Volume() float64 {
 	p.mu.Lock()
 	defer p.mu.Unlock()

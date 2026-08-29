@@ -73,7 +73,7 @@ func (p *Player) openSynthetic(path, ext string) error {
 
 	p.closeStreamer()
 	if p.synthCtrl != nil {
-		p.synthCtrl.Close()
+		_ = p.synthCtrl.Close()
 		p.synthCtrl = nil
 	}
 	p.synthActive = false
@@ -142,14 +142,10 @@ func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 	switch backend {
 	case "gotracker":
 		ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
-	case "openmpt":
-		ctrl, err = synth.NewOpenmptPlayer(path, sr)
-		if err != nil {
-			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
-			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
-		}
 	default:
+		// Try OpenMPT first, then fall back to gotracker.
 		ctrl, err = synth.NewOpenmptPlayer(path, sr)
+		//nolint:staticcheck // SA4023: build-tag dependent (openmpt stub always errors without -tags openmpt).
 		if err != nil {
 			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
 			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
@@ -182,7 +178,7 @@ func (p *Player) playSynthetic() error {
 	}
 
 	speaker.Lock()
-	p.synthCtrl.Play()
+	_ = p.synthCtrl.Play()
 	speaker.Unlock()
 
 	p.isPlaying = true

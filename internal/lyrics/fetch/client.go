@@ -124,7 +124,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 		if resp.StatusCode == http.StatusTooManyRequests {
 			wait := parseRetryAfter(resp.Header.Get("Retry-After"))
 			logger.Warn("lyrics fetch rate limited", "base_url", c.baseURL, "retry_after", wait)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 
 			select {
 			case <-time.After(wait):
@@ -142,7 +142,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 			}
 			if resp2.StatusCode == http.StatusTooManyRequests {
 				wait2 := parseRetryAfter(resp2.Header.Get("Retry-After"))
-				resp2.Body.Close()
+				_ = resp2.Body.Close()
 				if c.rateLimit != nil {
 					if err := c.rateLimit.SetRateLimited(c.baseURL, wait2); err != nil {
 						logger.Warn("lyrics fetch: persist rate limit failed", "err", err)
@@ -162,7 +162,7 @@ func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, err
 
 // errFromResponse converts a non-200 response into an error.
 func (c *Client) errFromResponse(resp *http.Response) error {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return ErrNotFound
 	}
@@ -176,7 +176,7 @@ func (c *Client) errFromResponse(resp *http.Response) error {
 
 // readJSON validates and decodes a 200 response body.
 func (c *Client) readJSON(resp *http.Response, v any) error {
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.HasPrefix(ct, "application/json") {
 		return fmt.Errorf("%w: content-type %q", ErrUnexpectedResponse, ct)
 	}
@@ -208,6 +208,7 @@ func (c *Client) Get(ctx context.Context, meta TrackMeta) (Track, error) {
 	if err != nil {
 		return Track{}, err
 	}
+	//nolint:bodyclose // resp is closed by c.readJSON via defer.
 	resp, err := c.do(ctx, req)
 	if err != nil {
 		return Track{}, err
@@ -238,6 +239,7 @@ func (c *Client) Search(ctx context.Context, q string, meta TrackMeta) ([]Track,
 	if err != nil {
 		return nil, err
 	}
+	//nolint:bodyclose // resp is closed by c.readJSON via defer.
 	resp, err := c.do(ctx, req)
 	if err != nil {
 		return nil, err
@@ -258,6 +260,7 @@ func (c *Client) GetByID(ctx context.Context, id int64) (Track, error) {
 	if err != nil {
 		return Track{}, err
 	}
+	//nolint:bodyclose // resp is closed by c.readJSON via defer.
 	resp, err := c.do(ctx, req)
 	if err != nil {
 		return Track{}, err

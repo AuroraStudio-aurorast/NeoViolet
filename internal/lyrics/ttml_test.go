@@ -61,7 +61,7 @@ const testTTMLMinimal = `<?xml version="1.0" encoding="UTF-8"?>
   </body>
 </tt>`
 
-func parseTTML(s string) (*LyricsData, error) {
+func parseTTML(s string) (*Data, error) {
 	var p ttmlParser
 	return p.Parse(strings.NewReader(s), "")
 }

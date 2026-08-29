@@ -13,11 +13,11 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
-func fetchOpts(t *testing.T, baseURL string, cache *Cache) FetchOpts {
+func fetchOpts(t *testing.T, baseURL string, cache *Cache) Opts {
 	return fetchOptsDir(t, baseURL, cache, t.TempDir())
 }
 
-func fetchOptsDir(t *testing.T, baseURL string, cache *Cache, dir string) FetchOpts {
+func fetchOptsDir(t *testing.T, baseURL string, cache *Cache, dir string) Opts {
 	t.Helper()
 	t.Setenv("XDG_CACHE_HOME", dir)
 	config.SetXDGConfig(true)
@@ -26,7 +26,7 @@ func fetchOptsDir(t *testing.T, baseURL string, cache *Cache, dir string) FetchO
 	if err != nil {
 		t.Fatalf("LoadRateLimit() error: %v", err)
 	}
-	return FetchOpts{
+	return Opts{
 		BaseURL:   baseURL,
 		Timeout:   5 * time.Second,
 		Cache:     cache,
@@ -58,11 +58,11 @@ func TestFetchLyricsGetHit(t *testing.T) {
 	defer srv.Close()
 
 	cache := NewCache()
-	data, err := FetchLyrics(context.Background(),
+	data, err := Lyrics(context.Background(),
 		TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Album: "Shelter", Duration: 219},
 		fetchOpts(t, srv.URL, cache))
 	if err != nil {
-		t.Fatalf("FetchLyrics() error: %v", err)
+		t.Fatalf("Lyrics() error: %v", err)
 	}
 	if data.Format != "lrclib" || data.Path != "lrclib://1" {
 		t.Errorf("Format/Path = %q/%q, want lrclib/lrclib://1", data.Format, data.Path)
@@ -97,11 +97,11 @@ func TestFetchLyricsGet404SearchFallback(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	data, err := FetchLyrics(context.Background(),
+	data, err := Lyrics(context.Background(),
 		TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Duration: 219},
 		fetchOpts(t, srv.URL, NewCache()))
 	if err != nil {
-		t.Fatalf("FetchLyrics() error: %v", err)
+		t.Fatalf("Lyrics() error: %v", err)
 	}
 	if data.Path != "lrclib://11" {
 		t.Errorf("Path = %q, want lrclib://11 (best candidate)", data.Path)
@@ -119,11 +119,11 @@ func TestFetchLyricsNoMatchingCandidate(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := FetchLyrics(context.Background(),
+	_, err := Lyrics(context.Background(),
 		TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Duration: 219},
 		fetchOpts(t, srv.URL, NewCache()))
 	if !errors.Is(err, ErrNoMatch) {
-		t.Fatalf("FetchLyrics() error = %v, want ErrNoMatch", err)
+		t.Fatalf("Lyrics() error = %v, want ErrNoMatch", err)
 	}
 }
 
@@ -139,11 +139,11 @@ func TestFetchLyricsPlainOnlyAbandoned(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := FetchLyrics(context.Background(),
+	_, err := Lyrics(context.Background(),
 		TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Duration: 219},
 		fetchOpts(t, srv.URL, NewCache()))
 	if !errors.Is(err, ErrNoMatch) {
-		t.Fatalf("FetchLyrics() error = %v, want ErrNoMatch (plain-only)", err)
+		t.Fatalf("Lyrics() error = %v, want ErrNoMatch (plain-only)", err)
 	}
 }
 
@@ -155,11 +155,11 @@ func TestFetchLyricsInstrumental(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := FetchLyrics(context.Background(),
+	_, err := Lyrics(context.Background(),
 		TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Duration: 219},
 		fetchOpts(t, srv.URL, NewCache()))
 	if !errors.Is(err, ErrNotFound) {
-		t.Fatalf("FetchLyrics() error = %v, want ErrNotFound (instrumental)", err)
+		t.Fatalf("Lyrics() error = %v, want ErrNotFound (instrumental)", err)
 	}
 }
 
@@ -176,17 +176,17 @@ func TestFetchLyricsDiskCacheHit(t *testing.T) {
 	meta := TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Duration: 219}
 
 	// first call populates the disk cache
-	if _, err := FetchLyrics(context.Background(), meta, fetchOptsDir(t, srv.URL, NewCache(), cacheDir)); err != nil {
-		t.Fatalf("first FetchLyrics() error: %v", err)
+	if _, err := Lyrics(context.Background(), meta, fetchOptsDir(t, srv.URL, NewCache(), cacheDir)); err != nil {
+		t.Fatalf("first Lyrics() error: %v", err)
 	}
 	if hits != 1 {
 		t.Fatalf("first call hits = %d, want 1", hits)
 	}
 
 	// second call with a fresh session cache must be served from disk
-	data, err := FetchLyrics(context.Background(), meta, fetchOptsDir(t, srv.URL, NewCache(), cacheDir))
+	data, err := Lyrics(context.Background(), meta, fetchOptsDir(t, srv.URL, NewCache(), cacheDir))
 	if err != nil {
-		t.Fatalf("second FetchLyrics() error: %v", err)
+		t.Fatalf("second Lyrics() error: %v", err)
 	}
 	if hits != 1 {
 		t.Errorf("second call hits = %d, want 1 (disk cache)", hits)
@@ -204,11 +204,11 @@ func TestFetchLyricsInvalidPayloadNoCache(t *testing.T) {
 	defer srv.Close()
 
 	cache := NewCache()
-	_, err := FetchLyrics(context.Background(),
+	_, err := Lyrics(context.Background(),
 		TrackMeta{Title: "Shelter", Artist: "Porter Robinson/Madeon", Duration: 219},
 		fetchOpts(t, srv.URL, cache))
 	if err == nil {
-		t.Fatal("FetchLyrics() error = nil, want invalid payload error")
+		t.Fatal("Lyrics() error = nil, want invalid payload error")
 	}
 	// transient error must not poison the negative cache
 	sig := Sign("Shelter", "Porter Robinson/Madeon", "", 219)
@@ -219,11 +219,11 @@ func TestFetchLyricsInvalidPayloadNoCache(t *testing.T) {
 
 func TestFetchLyricsOfflineNoCache(t *testing.T) {
 	cache := NewCache()
-	_, err := FetchLyrics(context.Background(),
+	_, err := Lyrics(context.Background(),
 		TrackMeta{Title: "T", Artist: "A", Duration: 10},
-		FetchOpts{BaseURL: "http://127.0.0.1:1", Timeout: 5 * time.Second, Cache: cache})
+		Opts{BaseURL: "http://127.0.0.1:1", Timeout: 5 * time.Second, Cache: cache})
 	if !errors.Is(err, ErrOffline) {
-		t.Fatalf("FetchLyrics() error = %v, want ErrOffline", err)
+		t.Fatalf("Lyrics() error = %v, want ErrOffline", err)
 	}
 	if _, _, ok := cache.Lookup(Sign("T", "A", "", 10)); ok {
 		t.Error("offline result cached as negative")

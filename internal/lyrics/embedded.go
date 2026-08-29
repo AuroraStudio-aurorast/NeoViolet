@@ -1,3 +1,5 @@
+// Package lyrics provides lyric sidecar parsing (LRC, QRC, TTML, ...) and
+// embedded-tag lyric extraction.
 package lyrics
 
 import (
@@ -22,7 +24,7 @@ func (p *embeddedParser) FindSidecar(audioPath string) string {
 	return audioPath
 }
 
-func (p *embeddedParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *embeddedParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	rs, ok := r.(io.ReadSeeker)
 	if !ok {
 		return nil, nil
@@ -85,7 +87,7 @@ func (p *embeddedParser) Parse(r io.Reader, sourcePath string) (*LyricsData, err
 }
 
 // parseAndReturn tries LRC then plain text on lyrics content.
-func parseAndReturn(lyricsText, sourcePath string) *LyricsData {
+func parseAndReturn(lyricsText, sourcePath string) *Data {
 	var lrc lrcParser
 	data, err := lrc.Parse(strings.NewReader(lyricsText), sourcePath)
 	if err == nil && data != nil {
@@ -123,8 +125,8 @@ func extractTXXXLyrics(raw map[string]interface{}) string {
 	return ""
 }
 
-// parsePlainText creates LyricsData from plain text with sequential 5s timestamps.
-func parsePlainText(text string, sourcePath string) *LyricsData {
+// parsePlainText creates Data from plain text with sequential 5s timestamps.
+func parsePlainText(text string, sourcePath string) *Data {
 	raw := strings.Split(strings.TrimSpace(text), "\n")
 	var lines []LyricLine
 	for i, line := range raw {
@@ -140,7 +142,7 @@ func parsePlainText(text string, sourcePath string) *LyricsData {
 	if len(lines) == 0 {
 		return nil
 	}
-	return &LyricsData{
+	return &Data{
 		Path:  sourcePath,
 		Lines: lines,
 	}
@@ -148,7 +150,7 @@ func parsePlainText(text string, sourcePath string) *LyricsData {
 
 // parseSYLT parses an ID3v2 SYLT (Synchronized lyrics/text) frame body.
 // Only supports content type $01 (lyrics) and timestamp format $01 (absolute ms).
-func parseSYLT(data []byte) *LyricsData {
+func parseSYLT(data []byte) *Data {
 	if len(data) < 6 {
 		return nil
 	}
@@ -199,7 +201,7 @@ func parseSYLT(data []byte) *LyricsData {
 	if len(lines) == 0 {
 		return nil
 	}
-	return &LyricsData{Lines: lines}
+	return &Data{Lines: lines}
 }
 
 // skipNullTerminated skips past a null-terminated string at pos.

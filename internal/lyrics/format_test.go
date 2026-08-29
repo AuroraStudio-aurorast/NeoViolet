@@ -10,7 +10,7 @@ const testYRC = `[39345,3726](39345,203,0)I(0,0,0) (39548,390,0)could(0,0,0) (39
 [44085,2420](44085,145,0)Have(0,0,0) (44230,280,0)you(0,0,0) (44510,443,0)no(44953,115,0)ticed(0,0,0) (45068,372,0)I've(0,0,0) (45440,265,0)been(0,0,0) (45705,800,0)gone
 [48858,4183](48858,132,0)Cause(0,0,0) (48990,340,0)I(0,0,0) (49330,435,0)left(0,0,0) (49765,280,0)be(50045,305,0)hind(0,0,0) (50350,318,0)the(0,0,0) (50668,430,0)home`
 
-func parseYRC(s string) (*LyricsData, error) {
+func parseYRC(s string) (*Data, error) {
 	var p yrcParser
 	return p.Parse(strings.NewReader(s), "")
 }
@@ -74,7 +74,7 @@ func TestYRC_SortedOutput(t *testing.T) {
 const testQRC = `[39345,3726]I(39345,203) (0,0)could(39548,390) (0,0)ne(39938,260)ver(40198,182) (0,0)find(40380,390) (0,0)the(40770,377) (0,0)right(41147,345) (0,0)way(41492,443) (0,0)to(41935,247) (0,0)tell(42182,538) (0,0)you(42720,351)
 [44085,2420]Have(44085,145) (0,0)you(44230,280) (0,0)no(44510,443)ticed(44953,115) (0,0)I've(45068,372) (0,0)been(45440,265) (0,0)gone(45705,800)`
 
-func parseQRC(s string) (*LyricsData, error) {
+func parseQRC(s string) (*Data, error) {
 	var p qrcParser
 	return p.Parse(strings.NewReader(s), "")
 }
@@ -136,7 +136,7 @@ const testLYS = `[0]I(39345,203) (0,0)could(39548,390) (0,0)ne(39938,260)ver(401
 [0]Have(44085,145) (0,0)you(44230,280) (0,0)no(44510,443)ticed(44953,115) (0,0)I've(45068,372) (0,0)been(45440,265) (0,0)gone(45705,800)
 [0]Cause(48858,132) (0,0)I(48990,340) (0,0)left(49330,435) (0,0)be(49765,280)hind(50045,305) (0,0)the(50350,318) (0,0)home(50668,430) (0,0)that(51098,474) (0,0)you(51572,284) (0,0)made(51856,399) (0,0)me(52255,786)`
 
-func parseLYS(s string) (*LyricsData, error) {
+func parseLYS(s string) (*Data, error) {
 	var p lysParser
 	return p.Parse(strings.NewReader(s), "")
 }
@@ -201,7 +201,7 @@ const testESLRC = `[00:39.345]I[00:39.548] [00:00.000]could[00:39.938] [00:00.00
 [00:44.085]Have[00:44.230] [00:00.000]you[00:44.510] [00:00.000]no[00:44.953]ticed[00:45.068] [00:00.000]I've[00:45.440] [00:00.000]been[00:45.705] [00:00.000]gone[00:46.505]
 [00:48.858]Cause[00:48.990] [00:00.000]I[00:49.330] [00:00.000]left[00:49.765] [00:00.000]be[00:50.045]hind[00:50.350] [00:00.000]the[00:50.668] [00:00.000]home[00:51.098] [00:00.000]that[00:51.572] [00:00.000]you[00:51.856] [00:00.000]made[00:52.255] [00:00.000]me[00:53.041]`
 
-func parseESLRC(s string) (*LyricsData, error) {
+func parseESLRC(s string) (*Data, error) {
 	var p eslrcParser
 	return p.Parse(strings.NewReader(s), "")
 }
@@ -377,7 +377,7 @@ const testLYSMultiAgent = `[0]I(1000,500) (0,0)am(1500,300) (0,0)lead(1800,400)
 [6]backing(2000,600) (0,0)vocals(2600,500)
 [8]oh(2500,300) (0,0)yeah(2800,400)`
 
-func parseLYSMulti(s string) (*LyricsData, error) {
+func parseLYSMulti(s string) (*Data, error) {
 	var p lysParser
 	return p.Parse(strings.NewReader(s), "")
 }

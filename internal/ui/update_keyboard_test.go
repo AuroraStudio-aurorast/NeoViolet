@@ -196,7 +196,7 @@ func TestExecuteCommand_lrc_status_no_lyrics(t *testing.T) {
 
 func TestExecuteCommand_lrc_status_showing(t *testing.T) {
 	m := setupModel()
-	m.Audio.Lyrics = &lyrics.LyricsData{}
+	m.Audio.Lyrics = &lyrics.Data{}
 	m.Audio.ShowLyrics = true
 	setCommand(m, "lrc")
 	executeCommand(m)
@@ -211,7 +211,7 @@ func TestExecuteCommand_lrc_status_showing(t *testing.T) {
 
 func TestExecuteCommand_lrc_off(t *testing.T) {
 	m := setupModel()
-	m.Audio.Lyrics = &lyrics.LyricsData{}
+	m.Audio.Lyrics = &lyrics.Data{}
 	m.Audio.ShowLyrics = true
 	setCommand(m, "lrc off")
 	executeCommand(m)
@@ -257,7 +257,7 @@ func TestExecuteCommand_lrc_on_no_lyrics(t *testing.T) {
 
 func TestExecuteCommand_lrc_on_already_loaded(t *testing.T) {
 	m := setupModel()
-	m.Audio.Lyrics = &lyrics.LyricsData{}
+	m.Audio.Lyrics = &lyrics.Data{}
 	m.Audio.ShowLyrics = false
 	setCommand(m, "lrc on")
 	executeCommand(m)

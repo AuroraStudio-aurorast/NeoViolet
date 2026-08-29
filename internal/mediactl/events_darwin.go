@@ -10,14 +10,14 @@ import (
 
 // Command handler callbacks — called by ObjC runtime from NSApp event loop.
 
-func handlePlay(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdPlay) }
-func handlePause(id objc.ID, cmd objc.SEL, event objc.ID) int32  { return sendCmd(CmdPause) }
-func handleStop(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdStop) }
-func handleToggle(id objc.ID, cmd objc.SEL, event objc.ID) int32 { return sendCmd(CmdPlayPause) }
-func handleNext(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdNext) }
-func handlePrev(id objc.ID, cmd objc.SEL, event objc.ID) int32   { return sendCmd(CmdPrev) }
+func handlePlay(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdPlay) }
+func handlePause(_ objc.ID, _ objc.SEL, _ objc.ID) int32  { return sendCmd(CmdPause) }
+func handleStop(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdStop) }
+func handleToggle(_ objc.ID, _ objc.SEL, _ objc.ID) int32 { return sendCmd(CmdPlayPause) }
+func handleNext(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdNext) }
+func handlePrev(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdPrev) }
 
-func handleChangePos(id objc.ID, cmd objc.SEL, event objc.ID) int32 {
+func handleChangePos(_ objc.ID, _ objc.SEL, event objc.ID) int32 {
 	_darwinCtrlMu.Lock()
 	c := _darwinCtrl
 	_darwinCtrlMu.Unlock()
@@ -33,7 +33,7 @@ func handleChangePos(id objc.ID, cmd objc.SEL, event objc.ID) int32 {
 	return cmdHandlerSuccess
 }
 
-func handleSleep(id objc.ID, cmd objc.SEL, notification objc.ID) {
+func handleSleep(_ objc.ID, _ objc.SEL, _ objc.ID) {
 	_darwinCtrlMu.Lock()
 	c := _darwinCtrl
 	_darwinCtrlMu.Unlock()
@@ -46,17 +46,17 @@ func handleSleep(id objc.ID, cmd objc.SEL, notification objc.ID) {
 	}
 }
 
-func handleWake(id objc.ID, cmd objc.SEL, notification objc.ID) {}
+func handleWake(_ objc.ID, _ objc.SEL, _ objc.ID) {}
 
 // registerCommands wires MPRemoteCommandCenter to our handler.
 // Caller MUST be inside an autorelease pool.
 
 func (c *darwinCtrl) registerCommands() {
 	skip := nsDouble(15.0)
-	arr := objc.ID(class_NSArray).Send(sel_arrayWithObject, skip)
+	arr := objc.ID(classNSArray).Send(selArrayWithObject, skip)
 
-	c.remoteCmd.Send(_cmdSels.skipBackward).Send(sel_setPreferredIntervals, arr)
-	c.remoteCmd.Send(_cmdSels.skipForward).Send(sel_setPreferredIntervals, arr)
+	c.remoteCmd.Send(_cmdSels.skipBackward).Send(selSetPreferredIntervals, arr)
+	c.remoteCmd.Send(_cmdSels.skipForward).Send(selSetPreferredIntervals, arr)
 
 	pairs := []struct{ cmd, handler objc.SEL }{
 		{_cmdSels.play, _handlerSels.play},
@@ -68,7 +68,7 @@ func (c *darwinCtrl) registerCommands() {
 		{_cmdSels.changePos, _handlerSels.changePos},
 	}
 	for _, p := range pairs {
-		c.remoteCmd.Send(p.cmd).Send(sel_addTargetAction, c.handler, p.handler)
+		c.remoteCmd.Send(p.cmd).Send(selAddTargetAction, c.handler, p.handler)
 	}
 }
 
@@ -76,14 +76,14 @@ func (c *darwinCtrl) registerCommands() {
 // Caller MUST be inside an autorelease pool.
 
 func (c *darwinCtrl) registerNotifications() {
-	nc := objc.ID(class_NSWorkspace).Send(sel_sharedWorkspace).Send(sel_notificationCenter)
+	nc := objc.ID(classNSWorkspace).Send(selSharedWorkspace).Send(selNotificationCenter)
 	zero := objc.ID(0)
 
 	for _, name := range []string{
 		"NSWorkspaceWillSleepNotification",
 		"NSWorkspaceWillPowerOffNotification",
 	} {
-		nc.Send(sel_addObserverSelectorName, c.handler, _handlerSels.sleep, nsString(name), zero)
+		nc.Send(selAddObserverSelectorName, c.handler, _handlerSels.sleep, nsString(name), zero)
 	}
-	nc.Send(sel_addObserverSelectorName, c.handler, _handlerSels.wake, nsString("NSWorkspaceDidWakeNotification"), zero)
+	nc.Send(selAddObserverSelectorName, c.handler, _handlerSels.wake, nsString("NSWorkspaceDidWakeNotification"), zero)
 }

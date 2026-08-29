@@ -65,7 +65,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 	}
 
 	// no .tmp residue
-	matches, err := filepath.Glob(filepath.Join(cacheFilePathOrDie(t, "sig-rt") + ".tmp"))
+	matches, err := filepath.Glob(cacheFilePathOrDie(t, "sig-rt") + ".tmp")
 	if err != nil {
 		t.Fatalf("glob: %v", err)
 	}
@@ -104,10 +104,10 @@ func TestLoadProviderMismatch(t *testing.T) {
 func TestLoadCorrupt(t *testing.T) {
 	setupCacheDir(t)
 	path := cacheFilePathOrDie(t, "sig-corrupt")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
 		t.Fatalf("write corrupt file: %v", err)
 	}
 	if _, ok := Load("sig-corrupt", "https://lrclib.net"); ok {
@@ -128,12 +128,12 @@ func TestLoadVersionSigMismatch(t *testing.T) {
 
 	// sig mismatch: file name keys on one sig, content carries another
 	mismatchPath := cacheFilePathOrDie(t, "sig-v")
-	if err := os.MkdirAll(filepath.Dir(mismatchPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(mismatchPath), 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 	cf2 := sampleCacheFile("other")
 	data, _ := json.Marshal(cf2)
-	if err := os.WriteFile(mismatchPath, data, 0o644); err != nil {
+	if err := os.WriteFile(mismatchPath, data, 0o600); err != nil {
 		t.Fatalf("write mismatched: %v", err)
 	}
 	if _, ok := Load("sig-v", "https://lrclib.net"); ok {
@@ -156,16 +156,16 @@ func TestCleanupExpired(t *testing.T) {
 	}
 	// corrupt cache-named file
 	corruptPath := filepath.Join(dir, strings.Repeat("ab", 16)+".json")
-	if err := os.WriteFile(corruptPath, []byte("{bad"), 0o644); err != nil {
+	if err := os.WriteFile(corruptPath, []byte("{bad"), 0o600); err != nil {
 		t.Fatalf("write corrupt: %v", err)
 	}
 	// unrelated file that must survive
 	other := filepath.Join(dir, "ratelimit.json")
-	if err := os.WriteFile(other, []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(other, []byte("{}"), 0o600); err != nil {
 		t.Fatalf("write ratelimit: %v", err)
 	}
 	notHex := filepath.Join(dir, "not-a-cache-file.json")
-	if err := os.WriteFile(notHex, []byte("{}"), 0o644); err != nil {
+	if err := os.WriteFile(notHex, []byte("{}"), 0o600); err != nil {
 		t.Fatalf("write unrelated: %v", err)
 	}
 
@@ -199,7 +199,7 @@ func TestCleanupExpiredMissingDir(t *testing.T) {
 func TestSaveUnwritableDir(t *testing.T) {
 	// Point XDG cache at a path whose parent is a file, forcing MkdirAll to fail.
 	parent := filepath.Join(t.TempDir(), "blocker")
-	if err := os.WriteFile(parent, []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(parent, []byte("x"), 0o600); err != nil {
 		t.Fatalf("write blocker: %v", err)
 	}
 	t.Setenv("XDG_CACHE_HOME", parent)

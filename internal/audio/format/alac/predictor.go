@@ -49,7 +49,7 @@ func predictorDecompressFirAdapt(
 			}
 
 			outVal := (1 << uint(predictorQuantitization-1)) + sum
-			outVal = outVal >> uint(predictorQuantitization)
+			outVal >>= uint(predictorQuantitization)
 			outVal = outVal + int(bufferOut[0]) + int(errorVal)
 			outVal = int(signExtended32(int32(outVal), readSampleSize))
 
@@ -59,7 +59,7 @@ func predictorDecompressFirAdapt(
 				for predictorNum := predictorCoefNum - 1; predictorNum >= 0 && errorVal > 0; predictorNum-- {
 					val := int(bufferOut[0] - bufferOut[predictorCoefNum-predictorNum])
 					sign := signOnly(val)
-					predictorCoefTable[predictorNum] -= int16(sign)
+					predictorCoefTable[predictorNum] -= int16(sign) // #nosec G115 -- sign is -1/0/1, bounded
 					val *= sign
 					errorVal -= int32((val >> uint(predictorQuantitization)) * (predictorCoefNum - predictorNum))
 				}
@@ -67,7 +67,7 @@ func predictorDecompressFirAdapt(
 				for predictorNum := predictorCoefNum - 1; predictorNum >= 0 && errorVal < 0; predictorNum-- {
 					val := int(bufferOut[0] - bufferOut[predictorCoefNum-predictorNum])
 					sign := -signOnly(val)
-					predictorCoefTable[predictorNum] -= int16(sign)
+					predictorCoefTable[predictorNum] -= int16(sign) // #nosec G115 -- sign is -1/0/1, bounded
 					val *= sign
 					errorVal -= int32((val >> uint(predictorQuantitization)) * (predictorCoefNum - predictorNum))
 				}
@@ -93,10 +93,11 @@ func deinterlace16(
 		for i := 0; i < numSamples; i++ {
 			midright := bufferA[i]
 			difference := bufferB[i]
+			// #nosec G115 -- deinterlaced sample narrowed to int16; bounded.
 			right := int16(midright - ((difference * int32(interlacingLeftWeight)) >> interlacingShift))
 			left := right + int16(difference)
 
-			bufferOut[2*i*numChannels] = byte(left)
+			bufferOut[2*i*numChannels] = byte(left) // #nosec G115 -- low byte of a 16-bit sample
 			bufferOut[2*i*numChannels+1] = byte(left >> 8)
 			bufferOut[2*i*numChannels+2] = byte(right)
 			bufferOut[2*i*numChannels+3] = byte(right >> 8)

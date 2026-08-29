@@ -26,13 +26,13 @@ func (p *lrcParser) FindSidecar(audioPath string) string {
 	return findSidecarWithExt(audioPath, ".lrc")
 }
 
-func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read lyrics: %w", err)
 	}
 
-	lyrics := &LyricsData{Path: sourcePath}
+	lyrics := &Data{Path: sourcePath}
 	var lines []LyricLine
 	offset := 0
 
@@ -226,7 +226,8 @@ func mergeSameTimestamp(lines []LyricLine) []LyricLine {
 	return merged
 }
 
-func (d *LyricsData) CurrentLine(elapsed time.Duration) int {
+// CurrentLine returns the index of the line active at elapsed, or -1 if none.
+func (d *Data) CurrentLine(elapsed time.Duration) int {
 	if len(d.Lines) == 0 {
 		return -1
 	}
@@ -241,6 +242,6 @@ func (d *LyricsData) CurrentLine(elapsed time.Duration) int {
 
 // ParseLRC parses standard LRC text from r. It is the exported entry point for
 // code outside this package (e.g. online lyric fetch) that receives raw LRC.
-func ParseLRC(r io.Reader) (*LyricsData, error) {
+func ParseLRC(r io.Reader) (*Data, error) {
 	return (&lrcParser{}).Parse(r, "")
 }

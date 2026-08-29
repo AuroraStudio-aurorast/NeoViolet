@@ -128,6 +128,8 @@ func probeBackends() []Backend {
 //  3. System PATH
 func findApeCLI() string {
 	if env := os.Getenv("NEOVIOLET_APECLI"); env != "" {
+		// #nosec G703 -- env is a user-configured path to the apecli helper
+		// binary; checking its existence is the documented config mechanism.
 		if _, err := os.Stat(env); err == nil {
 			return env
 		}

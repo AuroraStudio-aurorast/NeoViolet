@@ -120,7 +120,7 @@ func TestHandleFetchLyricsResultStale(t *testing.T) {
 	// result for a different track must not mount or clear the indicator
 	other := fetch.Sign("Other Song", "Other Artist", "", 100)
 	_, _ = handleFetchLyricsResult(m, FetchLyricsResultMsg{
-		Data: &lyrics.LyricsData{Format: "lrclib"},
+		Data: &lyrics.Data{Format: "lrclib"},
 		Sig:  other,
 	})
 	if m.Audio.Lyrics != nil {
@@ -138,7 +138,7 @@ func TestHandleFetchLyricsResultMount(t *testing.T) {
 	m.Audio.Duration = 219 * time.Second
 	m.LyricsFetching = true
 
-	data := &lyrics.LyricsData{Format: "lrclib", Path: "lrclib://1"}
+	data := &lyrics.Data{Format: "lrclib", Path: "lrclib://1"}
 	_, _ = handleFetchLyricsResult(m, FetchLyricsResultMsg{Data: data, Sig: m.currentSig()})
 	if m.Audio.Lyrics != data {
 		t.Error("result did not mount lyrics")

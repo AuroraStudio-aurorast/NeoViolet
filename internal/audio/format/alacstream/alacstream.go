@@ -84,6 +84,7 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 			continue
 		}
 
+		// #nosec G115 -- frame index is bounded by total samples per frame.
 		frameIndex := uint32(s.CurrentSample / int(s.decoder.MaxSamplesPerFrame))
 		if int(frameIndex) >= len(s.track.SampleSizes) {
 			if totalFilled == 0 {
@@ -138,7 +139,7 @@ func pcmToFloat64(pcm []byte, numChannels, sampleSize int) []float64 {
 			switch bytesPerSample {
 			case 1:
 				sample = int32(pcm[sampleStart]) - 128
-				sample = sample << 8
+				sample <<= 8
 			case 2:
 				lo := int16(pcm[sampleStart])
 				hi := int16(pcm[sampleStart+1])

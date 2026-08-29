@@ -17,7 +17,7 @@ var testMode bool
 
 // historyPath returns the full path to the history file.
 func historyPath() (string, error) {
-	dir, err := config.ConfigDir()
+	dir, err := config.Dir()
 	if err != nil {
 		return "", err
 	}

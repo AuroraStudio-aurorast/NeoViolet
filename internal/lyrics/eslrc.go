@@ -16,13 +16,13 @@ func (p *eslrcParser) FindSidecar(audioPath string) string {
 	return findSidecarWithExt(audioPath, ".eslrc")
 }
 
-func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*LyricsData, error) {
+func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read eslrc: %w", err)
 	}
 
-	lyrics := &LyricsData{Path: sourcePath}
+	lyrics := &Data{Path: sourcePath}
 	var lines []LyricLine
 
 	for _, rawLine := range strings.Split(string(data), "\n") {

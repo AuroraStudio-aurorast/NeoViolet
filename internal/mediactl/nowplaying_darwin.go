@@ -38,14 +38,16 @@ func (c *darwinCtrl) buildArtwork(cover image.Image) objc.ID {
 
 	// Release previous artwork
 	if c.coverArtwork != 0 {
-		c.coverArtwork.Send(sel_release)
+		c.coverArtwork.Send(selRelease)
 		c.coverArtwork = 0
 	}
 
-	nsData := objc.ID(class_NSData).Send(sel_dataWithBytes, uintptr(unsafe.Pointer(&pngBytes[0])), uint(len(pngBytes)))
-	nsImage := objc.ID(class_NSImage).Send(sel_alloc).Send(sel_initWithData, nsData)
-	artwork := objc.ID(class_MPMediaItemArtwork).Send(sel_alloc).Send(sel_initWithImage, nsImage)
-	nsImage.Send(sel_release)
+	// #nosec G103 -- ObjC interop requires passing a raw pointer to the PNG
+	// bytes; the buffer is in-process and length-bounded by len(pngBytes).
+	nsData := objc.ID(classNSData).Send(selDataWithBytes, uintptr(unsafe.Pointer(&pngBytes[0])), uint(len(pngBytes)))
+	nsImage := objc.ID(classNSImage).Send(selAlloc).Send(selInitWithData, nsData)
+	artwork := objc.ID(classMPMediaItemArtwork).Send(selAlloc).Send(selInitWithImage, nsImage)
+	nsImage.Send(selRelease)
 
 	c.lastCoverImg = cover
 	c.coverArtwork = artwork
@@ -95,8 +97,8 @@ func (c *darwinCtrl) Update(state PlayState) {
 		if state.Playing {
 			st = playbackStatePlaying
 		}
-		np.Send(sel_setPlaybackState, st)
-		np.Send(sel_setNowPlayingInfo, dict)
+		np.Send(selSetPlaybackState, st)
+		np.Send(selSetNowPlayingInfo, dict)
 
 		// Re-register commands after SetNowPlayingInfo — macOS may
 		// invalidate previous registrations (observed on macOS 26+).

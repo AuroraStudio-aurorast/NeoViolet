@@ -47,6 +47,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			predictor_coef_num := int(d.readbits(5))
 
 			for i := 0; i < predictor_coef_num; i++ {
+				// #nosec G115 -- 16-bit coefficient, value is bounded.
 				predictor_coef_table[i] = int16(d.readbits(16))
 			}
 
@@ -89,7 +90,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			} else {
 				for i := uint32(0); i < outputsamples; i++ {
 					audiobits := int32(d.readbits(16))
-					audiobits = audiobits << (d.CookieSampleSize - 16)
+					audiobits <<= (d.CookieSampleSize - 16)
 					audiobits |= int32(d.readbits(int(d.CookieSampleSize - 16)))
 					audiobits = signExtended32(audiobits, int(d.CookieSampleSize))
 					d.outputsamples_buffer_a[i] = audiobits
@@ -102,15 +103,16 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		switch d.CookieSampleSize {
 		case 16:
 			for i := uint32(0); i < outputsamples; i++ {
+				// #nosec G115 -- 16-bit sample narrowed from int32 buffer; bounded.
 				sample := int16(d.outputsamples_buffer_a[i])
-				outbuffer[2*int(i)*d.numChannels] = byte(sample)
-				outbuffer[2*int(i)*d.numChannels+1] = byte(sample >> 8)
+				outbuffer[2*int(i)*d.numChannels] = byte(sample)        // #nosec G115 -- low byte of a 16-bit sample
+				outbuffer[2*int(i)*d.numChannels+1] = byte(sample >> 8) // #nosec G115 -- high byte of a 16-bit sample
 			}
 		case 24:
 			for i := uint32(0); i < outputsamples; i++ {
 				sample := int32(d.outputsamples_buffer_a[i])
 				if uncompressed_bytes != 0 {
-					sample = sample << uint(uncompressed_bytes*8)
+					sample <<= uint(uncompressed_bytes * 8)
 					mask := uint32(^(0xFFFFFFFF << uint(uncompressed_bytes*8)))
 					sample |= d.uncompressed_bytes_buffer_a[i] & int32(mask)
 				}
@@ -145,6 +147,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 		readsamplesize = int(d.CookieSampleSize) - (uncompressed_bytes * 8) + 1
 
 		if isnotcompressed == 0 {
+			// #nosec G115 -- 8-bit interlacing values, bounded by readbits(8).
 			interlacingShift = uint8(d.readbits(8))
 			interlacingLeftWeight = uint8(d.readbits(8))
 
@@ -156,6 +159,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			predictorCoefNumA := int(d.readbits(5))
 
 			for i := 0; i < predictorCoefNumA; i++ {
+				// #nosec G115 -- 16-bit coefficient, value is bounded.
 				predictorCoefTableA[i] = int16(d.readbits(16))
 			}
 
@@ -165,6 +169,7 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			predictorCoefNumB := int(d.readbits(5))
 
 			for i := 0; i < predictorCoefNumB; i++ {
+				// #nosec G115 -- 16-bit coefficient, value is bounded.
 				predictorCoefTableB[i] = int16(d.readbits(16))
 			}
 
@@ -235,12 +240,12 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 			} else {
 				for i := uint32(0); i < outputsamples; i++ {
 					audiobitsA := int32(d.readbits(16))
-					audiobitsA = audiobitsA << (d.CookieSampleSize - 16)
+					audiobitsA <<= (d.CookieSampleSize - 16)
 					audiobitsA |= int32(d.readbits(int(d.CookieSampleSize - 16)))
 					audiobitsA = signExtended32(audiobitsA, int(d.CookieSampleSize))
 
 					audiobitsB := int32(d.readbits(16))
-					audiobitsB = audiobitsB << (d.CookieSampleSize - 16)
+					audiobitsB <<= (d.CookieSampleSize - 16)
 					audiobitsB |= int32(d.readbits(int(d.CookieSampleSize - 16)))
 					audiobitsB = signExtended32(audiobitsB, int(d.CookieSampleSize))
 

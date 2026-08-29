@@ -160,7 +160,7 @@ func TestNormalizeFetch(t *testing.T) {
 			c.Lyrics.Fetch.Security = "basic"
 			c.Lyrics.Fetch.Timeout = 5
 		}, "", 5, "basic", false},
-		{"defaults unchanged", func(c *Config) {}, "", DefaultFetchTimeout, "strict", false},
+		{"defaults unchanged", func(_ *Config) {}, "", DefaultFetchTimeout, "strict", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

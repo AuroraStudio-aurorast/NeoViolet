@@ -49,6 +49,8 @@ var (
 
 // ParseFile opens the given file and parses any embedded APEv2 tags.
 func ParseFile(path string) (*Tags, error) {
+	// #nosec G304 -- path is the user's own audio file; reading it is the
+	// core feature of APEv2 tag parsing.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("apetag open: %w", err)

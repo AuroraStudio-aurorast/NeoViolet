@@ -95,6 +95,8 @@ func queryFastfetch() string {
 	if bin == "" {
 		return ""
 	}
+	// #nosec G204 -- bin is resolved from a fixed lookup list (PATH and known
+	// install locations); args are a fixed flag set.
 	out, err := exec.Command(bin, "--json", "--structure", "TerminalFont").Output()
 	if err != nil || len(out) == 0 {
 		return ""
@@ -144,6 +146,8 @@ func hasNerdFontWindows() bool {
 		`Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\Fonts" -Name | Select-String -Pattern Nerd`,
 	}
 	for _, c := range cmds {
+		// #nosec G204 -- powershell is a fixed binary; the command is a fixed
+		// registry/font query from a compile-time constant list.
 		out, err := exec.Command("powershell", "-NoProfile", "-Command", c).Output()
 		if err == nil && len(out) > 0 {
 			return true

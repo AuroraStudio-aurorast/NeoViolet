@@ -8,7 +8,6 @@
 // The ObjC bridge pattern (dynamic class registration, MPRemoteCommand handler
 // wiring, MPNowPlayingInfoCenter dictionary building) is derived from
 // go-musicfox; see /docs/ACKNOWLEDGMENTS.md#github-com-go-musicfox-go-musicfox.
-
 package mediactl
 
 import (
@@ -65,38 +64,38 @@ var (
 // ObjC selector cache — all registered once at init()
 
 var (
-	sel_alloc              objc.SEL
-	sel_init               objc.SEL
-	sel_release            objc.SEL
-	sel_autorelease        objc.SEL
-	sel_new                objc.SEL
-	sel_initWithUTF8String objc.SEL
-	sel_numberWithInt      objc.SEL
-	sel_numberWithDouble   objc.SEL
-	sel_setValueForKey     objc.SEL
-	sel_arrayWithObject    objc.SEL
+	selAlloc              objc.SEL
+	selInit               objc.SEL
+	selRelease            objc.SEL
+	selAutorelease        objc.SEL
+	selNew                objc.SEL
+	selInitWithUTF8String objc.SEL
+	selNumberWithInt      objc.SEL
+	selNumberWithDouble   objc.SEL
+	selSetValueForKey     objc.SEL
+	selArrayWithObject    objc.SEL
 
-	sel_sharedApplication         objc.SEL
-	sel_setActivationPolicy       objc.SEL
-	sel_activateIgnoringOtherApps objc.SEL
-	sel_setDelegate               objc.SEL
-	sel_run                       objc.SEL
-	sel_terminate                 objc.SEL
+	selSharedApplication         objc.SEL
+	selSetActivationPolicy       objc.SEL
+	selActivateIgnoringOtherApps objc.SEL
+	selSetDelegate               objc.SEL
+	selRun                       objc.SEL
+	selTerminate                 objc.SEL
 
-	sel_sharedWorkspace         objc.SEL
-	sel_notificationCenter      objc.SEL
-	sel_addObserverSelectorName objc.SEL
+	selSharedWorkspace         objc.SEL
+	selNotificationCenter      objc.SEL
+	selAddObserverSelectorName objc.SEL
 
-	sel_defaultCenter         objc.SEL
-	sel_setNowPlayingInfo     objc.SEL
-	sel_setPlaybackState      objc.SEL
-	sel_sharedCommandCenter   objc.SEL
-	sel_addTargetAction       objc.SEL
-	sel_setPreferredIntervals objc.SEL
+	selDefaultCenter         objc.SEL
+	selSetNowPlayingInfo     objc.SEL
+	selSetPlaybackState      objc.SEL
+	selSharedCommandCenter   objc.SEL
+	selAddTargetAction       objc.SEL
+	selSetPreferredIntervals objc.SEL
 
-	sel_dataWithBytes objc.SEL
-	sel_initWithData  objc.SEL
-	sel_initWithImage objc.SEL
+	selDataWithBytes objc.SEL
+	selInitWithData  objc.SEL
+	selInitWithImage objc.SEL
 
 	// MPRemoteCommand accessor selectors
 	_cmdSels = struct {
@@ -113,27 +112,27 @@ var (
 	}{}
 
 	// App delegate selectors
-	sel_finishLaunching       objc.SEL
-	sel_appDidFinishLaunching objc.SEL
-	sel_appShouldTerminate    objc.SEL
+	selFinishLaunching       objc.SEL
+	selAppDidFinishLaunching objc.SEL
+	selAppShouldTerminate    objc.SEL
 )
 
 // ObjC class handles
 
 var (
-	class_NSString               objc.Class
-	class_NSNumber               objc.Class
-	class_NSMutableDictionary    objc.Class
-	class_NSArray                objc.Class
-	class_NSData                 objc.Class
-	class_NSImage                objc.Class
-	class_NSApplication          objc.Class
-	class_NSWorkspace            objc.Class
-	class_MPNowPlayingInfoCenter objc.Class
-	class_MPRemoteCommandCenter  objc.Class
-	class_MPRemoteCommandHandler objc.Class
-	class_MPMediaItemArtwork     objc.Class
-	class_AppDelegate            objc.Class
+	classNSString               objc.Class
+	classNSNumber               objc.Class
+	classNSMutableDictionary    objc.Class
+	classNSArray                objc.Class
+	classNSData                 objc.Class
+	classNSImage                objc.Class
+	classNSApplication          objc.Class
+	classNSWorkspace            objc.Class
+	classMPNowPlayingInfoCenter objc.Class
+	classMPRemoteCommandCenter  objc.Class
+	classMPRemoteCommandHandler objc.Class
+	classMPMediaItemArtwork     objc.Class
+	classAppDelegate            objc.Class
 )
 
 func init() {
@@ -154,38 +153,38 @@ func init() {
 	purego.RegisterLibFunc(&_objcAutoreleasePoolPop, _objcLib, "objc_autoreleasePoolPop")
 
 	// selectors
-	sel_alloc = objc.RegisterName("alloc")
-	sel_init = objc.RegisterName("init")
-	sel_release = objc.RegisterName("release")
-	sel_autorelease = objc.RegisterName("autorelease")
-	sel_new = objc.RegisterName("new")
-	sel_initWithUTF8String = objc.RegisterName("initWithUTF8String:")
-	sel_numberWithInt = objc.RegisterName("numberWithInt:")
-	sel_numberWithDouble = objc.RegisterName("numberWithDouble:")
-	sel_setValueForKey = objc.RegisterName("setValue:forKey:")
-	sel_arrayWithObject = objc.RegisterName("arrayWithObject:")
+	selAlloc = objc.RegisterName("alloc")
+	selInit = objc.RegisterName("init")
+	selRelease = objc.RegisterName("release")
+	selAutorelease = objc.RegisterName("autorelease")
+	selNew = objc.RegisterName("new")
+	selInitWithUTF8String = objc.RegisterName("initWithUTF8String:")
+	selNumberWithInt = objc.RegisterName("numberWithInt:")
+	selNumberWithDouble = objc.RegisterName("numberWithDouble:")
+	selSetValueForKey = objc.RegisterName("setValue:forKey:")
+	selArrayWithObject = objc.RegisterName("arrayWithObject:")
 
-	sel_sharedApplication = objc.RegisterName("sharedApplication")
-	sel_setActivationPolicy = objc.RegisterName("setActivationPolicy:")
-	sel_activateIgnoringOtherApps = objc.RegisterName("activateIgnoringOtherApps:")
-	sel_setDelegate = objc.RegisterName("setDelegate:")
-	sel_run = objc.RegisterName("run")
-	sel_terminate = objc.RegisterName("terminate:")
+	selSharedApplication = objc.RegisterName("sharedApplication")
+	selSetActivationPolicy = objc.RegisterName("setActivationPolicy:")
+	selActivateIgnoringOtherApps = objc.RegisterName("activateIgnoringOtherApps:")
+	selSetDelegate = objc.RegisterName("setDelegate:")
+	selRun = objc.RegisterName("run")
+	selTerminate = objc.RegisterName("terminate:")
 
-	sel_sharedWorkspace = objc.RegisterName("sharedWorkspace")
-	sel_notificationCenter = objc.RegisterName("notificationCenter")
-	sel_addObserverSelectorName = objc.RegisterName("addObserver:selector:name:object:")
+	selSharedWorkspace = objc.RegisterName("sharedWorkspace")
+	selNotificationCenter = objc.RegisterName("notificationCenter")
+	selAddObserverSelectorName = objc.RegisterName("addObserver:selector:name:object:")
 
-	sel_defaultCenter = objc.RegisterName("defaultCenter")
-	sel_setNowPlayingInfo = objc.RegisterName("setNowPlayingInfo:")
-	sel_setPlaybackState = objc.RegisterName("setPlaybackState:")
-	sel_sharedCommandCenter = objc.RegisterName("sharedCommandCenter")
-	sel_addTargetAction = objc.RegisterName("addTarget:action:")
-	sel_setPreferredIntervals = objc.RegisterName("setPreferredIntervals:")
+	selDefaultCenter = objc.RegisterName("defaultCenter")
+	selSetNowPlayingInfo = objc.RegisterName("setNowPlayingInfo:")
+	selSetPlaybackState = objc.RegisterName("setPlaybackState:")
+	selSharedCommandCenter = objc.RegisterName("sharedCommandCenter")
+	selAddTargetAction = objc.RegisterName("addTarget:action:")
+	selSetPreferredIntervals = objc.RegisterName("setPreferredIntervals:")
 
-	sel_dataWithBytes = objc.RegisterName("dataWithBytes:length:")
-	sel_initWithData = objc.RegisterName("initWithData:")
-	sel_initWithImage = objc.RegisterName("initWithImage:")
+	selDataWithBytes = objc.RegisterName("dataWithBytes:length:")
+	selInitWithData = objc.RegisterName("initWithData:")
+	selInitWithImage = objc.RegisterName("initWithImage:")
 
 	_cmdSels.skipBackward = objc.RegisterName("skipBackwardCommand")
 	_cmdSels.skipForward = objc.RegisterName("skipForwardCommand")
@@ -207,27 +206,27 @@ func init() {
 	_handlerSels.sleep = objc.RegisterName("handleWillSleepOrPowerOff:")
 	_handlerSels.wake = objc.RegisterName("handleDidWake:")
 
-	sel_finishLaunching = objc.RegisterName("finishLaunching")
-	sel_appDidFinishLaunching = objc.RegisterName("applicationDidFinishLaunching:")
-	sel_appShouldTerminate = objc.RegisterName("applicationShouldTerminateAfterLastWindowClosed:")
+	selFinishLaunching = objc.RegisterName("finishLaunching")
+	selAppDidFinishLaunching = objc.RegisterName("applicationDidFinishLaunching:")
+	selAppShouldTerminate = objc.RegisterName("applicationShouldTerminateAfterLastWindowClosed:")
 
 	// classes
-	class_NSString = objc.GetClass("NSString")
-	class_NSNumber = objc.GetClass("NSNumber")
-	class_NSMutableDictionary = objc.GetClass("NSMutableDictionary")
-	class_NSArray = objc.GetClass("NSArray")
-	class_NSData = objc.GetClass("NSData")
-	class_NSImage = objc.GetClass("NSImage")
-	class_NSApplication = objc.GetClass("NSApplication")
-	class_NSWorkspace = objc.GetClass("NSWorkspace")
-	class_MPNowPlayingInfoCenter = objc.GetClass("MPNowPlayingInfoCenter")
-	class_MPRemoteCommandCenter = objc.GetClass("MPRemoteCommandCenter")
-	class_MPMediaItemArtwork = objc.GetClass("MPMediaItemArtwork")
+	classNSString = objc.GetClass("NSString")
+	classNSNumber = objc.GetClass("NSNumber")
+	classNSMutableDictionary = objc.GetClass("NSMutableDictionary")
+	classNSArray = objc.GetClass("NSArray")
+	classNSData = objc.GetClass("NSData")
+	classNSImage = objc.GetClass("NSImage")
+	classNSApplication = objc.GetClass("NSApplication")
+	classNSWorkspace = objc.GetClass("NSWorkspace")
+	classMPNowPlayingInfoCenter = objc.GetClass("MPNowPlayingInfoCenter")
+	classMPRemoteCommandCenter = objc.GetClass("MPRemoteCommandCenter")
+	classMPMediaItemArtwork = objc.GetClass("MPMediaItemArtwork")
 
 	// custom ObjC classes
 	var err error
 
-	class_MPRemoteCommandHandler, err = objc.RegisterClass(
+	classMPRemoteCommandHandler, err = objc.RegisterClass(
 		"NeoVioletCommandHandler", objc.GetClass("NSObject"),
 		nil, nil,
 		[]objc.MethodDef{
@@ -246,13 +245,13 @@ func init() {
 		panic(fmt.Sprintf("mediactl: register handler class: %v", err))
 	}
 
-	class_AppDelegate, err = objc.RegisterClass(
+	classAppDelegate, err = objc.RegisterClass(
 		"NeoVioletAppDelegate", objc.GetClass("NSObject"),
 		[]*objc.Protocol{objc.GetProtocol("NSApplicationDelegate")},
 		nil,
 		[]objc.MethodDef{
-			{Cmd: sel_appDidFinishLaunching, Fn: appDidFinishLaunching},
-			{Cmd: sel_appShouldTerminate, Fn: appShouldTerminate},
+			{Cmd: selAppDidFinishLaunching, Fn: appDidFinishLaunching},
+			{Cmd: selAppShouldTerminate, Fn: appShouldTerminate},
 		},
 	)
 	if err != nil {
@@ -268,7 +267,7 @@ var (
 	_bootstrapOnce sync.Once
 )
 
-func appDidFinishLaunching(id objc.ID, cmd objc.SEL, notification objc.ID) {
+func appDidFinishLaunching(_ objc.ID, _ objc.SEL, _ objc.ID) {
 	_bootstrapOnce.Do(func() {
 		_bootstrapMu.Lock()
 		fn := _bootstrapFn
@@ -281,8 +280,8 @@ func appDidFinishLaunching(id objc.ID, cmd objc.SEL, notification objc.ID) {
 				if r := recover(); r != nil {
 					fmt.Printf("mediactl: panic in bootstrap: %v\n", r)
 				}
-				nsApp := objc.ID(class_NSApplication).Send(sel_sharedApplication)
-				nsApp.Send(sel_terminate, objc.ID(0))
+				nsApp := objc.ID(classNSApplication).Send(selSharedApplication)
+				nsApp.Send(selTerminate, objc.ID(0))
 			}()
 			// IMPORTANT: Do NOT wrap fn() in autoPool.  autoPool calls
 			// runtime.LockOSThread(), which would pin the entire Bubble Tea
@@ -295,20 +294,19 @@ func appDidFinishLaunching(id objc.ID, cmd objc.SEL, notification objc.ID) {
 	})
 }
 
-func appShouldTerminate(id objc.ID, cmd objc.SEL, notification objc.ID) bool { return true }
+func appShouldTerminate(_ objc.ID, _ objc.SEL, _ objc.ID) bool { return true }
 
 // MacOSRun initialises NSApplication, registers a delegate, and blocks on
 // [NSApp run] until the callback fn returns (which triggers terminate:).
 // Must be called from the main thread.
-
 func MacOSRun(fn func()) {
-	nsApp := objc.ID(class_NSApplication).Send(sel_sharedApplication)
-	nsApp.Send(sel_setActivationPolicy, 2) // Prohibited
-	nsApp.Send(sel_activateIgnoringOtherApps, true)
+	nsApp := objc.ID(classNSApplication).Send(selSharedApplication)
+	nsApp.Send(selSetActivationPolicy, 2) // Prohibited
+	nsApp.Send(selActivateIgnoringOtherApps, true)
 
-	delegate := objc.ID(class_AppDelegate).Send(sel_alloc).Send(sel_init)
-	defer delegate.Send(sel_release)
-	nsApp.Send(sel_setDelegate, delegate)
+	delegate := objc.ID(classAppDelegate).Send(selAlloc).Send(selInit)
+	defer delegate.Send(selRelease)
+	nsApp.Send(selSetDelegate, delegate)
 
 	_bootstrapMu.Lock()
 	_bootstrapFn = fn
@@ -320,8 +318,8 @@ func MacOSRun(fn func()) {
 	// callback (e.g. after a Bubble Tea wizard has manipulated the
 	// terminal).  sync.Once in appDidFinishLaunching prevents double
 	// fire when [NSApp run] calls finishLaunching again internally.
-	nsApp.Send(sel_finishLaunching)
-	nsApp.Send(sel_run)
+	nsApp.Send(selFinishLaunching)
+	nsApp.Send(selRun)
 }
 
 // darwinCtrl
@@ -355,12 +353,12 @@ func (c *darwinCtrl) Start() (<-chan Command, error) {
 	// and NSString objects created by registerCommands / registerNotifications
 	// accumulate indefinitely.
 	autoPool(func() {
-		c.handler = objc.ID(class_MPRemoteCommandHandler).Send(sel_new)
-		c.nowPlaying = objc.ID(class_MPNowPlayingInfoCenter).Send(sel_defaultCenter)
-		c.remoteCmd = objc.ID(class_MPRemoteCommandCenter).Send(sel_sharedCommandCenter)
+		c.handler = objc.ID(classMPRemoteCommandHandler).Send(selNew)
+		c.nowPlaying = objc.ID(classMPNowPlayingInfoCenter).Send(selDefaultCenter)
+		c.remoteCmd = objc.ID(classMPRemoteCommandCenter).Send(selSharedCommandCenter)
 
 		c.registerCommands()
-		c.nowPlaying.Send(sel_setPlaybackState, playbackStateStopped)
+		c.nowPlaying.Send(selSetPlaybackState, playbackStateStopped)
 		c.registerNotifications()
 	})
 
@@ -388,10 +386,10 @@ func (c *darwinCtrl) Close() error {
 		close(c.cmdChan)
 	}
 	if c.handler != 0 {
-		c.handler.Send(sel_release)
+		c.handler.Send(selRelease)
 	}
 	if c.coverArtwork != 0 {
-		c.coverArtwork.Send(sel_release)
+		c.coverArtwork.Send(selRelease)
 		c.coverArtwork = 0
 		c.lastCoverImg = nil
 	}

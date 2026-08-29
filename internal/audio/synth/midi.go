@@ -41,12 +41,13 @@ func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sam
 			return nil, nil, fmt.Errorf("open soundfont: %w", err)
 		}
 		sf, err = meltysynth.NewSoundFont(sfFile)
-		sfFile.Close()
+		_ = sfFile.Close()
 		if err != nil {
 			return nil, nil, fmt.Errorf("load soundfont: %w", err)
 		}
 	}
 
+	// #nosec G115 -- sample rate is a small, bounded value (e.g. 44100).
 	settings := meltysynth.NewSynthesizerSettings(int32(sampleRate))
 	synthesizer, err := meltysynth.NewSynthesizer([]*meltysynth.SoundFont{sf}, settings)
 	if err != nil {
@@ -59,7 +60,7 @@ func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sam
 		return nil, nil, fmt.Errorf("open midi file: %w", err)
 	}
 	midiFile, err := meltysynth.NewMidiFile(midFile)
-	midFile.Close()
+	_ = midFile.Close()
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse midi file: %w", err)
 	}

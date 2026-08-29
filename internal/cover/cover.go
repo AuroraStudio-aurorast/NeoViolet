@@ -1,11 +1,12 @@
+// Package cover extracts embedded cover art from audio files.
 package cover
 
 import (
 	"bytes"
 	"fmt"
 	"image"
-	_ "image/jpeg"
-	_ "image/png"
+	_ "image/jpeg" // register JPEG decoder for embedded cover art
+	_ "image/png"  // register PNG decoder for embedded cover art
 	"io"
 	"os"
 
@@ -18,11 +19,13 @@ import (
 // Tries dhowden/tag first (MP3/FLAC/OGG/MP4), then falls back to APEv2
 // tag parsing (Monkey's Audio .ape files).
 func ExtractFromFile(path string) (image.Image, error) {
+	// #nosec G304 -- path is the user's own audio file; opening it is the
+	// core feature of cover extraction.
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	// 1. Try dhowden/tag (supports most common formats).
 	img, err := extractCoverFromReader(f)
@@ -31,7 +34,7 @@ func ExtractFromFile(path string) (image.Image, error) {
 	}
 
 	// 2. Fall back to APEv2 for files with APEv2 tags (.ape).
-	f.Seek(0, io.SeekStart)
+	_, _ = f.Seek(0, io.SeekStart)
 	tags, apErr := apetag.Parse(f)
 	if apErr == nil && len(tags.CoverData) > 0 {
 		img, _, decodeErr := image.Decode(bytes.NewReader(tags.CoverData))

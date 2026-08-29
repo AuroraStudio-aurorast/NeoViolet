@@ -19,9 +19,10 @@ const maxLyricSize = 1 * 1024 * 1024
 // ErrLyricTooLarge is returned when a lyric file exceeds maxLyricSize.
 var ErrLyricTooLarge = errors.New("lyrics file too large (>1MB)")
 
+// LyricParser parses lyric content from a sidecar file or reader.
 type LyricParser interface {
 	FindSidecar(audioPath string) string
-	Parse(r io.Reader, sourcePath string) (*LyricsData, error)
+	Parse(r io.Reader, sourcePath string) (*Data, error)
 }
 
 // findSidecarWithExt checks if a sidecar file exists with the given extension

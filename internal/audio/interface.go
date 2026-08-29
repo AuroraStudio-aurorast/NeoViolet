@@ -7,6 +7,7 @@ import (
 	"github.com/gopxl/beep/v2"
 )
 
+// AudioPlayer is the subset of the Player API consumed by the UI layer.
 type AudioPlayer interface {
 	Open(path string) error
 	Play() error

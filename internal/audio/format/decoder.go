@@ -69,28 +69,20 @@ func init() {
 	// Register built-in (beep) formats.
 	// Custom decoder formats (ALAC, Opus, MP2) are registered via init() in their own files.
 	registerFormat(formatHandler{
-		extensions: []string{".mp3"},
-		decodeReadCloser: func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
-			return mp3.Decode(r)
-		},
+		extensions:       []string{".mp3"},
+		decodeReadCloser: mp3.Decode,
 	})
 	registerFormat(formatHandler{
 		extensions: []string{".wav"},
-		decode: func(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
-			return wav.Decode(r)
-		},
+		decode:     wav.Decode,
 	})
 	registerFormat(formatHandler{
 		extensions: []string{".flac"},
-		decode: func(r io.Reader) (beep.StreamSeekCloser, beep.Format, error) {
-			return flac.Decode(r)
-		},
+		decode:     flac.Decode,
 	})
 	registerFormat(formatHandler{
-		extensions: []string{".ogg", ".oga"},
-		decodeReadCloser: func(r io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
-			return vorbis.Decode(r)
-		},
+		extensions:       []string{".ogg", ".oga"},
+		decodeReadCloser: vorbis.Decode,
 	})
 }
 

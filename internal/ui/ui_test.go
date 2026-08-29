@@ -188,7 +188,7 @@ func TestAudioState_Close(t *testing.T) {
 }
 
 func TestAudioState_UpdateLyricIndex(t *testing.T) {
-	ld := &lyrics.LyricsData{
+	ld := &lyrics.Data{
 		Lines: []lyrics.LyricLine{
 			{Time: 1000 * time.Millisecond, Text: "line one"},
 			{Time: 3000 * time.Millisecond, Text: "line two"},

@@ -9,29 +9,29 @@ import (
 // ObjC convenience helpers
 
 func nsString(s string) objc.ID {
-	id := objc.ID(class_NSString).Send(sel_alloc).Send(sel_initWithUTF8String, s)
-	id.Send(sel_autorelease)
+	id := objc.ID(classNSString).Send(selAlloc).Send(selInitWithUTF8String, s)
+	id.Send(selAutorelease)
 	return id
 }
 
 func nsInt(v int32) objc.ID {
-	return objc.ID(class_NSNumber).Send(sel_numberWithInt, v)
+	return objc.ID(classNSNumber).Send(selNumberWithInt, v)
 }
 
 func nsDouble(v float64) objc.ID {
-	return objc.ID(class_NSNumber).Send(sel_numberWithDouble, v)
+	return objc.ID(classNSNumber).Send(selNumberWithDouble, v)
 }
 
 func nsMutableDict() objc.ID {
-	id := objc.ID(class_NSMutableDictionary).Send(sel_alloc).Send(sel_init)
-	id.Send(sel_autorelease)
+	id := objc.ID(classNSMutableDictionary).Send(selAlloc).Send(selInit)
+	id.Send(selAutorelease)
 	return id
 }
 
 // dictSetKV is the hot path — called ~12× per Update tick.
 
 func dictSetKV(dict, key, val objc.ID) {
-	dict.Send(sel_setValueForKey, val, key)
+	dict.Send(selSetValueForKey, val, key)
 }
 
 // sendCmd is the shared implementation for all MPRemoteCommand handlers.

@@ -45,6 +45,8 @@ func probeFFmpegMetadata(path string) (*StreamInfo, error) {
 		"--",
 		path,
 	}
+	// #nosec G204 -- ffprobe is a fixed binary name; args are a fixed flag set
+	// plus the user's own audio path (with a "--" separator).
 	cmd := exec.Command("ffprobe", args...)
 	out, err := cmd.Output()
 	if err != nil {

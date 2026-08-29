@@ -11,6 +11,7 @@ var (
 	parserMap   = map[string]LyricParser{}
 )
 
+// RegisterParser registers a lyric parser under a format name.
 func RegisterParser(name string, p LyricParser) {
 	if _, exists := parserMap[name]; exists {
 		logger.Warn("parser already registered", "name", name)
@@ -20,24 +21,26 @@ func RegisterParser(name string, p LyricParser) {
 	parserNames = append(parserNames, name)
 }
 
+// AvailableParsers returns the names of all registered lyric parsers.
 func AvailableParsers() []string {
 	result := make([]string, len(parserNames))
 	copy(result, parserNames)
 	return result
 }
 
-func FindAndParse(audioPath string, priority []string) (*LyricsData, error) {
+// FindAndParse locates and parses lyric sidecar files for an audio path.
+func FindAndParse(audioPath string, priority []string) (*Data, error) {
 	return findAndParseWithPreferred(audioPath, priority, "")
 }
 
 // FindAndParsePreferred is like FindAndParse but tries a single preferred format
 // first (before falling back to the full priority list). If preferred is empty
 // or the preferred parser is not found, it behaves identically to FindAndParse.
-func FindAndParsePreferred(audioPath string, priority []string, preferred string) (*LyricsData, error) {
+func FindAndParsePreferred(audioPath string, priority []string, preferred string) (*Data, error) {
 	return findAndParseWithPreferred(audioPath, priority, preferred)
 }
 
-func findAndParseWithPreferred(audioPath string, priority []string, preferred string) (*LyricsData, error) {
+func findAndParseWithPreferred(audioPath string, priority []string, preferred string) (*Data, error) {
 	order := priority
 	if len(order) == 0 {
 		order = parserNames
@@ -48,10 +51,12 @@ func findAndParseWithPreferred(audioPath string, priority []string, preferred st
 		if p, ok := parserMap[preferred]; ok {
 			sidecar := p.FindSidecar(audioPath)
 			if sidecar != "" {
+				// #nosec G304 -- sidecar path is the user's own lyric file next to
+				// their audio; opening it is the core feature.
 				f, err := os.Open(sidecar)
 				if err == nil {
 					data, err := p.Parse(f, sidecar)
-					f.Close()
+					_ = f.Close()
 					if err == nil && data != nil {
 						data.Format = preferred
 						return data, nil
@@ -79,13 +84,14 @@ func findAndParseWithPreferred(audioPath string, priority []string, preferred st
 		if sidecar == "" {
 			continue
 		}
+		// #nosec G304 -- see preferred-format path above.
 		f, err := os.Open(sidecar)
 		if err != nil {
 			logger.Warn("open lyric file failed", "format", name, "path", sidecar, "error", err)
 			continue
 		}
 		data, err := p.Parse(f, sidecar)
-		f.Close()
+		_ = f.Close()
 		if err != nil {
 			logger.Warn("lyric parse failed", "format", name, "path", sidecar, "error", err)
 			continue

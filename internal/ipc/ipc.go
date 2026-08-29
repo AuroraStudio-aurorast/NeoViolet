@@ -88,7 +88,7 @@ func NewServer() (*Server, error) {
 
 	tokenBytes := make([]byte, secretLen)
 	if _, err := rand.Read(tokenBytes); err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return nil, fmt.Errorf("ipc generate token: %w", err)
 	}
 	secret := hex.EncodeToString(tokenBytes)
@@ -97,20 +97,22 @@ func NewServer() (*Server, error) {
 	// Write address + token to port file atomically.
 	// O_EXCL prevents symlink attacks by failing if the file already exists.
 	portPath := portFilePath()
+	// #nosec G304 -- portPath is a fixed temp path with O_EXCL preventing symlink
+	// attacks; it is not attacker-controlled.
 	f, err := os.OpenFile(portPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 	if err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return nil, fmt.Errorf("ipc create port file: %w", err)
 	}
 	if _, err := fmt.Fprintf(f, "%s\n%s", addr, secret); err != nil {
-		f.Close()
-		os.Remove(portPath)
-		listener.Close()
+		_ = f.Close()
+		_ = os.Remove(portPath)
+		_ = listener.Close()
 		return nil, fmt.Errorf("ipc write port file: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(portPath)
-		listener.Close()
+		_ = os.Remove(portPath)
+		_ = listener.Close()
 		return nil, fmt.Errorf("ipc close port file: %w", err)
 	}
 
@@ -135,12 +137,12 @@ func (s *Server) Accept() error {
 	// Authenticate: first line must be the token
 	scanner := bufio.NewScanner(conn)
 	if !scanner.Scan() {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("ipc auth: no token received from %s", conn.RemoteAddr())
 	}
 	line := strings.TrimSpace(scanner.Text())
 	if line != s.secret {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("ipc auth: invalid token from %s", conn.RemoteAddr())
 	}
 
@@ -179,17 +181,17 @@ func (s *Server) Close() {
 	defer s.mu.Unlock()
 
 	if s.conn != nil {
-		s.conn.Close()
+		_ = s.conn.Close()
 		s.conn = nil
 	}
 	if s.listener != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 	}
 	_ = os.Remove(portFilePath())
 }
 
 func (s *Server) readLoop(conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	scanner := bufio.NewScanner(conn)
 	// Limit maximum IPC message size to 10 MB to prevent memory exhaustion.
 	scanner.Buffer(make([]byte, 4096), 10*1024*1024)

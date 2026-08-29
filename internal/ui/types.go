@@ -73,7 +73,7 @@ type (
 
 	// FetchLyricsResultMsg carries the outcome of an async online lyric fetch.
 	FetchLyricsResultMsg struct {
-		Data *lyrics.LyricsData
+		Data *lyrics.Data
 		Err  error
 		Sig  string // normalized track signature; stale results are dropped
 	}
@@ -147,7 +147,7 @@ type AudioState struct {
 	Elapsed           time.Duration
 	IsPlaying         bool
 	ShowLyrics        bool
-	Lyrics            *lyrics.LyricsData
+	Lyrics            *lyrics.Data
 	LyricIndex        int
 	LyricScrollOffset int
 	LyricScrollTick   int
