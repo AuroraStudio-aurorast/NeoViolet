@@ -436,3 +436,44 @@ fn find_active_lines(lines: &[LyricLineData], elapsed: f64) -> Vec<String> {
 fn active_text(lines: &[LyricLineData], elapsed: f64) -> String {
     find_active_lines(lines, elapsed).join("\u{1F}")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{char_width, display_width, find_active_lines, marquee_text, MARQUEE_MARGIN};
+    use crate::ipc::LyricLineData;
+
+    #[test]
+    fn char_width_ascii_and_cjk() {
+        assert_eq!(char_width('a'), 1);
+        assert_eq!(char_width('中'), 2);
+    }
+
+    #[test]
+    fn display_width_counts_wide_chars() {
+        assert_eq!(display_width("abc"), 3);
+        assert_eq!(display_width("中文"), 4);
+    }
+
+    #[test]
+    fn marquee_scroll_wraps() {
+        // "hello" is wider than max_chars=3, so it is padded with the margin.
+        let text = marquee_text("hello", 0.0, 3);
+        assert_eq!(text, format!("hello{}", " ".repeat(MARQUEE_MARGIN)));
+        // Scrolling by 1 shifts the window one character to the right.
+        let next = marquee_text("hello", 1.0, 3);
+        assert_eq!(next, format!("ello{}", " ".repeat(MARQUEE_MARGIN)));
+        assert_ne!(text, next);
+    }
+
+    #[test]
+    fn find_active_lines_picks_elapsed() {
+        let lines = vec![
+            LyricLineData { time: 0.0, end: 0.0, text: "one".into(), agent: None, agent_name: None },
+            LyricLineData { time: 5.0, end: 0.0, text: "two".into(), agent: None, agent_name: None },
+            LyricLineData { time: 10.0, end: 0.0, text: "three".into(), agent: None, agent_name: None },
+        ];
+        let active = find_active_lines(&lines, 6.0);
+        assert!(active.iter().any(|t| t.contains("two")));
+        assert!(!active.iter().any(|t| t.contains("three")));
+    }
+}
