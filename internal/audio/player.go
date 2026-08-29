@@ -1,11 +1,9 @@
 package audio
 
 import (
-	"bytes"
 	"fmt"
 	"image"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -18,7 +16,6 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/cover"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
@@ -180,142 +177,6 @@ func (p *Player) Open(path string) error {
 	p.setupStreamer(streamer, format, file, path, ctrlStreamer)
 
 	p.readTags(path)
-
-	return nil
-}
-
-func (p *Player) applyLinearVolumeLocked() {
-	if p.volume == nil {
-		return
-	}
-
-	if p.linearVolume <= 0.0 {
-		p.volume.Silent = true
-		p.volume.Volume = 0
-	} else {
-		p.volume.Silent = false
-		exponent := math.Log2(p.linearVolume)
-		p.volume.Volume = exponent
-	}
-}
-
-func (p *Player) readTags(path string) {
-	metadata := p.tagReader.Read(path)
-	p.title = metadata.Title
-	p.artist = metadata.Artist
-	p.album = metadata.Album
-
-	img, err := cover.ExtractFromFile(path)
-	if err == nil {
-		p.coverImage = img
-	}
-}
-
-// readSeekCloser wraps *bytes.Reader to implement both io.ReadSeeker and io.ReadCloser.
-// This is needed by decoders that require Seek for Len() computation (e.g. MP3)
-// while also needing Close().
-type readSeekCloser struct {
-	*bytes.Reader
-}
-
-func (r *readSeekCloser) Close() error { return nil }
-
-// OpenReader opens audio from an in-memory byte buffer (e.g. from stdin).
-// name is a display label (e.g. "stdin") shown in the UI.
-// For formats that require a file path (APE, MIDI, tracker), the data is
-// transparently written to a temporary file and opened via the normal Open path.
-func (p *Player) OpenReader(name string, data []byte) error {
-	logger.Debug("Player.OpenReader", "name", name, "size", len(data))
-
-	if len(data) == 0 {
-		return fmt.Errorf("stdin is empty")
-	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// Detect format from magic bytes
-	ext, detectErr := p.decoder.DetectFormatFromBytes(data)
-	synthExt := ext
-	if detectErr != nil {
-		// Can't detect — attempt to pick a reasonable default or error out
-		return fmt.Errorf("stdin: %w", detectErr)
-	}
-
-	// Synthetic formats (MIDI, tracker) and APE require a file path.
-	// Write to a temp file and delegate to normal Open.
-	if isSyntheticFormat(synthExt) || ext == ".ape" {
-		tmpFile, err := os.CreateTemp("", "neoviolet-stdin-*"+ext)
-		if err != nil {
-			return fmt.Errorf("create temp file: %w", err)
-		}
-		tmpPath := tmpFile.Name()
-		if _, err := tmpFile.Write(data); err != nil {
-			tmpFile.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("write temp file: %w", err)
-		}
-		if err := tmpFile.Close(); err != nil {
-			os.Remove(tmpPath)
-			return fmt.Errorf("close temp file: %w", err)
-		}
-		// Track for cleanup
-		p.tempFiles = append(p.tempFiles, tmpPath)
-		p.mu.Unlock()
-		err = p.Open(tmpPath)
-		p.mu.Lock()
-		// Override the path to "stdin" for display purposes
-		p.path = name
-		return err
-	}
-
-	// Standard audio formats: decode from memory
-	if p.isPlaying {
-		speaker.Clear()
-		p.isPlaying = false
-	}
-	if p.streamer != nil && p.file != nil {
-		p.file.Close()
-	}
-
-	// Read metadata from the buffer FIRST, before decoding.
-	// Use a separate reader so we never touch the decoder's internal reader.
-	metaReader := bytes.NewReader(data)
-	metadata := p.tagReader.ReadFromSeeker(metaReader)
-	p.title = metadata.Title
-	p.artist = metadata.Artist
-	p.album = metadata.Album
-
-	// Extract cover art from the buffer (using another reader).
-	coverReader := bytes.NewReader(data)
-	img, err := cover.ExtractFromReader(coverReader)
-	if err == nil {
-		p.coverImage = img
-	}
-
-	// Now decode — use its own fresh *bytes.Reader so the decoder has
-	// exclusive ownership and its internal buffers are never corrupted.
-	// The wrapper implements both io.ReadSeeker (for Len()) and io.ReadCloser.
-	decReader := &readSeekCloser{Reader: bytes.NewReader(data)}
-	streamer, format, err := p.decoder.DecodeFromReader(decReader, ext)
-	if err != nil {
-		return fmt.Errorf("decode stdin: %w", err)
-	}
-
-	if err := ensureSpeakerInit(format.SampleRate); err != nil {
-		return fmt.Errorf("speaker init failed: %w", err)
-	}
-
-	ctrlStreamer := resampleIfNeeded(streamer, format)
-
-	logger.Info("Audio loaded from stdin", "name", name, "format", format.SampleRate)
-
-	p.setupStreamer(streamer, format, decReader, name, ctrlStreamer)
-
-	// If no title detected from tags, use the display name
-	if p.title == "" {
-		p.title = name
-	}
 
 	return nil
 }
@@ -517,31 +378,6 @@ func (p *Player) Seek(position time.Duration) error {
 	return nil
 }
 
-func (p *Player) SetVolume(vol float64) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if vol < 0 {
-		vol = 0
-	}
-	if vol > 1 {
-		vol = 1
-	}
-	p.linearVolume = vol
-
-	if p.isSynthActive() {
-		p.synthCtrl.SetVolume(vol)
-	}
-	logger.Debug("Volume set", "volume", vol)
-	p.applyLinearVolumeLocked()
-}
-
-func (p *Player) Volume() float64 {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.linearVolume
-}
-
 func (p *Player) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -607,58 +443,6 @@ func (p *Player) Close() error {
 	return nil
 }
 
-// UnloadSoundfont releases the cached SoundFont to free memory.
-// It is safe to call at any time; the SoundFont will be reloaded
-// on the next MIDI playback if needed.
-func (p *Player) UnloadSoundfont() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.cachedSF != nil {
-		logger.Debug("Releasing cached SoundFont")
-		p.cachedSF = nil
-		p.cachedSFPath = ""
-	}
-}
-
-func (p *Player) Path() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.path
-}
-
-func (p *Player) Title() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.isSynthActive() {
-		return p.synthCtrl.Title()
-	}
-	return p.title
-}
-
-func (p *Player) Artist() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.isSynthActive() {
-		return p.synthCtrl.Artist()
-	}
-	return p.artist
-}
-
-func (p *Player) Album() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.album
-}
-
-func (p *Player) CoverImage() image.Image {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.isSynthActive() {
-		return p.synthCtrl.CoverImage()
-	}
-	return p.coverImage
-}
-
 func (p *Player) Format() beep.Format {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -666,169 +450,4 @@ func (p *Player) Format() beep.Format {
 		return p.synthCtrl.Streamer().Format()
 	}
 	return p.format
-}
-
-var syntheticFormats = map[string]bool{
-	".mid":  true,
-	".midi": true,
-	".mod":  true,
-	".xm":   true,
-	".s3m":  true,
-	".it":   true,
-	".stm":  true,
-	".nst":  true,
-	".wow":  true,
-	".ult":  true,
-	".669":  true,
-	".mtm":  true,
-	".mdl":  true,
-	".far":  true,
-	".ptm":  true,
-	".okt":  true,
-	".dmf":  true,
-	".dbm":  true,
-	".digi": true,
-	".imf":  true,
-	".j2b":  true,
-	".mo3":  true,
-	".umx":  true,
-	".gdm":  true,
-}
-
-func isSyntheticFormat(ext string) bool {
-	if syntheticFormats[ext] {
-		return true
-	}
-	for _, se := range synth.OpenmptSupportedFormats() {
-		if "."+se == ext {
-			return true
-		}
-	}
-	return false
-}
-
-// IsSyntheticFormat reports whether ext is a synthesized format (MIDI/tracker)
-// that typically carries no lyrics, so online lyric fetch is skipped for it.
-func IsSyntheticFormat(ext string) bool { return isSyntheticFormat(ext) }
-
-func (p *Player) openSynthetic(path, ext string) error {
-	logger.Info("Opening synthetic", "path", path, "ext", ext)
-
-	p.closeStreamer()
-	if p.synthCtrl != nil {
-		p.synthCtrl.Close()
-		p.synthCtrl = nil
-	}
-	p.synthActive = false
-
-	sr := speakerSampleRate
-	if sr == 0 {
-		sr = 44100
-	}
-	if err := ensureSpeakerInit(sr); err != nil {
-		return fmt.Errorf("speaker init: %w", err)
-	}
-
-	switch ext {
-	case ".mid", ".midi":
-		return p.openMIDISynth(path, sr)
-	default:
-		// All tracker formats (MOD, XM, S3M, IT, and OpenMPT-only
-		// formats like MPTM) route through openTrackerSynth — it tries
-		// OpenMPT first, then falls back to gotracker.
-		// Release the SoundFont cache — it is only needed for MIDI playback.
-		p.cachedSF = nil
-		p.cachedSFPath = ""
-		return p.openTrackerSynth(path, ext, sr)
-	}
-}
-
-func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
-	if p.sfPath == "" {
-		return fmt.Errorf("soundfont_path not configured for MIDI playback")
-	}
-
-	var cachedSF *meltysynth.SoundFont
-	if p.cachedSF != nil && p.cachedSFPath == p.sfPath {
-		cachedSF = p.cachedSF
-	}
-
-	mp, sf, err := synth.NewMidiPlayer(path, p.sfPath, cachedSF, sr)
-	if err != nil {
-		return err
-	}
-	p.cachedSF = sf
-	p.cachedSFPath = p.sfPath
-
-	mp.SetTitle(filepath.Base(path))
-	mp.SetArtist("MIDI")
-	mp.SetVolume(p.linearVolume)
-
-	p.synthCtrl = mp
-	p.synthActive = true
-	p.path = path
-	p.isPaused = true
-	p.isPlaying = false
-
-	return nil
-}
-
-func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
-	var ctrl synth.Controller
-	var err error
-
-	backend := p.trackerBackend
-	if backend == "" {
-		backend = "auto"
-	}
-
-	switch backend {
-	case "gotracker":
-		ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
-	case "openmpt":
-		ctrl, err = synth.NewOpenmptPlayer(path, sr)
-		if err != nil {
-			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
-			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
-		}
-	default:
-		ctrl, err = synth.NewOpenmptPlayer(path, sr)
-		if err != nil {
-			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
-			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
-		}
-	}
-
-	if err != nil {
-		return err
-	}
-
-	ctrl.SetVolume(p.linearVolume)
-
-	p.synthCtrl = ctrl
-	p.synthActive = true
-	p.path = path
-	p.isPaused = true
-	p.isPlaying = false
-
-	return nil
-}
-
-func (p *Player) playSynthetic() error {
-	if p.synthCtrl == nil {
-		return fmt.Errorf("no synth controller")
-	}
-
-	if !p.isPlaying {
-		logger.Info("Synth playback start")
-		speaker.Play(p.synthCtrl.Streamer())
-	}
-
-	speaker.Lock()
-	p.synthCtrl.Play()
-	speaker.Unlock()
-
-	p.isPlaying = true
-	p.isPaused = false
-	return nil
 }
