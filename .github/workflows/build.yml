@@ -7,6 +7,8 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # every Monday 03:00 UTC
 
 env:
   GO_VERSION: stable
@@ -72,6 +74,21 @@ jobs:
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum || { echo "go.mod/go.sum out of date; run go mod tidy"; exit 1; }
+
+  security:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
   unix:
     name: ${{ matrix.os }}-${{ matrix.goarch }}
