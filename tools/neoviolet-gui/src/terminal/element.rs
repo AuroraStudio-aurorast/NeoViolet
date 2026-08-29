@@ -220,18 +220,34 @@ impl gpui::InputHandler for TerminalInputHandler {
 
 // ── TerminalElement impl ──
 
+/// TerminalRenderParams bundles the font and layout parameters passed to
+/// the terminal element constructor. Kept together so it stays small.
+#[derive(Clone)]
+pub struct TerminalRenderParams {
+    pub font_family: SharedString,
+    pub font_size: Pixels,
+    pub line_height: Pixels,
+    pub cell_width: Pixels,
+}
+
 impl TerminalElement {
     pub fn new(
         snapshot: RenderSnapshot,
         marked_text: Option<String>,
-        font_family: SharedString,
-        font_size: Pixels,
-        line_height: Pixels,
-        cell_width: Pixels,
+        params: TerminalRenderParams,
         view: Entity<TerminalApp>,
         focus_handle: FocusHandle,
     ) -> Self {
-        Self { snapshot, marked_text, font_family, font_size, line_height, cell_width, view, focus_handle }
+        Self {
+            snapshot,
+            marked_text,
+            font_family: params.font_family,
+            font_size: params.font_size,
+            line_height: params.line_height,
+            cell_width: params.cell_width,
+            view,
+            focus_handle,
+        }
     }
 
     fn base_text_style(&self, cx: &App) -> TextStyle {

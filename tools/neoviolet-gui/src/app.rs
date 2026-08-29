@@ -16,7 +16,7 @@ use crate::backend;
 use crate::state::AppState;
 use crate::terminal::{
     self, BackendCommand, BackendEvent, TerminalTab,
-    element::TerminalElement,
+    element::{TerminalElement, TerminalRenderParams},
 };
 
 // ── Application entity ──
@@ -634,10 +634,12 @@ impl Render for TerminalApp {
                 TerminalElement::new(
                     snapshot,
                     marked_text,
-                    font_family,
-                    font_size,
-                    line_height,
-                    cell_width,
+                    TerminalRenderParams {
+                        font_family,
+                        font_size,
+                        line_height,
+                        cell_width,
+                    },
                     cx.entity().clone(),
                     focus_handle,
                 ),
