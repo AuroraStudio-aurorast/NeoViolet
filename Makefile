@@ -34,7 +34,7 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: all build build/race build/debug build/noopenmpt build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
+.PHONY: all build build/race build/debug build/noopenmpt build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check check/linelength clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
 
 all: build
 
@@ -126,8 +126,21 @@ lint:
 	fi
 
 # Aggregate quality gate used by CI and local dev.
-check: vet lint lint/rust test
+check: vet lint lint/rust test check/linelength
 	@echo "All checks passed."
+
+check/linelength:
+	@fail=0; \
+	for f in $$(find . -type f -name "*.go" -print | grep -v '_test\.go$$'); do \
+		lines=$$(wc -l < "$$f"); \
+		if [ $$lines -gt 500 ]; then echo "$$f: $$lines lines (>500)"; fail=1; fi; \
+	done; \
+	for f in $$(find . -type f -name "*_test.go" -print); do \
+		lines=$$(wc -l < "$$f"); \
+		if [ $$lines -gt 800 ]; then echo "$$f: $$lines lines (>800)"; fail=1; fi; \
+	done; \
+	if [ $$fail -ne 0 ]; then exit 1; fi; \
+	echo "Line length check passed."
 
 tidy:
 	$(GO) mod tidy

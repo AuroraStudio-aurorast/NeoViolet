@@ -66,14 +66,16 @@ jobs:
           go test -count=1 -coverprofile=coverage.out ./...
           total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
           echo "total coverage: ${total}%"
-          if [ "$(echo "$total < 40" | bc)" = "1" ]; then
-            echo "::error::coverage ${total}% is below the 40% gate"
+          if [ "$(echo "$total < 50" | bc)" = "1" ]; then
+            echo "::error::coverage ${total}% is below the 50% gate"
             exit 1
           fi
       - name: go mod tidy check
         run: |
           go mod tidy
           git diff --exit-code -- go.mod go.sum || { echo "go.mod/go.sum out of date; run go mod tidy"; exit 1; }
+      - name: Line length gate
+        run: make check/linelength
 
   security:
     name: govulncheck
