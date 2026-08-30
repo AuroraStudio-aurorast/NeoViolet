@@ -145,7 +145,7 @@ func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 	default:
 		// Try OpenMPT first, then fall back to gotracker.
 		ctrl, err = synth.NewOpenmptPlayer(path, sr) //nolint:staticcheck // SA4023: build-tag dependent (openmpt stub always errors without -tags openmpt).
-		if err != nil { //nolint:staticcheck // SA4023: build-tag dependent.
+		if err != nil {                              //nolint:staticcheck // SA4023: build-tag dependent.
 			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
 			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
 		}

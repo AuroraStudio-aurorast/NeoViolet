@@ -14,6 +14,7 @@ import (
 // CommandType identifies the kind of media control command.
 type CommandType int
 
+// Media control command types.
 const (
 	CmdPlayPause CommandType = iota
 	CmdPlay

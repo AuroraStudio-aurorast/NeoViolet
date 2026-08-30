@@ -21,6 +21,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
+// TrackerPlayer renders tracker modules (MOD/XM/S3M/IT) via gotracker.
 type TrackerPlayer struct {
 	baseSynth
 
@@ -41,6 +42,7 @@ type TrackerPlayer struct {
 	songFormat string
 }
 
+// NewTrackerPlayer loads a tracker module from disk and creates a player.
 func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPlayer, error) {
 	logger.Info("Creating tracker player", "path", path, "ext", ext, "sampleRate", sampleRate)
 
@@ -99,6 +101,7 @@ func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPla
 	return tp, nil
 }
 
+// Stream implements beep.Streamer by rendering the tracker sequence.
 func (p *TrackerPlayer) Stream(samples [][2]float64) (n int, ok bool) {
 	p.mu.Lock()
 
@@ -265,8 +268,10 @@ func (p *TrackerPlayer) renderOneTick() {
 	p.renderPos = 0
 }
 
+// Err returns nil.
 func (p *TrackerPlayer) Err() error { return nil }
 
+// Stop halts tracker playback.
 func (p *TrackerPlayer) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -277,6 +282,7 @@ func (p *TrackerPlayer) Stop() {
 	p.renderPos = 0
 }
 
+// Close releases tracker resources.
 func (p *TrackerPlayer) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -286,14 +292,17 @@ func (p *TrackerPlayer) Close() error {
 	return nil
 }
 
+// IsPlaying reports whether the tracker player is actively rendering.
 func (p *TrackerPlayer) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.isPlaying && !p.isPaused
 }
 
+// Streamer returns the player itself.
 func (p *TrackerPlayer) Streamer() Streamer { return p }
 
+// Seek schedules a jump to the given position.
 func (p *TrackerPlayer) Seek(pos time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -312,6 +321,7 @@ func (p *TrackerPlayer) Seek(pos time.Duration) error {
 	return nil
 }
 
+// Open is unsupported; use NewTrackerPlayer instead.
 func (p *TrackerPlayer) Open(_ string) error {
 	return fmt.Errorf("tracker player does not support Open, use NewTrackerPlayer")
 }

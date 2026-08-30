@@ -10,12 +10,15 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
+// MetadataReader extracts title/artist/album metadata from audio files.
 type MetadataReader struct{}
 
+// NewMetadataReader returns a new MetadataReader.
 func NewMetadataReader() *MetadataReader {
 	return &MetadataReader{}
 }
 
+// Metadata holds the title, artist, and album for a track.
 type Metadata struct {
 	Title  string
 	Artist string
@@ -93,6 +96,7 @@ func (mr *MetadataReader) ReadFromSeeker(r io.ReadSeeker) Metadata {
 	return m
 }
 
+// ReadWithFallback reads metadata and fills empty fields with fallbacks.
 func (mr *MetadataReader) ReadWithFallback(path string, fallbackTitle, fallbackArtist string) Metadata {
 	metadata := mr.Read(path)
 

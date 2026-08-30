@@ -18,31 +18,33 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
-type FormatDecoder struct{}
+// Decoder detects and decodes audio files by format.
+type Decoder struct{}
 
-func NewFormatDecoder() *FormatDecoder {
-	return &FormatDecoder{}
+// NewDecoder returns a new Decoder.
+func NewDecoder() *Decoder {
+	return &Decoder{}
 }
 
 // Format probe infrastructure
 
-// FormatProbe inspects raw bytes and reports whether it recognizes the format.
+// Probe inspects raw bytes and reports whether it recognizes the format.
 // It returns the extension and true on match; otherwise "", false.
-type FormatProbe func(buf []byte, n int) (ext string, matched bool)
+type Probe func(buf []byte, n int) (ext string, matched bool)
 
 var (
-	ftypProbes []FormatProbe // MP4 ftyp box content (m4a, etc.)
-	oggProbes  []FormatProbe // Ogg container stream type (OpusHead, etc.)
-	mpegProbes []FormatProbe // MPEG sync byte layer detection (MP2, etc.)
-	id3Probes  []FormatProbe // Format behind an ID3 tag (MP2, etc.)
-	magicProbes []FormatProbe // Raw leading magic bytes (APE, etc.)
+	ftypProbes  []Probe // MP4 ftyp box content (m4a, etc.)
+	oggProbes   []Probe // Ogg container stream type (OpusHead, etc.)
+	mpegProbes  []Probe // MPEG sync byte layer detection (MP2, etc.)
+	id3Probes   []Probe // Format behind an ID3 tag (MP2, etc.)
+	magicProbes []Probe // Raw leading magic bytes (APE, etc.)
 )
 
-func registerFTYPProbe(fn FormatProbe)  { ftypProbes = append(ftypProbes, fn) }
-func registerOGGProbe(fn FormatProbe)   { oggProbes = append(oggProbes, fn) }
-func registerMPEGProbe(fn FormatProbe)  { mpegProbes = append(mpegProbes, fn) }
-func registerID3Probe(fn FormatProbe)   { id3Probes = append(id3Probes, fn) }
-func registerMagicProbe(fn FormatProbe) { magicProbes = append(magicProbes, fn) }
+func registerFTYPProbe(fn Probe)  { ftypProbes = append(ftypProbes, fn) }
+func registerOGGProbe(fn Probe)   { oggProbes = append(oggProbes, fn) }
+func registerMPEGProbe(fn Probe)  { mpegProbes = append(mpegProbes, fn) }
+func registerID3Probe(fn Probe)   { id3Probes = append(id3Probes, fn) }
+func registerMagicProbe(fn Probe) { magicProbes = append(magicProbes, fn) }
 
 // Format registration
 
@@ -167,7 +169,8 @@ func detectFormatFromBuf(buf []byte, n int, sourceName string) (string, error) {
 	}
 }
 
-func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
+// DetectFormatByMagic reads the file header and returns the detected extension.
+func (fd *Decoder) DetectFormatByMagic(file *os.File) (string, error) {
 	originalPos, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return "", err
@@ -185,7 +188,7 @@ func (fd *FormatDecoder) DetectFormatByMagic(file *os.File) (string, error) {
 
 // DetectFormatFromBytes detects the audio format from a raw byte slice.
 // Returns the file extension (e.g. ".mp3", ".flac") or an error.
-func (fd *FormatDecoder) DetectFormatFromBytes(data []byte) (string, error) {
+func (fd *Decoder) DetectFormatFromBytes(data []byte) (string, error) {
 	buffer := make([]byte, 1084)
 	n := copy(buffer, data)
 	return detectFormatFromBuf(buffer, n, "stdin")
@@ -215,7 +218,8 @@ func detectMPEGBehindID3(buf []byte, n int) string {
 	return ""
 }
 
-func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekCloser, beep.Format, error) {
+// Decode opens a file, detects its format, and returns a stream.
+func (fd *Decoder) Decode(file *os.File, path string) (beep.StreamSeekCloser, beep.Format, error) {
 	detectedExt, err := fd.DetectFormatByMagic(file)
 	if err != nil {
 		detectedExt = filepath.Ext(path)
@@ -248,7 +252,8 @@ func (fd *FormatDecoder) Decode(file *os.File, path string) (beep.StreamSeekClos
 	return streamer, format, nil
 }
 
-func (fd *FormatDecoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
+// DecodeFromReader decodes audio from a reader using the given extension.
+func (fd *Decoder) DecodeFromReader(r io.Reader, ext string) (beep.StreamSeekCloser, beep.Format, error) {
 	formatMime := strings.ToLower(ext)
 	h := extLookup[formatMime]
 	if h == nil {
@@ -321,7 +326,8 @@ func MIMETypeToExt(mime string) string {
 	return ""
 }
 
-func (fd *FormatDecoder) SupportedFormats() []string {
+// SupportedFormats lists the file extensions the decoder understands.
+func (fd *Decoder) SupportedFormats() []string {
 	var exts []string
 	for i := range formatTable {
 		exts = append(exts, formatTable[i].extensions...)
@@ -330,8 +336,10 @@ func (fd *FormatDecoder) SupportedFormats() []string {
 	return exts
 }
 
+// ErrUnsupportedFormat is returned when a file's format is not recognized.
 var ErrUnsupportedFormat = &UnsupportedFormatError{}
 
+// UnsupportedFormatError is the error returned for unknown audio formats.
 type UnsupportedFormatError struct{}
 
 func (e *UnsupportedFormatError) Error() string {

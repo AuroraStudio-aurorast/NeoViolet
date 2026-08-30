@@ -18,11 +18,11 @@ import (
 
 // useXDG controls whether config is stored at the XDG standard path
 // (~/.config/neoviolet/config.json) instead of next to the executable.
-// Must be set via SetXDGConfig before Load/Save/ConfigExists.
+// Must be set via SetXDGConfig before Load/Save/Exists.
 var useXDG atomic.Bool
 
 // SetXDGConfig controls whether the XDG standard config path is used.
-// Must be called before Load, Save, or ConfigExists.
+// Must be called before Load, Save, or Exists.
 func SetXDGConfig(enabled bool) { useXDG.Store(enabled) }
 
 // LyricsConfig holds the UI lyrics display and fetch settings.
@@ -230,8 +230,8 @@ func DefaultConfig() Config {
 	}
 }
 
-// ConfigExists reports whether a config.json already exists on disk.
-func ConfigExists() bool {
+// Exists reports whether a config.json already exists on disk.
+func Exists() bool {
 	path, err := configPath()
 	if err != nil {
 		return false

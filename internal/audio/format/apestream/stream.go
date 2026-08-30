@@ -160,6 +160,7 @@ func findApeCLI() string {
 
 // Streamer methods
 
+// Stream fills the output buffer with decoded APE samples.
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	if s.Closed {
 		return 0, false
@@ -205,6 +206,7 @@ func (s *Streamer) bufPool(n int) []float64 {
 	return make([]float64, n)
 }
 
+// Seek moves the stream position to the given sample.
 func (s *Streamer) Seek(samples int) error {
 	if s.Closed {
 		return fmt.Errorf("apestream: streamer is closed")
@@ -225,8 +227,10 @@ func (s *Streamer) Seek(samples int) error {
 	return nil
 }
 
+// Len returns the total number of samples in the stream.
 func (s *Streamer) Len() int { return s.TotalSamples }
 
+// Position returns the current sample position.
 func (s *Streamer) Position() int { return s.CurrentSample }
 
 // Close closes the streamer and releases backend resources.

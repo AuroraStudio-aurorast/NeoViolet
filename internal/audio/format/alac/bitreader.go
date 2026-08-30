@@ -34,7 +34,7 @@ func (d *Decoder) readbits16(bits int) uint32 {
 
 // readbits supports reading 1 to 32 bits in big-endian format.
 func (d *Decoder) readbits(bits int) uint32 {
-	var result int32 = 0
+	var result int32
 	if bits > 16 {
 		bits -= 16
 		// #nosec G115 -- 16-bit read sign-extended to int32; value is bounded.

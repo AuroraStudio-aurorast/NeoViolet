@@ -24,7 +24,7 @@ func writeTempFile(t *testing.T, data []byte) *os.File {
 }
 
 func TestDetectFormatByMagic_mp3_id3(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("ID3some tag data here..."))
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -36,7 +36,7 @@ func TestDetectFormatByMagic_mp3_id3(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_mp3_sync(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte{0xFF, 0xFB, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -48,7 +48,7 @@ func TestDetectFormatByMagic_mp3_sync(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_mp3_sync_no_second_byte(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte{0xFF, 0x00, 0x00, 0x00})
 	ext, err := fd.DetectFormatByMagic(f)
 	if err == nil {
@@ -57,7 +57,7 @@ func TestDetectFormatByMagic_mp3_sync_no_second_byte(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_mp2_sync(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte{0xFF, 0xFC, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestDetectFormatByMagic_mp2_sync(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_mp2_id3(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	// ID3v2 header + 2B tag body + MPEG-1 Layer II sync (0xFF 0xFC) at offset 12.
 	data := append([]byte("ID3\x03\x00\x00\x00\x00\x00\x02"), 0x00, 0x00, 0xFF, 0xFC)
 	f := writeTempFile(t, data)
@@ -83,7 +83,7 @@ func TestDetectFormatByMagic_mp2_id3(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_wav(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("RIFF\x00\x00\x00\x00WAVE"))
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -95,7 +95,7 @@ func TestDetectFormatByMagic_wav(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_flac(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("fLaC\x00\x00\x00\x00\x00\x00\x00\x00"))
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -107,7 +107,7 @@ func TestDetectFormatByMagic_flac(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_ogg(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("OggS\x00\x00\x00\x00\x00\x00\x00\x00"))
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -119,7 +119,7 @@ func TestDetectFormatByMagic_ogg(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_midi(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("MThd\x00\x00\x00\x00\x00\x00\x00\x00"))
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestDetectFormatByMagic_midi(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_unknown(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("some unknown format data"))
 	_, err := fd.DetectFormatByMagic(f)
 	if err == nil {
@@ -140,7 +140,7 @@ func TestDetectFormatByMagic_unknown(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_too_short(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("abc"))
 	_, err := fd.DetectFormatByMagic(f)
 	if err == nil {
@@ -149,7 +149,7 @@ func TestDetectFormatByMagic_too_short(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_empty(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte{})
 	_, err := fd.DetectFormatByMagic(f)
 	if err == nil {
@@ -158,7 +158,7 @@ func TestDetectFormatByMagic_empty(t *testing.T) {
 }
 
 func TestDetectFormatByMagic_ape(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	f := writeTempFile(t, []byte("MAC \x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"))
 	ext, err := fd.DetectFormatByMagic(f)
 	if err != nil {
@@ -170,7 +170,7 @@ func TestDetectFormatByMagic_ape(t *testing.T) {
 }
 
 func TestSupportedFormats(t *testing.T) {
-	fd := NewFormatDecoder()
+	fd := NewDecoder()
 	formats := fd.SupportedFormats()
 	expected := map[string]bool{".mp2": true, ".mp3": true, ".wav": true, ".flac": true, ".ogg": true, ".oga": true, ".opus": true, ".mid": true, ".midi": true, ".mod": true, ".xm": true, ".s3m": true, ".it": true, ".m4a": true, ".ape": true}
 	if len(formats) != len(expected) {

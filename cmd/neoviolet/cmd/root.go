@@ -72,7 +72,7 @@ func runRoot(_ *cobra.Command, args []string) error {
 	// AppKit event loop, preventing the main UI from rendering.
 	return runWithOSMedia(func() error {
 		// First-run wizard (huh form) runs INSIDE MacOSRun so AppKit is active
-		if !config.ConfigExists() {
+		if !config.Exists() {
 			logger.Info("First run detected, launching setup wizard")
 			wizardCfg, err := wizard.Run()
 			if err != nil {

@@ -9,6 +9,8 @@ import (
 )
 
 // AudioPlayer is the subset of the Player API consumed by the UI layer.
+//
+//nolint:revive // "Player" would collide with the concrete audio.Player struct.
 type AudioPlayer interface {
 	Open(path string) error
 	Play() error

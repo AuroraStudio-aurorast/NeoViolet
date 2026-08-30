@@ -22,8 +22,6 @@ func isURL(path string) bool {
 	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
 }
 
-
-
 type remoteReadSeeker struct {
 	ctx          context.Context
 	cancel       context.CancelFunc

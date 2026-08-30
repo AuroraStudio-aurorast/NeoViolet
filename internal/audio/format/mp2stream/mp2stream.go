@@ -119,6 +119,7 @@ func toFrame(s *mpeg.Samples, numChannels int) cachedFrame {
 	}
 }
 
+// Stream fills the output buffer with decoded MP2 samples.
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	if s.Closed {
 		return 0, false
@@ -150,6 +151,7 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	return totalFilled, true
 }
 
+// Seek moves the stream position to the given sample.
 func (s *Streamer) Seek(samples int) error {
 	if s.Closed {
 		return fmt.Errorf("streamer is closed")

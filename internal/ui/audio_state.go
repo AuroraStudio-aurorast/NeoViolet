@@ -11,6 +11,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
+// TogglePlayback switches between playing and paused.
 func (a *AudioState) TogglePlayback() {
 	if a.Player == nil {
 		return
@@ -26,6 +27,7 @@ func (a *AudioState) TogglePlayback() {
 	}
 }
 
+// Close releases the underlying player.
 func (a *AudioState) Close() {
 	if a.Player != nil {
 		logger.Debug("AudioState.Close")
@@ -67,6 +69,7 @@ func clampVolume(v float64) float64 {
 	return math.Round(v*100) / 100
 }
 
+// AdjustVolume changes the volume by the given delta.
 func (a *AudioState) AdjustVolume(delta float64) {
 	a.Volume = clampVolume(a.Volume + delta)
 	logger.Debug("AdjustVolume", "delta", delta, "newVolume", a.Volume)
@@ -75,6 +78,7 @@ func (a *AudioState) AdjustVolume(delta float64) {
 	}
 }
 
+// SetVolume sets the volume to an absolute value.
 func (a *AudioState) SetVolume(vol float64) {
 	a.Volume = clampVolume(vol)
 	logger.Debug("SetVolume", "volume", a.Volume)
@@ -83,6 +87,7 @@ func (a *AudioState) SetVolume(vol float64) {
 	}
 }
 
+// UpdatePosition refreshes elapsed/position fields from the player.
 func (a *AudioState) UpdatePosition() {
 	if a.Player == nil {
 		return
@@ -107,6 +112,7 @@ func (a *AudioState) UpdatePosition() {
 	}
 }
 
+// SeekPlayer seeks the underlying player to the given position.
 func (a *AudioState) SeekPlayer(pos time.Duration) error {
 	if a.Player == nil {
 		return nil
@@ -115,6 +121,7 @@ func (a *AudioState) SeekPlayer(pos time.Duration) error {
 	return a.Player.Seek(pos)
 }
 
+// SeekRelative seeks forward or backward by the given delta.
 func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
 	if a.Player == nil {
 		return 0
@@ -132,6 +139,7 @@ func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
 	return newPos
 }
 
+// UpdateLyricIndex computes the active lyric line for the current position.
 func (a *AudioState) UpdateLyricIndex() {
 	// Reset gap tracking state; set below if in a gap
 	a.LyricNextIndex = -1
@@ -205,6 +213,7 @@ func (a *AudioState) UpdateLyricIndex() {
 	}
 }
 
+// AdvanceLyricScroll advances the marquee scroll offset for long lyric lines.
 func (a *AudioState) AdvanceLyricScroll(scrollSpeed int, maxWidth int) {
 	if a.Lyrics == nil || a.LyricIndex < 0 {
 		return

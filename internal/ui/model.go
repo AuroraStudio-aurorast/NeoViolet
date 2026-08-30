@@ -147,6 +147,7 @@ var keys = KeyMap{
 	),
 }
 
+// NewModel constructs the application model with the given config.
 func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Model {
 	if cfg == nil {
 		cfg = &config.Config{}
@@ -208,7 +209,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 			Volume:     cfg.DefaultVolume,
 			ShowLyrics: true,
 		},
-		UI: &UIState{
+		UI: &State{
 			Mode:       ModeNormal,
 			Focus:      initialFocus,
 			SavedFocus: initialFocus,
@@ -271,6 +272,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	return m
 }
 
+// Init returns the initial commands for the Bubble Tea program.
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{}
 
@@ -307,10 +309,12 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// Update handles a Bubble Tea message and returns the next model and command.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return updateDispatcher(m, msg)
 }
 
+// View renders the current UI state.
 func (m *Model) View() tea.View {
 	return renderMainView(m)
 }

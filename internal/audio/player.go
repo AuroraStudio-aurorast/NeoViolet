@@ -51,7 +51,7 @@ type Player struct {
 	artist         string
 	album          string
 	coverImage     image.Image
-	decoder        *format.FormatDecoder
+	decoder        *format.Decoder
 	tagReader      *format.MetadataReader
 	synthCtrl      synth.Controller
 	synthActive    bool
@@ -64,12 +64,12 @@ type Player struct {
 
 // NewPlayer creates a Player with the default format decoder and metadata reader.
 func NewPlayer() *Player {
-	return NewPlayerWithDeps(format.NewFormatDecoder(), format.NewMetadataReader())
+	return NewPlayerWithDeps(format.NewDecoder(), format.NewMetadataReader())
 }
 
 // NewPlayerWithDeps creates a Player using the supplied decoder and tag reader.
 // It is used by tests to inject fakes without touching the real format backends.
-func NewPlayerWithDeps(decoder *format.FormatDecoder, tagReader *format.MetadataReader) *Player {
+func NewPlayerWithDeps(decoder *format.Decoder, tagReader *format.MetadataReader) *Player {
 	return &Player{
 		isPaused:     true,
 		isPlaying:    false,
@@ -257,6 +257,7 @@ func resampleIfNeeded(s beep.Streamer, f beep.Format) beep.Streamer {
 	return beep.ResampleRatio(4, ratio, s)
 }
 
+// Pause pauses playback.
 func (p *Player) Pause() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -278,6 +279,7 @@ func (p *Player) Pause() {
 	p.isPaused = true
 }
 
+// Resume resumes playback after a pause.
 func (p *Player) Resume() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -299,6 +301,7 @@ func (p *Player) Resume() {
 	p.isPaused = false
 }
 
+// Stop halts playback.
 func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -317,6 +320,7 @@ func (p *Player) Stop() {
 	p.isPaused = true
 }
 
+// Toggle switches between playing and paused.
 func (p *Player) Toggle() {
 	if p.isSynthActive() {
 		if p.isPaused || !p.isPlaying {
@@ -333,6 +337,7 @@ func (p *Player) Toggle() {
 	}
 }
 
+// Seek jumps to the given playback position.
 func (p *Player) Seek(position time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -389,12 +394,14 @@ func (p *Player) Seek(position time.Duration) error {
 	return nil
 }
 
+// IsPlaying reports whether audio is currently playing.
 func (p *Player) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.isPlaying && !p.isPaused
 }
 
+// Duration returns the total length of the current track.
 func (p *Player) Duration() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -407,6 +414,7 @@ func (p *Player) Duration() time.Duration {
 	return p.format.SampleRate.D(p.streamer.Len())
 }
 
+// Position returns the current playback position.
 func (p *Player) Position() time.Duration {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -419,6 +427,7 @@ func (p *Player) Position() time.Duration {
 	return p.format.SampleRate.D(p.streamer.Position())
 }
 
+// Close releases the current track and cleans up resources.
 func (p *Player) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -454,6 +463,7 @@ func (p *Player) Close() error {
 	return nil
 }
 
+// Format returns the sample format of the current stream.
 func (p *Player) Format() beep.Format {
 	p.mu.Lock()
 	defer p.mu.Unlock()

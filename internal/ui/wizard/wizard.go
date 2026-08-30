@@ -12,6 +12,7 @@ import (
 
 type iconOption int
 
+// Icon theme options for the first-run wizard.
 const (
 	IconNerd iconOption = iota
 	IconEmoji
@@ -65,6 +66,7 @@ func logoGradient() string {
 	return out
 }
 
+// Run shows the first-run setup wizard and returns the resulting config.
 func Run() (*config.Config, error) {
 	var sfPath string
 

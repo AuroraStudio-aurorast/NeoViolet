@@ -14,6 +14,7 @@ import (
 
 const midiBlockSize = 512
 
+// MidiPlayer renders MIDI files through a SoundFont synthesizer.
 type MidiPlayer struct {
 	baseSynth
 
@@ -30,6 +31,7 @@ type MidiPlayer struct {
 	seeking    bool
 }
 
+// NewMidiPlayer creates a MIDI player from a MIDI file and SoundFont.
 func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sampleRate beep.SampleRate) (*MidiPlayer, *meltysynth.SoundFont, error) {
 	logger.Info("Creating MIDI player", "sampleRate", sampleRate)
 	var sf *meltysynth.SoundFont
@@ -85,6 +87,7 @@ func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sam
 	return p, sf, nil
 }
 
+// Stream implements beep.Streamer by rendering the MIDI sequence.
 func (p *MidiPlayer) Stream(samples [][2]float64) (n int, ok bool) {
 	p.mu.Lock()
 
@@ -212,8 +215,10 @@ func (p *MidiPlayer) fillSamples(samples [][2]float64, vs float64, elapsed *time
 	}
 }
 
+// Err returns nil; MIDI playback errors are handled during rendering.
 func (p *MidiPlayer) Err() error { return nil }
 
+// Stop halts MIDI playback.
 func (p *MidiPlayer) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -222,6 +227,7 @@ func (p *MidiPlayer) Stop() {
 	p.seeking = false
 }
 
+// Close releases the synthesizer and sequencer.
 func (p *MidiPlayer) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -232,30 +238,37 @@ func (p *MidiPlayer) Close() error {
 	return nil
 }
 
+// IsPlaying reports whether the MIDI player is actively rendering.
 func (p *MidiPlayer) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.isPlaying && !p.isPaused
 }
 
+// Streamer returns the player itself.
 func (p *MidiPlayer) Streamer() Streamer { return p }
 
+// Path returns the MIDI file path (empty, since NewMidiPlayer takes it directly).
 func (p *MidiPlayer) Path() string { return "" }
 
+// SetTitle sets the display title.
 func (p *MidiPlayer) SetTitle(title string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.title = title
 }
 
+// SetArtist sets the display artist.
 func (p *MidiPlayer) SetArtist(artist string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.artist = artist
 }
 
+// CoverImage returns nil; MIDI files have no embedded art.
 func (p *MidiPlayer) CoverImage() image.Image { return nil }
 
+// Seek schedules a jump to the given position.
 func (p *MidiPlayer) Seek(pos time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -274,6 +287,7 @@ func (p *MidiPlayer) Seek(pos time.Duration) error {
 	return nil
 }
 
+// Open is unsupported; use NewMidiPlayer instead.
 func (p *MidiPlayer) Open(_ string) error {
 	return fmt.Errorf("midi player does not support Open, use NewMidiPlayer")
 }

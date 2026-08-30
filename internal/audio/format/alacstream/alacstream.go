@@ -162,6 +162,7 @@ func pcmToFloat64(pcm []byte, numChannels, sampleSize int) []float64 {
 	return out
 }
 
+// Seek moves the stream position to the given sample.
 func (s *Streamer) Seek(samples int) error {
 	if s.Closed {
 		return fmt.Errorf("streamer is closed")

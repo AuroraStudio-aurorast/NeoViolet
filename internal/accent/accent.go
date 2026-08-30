@@ -10,6 +10,7 @@ import (
 	"github.com/lucasb-eyer/go-colorful"
 )
 
+// Accent holds the prominent colors extracted from album artwork.
 type Accent struct {
 	Main      colorful.Color
 	ProgressA colorful.Color
@@ -25,11 +26,19 @@ func (a Accent) IsDark() bool {
 	return l < 0.5
 }
 
-func (a Accent) HexMain() string      { return a.Main.Hex() }
-func (a Accent) HexProgressA() string { return a.ProgressA.Hex() }
-func (a Accent) HexProgressB() string { return a.ProgressB.Hex() }
-func (a Accent) HexLyric() string     { return a.Lyric.Hex() }
+// HexMain returns the main accent color as a hex string.
+func (a Accent) HexMain() string { return a.Main.Hex() }
 
+// HexProgressA returns the first progress-bar accent color as a hex string.
+func (a Accent) HexProgressA() string { return a.ProgressA.Hex() }
+
+// HexProgressB returns the second progress-bar accent color as a hex string.
+func (a Accent) HexProgressB() string { return a.ProgressB.Hex() }
+
+// HexLyric returns the lyric accent color as a hex string.
+func (a Accent) HexLyric() string { return a.Lyric.Hex() }
+
+// FromImage extracts a prominent accent color palette from an image.
 func FromImage(img image.Image) (Accent, error) {
 	args := prominentcolor.ArgumentNoCropping |
 		prominentcolor.ArgumentSeedRandom |

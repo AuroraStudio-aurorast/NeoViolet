@@ -1,5 +1,6 @@
 package ui
 
+// IconSet holds the glyphs used for each UI element.
 type IconSet struct {
 	Play        string
 	Pause       string
@@ -17,6 +18,7 @@ type IconSet struct {
 	LyricEmpty  string
 }
 
+// NerdIcons is the Nerd Font icon set.
 var NerdIcons = IconSet{
 	Play:        "\uf04b",
 	Pause:       "\uf04c",
@@ -34,6 +36,7 @@ var NerdIcons = IconSet{
 	LyricEmpty:  "\u25cb",
 }
 
+// FallbackIcons is the basic-Unicode icon set used when no icon font is available.
 var FallbackIcons = IconSet{
 	Play:        "\u25b6",
 	Pause:       "\u23f8",
@@ -51,6 +54,7 @@ var FallbackIcons = IconSet{
 	LyricEmpty:  "\u25cb",
 }
 
+// EmojiIcons is the emoji icon set.
 var EmojiIcons = IconSet{
 	Play:        "\u25b6\ufe0f",
 	Pause:       "\u23f8\ufe0f",

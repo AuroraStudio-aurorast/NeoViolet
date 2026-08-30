@@ -141,7 +141,7 @@ func (b *apeCLIBackend) startProcess(args []string) (*StreamInfo, error) {
 		Channels:      int(hdr.Channels),
 		BitsPerSample: int(hdr.BitsPerSample),
 		// #nosec G115 -- sample count fits in int for any real-world track.
-		TotalSamples:  int(hdr.TotalSamples),
+		TotalSamples: int(hdr.TotalSamples),
 	}, nil
 }
 

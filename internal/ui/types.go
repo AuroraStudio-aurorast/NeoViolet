@@ -22,6 +22,7 @@ import (
 // Mode represents the current input mode
 type Mode int
 
+// Input modes.
 const (
 	ModeNormal Mode = iota
 	ModeCommand
@@ -30,43 +31,50 @@ const (
 // Focus represents the currently focused UI element
 type Focus int
 
+// Focus targets.
 const (
 	FocusTabBar Focus = iota
 	FocusContent
 	FocusFooter
 )
 
-// Custom message types for BubbleTea architecture
 type (
+	// TickMsg signals a periodic UI tick.
 	TickMsg struct{}
 
+	// PlaybackUpdateMsg carries playback position updates from the audio loop.
 	PlaybackUpdateMsg struct {
 		Progress float64
 		Elapsed  time.Duration
 	}
 
+	// ErrorMsg reports an error to the UI with an auto-dismiss timer.
 	ErrorMsg struct {
 		Message    string
 		Timer      int
 		Generation int // 0 for non-load errors (always shown); >0 checked against Model.loadGeneration
 	}
 
+	// AudioLoadedMsg signals that a track finished loading.
 	AudioLoadedMsg struct {
 		Player     audio.AudioPlayer
 		Path       string
 		Generation int // matches Model.loadGeneration; stale messages are ignored
 	}
 
+	// VolumeMsg carries a volume level and change delta.
 	VolumeMsg struct {
 		Level float64
 		Delta float64
 	}
 
+	// SeekMsg requests a seek to a position (absolute or relative).
 	SeekMsg struct {
 		Position time.Duration
 		Relative bool
 	}
 
+	// AccentApplyMsg carries a newly extracted accent color.
 	AccentApplyMsg struct {
 		Accent *accent.Accent
 	}
@@ -78,6 +86,7 @@ type (
 		Sig  string // normalized track signature; stale results are dropped
 	}
 
+	// MediaCtlMsg carries an OS media-control command.
 	MediaCtlMsg struct {
 		Command mediactl.Command
 	}
@@ -135,7 +144,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 	}
 }
 
-// Sub-structs for separated responsibilities
+// AudioState holds the audio playback state and lyric display state.
 type AudioState struct {
 	Player            audio.AudioPlayer
 	CurrentSong       string
@@ -174,7 +183,8 @@ type AudioState struct {
 	LyricGapDuration time.Duration
 }
 
-type UIState struct {
+// State holds the tab, focus, and layout state for the interface.
+type State struct {
 	ActiveTab  int
 	Tabs       []string
 	Mode       Mode
@@ -185,6 +195,7 @@ type UIState struct {
 	tabWidth   int
 }
 
+// ComponentState holds the Bubble Tea component models used by the view.
 type ComponentState struct {
 	ProgressBar  progress.Model
 	VolumeBar    progress.Model
@@ -200,12 +211,14 @@ type MessageState struct {
 	Visible bool
 }
 
+// Set displays a message with a countdown timer.
 func (e *MessageState) Set(msg string, timer int) {
 	e.Message = msg
 	e.Timer = timer
 	e.Visible = true
 }
 
+// Tick decrements the message timer and dismisses the message when it expires.
 func (e *MessageState) Tick() {
 	if e.Visible && e.Timer > 0 {
 		e.Timer--
@@ -219,7 +232,7 @@ func (e *MessageState) Tick() {
 // Model represents the main application state
 type Model struct {
 	Audio          *AudioState
-	UI             *UIState
+	UI             *State
 	Components     *ComponentState
 	Error          *MessageState
 	Info           *MessageState
