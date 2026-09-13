@@ -8,7 +8,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * 1" # every Monday 03:00 UTC
+    - cron: "0 3 * * 1"
 
 env:
   GO_VERSION: stable
@@ -51,7 +51,7 @@ jobs:
       - name: Go tests (race)
         run: go test -race -count=1 ./...
       - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
       - name: Rust tests
