@@ -51,7 +51,7 @@ jobs:
       - name: Go tests (race)
         run: go test -race -count=1 ./...
       - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
       - name: Rust tests
