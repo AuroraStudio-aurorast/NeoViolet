@@ -2231,7 +2231,7 @@ dependencies = [
  "smallvec",
  "smol",
  "spin 0.10.0",
- "stacksafe 0.1.4",
+ "stacksafe",
  "strum 0.27.2",
  "taffy",
  "thiserror 2.0.18",
@@ -5244,17 +5244,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d9c1172965d317e87ddb6d364a040d958b40a1db82b6ef97da26253a8b3d090"
 dependencies = [
  "stacker",
- "stacksafe-macro 0.1.4",
-]
-
-[[package]]
-name = "stacksafe"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b738765988c43975135c78ade8b0ee940566ab87d7e324897662b7460c44ab83"
-dependencies = [
- "stacker",
- "stacksafe-macro 1.0.2",
+ "stacksafe-macro",
 ]
 
 [[package]]
@@ -5264,17 +5254,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "172175341049678163e979d9107ca3508046d4d2a7c6682bee46ac541b17db69"
 dependencies = [
  "proc-macro-error2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "stacksafe-macro"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e30778b21fdee0c7dbfcf5cfc2d9e2a0dbc135faf7093c245bf19f088f9fa10"
-dependencies = [
- "proc-macro2",
  "quote",
  "syn 2.0.118",
 ]
@@ -7196,9 +7175,26 @@ dependencies = [
 
 [[package]]
 name = "yororen_ui"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae424c3b1d288a90eb805b177dd5ab8849e03dbca8302e1d94ad7d1a55e08136"
+checksum = "ec84c6f13cc4b74aaab803b5127e7cae6775f7be10ed7b1c9acd698caa4581f9"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+ "yororen_ui_default_renderer",
+ "yororen_ui_locale_ar",
+ "yororen_ui_locale_en",
+ "yororen_ui_locale_zh_cn",
+ "yororen_ui_xml",
+ "yororen_ui_xml_macro",
+]
+
+[[package]]
+name = "yororen_ui_core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38f5ff278f9fc6e35277cc2b0df252fd43644ff19833c1bb334ecebd1f9bff3e"
 dependencies = [
  "chrono",
  "gpui-ce",
@@ -7206,9 +7202,82 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "stacksafe 1.0.2",
  "unicode-segmentation",
- "uuid",
+]
+
+[[package]]
+name = "yororen_ui_default_renderer"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa0ac8c26ed093cbe04378f10dfa2b4a6a5f8c92112ef9e41ffb7c96ef9ee1ea"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_locale_ar"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b8474af9fd96e9bf78185a12d91b5ff5f7c0b6d4ebca75ec68065cb3fd14411"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_locale_en"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53c5dd754487a059bf6b0ba95e79f62b9bc1dea90d79f0d34c28121b7e4affd3"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_locale_zh_cn"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efa10fc61b62f713e7a745d0a111b33730d907e5dc286fdd59a1e5037de6e4b8"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_xml"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6677b3c3c101d60129090b2e93212bc80f04a662e78f3a46bf26eaa73d707484"
+dependencies = [
+ "gpui-ce",
+ "inventory",
+ "proc-macro2",
+ "quote",
+ "roxmltree",
+ "serde",
+ "syn 2.0.118",
+ "toml 0.8.23",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_xml_macro"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a184d0db90834b806d67bccbcd52e43fccb529f98fdfff614419b583bbe6643f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+ "toml 0.8.23",
+ "yororen_ui_core",
+ "yororen_ui_xml",
 ]
 
 [[package]]
