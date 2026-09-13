@@ -65,7 +65,7 @@ func TestWrapSpans_MultipleSpansKeepStyles(t *testing.T) {
 	rest := lipgloss.NewStyle().Italic(true)
 	spans := []styledSpan{
 		{Text: "可是我没有", Style: played}, // 10 cells
-		{Text: "听见你的声音", Style: rest},  // 14 cells
+		{Text: "听见你的声音", Style: rest},  // 12 cells
 	}
 
 	got := wrapSpans(spans, 12, 2)
@@ -126,11 +126,16 @@ func TestWrapSpans_EllipsisFitsExactly(t *testing.T) {
 // keep fitting inside width.
 func TestWrapSpans_ZeroWidthTailKeepsEllipsisInside(t *testing.T) {
 	// "á" is a + U+0301: one cell of text, two runes, the last one zero cells.
+	// A ZWJ and a \n that slipped into a line are zero-width too, so all three
+	// shapes have to keep the ellipsis inside the width.
+	texts := []string{"a\u0301b\u0301c", "a\u200db", "a\nb"}
 	for _, width := range []int{1, 2, 3} {
-		got := wrapSpans([]styledSpan{{Text: "a\u0301b\u0301c", Style: lipgloss.NewStyle()}}, width, 1)
-		last := got[len(got)-1]
-		if w := spansWidth(last); w > width {
-			t.Errorf("width=%d: last row is %d cells: %q", width, w, spansText(last))
+		for _, text := range texts {
+			got := wrapSpans([]styledSpan{{Text: text, Style: lipgloss.NewStyle()}}, width, 1)
+			last := got[len(got)-1]
+			if w := spansWidth(last); w > width {
+				t.Errorf("width=%d text=%q: last row is %d cells: %q", width, text, w, spansText(last))
+			}
 		}
 	}
 }

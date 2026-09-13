@@ -597,3 +597,16 @@ func TestExecuteCommand_lrc_panel_reportsLyricsOff(t *testing.T) {
 		t.Errorf("status = %q, want it to report lyrics as off", m.Info.Message)
 	}
 }
+
+// mode=off can never show the panel, so the status must spell out that the
+// panel is hidden rather than leaving the mode name to imply it.
+func TestExecuteCommand_lrc_panel_reportsOff(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 200, 24
+	setCommand(m, "lrc panel off")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "off (hidden)") {
+		t.Errorf("status = %q, want it to report the panel as off", m.Info.Message)
+	}
+}
