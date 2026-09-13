@@ -9,11 +9,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-const (
-	footerHeight  = 6
-	contentOffset = tabsHeight + footerHeight + helpHeight
-)
-
 // loadingFrames is the animated spinner shown during track loading.
 var loadingFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
@@ -33,9 +28,14 @@ func renderMainView(m *Model) tea.View {
 		return tea.NewView(warnStyle.Width(m.UI.Width).Height(m.UI.Height).Align(lipgloss.Center, lipgloss.Center).Render(msg))
 	}
 
+	plan := m.layoutPlan()
+
 	header := renderTabs(m)
-	content := renderContent(m)
-	footer := renderFooter(m)
+	content := renderContent(m, plan)
+	if plan.PanelShown {
+		content = lipgloss.JoinHorizontal(lipgloss.Top, content, renderLyricsPanel(m, plan))
+	}
+	footer := renderFooter(m, plan)
 	help := renderHelp(m)
 
 	layout := appLayoutStyle.
@@ -87,7 +87,7 @@ func renderTabs(m *Model) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
-func renderContent(m *Model) string {
+func renderContent(m *Model, plan layoutPlan) string {
 	descriptions := map[int]string{
 		0: "Browse your music library and manage the queue",
 		1: "View and manage your playlists",
@@ -105,20 +105,13 @@ func renderContent(m *Model) string {
 		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
-	// When lyrics are rendered in the footer, they take 1 row (footerHeight=6).
-	// Without lyrics the footer is only 5 rows, so content gets that row back.
-	offset := contentOffset
-	if (m.Audio.Lyrics == nil || !m.Audio.ShowLyrics) && !m.LyricsFetching {
-		offset = contentOffset - 1
-	}
-
 	return s.
-		Width(m.UI.Width).
-		Height(m.UI.Height - offset).
+		Width(plan.ContentWidth).
+		Height(plan.ContentHeight).
 		Render(content)
 }
 
-func renderFooter(m *Model) string {
+func renderFooter(m *Model, plan layoutPlan) string {
 	icon := m.Icons.Play
 	if m.Audio.IsPlaying {
 		icon = m.Icons.Pause
@@ -135,13 +128,13 @@ func renderFooter(m *Model) string {
 	} else {
 		songLine = fmt.Sprintf("%s  No audio loaded", m.Icons.Music)
 	}
-	songLine = truncateLine(songLine, m.UI.Width-4)
+	songLine = truncateLine(songLine, plan.Width-4)
 
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
 
 	// Set progress bar width based on available space
 	timeWidth := lipgloss.Width(timeDisplay)
-	pbWidth := m.UI.Width - 4 - timeWidth - 1
+	pbWidth := plan.Width - 4 - timeWidth - 1
 	if pbWidth < 10 {
 		pbWidth = 10
 	}
@@ -174,7 +167,7 @@ func renderFooter(m *Model) string {
 	)
 
 	// Combine play/pause icon (left) and volume section (right-aligned) on one line
-	availableWidth := m.UI.Width - 4
+	availableWidth := plan.Width - 4
 	playWidth := lipgloss.Width(statusLine)
 	volumeWidth := lipgloss.Width(volumeSection)
 	spaceCount := availableWidth - playWidth - volumeWidth
@@ -187,10 +180,13 @@ func renderFooter(m *Model) string {
 		volumeSection,
 	)
 
-	// Lyric rendering (one_line mode): at most one row, marquee-scrolled.
+	// Lyric rendering (one_line mode): at most one row, marquee-scrolled. When
+	// the panel is shown the footer has no lyric row at all.
 	var lyricRows []string
-	if text, ok := renderOneLineLyrics(m, m.UI.Width-6); ok {
-		lyricRows = append(lyricRows, text)
+	if plan.LyricMode == lyricModeOneLine {
+		if text, ok := renderOneLineLyrics(m, plan.OneLineLyricWidth); ok {
+			lyricRows = append(lyricRows, text)
+		}
 	}
 
 	// Combine all lines vertically
@@ -203,7 +199,7 @@ func renderFooter(m *Model) string {
 		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
-	return s.Width(m.UI.Width).Render(content)
+	return s.Width(plan.Width).Render(content)
 }
 
 func formatDuration(d time.Duration) string {

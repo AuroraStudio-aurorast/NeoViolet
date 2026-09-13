@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
@@ -36,7 +38,7 @@ func lyricFooterModel() *Model {
 // just above the bottom border.
 func footerLyricRow(t *testing.T, m *Model) string {
 	t.Helper()
-	lines := strings.Split(renderFooter(m), "\n")
+	lines := strings.Split(renderFooter(m, m.layoutPlan()), "\n")
 	if len(lines) < 2 {
 		t.Fatalf("footer rendered %d rows", len(lines))
 	}
@@ -123,7 +125,7 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 			m := lyricFooterModel()
 			tc.mutate(m)
 
-			out := renderFooter(m)
+			out := renderFooter(m, m.layoutPlan())
 			if got := lipgloss.Height(out); got != tc.wantRows {
 				t.Errorf("footer rows = %d, want %d", got, tc.wantRows)
 			}
@@ -192,6 +194,97 @@ func TestBuildLyricCountdown(t *testing.T) {
 	for _, tc := range cases {
 		if got := buildLyricCountdown(tc.secs, "●", "○"); got != tc.want {
 			t.Errorf("secs=%v: got %q, want %q", tc.secs, got, tc.want)
+		}
+	}
+}
+
+// renderContent must take its size from the plan: with the panel shown the
+// content area is narrower by exactly the panel width.
+func TestRenderContent_UsesPlanSize(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		width int
+	}{
+		{"no panel", 99},
+		{"panel", 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := panelModel(t, 2)
+			_, _ = handleResize(m, tea.WindowSizeMsg{Width: tc.width, Height: 24})
+			plan := m.layoutPlan()
+
+			out := renderContent(m, plan)
+			if w := lipgloss.Width(out); w != plan.ContentWidth {
+				t.Errorf("content width = %d, want %d", w, plan.ContentWidth)
+			}
+			if h := lipgloss.Height(out); h != plan.ContentHeight {
+				t.Errorf("content rows = %d, want %d", h, plan.ContentHeight)
+			}
+			if plan.PanelShown != (tc.width == 100) {
+				t.Fatalf("PanelShown = %v at %d columns", plan.PanelShown, tc.width)
+			}
+		})
+	}
+}
+
+// The whole frame must tile the terminal exactly: H rows of W cells, always.
+// This is what catches gaps and overlap when a region changes size.
+func TestRenderMainView_FrameInvariants(t *testing.T) {
+	sizes := [][2]int{{68, 17}, {80, 24}, {99, 24}, {100, 24}, {140, 36}, {200, 40}}
+	modes := []string{config.PanelModeAuto, config.PanelModeOn, config.PanelModeOff}
+	states := []struct {
+		name   string
+		mutate func(*Model)
+	}{
+		{"lyrics", func(*Model) {}},
+		{"lyrics off", func(m *Model) { m.Audio.ShowLyrics = false }},
+		{"no lyrics", func(m *Model) {
+			m.Audio.Lyrics = nil
+			m.Audio.ActiveLyricLines = nil
+		}},
+		{"fetching", func(m *Model) {
+			m.Audio.Lyrics = nil
+			m.Audio.ActiveLyricLines = nil
+			m.LyricsFetching = true
+		}},
+	}
+
+	for _, size := range sizes {
+		for _, mode := range modes {
+			for _, st := range states {
+				t.Run(fmt.Sprintf("%dx%d/%s/%s", size[0], size[1], mode, st.name), func(t *testing.T) {
+					m := panelModel(t, 2)
+					m.panelMode = mode
+					st.mutate(m)
+
+					// Feed the real resize path so tabWidth tracks the terminal,
+					// exactly as the running app does. Setting UI.Width directly
+					// would leave tabWidth at its default and wrap the tab row.
+					_, _ = handleResize(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+
+					plan := m.layoutPlan()
+					lines := strings.Split(renderMainView(m).Content, "\n")
+					if len(lines) != size[1] {
+						t.Fatalf("frame rows = %d, want %d", len(lines), size[1])
+					}
+					for i, line := range lines {
+						if w := lipgloss.Width(line); w != size[0] {
+							t.Errorf("row %d width = %d, want %d", i, w, size[0])
+						}
+					}
+
+					// Every body row carries one box per region: two rounded
+					// top-left corners when the panel is shown, one otherwise.
+					wantCorners := 1
+					if plan.PanelShown {
+						wantCorners = 2
+					}
+					topRow := lines[tabsHeight]
+					if got := strings.Count(topRow, "╭"); got != wantCorners {
+						t.Errorf("body top row has %d top-left corners, want %d", got, wantCorners)
+					}
+				})
+			}
 		}
 	}
 }
