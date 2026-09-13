@@ -69,4 +69,15 @@ var (
 	lyricStyle = lipgloss.NewStyle().
 			Italic(true).
 			Foreground(lipgloss.Color("141"))
+
+	// Lyrics panel (right-hand sidebar). The panel is not focusable, so its
+	// border never highlights.
+	panelStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("240")).
+			Padding(0, 1)
+
+	// panelContextStyle styles the lines surrounding the current one.
+	panelContextStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("245"))
 )
