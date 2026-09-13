@@ -12,11 +12,7 @@ import (
 )
 
 const (
-	minWidth      = 68
-	minHeight     = 17
-	tabsHeight    = 3
 	footerHeight  = 6
-	helpHeight    = 1
 	contentOffset = tabsHeight + footerHeight + helpHeight
 )
 

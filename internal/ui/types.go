@@ -284,5 +284,9 @@ type Model struct {
 	// handleAudioLoaded, where it is batched with other startup commands.
 	fetchCmd tea.Cmd
 
+	// panelMode is the runtime panel mode (auto|on|off). It starts from the
+	// config default and is changed by ":lrc panel"; it is never persisted.
+	panelMode string
+
 	MediaCtl mediactl.Controller
 }

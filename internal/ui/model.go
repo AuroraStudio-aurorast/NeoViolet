@@ -225,6 +225,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 			CommandInput: ti,
 		},
 		Config:      cfg,
+		panelMode:   cfg.Lyrics.Panel.Mode,
 		Icons:       activeIcons,
 		Error:       &MessageState{},
 		Info:        &MessageState{},
