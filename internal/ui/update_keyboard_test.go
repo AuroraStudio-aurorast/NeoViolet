@@ -569,3 +569,31 @@ func TestExecuteCommand_lrc_panel_reportsHidden(t *testing.T) {
 		t.Errorf("status = %q, want it to report the panel as hidden", m.Info.Message)
 	}
 }
+
+// A terminal that is too short shows the resize warning instead of the frame,
+// so the status must not claim the panel is visible.
+func TestExecuteCommand_lrc_panel_reportsTooSmall(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 100, 10
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "too small") {
+		t.Errorf("status = %q, want it to report the terminal as too small", m.Info.Message)
+	}
+	if strings.Contains(m.Info.Message, "shown") {
+		t.Errorf("status = %q must not claim the panel is shown", m.Info.Message)
+	}
+}
+
+func TestExecuteCommand_lrc_panel_reportsLyricsOff(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 100, 24
+	m.Audio.ShowLyrics = false
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "lyrics are off") {
+		t.Errorf("status = %q, want it to report lyrics as off", m.Info.Message)
+	}
+}
