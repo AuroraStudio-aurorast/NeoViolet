@@ -9,13 +9,17 @@ import (
 
 // This file holds the panel window: which lines the panel shows and how each
 // line is styled. lyrics_panel.go owns the surface (the box and row rendering);
-// this file selects the current line group, builds the context window around
-// it, and splits highlighted lines into played/unplayed spans.
+// this file selects the current line group, builds the window around it, and
+// splits highlighted lines into played/unplayed spans.
+//
+// How the window is laid out (anchoring, the context cap, wrapping) is decided
+// by panelFormat in lyrics_panel_format.go.
 
 // panelWindow builds exactly plan.PanelInnerH rows: the current line group
-// centred, up to ContextLines lines above and below, blank elsewhere. The first
-// row of the current group is pinned to a fixed anchor so the block does not
-// drift when a context line appears or disappears.
+// placed by the format's anchor, with the neighbouring lines filling the rest
+// of the box. By default (no context cap) every row that has a lyric line to
+// show is filled; only the very start and end of a song, or a song with fewer
+// lines than the box has rows, leaves blank rows.
 func panelWindow(m *Model, plan layoutPlan) []panelRow {
 	innerH, innerW := plan.PanelInnerH, plan.PanelInnerW
 	rows := make([]panelRow, maxInt(innerH, 0))
@@ -28,12 +32,12 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 		return rows
 	}
 
+	format := panelFormatFor(m)
 	first, last, highlight := panelCurrent(m, visible)
-	ctx := m.Config.Lyrics.Panel.ContextLines
 
 	cur := make([]panelRow, 0, len(visible))
 	for pos := first; pos <= last; pos++ {
-		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, highlight)...)
+		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, format.MaxWrapRows, highlight)...)
 	}
 	if len(cur) == 0 {
 		return rows
@@ -42,22 +46,12 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 		cur = cur[:innerH]
 	}
 
-	above := make([]panelRow, 0, ctx*panelMaxWrapRows)
-	for pos, taken := first-1, 0; pos >= 0 && taken < ctx; pos, taken = pos-1, taken+1 {
-		lineRows := panelLineRows(m, visible[pos].Line, innerW, false)
-		above = append(lineRows, above...)
-	}
-	below := make([]panelRow, 0, ctx*panelMaxWrapRows)
-	for pos, taken := last+1, 0; pos < len(visible) && taken < ctx; pos, taken = pos+1, taken+1 {
-		below = append(below, panelLineRows(m, visible[pos].Line, innerW, false)...)
-	}
+	// Gather both sides in display order: the anchor decides how much of each
+	// survives, so an over-long side is trimmed back towards the group.
+	above := format.collectRows(m, visible, first-1, -1, innerW, innerH)
+	below := format.collectRows(m, visible, last+1, 1, innerW, innerH)
 
-	anchor := (innerH - len(cur)) / 2
-	if !highlight {
-		// Playback has not reached the first line yet: the window starts at the
-		// top instead of centring a line that has not been sung.
-		anchor = 0
-	}
+	anchor := format.anchorRows(innerH, len(cur), len(above), len(below))
 	if len(above) > anchor {
 		above = above[len(above)-anchor:] // keep the lines closest to the group
 	}
@@ -124,9 +118,9 @@ func lineIsActive(line lyrics.LyricLine, active []lyrics.LyricLine) bool {
 	return false
 }
 
-// panelLineRows renders one lyric line into at most panelMaxWrapRows panel rows.
-func panelLineRows(m *Model, line lyrics.LyricLine, innerW int, highlight bool) []panelRow {
-	wrapped := wrapSpans(panelLineSpans(m, line, highlight), innerW, panelMaxWrapRows)
+// panelLineRows renders one lyric line into at most maxRows panel rows.
+func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlight bool) []panelRow {
+	wrapped := wrapSpans(panelLineSpans(m, line, highlight), innerW, maxRows)
 	rows := make([]panelRow, 0, len(wrapped))
 	for _, spans := range wrapped {
 		rows = append(rows, panelRow{spans: spans})

@@ -260,6 +260,16 @@ func TestCacheDirNonXDG(t *testing.T) {
 	}
 }
 
+// The panel fills its box by default: context_lines=0 means "no cap".
+func TestLyricsPanelConfig_DefaultContextFillsPanel(t *testing.T) {
+	if DefaultPanelContextLines != 0 {
+		t.Errorf("DefaultPanelContextLines = %d, want 0 (fill the box)", DefaultPanelContextLines)
+	}
+	if got := DefaultConfig().Lyrics.Panel.ContextLines; got != 0 {
+		t.Errorf("default config ContextLines = %d, want 0", got)
+	}
+}
+
 func TestLyricsPanelConfig_Defaults(t *testing.T) {
 	cfg := DefaultConfig()
 	p := cfg.Lyrics.Panel

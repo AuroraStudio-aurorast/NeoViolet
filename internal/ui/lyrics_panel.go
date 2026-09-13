@@ -7,15 +7,13 @@ import (
 )
 
 // This file holds the panel lyric display mode: a bordered box to the right of
-// the content area showing the current line centred, with context lines above
-// and below. lyrics_one_line.go is the single-row counterpart.
+// the content area showing the current line, with the surrounding lines around
+// it. lyrics_one_line.go is the single-row counterpart.
 //
 // This file is the panel surface: how the box and its rows are drawn. Which
-// lines the panel shows and how they are styled lives in lyrics_panel_window.go.
-
-// panelMaxWrapRows caps how many rows a single lyric line may occupy in the
-// panel; longer text is truncated with an ellipsis.
-const panelMaxWrapRows = 2
+// lines the panel shows, how they are styled, and how many rows of them fit is
+// decided by lyrics_panel_window.go and lyrics_panel_format.go; the wrap limit
+// lives in panelDefaultMaxWrapRows there.
 
 // panelRow is one writable row inside the panel; empty spans mean a blank row.
 type panelRow struct {

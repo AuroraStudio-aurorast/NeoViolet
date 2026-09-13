@@ -37,9 +37,12 @@ type LyricsConfig struct {
 // LyricsPanelConfig controls the right-hand lyrics panel (the "panel" display
 // mode). Width is the total box width including its border and padding.
 type LyricsPanelConfig struct {
-	Mode         string `json:"mode"`          // PanelModeAuto | PanelModeOn | PanelModeOff
-	Width        int    `json:"width"`         // MinPanelWidth..MaxPanelWidth
-	ContextLines int    `json:"context_lines"` // 0..MaxPanelContextLines
+	Mode  string `json:"mode"`  // PanelModeAuto | PanelModeOn | PanelModeOff
+	Width int    `json:"width"` // MinPanelWidth..MaxPanelWidth
+	// ContextLines caps how many lyric lines the panel shows on each side of
+	// the current one. 0 fills every row the box has with lyrics; 1..MaxPanelContextLines
+	// gives a deliberately compact window.
+	ContextLines int `json:"context_lines"` // 0 = fill, else 1..MaxPanelContextLines
 }
 
 // Panel display modes. PanelModeAuto shows the panel only when the content
@@ -49,10 +52,13 @@ const (
 	PanelModeOn   = "on"
 	PanelModeOff  = "off"
 
-	DefaultPanelWidth        = 32 // inner width 28 columns
-	MinPanelWidth            = 24 // inner width 20 columns
-	MaxPanelWidth            = 48
-	DefaultPanelContextLines = 2
+	DefaultPanelWidth = 32 // inner width 28 columns
+	MinPanelWidth     = 24 // inner width 20 columns
+	MaxPanelWidth     = 48
+
+	// DefaultPanelContextLines is 0, i.e. no cap: the panel fills its box with
+	// as many lyric lines as fit.
+	DefaultPanelContextLines = 0
 	MaxPanelContextLines     = 10
 )
 
