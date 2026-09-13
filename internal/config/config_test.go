@@ -259,3 +259,65 @@ func TestCacheDirNonXDG(t *testing.T) {
 		t.Errorf("CacheDir() = %q, want .../caches/lyrics suffix", dir)
 	}
 }
+
+func TestLyricsPanelConfig_Defaults(t *testing.T) {
+	cfg := DefaultConfig()
+	p := cfg.Lyrics.Panel
+	if p.Mode != PanelModeAuto {
+		t.Errorf("Mode = %q, want %q", p.Mode, PanelModeAuto)
+	}
+	if p.Width != DefaultPanelWidth {
+		t.Errorf("Width = %d, want %d", p.Width, DefaultPanelWidth)
+	}
+	if p.ContextLines != DefaultPanelContextLines {
+		t.Errorf("ContextLines = %d, want %d", p.ContextLines, DefaultPanelContextLines)
+	}
+}
+
+func TestConfig_NormalizeLyricsPanel(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          LyricsPanelConfig
+		wantMode    string
+		wantWidth   int
+		wantContext int
+		wantChanged bool
+	}{
+		{"valid values untouched", LyricsPanelConfig{PanelModeOn, 40, 3}, PanelModeOn, 40, 3, false},
+		{"unknown mode falls back to auto", LyricsPanelConfig{"bogus", 32, 2}, PanelModeAuto, 32, 2, true},
+		{"empty mode falls back to auto", LyricsPanelConfig{"", 32, 2}, PanelModeAuto, 32, 2, true},
+		{"width below minimum clamps", LyricsPanelConfig{PanelModeAuto, 10, 2}, PanelModeAuto, MinPanelWidth, 2, true},
+		{"width above maximum clamps", LyricsPanelConfig{PanelModeAuto, 9999, 2}, PanelModeAuto, MaxPanelWidth, 2, true},
+		{"negative width clamps to minimum", LyricsPanelConfig{PanelModeAuto, -5, 2}, PanelModeAuto, MinPanelWidth, 2, true},
+		{"negative context clamps to zero", LyricsPanelConfig{PanelModeAuto, 32, -1}, PanelModeAuto, 32, 0, true},
+		{"large context clamps to maximum", LyricsPanelConfig{PanelModeAuto, 32, 99}, PanelModeAuto, 32, MaxPanelContextLines, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Lyrics.Panel = tc.in
+			changed := cfg.Normalize()
+			got := cfg.Lyrics.Panel
+			if got.Mode != tc.wantMode || got.Width != tc.wantWidth || got.ContextLines != tc.wantContext {
+				t.Errorf("panel = %+v, want {Mode:%q Width:%d ContextLines:%d}", got, tc.wantMode, tc.wantWidth, tc.wantContext)
+			}
+			if changed != tc.wantChanged {
+				t.Errorf("changed = %v, want %v", changed, tc.wantChanged)
+			}
+		})
+	}
+}
+
+// Old config.json files have no "panel" key; Load() starts from DefaultConfig()
+// and unmarshals over it, so the defaults must survive.
+func TestLyricsPanelConfig_OldConfigKeepsDefaults(t *testing.T) {
+	data := []byte(`{"icon_theme":"nerd","lyrics":{"enabled":true,"scroll_speed":6}}`)
+	cfg := DefaultConfig()
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if cfg.Lyrics.Panel.Width != DefaultPanelWidth || cfg.Lyrics.Panel.Mode != PanelModeAuto {
+		t.Errorf("panel defaults lost on old config: %+v", cfg.Lyrics.Panel)
+	}
+}

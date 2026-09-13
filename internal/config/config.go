@@ -31,7 +31,30 @@ type LyricsConfig struct {
 	ScrollSpeed    int               `json:"scroll_speed"`
 	FormatPriority []string          `json:"format_priority"`
 	Fetch          LyricsFetchConfig `json:"fetch"`
+	Panel          LyricsPanelConfig `json:"panel"`
 }
+
+// LyricsPanelConfig controls the right-hand lyrics panel (the "panel" display
+// mode). Width is the total box width including its border and padding.
+type LyricsPanelConfig struct {
+	Mode         string `json:"mode"`          // PanelModeAuto | PanelModeOn | PanelModeOff
+	Width        int    `json:"width"`         // MinPanelWidth..MaxPanelWidth
+	ContextLines int    `json:"context_lines"` // 0..MaxPanelContextLines
+}
+
+// Panel display modes. PanelModeAuto shows the panel only when the content
+// area can keep its minimum width.
+const (
+	PanelModeAuto = "auto"
+	PanelModeOn   = "on"
+	PanelModeOff  = "off"
+
+	DefaultPanelWidth        = 32 // inner width 28 columns
+	MinPanelWidth            = 24 // inner width 20 columns
+	MaxPanelWidth            = 48
+	DefaultPanelContextLines = 2
+	MaxPanelContextLines     = 10
+)
 
 // LyricsFetchConfig controls online lyrics fetching (LRCLIB-compatible API).
 type LyricsFetchConfig struct {
@@ -119,6 +142,8 @@ func (c *Config) Normalize() bool {
 		c.DefaultVolume = normalized
 	}
 
+	normalizeLyricsPanel(&c.Lyrics.Panel)
+
 	f := &c.Lyrics.Fetch
 
 	// base_url: accept only http/https with a non-empty host; strip trailing slash.
@@ -160,12 +185,38 @@ func (c *Config) Normalize() bool {
 	}
 
 	volumeChanged := c.DefaultVolume != orig.DefaultVolume
+	panelChanged := c.Lyrics.Panel != orig.Lyrics.Panel
 	fetchChanged := f.Enabled != orig.Lyrics.Fetch.Enabled ||
 		f.BaseURL != orig.Lyrics.Fetch.BaseURL ||
 		f.Timeout != orig.Lyrics.Fetch.Timeout ||
 		f.Security != orig.Lyrics.Fetch.Security ||
 		f.InsecureTLS != orig.Lyrics.Fetch.InsecureTLS
-	return volumeChanged || fetchChanged
+	return volumeChanged || fetchChanged || panelChanged
+}
+
+// normalizeLyricsPanel clamps the panel settings into their documented ranges.
+// Unknown modes fall back to auto so a hand-edited config never selects an
+// undefined layout.
+func normalizeLyricsPanel(p *LyricsPanelConfig) {
+	switch p.Mode {
+	case PanelModeAuto, PanelModeOn, PanelModeOff:
+	default:
+		p.Mode = PanelModeAuto
+	}
+	p.Width = clampInt(p.Width, MinPanelWidth, MaxPanelWidth)
+	p.ContextLines = clampInt(p.ContextLines, 0, MaxPanelContextLines)
+}
+
+// clampInt constrains v to [lo, hi]. Values at or below lo take lo because an
+// absent JSON key decodes to zero, which is never a usable size here.
+func clampInt(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // isLocalHost reports whether host is localhost/127.x/::1 (plain http allowed).
@@ -206,6 +257,11 @@ func DefaultConfig() Config {
 				Enabled:  true,
 				Timeout:  DefaultFetchTimeout,
 				Security: DefaultSecurity,
+			},
+			Panel: LyricsPanelConfig{
+				Mode:         PanelModeAuto,
+				Width:        DefaultPanelWidth,
+				ContextLines: DefaultPanelContextLines,
 			},
 		},
 		VolumeBar: VolumeBarConfig{
