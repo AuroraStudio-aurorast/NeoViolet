@@ -50,6 +50,12 @@ func wrapSpans(spans []styledSpan, width, maxRows int) [][]styledSpan {
 		}
 
 		for _, r := range sp.Text {
+			if r == '\n' || r == '\r' {
+				// Panel rows are single terminal rows: a newline inside a cue
+				// (multi-line SRT) would break the box, and lipgloss.Width
+				// counts it as zero, so the row would also be mismeasured.
+				r = ' '
+			}
 			rw := lipgloss.Width(string(r))
 			if rw > width {
 				continue // cannot be drawn in this width at all

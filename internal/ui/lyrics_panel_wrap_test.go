@@ -140,6 +140,21 @@ func TestWrapSpans_ZeroWidthTailKeepsEllipsisInside(t *testing.T) {
 	}
 }
 
+// A newline inside a cue (multi-line SRT) must not break the panel row: it is
+// folded to a space so the row stays exactly one terminal row wide.
+func TestWrapSpans_NewlineBecomesSpace(t *testing.T) {
+	got := wrapSpans([]styledSpan{{Text: "line1\nline2", Style: lipgloss.NewStyle()}}, 20, 2)
+	if len(got) != 1 {
+		t.Fatalf("got %d rows, want 1", len(got))
+	}
+	if text := spansText(got[0]); text != "line1 line2" {
+		t.Errorf("row = %q, want %q", text, "line1 line2")
+	}
+	if w := spansWidth(got[0]); w != 11 {
+		t.Errorf("row width = %d, want 11", w)
+	}
+}
+
 // A CJK glyph is 2 cells: in a 1-column panel it simply cannot be drawn, and
 // dropping it is the only way to keep the width contract.
 func TestWrapSpans_DropsUnrepresentableRunes(t *testing.T) {
