@@ -43,3 +43,6 @@ reasonix.toml
 /docs/superpowers/
 # SDD workspace (subagent-driven development ledgers/artifacts)
 /.superpowers/
+
+# Git worktrees (isolated agent workspaces)
+/.worktrees/
