@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
@@ -388,9 +389,56 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "panel":
+		return executeLrcPanelCommand(m, parts)
+
 	default:
-		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, refresh, agent, or desktop)", subcmd), m.Config.Error.Duration)
+		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, refresh, agent, desktop, or panel)", subcmd), m.Config.Error.Duration)
 		return m, nil
+	}
+}
+
+// executeLrcPanelCommand implements ":lrc panel [on|off|auto]". Per design D3
+// the change is session-scoped: the config file only supplies the default mode.
+func executeLrcPanelCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
+	if len(parts) >= 3 {
+		switch mode := parts[2]; mode {
+		case config.PanelModeOn, config.PanelModeOff, config.PanelModeAuto:
+			m.panelMode = mode
+		default:
+			m.Error.Set(fmt.Sprintf("Unknown panel mode: %s (use on, off, or auto)", mode), m.Config.Error.Duration)
+			return m, nil
+		}
+	}
+	m.Info.Set(panelStatusText(m), m.Config.Error.Duration)
+	return m, nil
+}
+
+// panelStatusText describes the effective panel state for the current size, so
+// "nothing happened" is always explained.
+func panelStatusText(m *Model) string {
+	plan := m.layoutPlan()
+	mode := m.panelMode
+	if mode == "" {
+		mode = config.PanelModeAuto
+	}
+
+	switch {
+	case m.UI.Width < minWidth || m.UI.Height < minHeight:
+		// renderMainView shows the resize warning instead of the frame, so the
+		// panel cannot be visible whatever the mode says.
+		return "Lyrics panel: hidden (terminal too small)"
+	case plan.PanelShown:
+		return fmt.Sprintf("Lyrics panel: %s (shown, %d cols)", mode, plan.PanelWidth)
+	case mode == config.PanelModeOff:
+		return "Lyrics panel: off (hidden)"
+	case !m.Audio.ShowLyrics:
+		return "Lyrics panel: hidden (lyrics are off)"
+	default:
+		// panelShown(on) is true for every usable width, so "not shown" here
+		// implies auto: the content area would be squeezed below minWidth.
+		need := minWidth + configuredPanelWidth(m.Config.Lyrics.Panel.Width)
+		return fmt.Sprintf("Lyrics panel: %s (hidden, needs %d cols, now %d)", mode, need, m.UI.Width)
 	}
 }
 

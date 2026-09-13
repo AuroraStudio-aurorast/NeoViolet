@@ -107,3 +107,37 @@ func (d *Data) LineDisplayText(line LyricLine) string {
 	}
 	return fmt.Sprintf("%s: %s", name, line.Text)
 }
+
+// VisibleLine couples a lyric line with its index in Data.Lines, so callers can
+// map back to the original slice (the panel uses the index for karaoke and for
+// locating the current group).
+type VisibleLine struct {
+	Index int
+	Line  LyricLine
+}
+
+// VisibleLines returns the displayable lines in time order: AgentFilter applied
+// and lines whose display text is blank dropped (LRC files commonly use empty
+// lines as separators). The panel builds its context window from this; the
+// one_line renderer keeps using ActiveLines/CurrentLine and is unaffected.
+func (d *Data) VisibleLines() []VisibleLine {
+	if d == nil || len(d.Lines) == 0 {
+		return nil
+	}
+
+	out := make([]VisibleLine, 0, len(d.Lines))
+	for i := range d.Lines {
+		line := d.Lines[i]
+		if d.AgentFilter != "" && line.Agent != d.AgentFilter {
+			continue
+		}
+		if strings.TrimSpace(d.LineDisplayText(line)) == "" {
+			continue
+		}
+		out = append(out, VisibleLine{Index: i, Line: line})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}

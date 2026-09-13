@@ -225,6 +225,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 			CommandInput: ti,
 		},
 		Config:      cfg,
+		panelMode:   cfg.Lyrics.Panel.Mode,
 		Icons:       activeIcons,
 		Error:       &MessageState{},
 		Info:        &MessageState{},
@@ -384,7 +385,11 @@ func (m *Model) saveVolumeConfig() {
 func (m *Model) updatePlaybackState() tea.Cmd {
 	m.Audio.UpdatePosition()
 	m.Audio.UpdateLyricIndex()
-	m.Audio.AdvanceLyricScroll(m.Config.Lyrics.ScrollSpeed, m.UI.Width-6)
+	// The marquee only exists in the one_line footer row; with the panel shown
+	// there is nothing to scroll, so skip the bookkeeping entirely.
+	if plan := m.layoutPlan(); plan.LyricMode == lyricModeOneLine {
+		m.Audio.AdvanceLyricScroll(m.Config.Lyrics.ScrollSpeed, plan.OneLineLyricWidth)
+	}
 	return m.Components.ProgressBar.SetPercent(m.Audio.Progress)
 }
 

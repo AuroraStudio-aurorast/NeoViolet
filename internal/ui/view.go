@@ -7,17 +7,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
-)
-
-const (
-	minWidth      = 68
-	minHeight     = 17
-	tabsHeight    = 3
-	footerHeight  = 6
-	helpHeight    = 1
-	contentOffset = tabsHeight + footerHeight + helpHeight
 )
 
 // loadingFrames is the animated spinner shown during track loading.
@@ -39,9 +28,14 @@ func renderMainView(m *Model) tea.View {
 		return tea.NewView(warnStyle.Width(m.UI.Width).Height(m.UI.Height).Align(lipgloss.Center, lipgloss.Center).Render(msg))
 	}
 
+	plan := m.layoutPlan()
+
 	header := renderTabs(m)
-	content := renderContent(m)
-	footer := renderFooter(m)
+	content := renderContent(m, plan)
+	if plan.PanelShown {
+		content = lipgloss.JoinHorizontal(lipgloss.Top, content, renderLyricsPanel(m, plan))
+	}
+	footer := renderFooter(m, plan)
 	help := renderHelp(m)
 
 	layout := appLayoutStyle.
@@ -93,7 +87,7 @@ func renderTabs(m *Model) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
-func renderContent(m *Model) string {
+func renderContent(m *Model, plan layoutPlan) string {
 	descriptions := map[int]string{
 		0: "Browse your music library and manage the queue",
 		1: "View and manage your playlists",
@@ -111,20 +105,13 @@ func renderContent(m *Model) string {
 		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
-	// When lyrics are rendered in the footer, they take 1 row (footerHeight=6).
-	// Without lyrics the footer is only 5 rows, so content gets that row back.
-	offset := contentOffset
-	if (m.Audio.Lyrics == nil || !m.Audio.ShowLyrics) && !m.LyricsFetching {
-		offset = contentOffset - 1
-	}
-
 	return s.
-		Width(m.UI.Width).
-		Height(m.UI.Height - offset).
+		Width(plan.ContentWidth).
+		Height(plan.ContentHeight).
 		Render(content)
 }
 
-func renderFooter(m *Model) string {
+func renderFooter(m *Model, plan layoutPlan) string {
 	icon := m.Icons.Play
 	if m.Audio.IsPlaying {
 		icon = m.Icons.Pause
@@ -141,13 +128,13 @@ func renderFooter(m *Model) string {
 	} else {
 		songLine = fmt.Sprintf("%s  No audio loaded", m.Icons.Music)
 	}
-	songLine = truncateLine(songLine, m.UI.Width-4)
+	songLine = truncateLine(songLine, plan.Width-4)
 
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
 
 	// Set progress bar width based on available space
 	timeWidth := lipgloss.Width(timeDisplay)
-	pbWidth := m.UI.Width - 4 - timeWidth - 1
+	pbWidth := plan.Width - 4 - timeWidth - 1
 	if pbWidth < 10 {
 		pbWidth = 10
 	}
@@ -180,7 +167,7 @@ func renderFooter(m *Model) string {
 	)
 
 	// Combine play/pause icon (left) and volume section (right-aligned) on one line
-	availableWidth := m.UI.Width - 4
+	availableWidth := plan.Width - 4
 	playWidth := lipgloss.Width(statusLine)
 	volumeWidth := lipgloss.Width(volumeSection)
 	spaceCount := availableWidth - playWidth - volumeWidth
@@ -193,44 +180,13 @@ func renderFooter(m *Model) string {
 		volumeSection,
 	)
 
-	// Lyric rendering: single or multiple lines joined by " | "
-	var lyricText string
-	maxWidth := m.UI.Width - 6
-
-	if m.LyricsFetching && (m.Audio.Lyrics == nil || !m.Audio.ShowLyrics) {
-		lyricText = "[Fetching lyrics...]"
-	} else if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
-		switch {
-		case len(m.Audio.ActiveLyricLines) > 0:
-			active := m.Audio.ActiveLyricLines
-			parts := make([]string, 0, len(active))
-			for _, line := range active {
-				parts = append(parts, m.Audio.Lyrics.LineDisplayText(line))
-			}
-			lyricText = strings.Join(parts, " | ")
-		case m.Audio.LyricNextIndex >= 0 && m.Audio.LyricNextIndex < len(m.Audio.Lyrics.Lines):
-			// Show waiting dots if the total gap (previous line end to next line start)
-			// exceeds 5 seconds, otherwise use a simple placeholder.
-			if m.Audio.LyricGapDuration > 5*time.Second {
-				// Dots animate in the last 3 seconds before the lyric begins.
-				nextLine := m.Audio.Lyrics.Lines[m.Audio.LyricNextIndex]
-				remaining := nextLine.Time - m.Audio.Elapsed
-				secs := remaining.Seconds()
-				dots := buildLyricCountdown(secs, m.Icons.LyricFilled, m.Icons.LyricEmpty)
-				nextText := m.Audio.Lyrics.LineDisplayText(nextLine)
-				lyricText = dots + "  " + nextText
-			} else {
-				lyricText = "-"
-			}
-		default:
-			// Past end or no upcoming lyric: show placeholder
-			lyricText = "-"
-		}
-	}
-
+	// Lyric rendering (one_line mode): at most one row, marquee-scrolled. When
+	// the panel is shown the footer has no lyric row at all.
 	var lyricRows []string
-	if lyricText != "" {
-		lyricRows = append(lyricRows, renderSingleLyricLine(lyricText, maxWidth, m.Audio.LyricScrollOffset, m.Accent))
+	if plan.LyricMode == lyricModeOneLine {
+		if text, ok := renderOneLineLyrics(m, plan.OneLineLyricWidth); ok {
+			lyricRows = append(lyricRows, text)
+		}
 	}
 
 	// Combine all lines vertically
@@ -243,7 +199,7 @@ func renderFooter(m *Model) string {
 		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
-	return s.Width(m.UI.Width).Render(content)
+	return s.Width(plan.Width).Render(content)
 }
 
 func formatDuration(d time.Duration) string {
@@ -270,65 +226,6 @@ func truncateLine(s string, maxWidth int) string {
 		width += cw
 	}
 	return s
-}
-
-// renderSingleLyricLine renders a single lyric line with marquee scroll support.
-func renderSingleLyricLine(lineText string, maxWidth int, scrollOffset int, accent *accent.Accent) string {
-	runes := []rune(lineText)
-	displayWidth := lipgloss.Width(lineText)
-	if displayWidth > maxWidth {
-		start := scrollOffset
-		runeStart := 0
-		for i, w := 0, 0; i < len(runes) && w < start; i++ {
-			w += lipgloss.Width(string(runes[i]))
-			runeStart = i + 1
-		}
-		if runeStart >= len(runes) {
-			runeStart = 0
-		}
-		runeEnd := runeStart
-		for w := 0; runeEnd < len(runes); runeEnd++ {
-			cw := lipgloss.Width(string(runes[runeEnd]))
-			if w+cw > maxWidth {
-				break
-			}
-			w += cw
-		}
-		visible := string(runes[runeStart:runeEnd])
-		padWidth := maxWidth - lipgloss.Width(visible)
-		if padWidth > 0 {
-			visible += fmt.Sprintf("%*s", padWidth, "")
-		}
-		return lyricStyle.
-			Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
-			Width(maxWidth).Render(visible)
-	}
-	return lyricStyle.
-		Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
-		Width(maxWidth).Render(lineText)
-}
-
-// buildLyricCountdown returns a 3-dot countdown string based on seconds remaining
-// until the next lyric line. Icon-theme-aware via filled/empty parameters.
-// Only called when secs > 5 (long gap); the dots animate in the last 3 seconds:
-//
-//	s > 3s:  ○ ○ ○  (long wait, all empty)
-//	2-3s:    ○ ○ ●  (one filled, countdown begins)
-//	1-2s:    ○ ● ●  (two filled)
-//	≤ 1s:    ● ● ●  (all filled, imminent)
-func buildLyricCountdown(secs float64, filled, empty string) string {
-	var a, b, c string
-	switch {
-	case secs > 3:
-		a, b, c = empty, empty, empty
-	case secs > 2:
-		a, b, c = empty, empty, filled
-	case secs > 1:
-		a, b, c = empty, filled, filled
-	default:
-		a, b, c = filled, filled, filled
-	}
-	return a + " " + b + " " + c
 }
 
 func renderHelp(m *Model) string {

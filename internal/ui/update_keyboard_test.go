@@ -487,3 +487,126 @@ func TestHistoryMaxRespected(t *testing.T) {
 		t.Errorf("history.txt has %d lines, want ≤3", len(lines))
 	}
 }
+
+func TestExecuteCommand_lrc_panel_modes(t *testing.T) {
+	cases := []struct {
+		arg  string
+		want string
+	}{
+		{"on", config.PanelModeOn},
+		{"off", config.PanelModeOff},
+		{"auto", config.PanelModeAuto},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.arg, func(t *testing.T) {
+			m := setupModel()
+			setCommand(m, "lrc panel "+tc.arg)
+			executeCommand(m)
+
+			if m.panelMode != tc.want {
+				t.Errorf("panelMode = %q, want %q", m.panelMode, tc.want)
+			}
+			if !m.Info.Visible {
+				t.Error("expected a status message")
+			}
+		})
+	}
+}
+
+func TestExecuteCommand_lrc_panel_invalidMode(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc panel sideways")
+	executeCommand(m)
+
+	if !m.Error.Visible {
+		t.Error("expected an error for an unknown panel mode")
+	}
+	if m.panelMode != "" {
+		t.Errorf("panelMode = %q, want it unchanged", m.panelMode)
+	}
+}
+
+func TestExecuteCommand_lrc_panel_reportsState(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 100, 24
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	if !m.Info.Visible {
+		t.Fatal("expected a status message")
+	}
+	if !strings.Contains(m.Info.Message, "shown") {
+		t.Errorf("status = %q, want it to report the panel as shown at 100 columns", m.Info.Message)
+	}
+	if !strings.Contains(m.Info.Message, "32") {
+		t.Errorf("status = %q, want it to report the panel width", m.Info.Message)
+	}
+}
+
+// Design D3: the command is session-scoped, so the config value is untouched.
+func TestExecuteCommand_lrc_panel_doesNotPersist(t *testing.T) {
+	m := setupModel()
+	before := m.Config.Lyrics.Panel
+
+	setCommand(m, "lrc panel off")
+	executeCommand(m)
+
+	if m.Config.Lyrics.Panel != before {
+		t.Errorf("config panel changed: %+v, want %+v", m.Config.Lyrics.Panel, before)
+	}
+}
+
+// With the panel hidden because the terminal is narrow, the status must say so
+// instead of leaving the user wondering why nothing appeared.
+func TestExecuteCommand_lrc_panel_reportsHidden(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 80, 24
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "hidden") {
+		t.Errorf("status = %q, want it to report the panel as hidden", m.Info.Message)
+	}
+}
+
+// A terminal that is too short shows the resize warning instead of the frame,
+// so the status must not claim the panel is visible.
+func TestExecuteCommand_lrc_panel_reportsTooSmall(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 100, 10
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "too small") {
+		t.Errorf("status = %q, want it to report the terminal as too small", m.Info.Message)
+	}
+	if strings.Contains(m.Info.Message, "shown") {
+		t.Errorf("status = %q must not claim the panel is shown", m.Info.Message)
+	}
+}
+
+func TestExecuteCommand_lrc_panel_reportsLyricsOff(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 100, 24
+	m.Audio.ShowLyrics = false
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "lyrics are off") {
+		t.Errorf("status = %q, want it to report lyrics as off", m.Info.Message)
+	}
+}
+
+// mode=off can never show the panel, so the status must spell out that the
+// panel is hidden rather than leaving the mode name to imply it.
+func TestExecuteCommand_lrc_panel_reportsOff(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 200, 24
+	setCommand(m, "lrc panel off")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "off (hidden)") {
+		t.Errorf("status = %q, want it to report the panel as off", m.Info.Message)
+	}
+}
