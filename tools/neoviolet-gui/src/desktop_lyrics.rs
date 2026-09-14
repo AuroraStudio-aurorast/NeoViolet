@@ -7,7 +7,7 @@
 use gpui::*;
 use std::sync::{Arc, Mutex};
 
-use crate::ipc::{IpcClient, LyricLineData};
+use crate::ipc::{IpcClient, LyricLineData, split_line};
 use crate::state::{AppState, LyricsState};
 use crate::util::hex_to_hsla;
 
@@ -457,7 +457,7 @@ fn find_active_lines(lines: &[LyricLineData], elapsed: f64) -> Vec<String> {
     let elapsed_ms = (elapsed * 1000.0) as u64;
     let any_bounded = lines.iter().any(|l| l.end > 0.0);
 
-    let raw: Vec<String> = if any_bounded {
+    let active: Vec<&LyricLineData> = if any_bounded {
         lines
             .iter()
             .filter(|l| {
@@ -465,27 +465,21 @@ fn find_active_lines(lines: &[LyricLineData], elapsed: f64) -> Vec<String> {
                     && (l.time * 1000.0) as u64 <= elapsed_ms
                     && elapsed_ms < (l.end * 1000.0) as u64
             })
-            .map(|l| l.text.clone())
             .collect()
     } else {
         lines
             .iter()
             .rfind(|l| (l.time * 1000.0) as u64 <= elapsed_ms)
-            .map(|l| l.text.clone())
             .into_iter()
             .collect()
     };
 
-    // Split LRC-merged " | " lines so each language is its own sub-line.
+    // split_line expands the parser's display parts and falls back to the
+    // legacy " | " split for an older TUI, so a merged line is always one
+    // sub-line per language.
     let mut out = Vec::new();
-    for text in raw {
-        if text.contains(" | ") {
-            for part in text.split(" | ") {
-                out.push(part.to_string());
-            }
-        } else {
-            out.push(text);
-        }
+    for line in active {
+        out.extend(split_line(line));
     }
     out
 }
@@ -529,6 +523,7 @@ mod tests {
                 time: 0.0,
                 end: 0.0,
                 text: "one".into(),
+                parts: Vec::new(),
                 agent: None,
                 agent_name: None,
             },
@@ -536,6 +531,7 @@ mod tests {
                 time: 5.0,
                 end: 0.0,
                 text: "two".into(),
+                parts: Vec::new(),
                 agent: None,
                 agent_name: None,
             },
@@ -543,6 +539,7 @@ mod tests {
                 time: 10.0,
                 end: 0.0,
                 text: "three".into(),
+                parts: Vec::new(),
                 agent: None,
                 agent_name: None,
             },
@@ -550,5 +547,18 @@ mod tests {
         let active = find_active_lines(&lines, 6.0);
         assert!(active.iter().any(|t| t.contains("two")));
         assert!(!active.iter().any(|t| t.contains("three")));
+    }
+
+    #[test]
+    fn find_active_lines_uses_parts() {
+        let lines = vec![LyricLineData {
+            time: 5.0,
+            end: 0.0,
+            text: "hello | 你好".to_string(),
+            parts: vec!["hello".to_string(), "你好".to_string()],
+            agent: None,
+            agent_name: None,
+        }];
+        assert_eq!(find_active_lines(&lines, 6.0), vec!["hello", "你好"]);
     }
 }
