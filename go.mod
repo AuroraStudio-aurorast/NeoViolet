@@ -17,7 +17,7 @@ require (
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/gotracker/playback v1.5.0
 	github.com/jpodeszfa/go-meltysynth v1.0.1
-	github.com/lucasb-eyer/go-colorful v1.4.0
+	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/pion/opus v0.1.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/text v0.40.0
