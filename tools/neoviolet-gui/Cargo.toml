@@ -7,7 +7,7 @@ license = "GPL-3.0-or-later"
 
 [dependencies]
 gpui = { package = "gpui-ce", version = "0.3", features = ["runtime_shaders"] }
-yororen_ui = "0.2"
+yororen_ui = "0.3"
 alacritty_terminal = "0.26"
 portable-pty = "0.9"
 anyhow = "1"

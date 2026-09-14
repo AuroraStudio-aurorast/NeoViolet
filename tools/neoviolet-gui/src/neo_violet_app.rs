@@ -8,7 +8,7 @@
 use gpui::prelude::*;
 use gpui::*;
 use std::sync::{Arc, Mutex};
-use yororen_ui::theme::ActiveTheme;
+use yororen_ui::headless::modal::ModalState;
 
 use crate::app::TerminalApp;
 use crate::components;
@@ -30,6 +30,17 @@ pub struct NeoVioletApp {
     pub opacity: f32,
     /// Caches file paths between FileDropEvent::Entered and ::Submit.
     drop_paths_cache: Arc<Mutex<Vec<String>>>,
+    /// Dialog state entities. yororen-ui 0.3's modal renderer draws nothing
+    /// until its `ModalState` is open, and the flags that decide this are set
+    /// from threads that cannot touch a gpui entity (the IPC path raises the
+    /// quit dialog from the socket thread), so the flags stay the source of
+    /// truth and `render` mirrors them into these entities. Titles are not set
+    /// here: this renderer never reads them, our own shell draws the visible
+    /// heading.
+    about_modal: Entity<ModalState>,
+    close_modal: Entity<ModalState>,
+    error_modal: Entity<ModalState>,
+    bad_args_modal: Entity<ModalState>,
 }
 
 impl NeoVioletApp {
@@ -49,6 +60,18 @@ impl NeoVioletApp {
             exit_output: String::new(),
             opacity,
             drop_paths_cache: Arc::new(Mutex::new(Vec::new())),
+            about_modal: ModalState::new(cx),
+            close_modal: ModalState::new(cx),
+            error_modal: ModalState::new(cx),
+            bad_args_modal: ModalState::new(cx),
+        }
+    }
+
+    /// Match a dialog's state entity to the flag that drives it. Guarded
+    /// because `update` notifies observers and `render` runs every frame.
+    fn sync_modal(state: &Entity<ModalState>, open: bool, cx: &mut Context<Self>) {
+        if state.read(cx).is_open() != open {
+            state.update(cx, |s, _| if open { s.open() } else { s.close() });
         }
     }
 
@@ -320,6 +343,15 @@ impl Render for NeoVioletApp {
         };
         let any_dialog = self.show_exit_error || show_close || show_about;
 
+        Self::sync_modal(&self.about_modal, show_about, cx);
+        Self::sync_modal(&self.close_modal, show_close, cx);
+        Self::sync_modal(
+            &self.error_modal,
+            self.show_exit_error && !self.exit_is_bad_args,
+            cx,
+        );
+        Self::sync_modal(&self.bad_args_modal, self.exit_is_bad_args, cx);
+
         if any_dialog {
             if !self.focus_handle.is_focused(window) {
                 window.focus(&self.focus_handle);
@@ -411,7 +443,7 @@ impl Render for NeoVioletApp {
                             .id("aria:region:titlebar")
                             .w_full()
                             .h(px(28.0))
-                            .bg(cx.theme().surface.sunken)
+                            .bg(crate::theme_colors::sunken(cx))
                             .flex()
                             .flex_row()
                             .items_center()
@@ -432,7 +464,7 @@ impl Render for NeoVioletApp {
                                             .id("aria:titlebar:title")
                                             .font_weight(FontWeight::SEMIBOLD)
                                             .text_sm()
-                                            .text_color(cx.theme().content.secondary)
+                                            .text_color(crate::theme_colors::secondary(cx))
                                             .child(self.current_title.clone()),
                                     )
                                     .child(div().flex_grow()),
@@ -454,12 +486,14 @@ impl Render for NeoVioletApp {
         let base = if self.exit_is_bad_args {
             base.child(components::render_bad_args_dialog(
                 cx,
+                &self.bad_args_modal,
                 &self.exit_output,
                 dismiss_exit,
             ))
         } else if self.show_exit_error {
             base.child(components::render_error_dialog(
                 cx,
+                &self.error_modal,
                 "NeoViolet Exited",
                 &exit_msg,
                 "Restart",
@@ -471,13 +505,22 @@ impl Render for NeoVioletApp {
         };
 
         let base = if show_close {
-            base.child(components::render_close_dialog(cx, cancel_close, do_quit))
+            base.child(components::render_close_dialog(
+                cx,
+                &self.close_modal,
+                cancel_close,
+                do_quit,
+            ))
         } else {
             base
         };
 
         if show_about {
-            base.child(components::render_about_dialog(cx, dismiss_about))
+            base.child(components::render_about_dialog(
+                cx,
+                &self.about_modal,
+                dismiss_about,
+            ))
         } else {
             base
         }
