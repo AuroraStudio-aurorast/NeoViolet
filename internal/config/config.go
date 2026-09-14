@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 
@@ -34,11 +35,45 @@ type LyricsConfig struct {
 	Panel          LyricsPanelConfig `json:"panel"`
 }
 
+// PanelWidth is the configured lyrics-panel width: a column count, or
+// PanelWidthAuto to let the panel size itself from the terminal.
+type PanelWidth int
+
+// PanelWidthAuto asks the panel to take a share of the terminal width instead
+// of a fixed column count. It is the zero value, so a config written before
+// this field existed gets the terminal-relative panel too.
+const PanelWidthAuto PanelWidth = 0
+
+// UnmarshalJSON accepts either a column count or the word "auto", so a
+// hand-written config can say what it means.
+func (w *PanelWidth) UnmarshalJSON(data []byte) error {
+	if strings.EqualFold(string(data), `"auto"`) {
+		*w = PanelWidthAuto
+		return nil
+	}
+	var n int
+	if err := json.Unmarshal(data, &n); err != nil {
+		return fmt.Errorf("panel width: want a column count or \"auto\": %w", err)
+	}
+	// Negative counts are left as they are; Normalize clamps them so an odd
+	// hand-edited value degrades instead of failing the whole config load.
+	*w = PanelWidth(n)
+	return nil
+}
+
+// MarshalJSON writes auto back as "auto" so a saved config stays readable.
+func (w PanelWidth) MarshalJSON() ([]byte, error) {
+	if w == PanelWidthAuto {
+		return []byte(`"auto"`), nil
+	}
+	return []byte(strconv.Itoa(int(w))), nil
+}
+
 // LyricsPanelConfig controls the right-hand lyrics panel (the "panel" display
 // mode). Width is the total box width including its border and padding.
 type LyricsPanelConfig struct {
-	Mode  string `json:"mode"`  // PanelModeAuto | PanelModeOn | PanelModeOff
-	Width int    `json:"width"` // MinPanelWidth..MaxPanelWidth
+	Mode  string     `json:"mode"`  // PanelModeAuto | PanelModeOn | PanelModeOff
+	Width PanelWidth `json:"width"` // PanelWidthAuto, or MinPanelWidth..MaxPanelWidth
 	// ContextLines caps how many lyric lines the panel shows on each side of
 	// the current one. 0 fills every row the box has with lyrics; 1..MaxPanelContextLines
 	// gives a deliberately compact window.
@@ -52,9 +87,9 @@ const (
 	PanelModeOn   = "on"
 	PanelModeOff  = "off"
 
-	DefaultPanelWidth = 32 // inner width 28 columns
-	MinPanelWidth     = 24 // inner width 20 columns
-	MaxPanelWidth     = 48
+	// Panel width bounds. The default is PanelWidthAuto (see PanelWidth).
+	MinPanelWidth = 24 // inner width 20 columns
+	MaxPanelWidth = 48 // inner width 44 columns
 
 	// DefaultPanelContextLines is 0, i.e. no cap: the panel fills its box with
 	// as many lyric lines as fit.
@@ -209,12 +244,17 @@ func normalizeLyricsPanel(p *LyricsPanelConfig) {
 	default:
 		p.Mode = PanelModeAuto
 	}
-	p.Width = clampInt(p.Width, MinPanelWidth, MaxPanelWidth)
+	// Auto width is a deliberate choice, not an absent key, so it must not be
+	// clamped up to MinPanelWidth.
+	if p.Width != PanelWidthAuto {
+		p.Width = PanelWidth(clampInt(int(p.Width), MinPanelWidth, MaxPanelWidth))
+	}
 	p.ContextLines = clampInt(p.ContextLines, 0, MaxPanelContextLines)
 }
 
-// clampInt constrains v to [lo, hi]. Values at or below lo take lo because an
-// absent JSON key decodes to zero, which is never a usable size here.
+// clampInt constrains v to [lo, hi]. An absent JSON key decodes to zero, which
+// is never a usable value except in fields where zero is a documented choice
+// (the panel width and context cap; see normalizeLyricsPanel).
 func clampInt(v, lo, hi int) int {
 	if v < lo {
 		return lo
@@ -266,7 +306,7 @@ func DefaultConfig() Config {
 			},
 			Panel: LyricsPanelConfig{
 				Mode:         PanelModeAuto,
-				Width:        DefaultPanelWidth,
+				Width:        PanelWidthAuto,
 				ContextLines: DefaultPanelContextLines,
 			},
 		},

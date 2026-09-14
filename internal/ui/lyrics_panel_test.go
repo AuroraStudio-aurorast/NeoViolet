@@ -21,7 +21,7 @@ func panelModel(t *testing.T, contextLines int) *Model {
 	m.Audio.Player = &mockPlayer{}
 	m.Config.Lyrics.Panel = config.LyricsPanelConfig{
 		Mode:         config.PanelModeAuto,
-		Width:        config.DefaultPanelWidth,
+		Width:        testPanelWidth,
 		ContextLines: contextLines,
 	}
 	m.panelMode = config.PanelModeAuto

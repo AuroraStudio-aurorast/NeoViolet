@@ -8,12 +8,95 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
+// testPanelWidth is a fixed width for the layout tables; auto widths have
+// their own cases in TestAutoPanelWidth.
+const testPanelWidth = 32 // inner width 28 columns
+
 func input(mode string, showLyrics, oneLineVisible bool) layoutInput {
 	return layoutInput{
 		PanelMode:      mode,
-		PanelWidth:     config.DefaultPanelWidth,
+		PanelWidth:     testPanelWidth,
 		ShowLyrics:     showLyrics,
 		OneLineVisible: oneLineVisible,
+	}
+}
+
+func autoInput(mode string) layoutInput {
+	return layoutInput{
+		PanelMode:      mode,
+		PanelWidthAuto: true,
+		ShowLyrics:     true,
+		OneLineVisible: true,
+	}
+}
+
+// auto derives the width from the terminal: 30% of the columns, floored at
+// MinPanelWidth, capped at MaxPanelWidth and never starving the content area.
+func TestAutoPanelWidth(t *testing.T) {
+	cases := []struct {
+		w       int
+		want    int
+		wantFit bool
+	}{
+		// min(48, w-68) < 24: no room for a usable panel next to a minWidth content area.
+		{68, 0, false}, {80, 0, false}, {91, 0, false},
+		// w-68 binds in this narrow band (0.3w meets w-68 at w = 97).
+		{92, config.MinPanelWidth, true}, {96, 28, true}, {97, 29, true},
+		// 30% binds from here on.
+		{100, 30, true}, {110, 33, true}, {120, 36, true}, {140, 42, true},
+		// MaxPanelWidth binds from 160 up.
+		{160, config.MaxPanelWidth, true}, {200, config.MaxPanelWidth, true},
+	}
+
+	for _, tc := range cases {
+		got, ok := panelWidthFor(tc.w, autoInput(config.PanelModeAuto))
+		if ok != tc.wantFit {
+			t.Errorf("w=%d: fit = %v, want %v", tc.w, ok, tc.wantFit)
+		}
+		if got != tc.want {
+			t.Errorf("w=%d: width = %d, want %d", tc.w, got, tc.want)
+		}
+	}
+}
+
+// A configured width is used as given, defensively clamped even though
+// Normalize already did it.
+func TestPanelWidthFor_Configured(t *testing.T) {
+	for _, tc := range []struct {
+		in   int
+		want int
+	}{{40, 40}, {0, config.MinPanelWidth}, {-5, config.MinPanelWidth}, {9999, config.MaxPanelWidth}} {
+		got, ok := panelWidthFor(200, layoutInput{PanelWidth: tc.in})
+		if !ok || got != tc.want {
+			t.Errorf("width %d: got (%d, %v), want (%d, true)", tc.in, got, ok, tc.want)
+		}
+	}
+}
+
+// Auto widths change where the panel appears: it now fits from 92 columns on,
+// at the minimum width, instead of only from 100 with a 32-column box.
+func TestComputeLayout_AutoWidth(t *testing.T) {
+	if p := computeLayout(91, 24, autoInput(config.PanelModeAuto)); p.PanelShown {
+		t.Errorf("auto panel must not show at 91 columns: %+v", p)
+	}
+
+	p := computeLayout(92, 24, autoInput(config.PanelModeAuto))
+	if !p.PanelShown || p.PanelWidth != config.MinPanelWidth {
+		t.Errorf("92 columns: %+v, want a %d-column panel", p, config.MinPanelWidth)
+	}
+	if p.ContentWidth != minWidth {
+		t.Errorf("ContentWidth = %d, want %d", p.ContentWidth, minWidth)
+	}
+
+	p = computeLayout(140, 36, autoInput(config.PanelModeAuto))
+	if !p.PanelShown || p.PanelWidth != 42 || p.ContentWidth != 98 {
+		t.Errorf("140 columns: %+v, want a 42-column panel and 98 content columns", p)
+	}
+
+	// mode=on still forces a panel on a narrow terminal, at the floor.
+	p = computeLayout(80, 24, autoInput(config.PanelModeOn))
+	if !p.PanelShown || p.PanelWidth != config.MinPanelWidth {
+		t.Errorf("forced on at 80 columns: %+v, want a %d-column panel", p, config.MinPanelWidth)
 	}
 }
 
@@ -189,10 +272,11 @@ func TestComputeLayout_Defensive(t *testing.T) {
 		}
 	}
 
-	// Unknown mode behaves as auto; a zero/negative width falls back to the default.
+	// Unknown mode behaves as auto; a zero/negative width is a programming
+	// error, so it falls back to the smallest usable box.
 	in := layoutInput{PanelMode: "bogus", PanelWidth: 0, ShowLyrics: true, OneLineVisible: true}
 	p := computeLayout(100, 24, in)
-	if !p.PanelShown || p.PanelWidth != config.DefaultPanelWidth {
+	if !p.PanelShown || p.PanelWidth != config.MinPanelWidth {
 		t.Errorf("bogus mode / zero width: %+v", p)
 	}
 }
@@ -201,7 +285,7 @@ func TestComputeLayout_Defensive(t *testing.T) {
 func TestLayoutPlan_MapsModelState(t *testing.T) {
 	m := setupModel()
 	m.UI.Width, m.UI.Height = 100, 24
-	m.Config.Lyrics.Panel.Width = config.DefaultPanelWidth
+	m.Config.Lyrics.Panel.Width = testPanelWidth
 	m.Audio.ShowLyrics = true
 
 	// A sparse test config leaves panelMode empty; it must behave as auto.

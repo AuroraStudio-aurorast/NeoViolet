@@ -29,6 +29,11 @@ const (
 	// oneLineWidthInset is the footer chrome the one_line lyric row leaves
 	// free: border (2) + padding (2) + 2 spare columns.
 	oneLineWidthInset = 6
+
+	// autoPanelRatioNum/Den is the share of the terminal an auto-width panel
+	// asks for: 3/10 = 30%.
+	autoPanelRatioNum = 3
+	autoPanelRatioDen = 10
 )
 
 // lyricDisplayMode selects which lyric surface is rendered in a frame.
@@ -42,7 +47,8 @@ const (
 // layoutInput is the runtime state computeLayout depends on.
 type layoutInput struct {
 	PanelMode      string // auto | on | off
-	PanelWidth     int    // configured panel width including borders
+	PanelWidth     int    // configured width including borders; ignored when PanelWidthAuto
+	PanelWidthAuto bool   // derive the width from the terminal instead
 	ShowLyrics     bool   // AudioState.ShowLyrics
 	OneLineVisible bool   // the footer needs its lyric row
 }
@@ -80,13 +86,18 @@ func computeLayout(w, h int, in layoutInput) layoutPlan {
 	if mode != config.PanelModeOn && mode != config.PanelModeOff {
 		mode = config.PanelModeAuto // "" and unknown values behave as auto
 	}
-	panelWidth := configuredPanelWidth(in.PanelWidth)
+	panelWidth, fits := panelWidthFor(w, in)
+	if !fits && mode == config.PanelModeOn {
+		// A forced panel still appears on a narrow terminal: the content area
+		// gives way down to the smallest usable box instead of losing the panel.
+		panelWidth, fits = config.MinPanelWidth, true
+	}
 
 	p := layoutPlan{Width: w, Height: h}
 
 	// :lrc off hides the whole panel so the content area gets the columns back;
 	// a track without lyrics keeps the panel and shows a placeholder instead.
-	if in.ShowLyrics && panelShown(mode, w, panelWidth) {
+	if in.ShowLyrics && fits && panelShown(mode, w, panelWidth) {
 		p.PanelShown = true
 		p.PanelWidth = effectivePanelWidth(mode, w, panelWidth)
 		p.PanelInnerW = p.PanelWidth - panelBorderW - 2*panelPaddingH
@@ -109,11 +120,43 @@ func computeLayout(w, h int, in layoutInput) layoutPlan {
 	return p
 }
 
-// configuredPanelWidth normalizes the configured width: the zero value comes
-// from configs written before this field existed.
-func configuredPanelWidth(width int) int {
-	if width <= 0 {
-		return config.DefaultPanelWidth
+// panelWidthFor resolves the panel's column count for a w-wide terminal.
+//
+// auto asks for autoPanelRatio of the terminal, floored at MinPanelWidth and
+// capped by both MaxPanelWidth and whatever is left once the content area keeps
+// its minimum width. fit=false means no auto panel is usable at that width. A
+// configured width is returned as given, defensively clamped.
+func panelWidthFor(w int, in layoutInput) (width int, fit bool) {
+	if !in.PanelWidthAuto {
+		return clampPanelWidth(in.PanelWidth), true
+	}
+
+	maxW := config.MaxPanelWidth
+	if room := w - minWidth; room < maxW {
+		maxW = room
+	}
+	if maxW < config.MinPanelWidth {
+		return 0, false
+	}
+
+	// autoPanelRatio of the terminal, kept inside the configured bounds and then
+	// capped by whatever the content area can spare (maxW >= MinPanelWidth here,
+	// so the two never fight).
+	width = clampPanelWidth(w * autoPanelRatioNum / autoPanelRatioDen)
+	if width > maxW {
+		width = maxW
+	}
+	return width, true
+}
+
+// clampPanelWidth keeps a width inside the documented bounds. Normalize already
+// clamps config values, so this only guards programmatic callers.
+func clampPanelWidth(width int) int {
+	if width < config.MinPanelWidth {
+		return config.MinPanelWidth
+	}
+	if width > config.MaxPanelWidth {
+		return config.MaxPanelWidth
 	}
 	return width
 }
@@ -151,7 +194,8 @@ func effectivePanelWidth(mode string, w, panelWidth int) int {
 func (m *Model) layoutPlan() layoutPlan {
 	return computeLayout(m.UI.Width, m.UI.Height, layoutInput{
 		PanelMode:      m.panelMode,
-		PanelWidth:     m.Config.Lyrics.Panel.Width,
+		PanelWidth:     int(m.Config.Lyrics.Panel.Width),
+		PanelWidthAuto: m.Config.Lyrics.Panel.Width == config.PanelWidthAuto,
 		ShowLyrics:     m.Audio.ShowLyrics,
 		OneLineVisible: m.oneLineVisible(),
 	})

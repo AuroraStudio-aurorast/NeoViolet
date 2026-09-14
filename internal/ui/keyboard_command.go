@@ -429,7 +429,11 @@ func panelStatusText(m *Model) string {
 		// panel cannot be visible whatever the mode says.
 		return "Lyrics panel: hidden (terminal too small)"
 	case plan.PanelShown:
-		return fmt.Sprintf("Lyrics panel: %s (shown, %d cols)", mode, plan.PanelWidth)
+		note := ""
+		if m.Config.Lyrics.Panel.Width == config.PanelWidthAuto {
+			note = ", auto width"
+		}
+		return fmt.Sprintf("Lyrics panel: %s (shown, %d cols%s)", mode, plan.PanelWidth, note)
 	case mode == config.PanelModeOff:
 		return "Lyrics panel: off (hidden)"
 	case !m.Audio.ShowLyrics:
@@ -437,7 +441,12 @@ func panelStatusText(m *Model) string {
 	default:
 		// panelShown(on) is true for every usable width, so "not shown" here
 		// implies auto: the content area would be squeezed below minWidth.
-		need := minWidth + configuredPanelWidth(m.Config.Lyrics.Panel.Width)
+		// An auto width needs the smallest box, a configured one its own.
+		width := m.Config.Lyrics.Panel.Width
+		if width == config.PanelWidthAuto {
+			width = config.MinPanelWidth
+		}
+		need := minWidth + int(width)
 		return fmt.Sprintf("Lyrics panel: %s (hidden, needs %d cols, now %d)", mode, need, m.UI.Width)
 	}
 }

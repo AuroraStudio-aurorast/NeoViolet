@@ -20,7 +20,7 @@ func lyricFooterModel() *Model {
 	m.UI.Width, m.UI.Height = 80, 24
 	m.Config.Lyrics.Panel = config.LyricsPanelConfig{
 		Mode:         config.PanelModeAuto,
-		Width:        config.DefaultPanelWidth,
+		Width:        testPanelWidth,
 		ContextLines: config.DefaultPanelContextLines,
 	}
 	m.Audio.Lyrics = &lyrics.Data{Lines: []lyrics.LyricLine{

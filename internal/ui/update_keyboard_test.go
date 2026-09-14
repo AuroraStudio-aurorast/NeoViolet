@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -539,8 +540,40 @@ func TestExecuteCommand_lrc_panel_reportsState(t *testing.T) {
 	if !strings.Contains(m.Info.Message, "shown") {
 		t.Errorf("status = %q, want it to report the panel as shown at 100 columns", m.Info.Message)
 	}
-	if !strings.Contains(m.Info.Message, "32") {
-		t.Errorf("status = %q, want it to report the panel width", m.Info.Message)
+	// The default width is auto, which is 30% of 100 columns, and the status
+	// must say where that number came from.
+	if !strings.Contains(m.Info.Message, "30 cols") || !strings.Contains(m.Info.Message, "auto width") {
+		t.Errorf("status = %q, want it to report the auto width (30 cols)", m.Info.Message)
+	}
+}
+
+// A configured width is reported as-is, without the auto note.
+func TestExecuteCommand_lrc_panel_reportsFixedWidth(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 100, 24
+	m.Config.Lyrics.Panel.Width = testPanelWidth
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	if !strings.Contains(m.Info.Message, "32 cols") {
+		t.Errorf("status = %q, want it to report the configured 32 columns", m.Info.Message)
+	}
+	if strings.Contains(m.Info.Message, "auto width") {
+		t.Errorf("status = %q must not claim an auto width", m.Info.Message)
+	}
+}
+
+// Below 92 columns an auto panel has no usable width, so the status must ask
+// for that number instead of the configured width.
+func TestExecuteCommand_lrc_panel_reportsAutoNeeds(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 91, 24
+	setCommand(m, "lrc panel")
+	executeCommand(m)
+
+	want := fmt.Sprintf("needs %d cols", minWidth+config.MinPanelWidth)
+	if !strings.Contains(m.Info.Message, want) {
+		t.Errorf("status = %q, want it to contain %q", m.Info.Message, want)
 	}
 }
 

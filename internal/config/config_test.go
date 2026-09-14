@@ -276,11 +276,74 @@ func TestLyricsPanelConfig_Defaults(t *testing.T) {
 	if p.Mode != PanelModeAuto {
 		t.Errorf("Mode = %q, want %q", p.Mode, PanelModeAuto)
 	}
-	if p.Width != DefaultPanelWidth {
-		t.Errorf("Width = %d, want %d", p.Width, DefaultPanelWidth)
+	if p.Width != PanelWidthAuto {
+		t.Errorf("Width = %d, want auto (the panel sizes itself from the terminal)", p.Width)
 	}
 	if p.ContextLines != DefaultPanelContextLines {
 		t.Errorf("ContextLines = %d, want %d", p.ContextLines, DefaultPanelContextLines)
+	}
+}
+
+// The width accepts a column count or the word "auto". A value that is not a
+// number and not "auto" is a config error, but a negative number is not: it is
+// left for Normalize to clamp so an odd hand-edited value degrades instead of
+// failing the whole load.
+func TestPanelWidth_Unmarshal(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      string
+		want    PanelWidth
+		wantErr bool
+	}{
+		{"auto", `"auto"`, PanelWidthAuto, false},
+		{"auto is case insensitive", `"AUTO"`, PanelWidthAuto, false},
+		{"column count", `40`, 40, false},
+		{"negative is left for Normalize to clamp", `-5`, -5, false},
+		{"unknown word", `"wide"`, 0, true},
+		{"wrong type", `true`, 0, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got PanelWidth
+			err := json.Unmarshal([]byte(tc.in), &got)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("unmarshal(%s) = %d, want an error", tc.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unmarshal(%s): %v", tc.in, err)
+			}
+			if got != tc.want {
+				t.Errorf("unmarshal(%s) = %d, want %d", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// auto must survive a save/load cycle as the word "auto", not as a bare 0.
+func TestPanelWidth_Marshal(t *testing.T) {
+	for _, tc := range []struct {
+		in   PanelWidth
+		want string
+	}{{PanelWidthAuto, `"auto"`}, {32, `32`}, {48, `48`}} {
+		got, err := json.Marshal(tc.in)
+		if err != nil {
+			t.Fatalf("marshal(%d): %v", tc.in, err)
+		}
+		if string(got) != tc.want {
+			t.Errorf("marshal(%d) = %s, want %s", tc.in, got, tc.want)
+		}
+	}
+
+	data, err := json.Marshal(DefaultConfig().Lyrics.Panel)
+	if err != nil {
+		t.Fatalf("marshal panel: %v", err)
+	}
+	if !strings.Contains(string(data), `"width":"auto"`) {
+		t.Errorf("panel json = %s, want a readable auto width", data)
 	}
 }
 
@@ -289,11 +352,13 @@ func TestConfig_NormalizeLyricsPanel(t *testing.T) {
 		name        string
 		in          LyricsPanelConfig
 		wantMode    string
-		wantWidth   int
+		wantWidth   PanelWidth
 		wantContext int
 		wantChanged bool
 	}{
 		{"valid values untouched", LyricsPanelConfig{PanelModeOn, 40, 3}, PanelModeOn, 40, 3, false},
+		{"auto width is not clamped to the minimum", LyricsPanelConfig{PanelModeAuto, PanelWidthAuto, 0}, PanelModeAuto, PanelWidthAuto, 0, false},
+		{"auto width survives mode on", LyricsPanelConfig{PanelModeOn, PanelWidthAuto, 2}, PanelModeOn, PanelWidthAuto, 2, false},
 		{"unknown mode falls back to auto", LyricsPanelConfig{"bogus", 32, 2}, PanelModeAuto, 32, 2, true},
 		{"empty mode falls back to auto", LyricsPanelConfig{"", 32, 2}, PanelModeAuto, 32, 2, true},
 		{"width below minimum clamps", LyricsPanelConfig{PanelModeAuto, 10, 2}, PanelModeAuto, MinPanelWidth, 2, true},
@@ -327,7 +392,7 @@ func TestLyricsPanelConfig_OldConfigKeepsDefaults(t *testing.T) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	if cfg.Lyrics.Panel.Width != DefaultPanelWidth || cfg.Lyrics.Panel.Mode != PanelModeAuto {
+	if cfg.Lyrics.Panel.Width != PanelWidthAuto || cfg.Lyrics.Panel.Mode != PanelModeAuto {
 		t.Errorf("panel defaults lost on old config: %+v", cfg.Lyrics.Panel)
 	}
 }
