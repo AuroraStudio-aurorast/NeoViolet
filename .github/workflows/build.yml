@@ -46,8 +46,13 @@ jobs:
         run: ${{ matrix.install_cmd }} ${{ matrix.apt || matrix.brew }}
       - name: Setup Rust
         run: rustup show || rustup default stable
-      - name: Go vet
-        run: go vet ./...
+      # The standalone `go vet ./...` step was removed on purpose: golangci-lint
+      # below runs govet (default: standard) over the same tree and, unlike raw
+      # go vet, it honours //nolint directives — which the Linux-only MPRIS code
+      # needs, because the spec fixes method names (Seek, OpenUri) that govet's
+      # io.Seeker/var-naming heuristics misread as bugs. Raw `go vet` cannot be
+      # silenced per declaration, so keeping it here made this job fail for
+      # every PR (including Rust-only ones) and masked the five steps below it.
       - name: Go tests (race)
         run: go test -race -count=1 ./...
       - name: Lint (golangci-lint)
@@ -89,6 +94,15 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+      # govulncheck type-checks and builds every package, so it needs the same
+      # C system libraries as the test job. Without them the cgo audio backend
+      # fails with "could not import C (no metadata for C)" and the scan never
+      # actually ran — which is why this job has been red since it was added.
+      - name: Install system dependencies
+        run: >-
+          sudo apt-get update -qq &&
+          sudo apt-get install -y -qq clang pkg-config make libasound2-dev
+          libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 

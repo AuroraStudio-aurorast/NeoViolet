@@ -115,7 +115,12 @@ test/cover:
 # --- Code quality ---
 
 vet:
-	$(GO) vet ./...
+	@# stdmethods is relaxed for internal/mediactl only: its MPRIS D-Bus methods
+	@# must keep the names and signatures the spec defines (Seek, OpenUri), which
+	@# govet's io.Seeker heuristic misreads as a bug. `make lint` still enforces it
+	@# for the rest of the tree through golangci-lint's govet, which honours nolint.
+	@pkgs="$$($(GO) list ./... | grep -v '/internal/mediactl$$')" && $(GO) vet $$pkgs
+	$(GO) vet -stdmethods=false ./internal/mediactl/...
 
 lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then \

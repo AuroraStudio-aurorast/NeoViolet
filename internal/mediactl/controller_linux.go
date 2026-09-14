@@ -57,20 +57,25 @@ func (c *linuxController) connect() error {
 
 	reply, err := conn.RequestName(mprisBusName, dbus.NameFlagDoNotQueue)
 	if err != nil {
-		conn.Close()
+		// Discarding this connection: its close error cannot change the outcome,
+		// and the request-name error is the one worth reporting.
+		_ = conn.Close()
 		return fmt.Errorf("mediactl: request name %s: %w", mprisBusName, err)
 	}
 	if reply != dbus.RequestNameReplyPrimaryOwner {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("mediactl: name %s already taken", mprisBusName)
 	}
 
 	rootObj := &mprisRoot{}
 	playerObj := &mprisPlayerObj{ctrl: c}
 
-	conn.Export(rootObj, mprisObjectPath, mprisRootIface)
-	conn.Export(playerObj, mprisObjectPath, mprisPlayerIface)
-	conn.Export(playerObj, mprisObjectPath, propsIface)
+	// Media control is a best-effort side channel: a failed export means no
+	// client can drive us, which must not stop playback, so these errors are
+	// deliberately dropped (same reasoning as the deferred closes below).
+	_ = conn.Export(rootObj, mprisObjectPath, mprisRootIface)
+	_ = conn.Export(playerObj, mprisObjectPath, mprisPlayerIface)
+	_ = conn.Export(playerObj, mprisObjectPath, propsIface)
 
 	c.conn = conn
 	return nil
@@ -176,16 +181,18 @@ func (c *linuxController) Update(state PlayState) {
 
 	c.state = state
 
-	// Emit PropertiesChanged for standard property updates
+	// Emit PropertiesChanged for standard property updates. Signal delivery is
+	// fire-and-forget: a client that misses an update re-reads the properties,
+	// so the error is intentionally not acted on.
 	if len(changed) > 0 {
-		c.conn.Emit(mprisObjectPath, "org.freedesktop.DBus.Properties.PropertiesChanged",
+		_ = c.conn.Emit(mprisObjectPath, "org.freedesktop.DBus.Properties.PropertiesChanged",
 			mprisPlayerIface, changed, []string{})
 	}
 
 	// Emit Seeked signal per MPRIS spec — required when position changes
 	// from non-MPRIS sources (keyboard seek, next-track, etc.)
 	if seekedSignal {
-		c.conn.Emit(mprisObjectPath, "org.mpris.MediaPlayer2.Player.Seeked",
+		_ = c.conn.Emit(mprisObjectPath, "org.mpris.MediaPlayer2.Player.Seeked",
 			int64(state.Position/time.Microsecond))
 	}
 }
@@ -203,7 +210,9 @@ func (c *linuxController) Close() error {
 	close(c.done)
 
 	if c.conn != nil {
-		c.conn.Close()
+		// Best effort: we are shutting down, so the caller has nothing useful
+		// to do with a session-bus close error.
+		_ = c.conn.Close()
 	}
 	if c.cmdChan != nil {
 		close(c.cmdChan)
@@ -238,9 +247,11 @@ func (o *mprisPlayerObj) Play() *dbus.Error { o.ctrl.cmdChan <- Command{Type: Cm
 
 // Seek seeks relative to the current position (MPRIS x: Offset, microseconds).
 //
-// the go vet stdmethods warning about an io.Seeker signature is a false positive.
+// The name and signature are fixed by the MPRIS D-Bus interface, so they cannot
+// match io.Seeker: govet's stdmethods heuristic is a false positive here.
+// (A nolint directive must name the linter — "govet" — not the analyzer.)
 //
-//nolint:stdmethods // D-Bus method name Seek intentionally shadows io.Seeker;
+//nolint:govet // MPRIS fixes this method name and signature.
 func (o *mprisPlayerObj) Seek(offset int64) *dbus.Error {
 	o.ctrl.cmdChan <- Command{Type: CmdSeek, Value: offset}
 	return nil
@@ -265,6 +276,11 @@ func (o *mprisPlayerObj) SetPosition(trackID dbus.ObjectPath, pos int64) *dbus.E
 
 // OpenUri is not supported: SupportedUriSchemes is empty (see rootProps), so
 // spec-compliant clients should not call it; report the error honestly.
+//
+// The MPRIS spec spells this method "OpenUri", so revive's var-naming rule
+// (which would want "OpenURI") does not apply.
+//
+//nolint:revive // MPRIS fixes this method name.
 func (o *mprisPlayerObj) OpenUri(uri string) *dbus.Error {
 	return dbus.NewError("org.freedesktop.DBus.Error.NotSupported", []any{"OpenUri is not supported"})
 }
