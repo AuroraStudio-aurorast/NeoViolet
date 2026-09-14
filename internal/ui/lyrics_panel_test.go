@@ -508,3 +508,116 @@ func TestRenderLyricsPanel_ExtremeSizes(t *testing.T) {
 		}
 	}
 }
+
+// panelPartsModel is panelModel with a single event that carries several
+// display parts — what a bilingual LRC line or a multi-line SRT cue produces.
+func panelPartsModel(t *testing.T, contextLines int, parts []string) *Model {
+	t.Helper()
+	m := panelModel(t, contextLines)
+	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
+		Time:  0,
+		Text:  strings.Join(parts, " | "),
+		Parts: parts,
+	}}}
+	m.Audio.Elapsed = 0
+	m.Audio.UpdateLyricIndex()
+	return m
+}
+
+// One event with N parts occupies N rows (F1/F2): the second language is no
+// longer truncated away at the end of the first part's wrapped rows.
+func TestPanelWindow_MergedPartsEachGetARow(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	// A one-line song is shorter than the box, so anchorRows hugs the top
+	// (aboveRows=0 < the one-third target) and the group starts on row 0.
+	const anchor = 0
+
+	if got := panelRowText(rows[anchor]); got != "The rain I hear falls" {
+		t.Errorf("row %d = %q, want the first part", anchor, got)
+	}
+	if got := panelRowText(rows[anchor+1]); got != "我听见雨滴落在青青草地" {
+		t.Errorf("row %d = %q, want the second part", anchor+1, got)
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// MaxWrapRows caps each part, not the event: two long parts occupy four rows
+// between them, and the group stops there.
+func TestPanelWindow_WrapCapIsPerPart(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{strings.Repeat("a", 40), strings.Repeat("b", 40)})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	const anchor = 0 // a one-line song hugs the top, see the test above
+
+	for i, want := range []string{"a", "a", "b", "b"} {
+		got := panelRowText(rows[anchor+i])
+		if got == "" || !strings.HasPrefix(got, want) {
+			t.Errorf("row %d = %q, want a %q row (part %d)", anchor+i, got, want, i/2)
+		}
+	}
+	if got := panelRowText(rows[anchor+4]); got != "" {
+		t.Errorf("row %d = %q, want empty: the group is at most 2 rows per part", anchor+4, got)
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// context_lines counts lyric lines, not rows (F4): a two-row event above the
+// current line spends one of the two allowed context lines.
+func TestPanelWindow_PartCountsAsOneContextLine(t *testing.T) {
+	m := panelModel(t, 2)
+	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{
+		{Time: 0, Text: "prev | 上一句", Parts: []string{"prev", "上一句"}},
+		{Time: 5 * time.Second, Text: "current"},
+		{Time: 10 * time.Second, Text: "next"},
+	}}
+	m.Audio.Elapsed = 5 * time.Second
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	anchor := panelAnchor(plan.PanelInnerH)
+
+	if got := panelRowText(rows[anchor-2]); got != "prev" {
+		t.Errorf("row %d = %q, want the first half of the context event", anchor-2, got)
+	}
+	if got := panelRowText(rows[anchor-1]); got != "上一句" {
+		t.Errorf("row %d = %q, want the second half of the context event", anchor-1, got)
+	}
+	if got := panelRowText(rows[anchor]); got != "current" {
+		t.Errorf("row %d = %q, want the current line", anchor, got)
+	}
+}
+
+// Five long parts are ten rows in a thirteen-row box (F3): nothing panics, the
+// group is truncated to the box, and every row stays inside it.
+func TestPanelWindow_FivePartsTruncateToInnerH(t *testing.T) {
+	parts := make([]string, 5)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("part%d %s", i+1, strings.Repeat("x", 30))
+	}
+	m := panelPartsModel(t, 0, parts)
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+
+	if len(rows) != plan.PanelInnerH {
+		t.Fatalf("rows = %d, want %d", len(rows), plan.PanelInnerH)
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// A blank part is data, not content: it never becomes a row.
+func TestPanelWindow_BlankPartProducesNoRow(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"kept", "   "})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	const anchor = 0 // a one-line song hugs the top, see the first test in this file
+
+	if got := panelRowText(rows[anchor]); got != "kept" {
+		t.Errorf("row %d = %q, want %q", anchor, got, "kept")
+	}
+	if got := panelRowText(rows[anchor+1]); got != "" {
+		t.Errorf("row %d = %q, want no row for the blank part", anchor+1, got)
+	}
+}
