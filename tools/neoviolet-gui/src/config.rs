@@ -220,4 +220,74 @@ mod tests {
         let cfg = toml::from_str::<GuiConfig>("not valid toml [[[").unwrap_or_default();
         assert!(cfg.desktop_lyrics.font_size > 0);
     }
+
+    /// `load_or_create` rewrites neoviolet_gui.toml on every launch (to capture
+    /// fields that Default filled in), so the text form has to be a fixed point:
+    /// what we write must parse back to the same values and re-serialize to the
+    /// same bytes. This is what was worth checking in the toml 0.8 -> 1.x bump,
+    /// where float formatting changed.
+    #[test]
+    fn config_toml_round_trip_is_a_fixed_point() {
+        let original = GuiConfig::default();
+        let first = toml::to_string_pretty(&original).expect("serialize defaults");
+        let parsed: GuiConfig = toml::from_str(&first).expect("parse what we just wrote");
+        let second = toml::to_string_pretty(&parsed).expect("re-serialize");
+
+        assert_eq!(
+            first, second,
+            "rewriting the config file changed its bytes, so every launch would dirty it",
+        );
+        assert_eq!(parsed.monospace_font, original.monospace_font);
+        assert_eq!(parsed.font_size, original.font_size);
+        assert_eq!(parsed.opacity, original.opacity);
+        assert_eq!(parsed.zoom_via_scroll, original.zoom_via_scroll);
+        assert_eq!(
+            parsed.desktop_lyrics.opacity,
+            original.desktop_lyrics.opacity
+        );
+        assert_eq!(
+            parsed.desktop_lyrics.num_lines,
+            original.desktop_lyrics.num_lines
+        );
+        assert_eq!(
+            parsed.desktop_lyrics.text_color,
+            original.desktop_lyrics.text_color
+        );
+    }
+
+    /// Both opacity fields are f32, and toml prints the shortest string that
+    /// round-trips. Reading that string back must reproduce the same bits rather
+    /// than a merely close value: the old serializer emitted the f32 widened to
+    /// f64 (0.8500000238418579), which was ugly but lossless, and a serializer
+    /// that instead rounded would silently shift every user's saved opacity.
+    #[test]
+    fn f32_opacity_survives_the_text_form_exactly() {
+        for value in [0.0f32, 0.1, 0.33, 0.5, 0.85, 1.0, 0.123_456_79] {
+            // Built in one initializer on purpose: clippy's
+            // field_reassign_with_default rejects assigning into a struct that
+            // Default::default() just produced.
+            let cfg = GuiConfig {
+                opacity: value,
+                desktop_lyrics: DesktopLyricsConfig {
+                    opacity: value,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+
+            let text = toml::to_string_pretty(&cfg).expect("serialize");
+            let back: GuiConfig = toml::from_str(&text).expect("parse");
+
+            assert_eq!(
+                back.opacity.to_bits(),
+                value.to_bits(),
+                "window opacity {value} lost precision, file was: {text}",
+            );
+            assert_eq!(
+                back.desktop_lyrics.opacity.to_bits(),
+                value.to_bits(),
+                "desktop lyrics opacity {value} lost precision, file was: {text}",
+            );
+        }
+    }
 }

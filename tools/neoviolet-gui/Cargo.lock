@@ -3390,7 +3390,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
- "toml 0.8.23",
+ "toml 1.1.2+spec-1.1.0",
  "yororen_ui",
 ]
 
