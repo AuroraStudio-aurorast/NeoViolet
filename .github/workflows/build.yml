@@ -10,18 +10,38 @@ on:
   schedule:
     - cron: "0 3 * * 1"
 
+# Pin every toolchain. One of the gates is `make tidy/check`, whose result
+# depends on the Go version, and the linters decide pass/fail themselves, so a
+# floating `stable`/`latest` can turn CI red without a code change.
 env:
-  GO_VERSION: stable
+  GO_VERSION: "1.27.1"
+  RUST_VERSION: "1.98.0"
+  GOLANGCI_VERSION: v2.13.2
+  GOVULNCHECK_VERSION: v1.8.0
   LIBOPENMPT_VERSION: 0.8.7
 
+# Actions are pinned to commit SHAs because a tag is mutable: a retagged or
+# compromised release would otherwise run arbitrary code in this workflow.
+#   actions/checkout@v7               3d3c42e5aac5ba805825da76410c181273ba90b1
+#   actions/setup-go@v7               b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+#   actions/upload-artifact@v7       043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+#   golangci/golangci-lint-action@v9 ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
+#   msys2/setup-msys2@v2             66cd2cce69caa17b53920067426061ca1de3a884
+# Least privilege: nothing in this workflow writes to the repository.
+permissions:
+  contents: read
+
+# Cancel superseded runs on pull requests only. On main a cancelled run means no
+# green result exists for the commit that landed.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
     name: test-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       CGO_ENABLED: 1
     strategy:
@@ -29,68 +49,68 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            apt: "clang pkg-config make libasound2-dev libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev"
-            install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
+            apt: >-
+              clang pkg-config make libasound2-dev libopenmpt-dev
+              libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+            install_cmd: >-
+              sudo apt-get update -qq &&
+              sudo apt-get install -y -qq
           - os: macos-latest
             brew: "pkg-config make libopenmpt"
             install_cmd: "brew install"
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Install system dependencies
         run: ${{ matrix.install_cmd }} ${{ matrix.apt || matrix.brew }}
+      # Pinned instead of `stable`; clippy and rustfmt ship with the toolchain.
       - name: Setup Rust
-        run: rustup show || rustup default stable
-      # The standalone `go vet ./...` step was removed on purpose: golangci-lint
-      # below runs govet (default: standard) over the same tree and, unlike raw
-      # go vet, it honours //nolint directives — which the Linux-only MPRIS code
-      # needs, because the spec fixes method names (Seek, OpenUri) that govet's
-      # io.Seeker/var-naming heuristics misread as bugs. Raw `go vet` cannot be
-      # silenced per declaration, so keeping it here made this job fail for
-      # every PR (including Rust-only ones) and masked the five steps below it.
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal \
+            --component clippy,rustfmt
+          rustup default "$RUST_VERSION"
+      # Every gate below is a `make` target, so CI and a developer's machine run
+      # the same commands. The previous inline `go vet ./...` step is gone: it
+      # could not honour //nolint, so the Linux-only MPRIS code failed it on
+      # every pull request — including Rust-only ones — and masked the five
+      # steps that followed.
       - name: Go tests (race)
-        run: go test -race -count=1 ./...
+        run: make test/race
       - name: Lint (golangci-lint)
-        uses: golangci/golangci-lint-action@v9
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
         with:
-          version: latest
+          version: ${{ env.GOLANGCI_VERSION }}
       - name: Rust tests
-        run: |
-          cargo test --manifest-path tools/apecli/Cargo.toml
-          cargo test --manifest-path tools/neoviolet-gui/Cargo.toml
+        run: make test/rust
       - name: Rust fmt + clippy
-        run: |
-          cd tools/neoviolet-gui && cargo fmt -- --check && cargo clippy --all-targets -- -D warnings
+        run: make lint/rust
       - name: Coverage gate
-        run: |
-          go test -count=1 -coverprofile=coverage.out ./...
-          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
-          echo "total coverage: ${total}%"
-          if [ "$(echo "$total < 50" | bc)" = "1" ]; then
-            echo "::error::coverage ${total}% is below the 50% gate"
-            exit 1
-          fi
+        run: make test/coverage
       - name: go mod tidy check
-        run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum || { echo "go.mod/go.sum out of date; run go mod tidy"; exit 1; }
+        run: make tidy/check
       - name: Line length gate
         run: make check/linelength
 
   security:
     name: govulncheck
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'push'
+    # Also runs on pull requests, so a new vulnerability surfaces before merge
+    # instead of only on the weekly schedule.
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -104,11 +124,15 @@ jobs:
           sudo apt-get install -y -qq clang pkg-config make libasound2-dev
           libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
       - name: govulncheck
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: >-
+          go run
+          golang.org/x/vuln/cmd/govulncheck@${{ env.GOVULNCHECK_VERSION }}
+          ./...
 
   unix:
     name: ${{ matrix.os }}-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     env:
       CGO_ENABLED: 1
       GOOS: ${{ matrix.os == 'macos' && 'darwin' || 'linux' }}
@@ -121,15 +145,23 @@ jobs:
             runner: ubuntu-latest
             cc: clang
             cxx: clang++
-            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev"
-            install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
+            pkgs: >-
+              clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev
+              libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+            install_cmd: >-
+              sudo apt-get update -qq &&
+              sudo apt-get install -y -qq
           - os: linux
             goarch: arm64
             runner: ubuntu-24.04-arm
             cc: clang
             cxx: clang++
-            pkgs: "clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev"
-            install_cmd: "sudo apt-get update -qq && sudo apt-get install -y -qq"
+            pkgs: >-
+              clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev
+              libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+            install_cmd: >-
+              sudo apt-get update -qq &&
+              sudo apt-get install -y -qq
           - os: macos
             goarch: amd64
             runner: macos-15-intel
@@ -146,22 +178,31 @@ jobs:
             install_cmd: "brew update && brew install"
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Setup Go
-        uses: actions/setup-go@v7
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Install system dependencies
         run: ${{ matrix.install_cmd }} ${{ matrix.pkgs }}
+      # Pinned instead of `stable`, matching the test job.
       - name: Setup Rust
-        run: rustup show || rustup default stable
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup default "$RUST_VERSION"
       - name: Set version info
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          # Use the runner's environment variables instead of GitHub expression
+          # interpolation: a tag name is repository-controlled text, and
+          # interpolating it into a shell script is a script-injection vector.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
           else
-            echo "VERSION=dev-r${{ github.run_id }}-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+            sha=$(git rev-parse --short HEAD)
+            echo "VERSION=dev-r${GITHUB_RUN_ID}-$sha" >> $GITHUB_ENV
           fi
       - name: Build binary
         run: |
@@ -171,7 +212,7 @@ jobs:
           export CXX="${{ matrix.cxx }}"
           make build
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: neoviolet-${{ matrix.os }}-${{ matrix.goarch }}
           path: |
@@ -183,6 +224,7 @@ jobs:
   windows:
     name: windows-${{ matrix.goarch }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
     env:
       CGO_ENABLED: 1
       GOOS: windows
@@ -217,9 +259,11 @@ jobs:
         shell: msys2 {0}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
       - name: Setup MSYS2
-        uses: msys2/setup-msys2@v2
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884
         with:
           msystem: ${{ matrix.msystem }}
           update: true
@@ -239,10 +283,12 @@ jobs:
           path-type: inherit
       - name: Set version info
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-            echo "VERSION=${{ github.ref_name }}" >> $GITHUB_ENV
+          # Same reasoning as the unix job: prefer env vars over interpolation.
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
           else
-            echo "VERSION=dev-r${{ github.run_id }}-$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+            sha=$(git rev-parse --short HEAD)
+            echo "VERSION=dev-r${GITHUB_RUN_ID}-$sha" >> $GITHUB_ENV
           fi
       - name: Build binary
         run: |
@@ -268,7 +314,8 @@ jobs:
           while [ ${#to_process[@]} -gt 0 ]; do
             current="${to_process[0]}"
             to_process=("${to_process[@]:1}")
-            deps=$(objdump -p "$current" | grep "DLL Name" | awk '{print $3}' | sort -u)
+            deps=$(objdump -p "$current" | grep "DLL Name" | awk '{print $3}' \
+              | sort -u)
             for dll in $deps; do
               if [[ "$dll" =~ $SYSTEM_DLLS ]] || [[ -v seen[$dll] ]]; then
                 continue
@@ -285,7 +332,7 @@ jobs:
           done
           ls -lh dist/
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: neoviolet-windows-${{ matrix.goarch }}
           path: dist/
