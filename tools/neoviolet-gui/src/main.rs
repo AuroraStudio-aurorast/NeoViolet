@@ -15,7 +15,9 @@ mod terminal;
 mod util;
 
 use gpui::*;
-use std::sync::{Arc, Mutex, OnceLock};
+#[cfg(target_os = "macos")]
+use std::sync::OnceLock;
+use std::sync::{Arc, Mutex};
 use yororen_ui::assets::UiAsset;
 use yororen_ui::component;
 use yororen_ui::i18n::{I18n, Locale};
