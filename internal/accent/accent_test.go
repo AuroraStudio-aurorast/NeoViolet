@@ -77,6 +77,11 @@ func TestDeriveRanges(t *testing.T) {
 		{R: 0.5, G: 0.5, B: 0.5},                         // gray (zero chroma path)
 	}
 
+	// L* is read back through an Hcl → RGB → Hcl round-trip, which is not
+	// bit-exact: on amd64 the clamped 0.93 comes back as 0.9300000000000003.
+	// This tolerance is far below any perceptible colour difference.
+	const eps = 1e-9
+
 	for i, seed := range seeds {
 		a := derive(seed)
 
@@ -86,19 +91,19 @@ func TestDeriveRanges(t *testing.T) {
 		_, _, lyL := a.Lyric.Hcl()
 
 		// liftToVisible clamps Main L* to [0.35, 0.75].
-		if mainL < 0.35 || mainL > 0.75 {
+		if mainL < 0.35-eps || mainL > 0.75+eps {
 			t.Errorf("seed %d: Main L* = %v, want [0.35, 0.75]", i, mainL)
 		}
 		// derive: paL = min(mainL*1.25, 0.88).
-		if paL < 0.4375 || paL > 0.88 {
+		if paL < 0.4375-eps || paL > 0.88+eps {
 			t.Errorf("seed %d: ProgressA L* = %v, want [0.4375, 0.88]", i, paL)
 		}
 		// derive: pbL = max(mainL*0.65, 0.25).
-		if pbL < 0.25 || pbL > 0.4875 {
+		if pbL < 0.25-eps || pbL > 0.4875+eps {
 			t.Errorf("seed %d: ProgressB L* = %v, want [0.25, 0.4875]", i, pbL)
 		}
 		// derive: lyL = min(mainL*1.55, 0.93).
-		if lyL < 0.5425 || lyL > 0.93 {
+		if lyL < 0.5425-eps || lyL > 0.93+eps {
 			t.Errorf("seed %d: Lyric L* = %v, want [0.5425, 0.93]", i, lyL)
 		}
 	}
