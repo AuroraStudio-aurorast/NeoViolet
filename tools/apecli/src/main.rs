@@ -8,8 +8,8 @@ const HEADER_SIZE: u32 = 28;
 
 #[repr(C, packed)]
 struct OutputHeader {
-    magic: [u8; 4],         // "APEP"
-    header_size: u32,       // 28
+    magic: [u8; 4],   // "APEP"
+    header_size: u32, // 28
     sample_rate: u32,
     channels: u16,
     bits_per_sample: u16,
