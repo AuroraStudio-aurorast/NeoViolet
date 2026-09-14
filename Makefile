@@ -106,11 +106,24 @@ test/rust:
 
 lint/rust:
 	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, skipping Rust lint"; exit 0; fi
+	cd $(APECLI_DIR) && cargo fmt --check && cargo clippy --all-targets -- -D warnings
 	cd $(GUI_DIR) && cargo fmt --check && cargo clippy --all-targets -- -D warnings
 
 test/cover:
 	$(GO) test -coverprofile=coverage.out ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
+
+# Lower bound on total coverage. CI runs this same target, so raising it here is
+# enough to tighten the gate everywhere.
+COVERAGE_MIN ?= 50
+
+test/coverage:
+	$(GO) test -coverprofile=coverage.out $(TEST_FLAGS) ./...
+	@total=$$($(GO) tool cover -func=coverage.out | tail -1 | awk '{print $$3}' | tr -d '%'); \
+	echo "total coverage: $${total}%"; \
+	if [ "$$(awk -v t="$${total}" -v m="$(COVERAGE_MIN)" 'BEGIN { print (t < m) ? 1 : 0 }')" = "1" ]; then \
+		echo "coverage $${total}% is below the $(COVERAGE_MIN)% gate"; exit 1; \
+	fi
 
 # --- Code quality ---
 
@@ -149,6 +162,11 @@ check/linelength:
 
 tidy:
 	$(GO) mod tidy
+
+# Read-only counterpart of `make tidy` (go mod tidy -diff exits non-zero when
+# go.mod/go.sum need changes). CI runs this instead of mutating the checkout.
+tidy/check:
+	$(GO) mod tidy -diff
 
 # --- Clean ---
 
