@@ -46,3 +46,7 @@ reasonix.toml
 
 # Git worktrees (isolated agent workspaces)
 /.worktrees/
+
+# Coverage artifacts written by `make test/cover` / `make test/coverage`
+/coverage.out
+/coverage.html
