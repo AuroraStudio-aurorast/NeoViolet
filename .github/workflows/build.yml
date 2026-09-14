@@ -91,11 +91,17 @@ jobs:
         run: make test/rust
       - name: Rust fmt + clippy
         run: make lint/rust
+      # These three are platform-independent, and the coverage run recompiles
+      # every package with instrumentation, so paying for them twice doubled the
+      # test job's runtime. Linux runs them; macOS skips them.
       - name: Coverage gate
+        if: matrix.os == 'ubuntu-latest'
         run: make test/coverage
       - name: go mod tidy check
+        if: matrix.os == 'ubuntu-latest'
         run: make tidy/check
       - name: Line length gate
+        if: matrix.os == 'ubuntu-latest'
         run: make check/linelength
 
   security:
