@@ -19,6 +19,30 @@ type LyricLine struct {
 	Text  string
 	Words []WordFragment
 	Agent string // agent ID (e.g. "v1", "v2") or "" for no agent
+
+	// Parts holds the display sub-lines of an event that carries more than one
+	// line of text: LRC merges same-timestamp entries and a SRT cue can have
+	// several lines. nil means "plain line, Text is the only display source",
+	// which keeps every parser and renderer that ignores sub-lines untouched.
+	// Invariant: Parts != nil implies len(Parts) >= 2.
+	Parts []string
+}
+
+// PartCount returns how many display rows this line has; always at least 1.
+func (l LyricLine) PartCount() int {
+	if len(l.Parts) == 0 {
+		return 1
+	}
+	return len(l.Parts)
+}
+
+// Part returns the i-th display sub-line. i must be in [0, PartCount()); for a
+// line without Parts every i returns Text, so callers can loop uniformly.
+func (l LyricLine) Part(i int) string {
+	if len(l.Parts) == 0 {
+		return l.Text
+	}
+	return l.Parts[i]
 }
 
 // Data is the parsed lyric result returned by parsers.
