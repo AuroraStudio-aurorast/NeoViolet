@@ -6,18 +6,18 @@ require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.7
 	charm.land/huh/v2 v2.0.3
-	charm.land/lipgloss/v2 v2.0.4
-	charm.land/log/v2 v2.0.0
+	charm.land/lipgloss/v2 v2.0.5
+	charm.land/log/v2 v2.0.1
 	github.com/EdlinOrg/prominentcolor v1.0.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
-	github.com/ebitengine/purego v0.10.1
-	github.com/gen2brain/mpeg v0.5.0
+	github.com/ebitengine/purego v0.11.0
+	github.com/gen2brain/mpeg v0.6.2
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/gotracker/playback v1.5.0
 	github.com/jpodeszfa/go-meltysynth v1.0.1
-	github.com/lucasb-eyer/go-colorful v1.4.0
+	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/pion/opus v0.1.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/text v0.40.0
