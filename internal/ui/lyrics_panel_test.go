@@ -621,3 +621,61 @@ func TestPanelWindow_BlankPartProducesNoRow(t *testing.T) {
 		t.Errorf("row %d = %q, want no row for the blank part", anchor+1, got)
 	}
 }
+
+// Simultaneous events at the same instant (bilingual ESLRC) are all current
+// (F9/D13). The parser returns only one of them as active, so the other one is
+// a context row in the window: without the same-instant rule it renders grey
+// while its twin is highlighted.
+func TestPanelWindow_SameTimeLinesAreBothCurrent(t *testing.T) {
+	m := panelModel(t, 0)
+	m.Audio.Lyrics = &lyrics.Data{Format: "eslrc", Lines: []lyrics.LyricLine{
+		{Time: 0, Text: "The rain I hear falls"},
+		{Time: 0, Text: "我听见雨滴落在青青草地"},
+	}}
+	m.Audio.Elapsed = 0
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	current := panelCurrentStyle(m).Render("x")
+
+	lit := 0
+	for _, r := range rows {
+		if len(r.spans) == 1 && r.spans[0].Style.Render("x") == current {
+			lit++
+		}
+	}
+	if lit != 2 {
+		t.Errorf("rows rendered with the current style = %d, want 2 (both same-instant lines)", lit)
+	}
+}
+
+// A line that is merely between two active lines is not current (F8/D13): the
+// window still spans first..last, but styling is decided per line.
+func TestPanelWindow_SandwichedLineStaysContext(t *testing.T) {
+	m := panelModel(t, 0)
+	m.Audio.Lyrics = &lyrics.Data{Format: "ttml", Lines: []lyrics.LyricLine{
+		{Time: 0, End: 10 * time.Second, Text: "A: first line"},
+		{Time: 5 * time.Second, End: 6 * time.Second, Text: "B: in between"},
+		{Time: 6 * time.Second, End: 12 * time.Second, Text: "C: overlapping"},
+	}}
+	m.Audio.Elapsed = 7 * time.Second // A and C are active, B is not
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	current := panelCurrentStyle(m).Render("x")
+
+	texts := make([]string, len(rows))
+	lit := make([]bool, len(rows))
+	for i, r := range rows {
+		texts[i] = panelRowText(r)
+		lit[i] = len(r.spans) == 1 && r.spans[0].Style.Render("x") == current
+	}
+	want := map[string]bool{"A: first line": true, "B: in between": false, "C: overlapping": true}
+	for i, text := range texts {
+		if expected, ok := want[text]; ok && lit[i] != expected {
+			t.Errorf("row %d (%q) current=%v, want %v", i, text, lit[i], expected)
+		}
+	}
+}

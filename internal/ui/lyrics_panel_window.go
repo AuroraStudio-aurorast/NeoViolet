@@ -34,10 +34,14 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 
 	format := panelFormatFor(m)
 	first, last, highlight := panelCurrent(m, visible)
+	currentTime := visible[first].Line.Time
+	lit := func(line lyrics.LyricLine) bool {
+		return panelLineIsCurrent(m, line, currentTime, highlight)
+	}
 
 	cur := make([]panelRow, 0, len(visible))
 	for pos := first; pos <= last; pos++ {
-		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, format.MaxWrapRows, highlight)...)
+		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, format.MaxWrapRows, lit(visible[pos].Line))...)
 	}
 	if len(cur) == 0 {
 		return rows
@@ -48,8 +52,8 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 
 	// Gather both sides in display order: the anchor decides how much of each
 	// survives, so an over-long side is trimmed back towards the group.
-	above := format.collectRows(m, visible, first-1, -1, innerW, innerH)
-	below := format.collectRows(m, visible, last+1, 1, innerW, innerH)
+	above := format.collectRows(m, visible, first-1, -1, innerW, innerH, lit)
+	below := format.collectRows(m, visible, last+1, 1, innerW, innerH, lit)
 
 	anchor := format.anchorRows(innerH, len(cur), len(above), len(below))
 	if len(above) > anchor {
@@ -116,6 +120,19 @@ func lineIsActive(line lyrics.LyricLine, active []lyrics.LyricLine) bool {
 		}
 	}
 	return false
+}
+
+// panelLineIsCurrent reports whether a line is drawn as "current": one of the
+// parser's active lines, or a visible line at the same instant as the current
+// group. The second rule lights up simultaneous lines that arrive as separate
+// events (bilingual ESLRC, overlapping spans) without merging them, and judging
+// each line instead of the whole first..last range stops the window from
+// lighting lines that merely sit between two active ones.
+func panelLineIsCurrent(m *Model, line lyrics.LyricLine, currentTime time.Duration, hasCurrent bool) bool {
+	if lineIsActive(line, m.Audio.ActiveLyricLines) {
+		return true
+	}
+	return hasCurrent && line.Time == currentTime
 }
 
 // panelLineRows renders one lyric line into panel rows: one block per display
