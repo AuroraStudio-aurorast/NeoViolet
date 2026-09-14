@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -285,6 +287,51 @@ func TestRenderMainView_FrameInvariants(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+// A multi-line subtitle cue is one event with two display rows. Its Text used
+// to carry a raw \n, which lipgloss treats as a hard line break: the footer grew
+// a row and the frame no longer matched the terminal height. This is the red
+// test the SRT fix turns green. The cue goes through the real SRT producer, so a
+// raw \n can only disappear if the parser stops emitting one.
+func TestRenderMainView_SRTMultiLineCueKeepsFrame(t *testing.T) {
+	dir := t.TempDir()
+	srt := "1\n00:00:01,000 --> 00:00:04,000\nFirst subtitle line\n\n" +
+		"2\n00:00:05,000 --> 00:00:08,000\nSecond subtitle text\nSecond line continues\n"
+	if err := os.WriteFile(filepath.Join(dir, "song.srt"), []byte(srt), 0o600); err != nil {
+		t.Fatalf("write sidecar: %v", err)
+	}
+	data, err := lyrics.FindAndParse(filepath.Join(dir, "song.mp3"), []string{"srt"})
+	if err != nil {
+		t.Fatalf("FindAndParse() error: %v", err)
+	}
+	if data == nil || len(data.Lines) != 2 {
+		t.Fatalf("FindAndParse() = %v, want 2 parsed cues", data)
+	}
+
+	m := setupModel()
+	m.Config.Lyrics.Panel = config.LyricsPanelConfig{
+		Mode:         config.PanelModeOff,
+		Width:        testPanelWidth,
+		ContextLines: config.DefaultPanelContextLines,
+	}
+	m.panelMode = config.PanelModeOff
+	m.Audio.Lyrics = data
+	m.Audio.ShowLyrics = true
+	_, _ = handleResize(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	m.Audio.Elapsed = 5 * time.Second
+	m.Audio.UpdateLyricIndex()
+
+	lines := strings.Split(renderMainView(m).Content, "\n")
+	if len(lines) != 24 {
+		t.Fatalf("frame rows = %d, want 24 (a \\n in the lyric text adds a row)", len(lines))
+	}
+	for i, line := range lines {
+		if w := lipgloss.Width(line); w != 80 {
+			t.Errorf("row %d width = %d, want 80", i, w)
 		}
 	}
 }

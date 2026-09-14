@@ -25,10 +25,28 @@ pub struct LyricLineData {
     #[serde(default)]
     pub end: f64,
     pub text: String,
+    /// Display sub-lines of an event that carries several lines of text (LRC
+    /// merges same-timestamp entries, a SRT cue can have several lines). Empty
+    /// for a plain line and for payloads from a TUI older than this field.
+    #[serde(default)]
+    pub parts: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_name: Option<String>,
+}
+
+/// Sub-lines of a lyric line, in display order. The parser now marks them
+/// explicitly, so prefer `parts` and only fall back to splitting the merged
+/// " | " text: that keeps this GUI working against an older TUI binary.
+pub fn split_line(line: &LyricLineData) -> Vec<String> {
+    if !line.parts.is_empty() {
+        return line.parts.clone();
+    }
+    if line.text.contains(" | ") {
+        return line.text.split(" | ").map(str::to_string).collect();
+    }
+    vec![line.text.clone()]
 }
 
 /// JSON message exchanged between GUI and TUI.
@@ -242,5 +260,26 @@ mod tests {
     fn port_file_path_is_absolute() {
         let p = port_file_path(12345);
         assert!(p.contains("12345"), "port path should embed pid: {p}");
+    }
+
+    #[test]
+    fn split_line_prefers_parts_and_falls_back() {
+        let mut line = LyricLineData {
+            time: 0.0,
+            end: 0.0,
+            text: "hello | 你好".to_string(),
+            parts: vec!["hello".to_string(), "你好".to_string()],
+            agent: None,
+            agent_name: None,
+        };
+        assert_eq!(split_line(&line), vec!["hello", "你好"]);
+
+        // An older TUI sends no parts: keep splitting the flat text.
+        line.parts.clear();
+        assert_eq!(split_line(&line), vec!["hello", "你好"]);
+
+        // Nothing to split: the whole text is one sub-line.
+        line.text = "hello".to_string();
+        assert_eq!(split_line(&line), vec!["hello"]);
     }
 }

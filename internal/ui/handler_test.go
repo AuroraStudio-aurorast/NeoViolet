@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -496,6 +498,41 @@ func TestBuildLyricLinesJSON(t *testing.T) {
 	got := buildLyricLinesJSON(data, time.Second)
 	if len(got) != 1 || got[0].Text != "hello" {
 		t.Errorf("buildLyricLinesJSON = %+v, want one line 'hello'", got)
+	}
+}
+
+// The desktop lyrics get the parts of a merged event so the GUI can lay each
+// language on its own sub-line. The field is optional: a line without parts
+// serializes exactly as it does today, so an older GUI sees the same payload.
+func TestBuildLyricLinesJSON_CarriesParts(t *testing.T) {
+	data := &lyrics.Data{Lines: []lyrics.LyricLine{
+		{Time: 0, Text: "hello"},
+		{Time: 0, Text: "hello | 你好", Parts: []string{"hello", "你好"}},
+	}}
+	got := buildLyricLinesJSON(data, time.Second)
+	if len(got) != 2 {
+		t.Fatalf("buildLyricLinesJSON = %+v, want both lines at 0s", got)
+	}
+	if got[0].Parts != nil {
+		t.Errorf("plain line Parts = %v, want nil", got[0].Parts)
+	}
+	if len(got[1].Parts) != 2 || got[1].Parts[0] != "hello" || got[1].Parts[1] != "你好" {
+		t.Errorf("merged line Parts = %v, want [hello 你好]", got[1].Parts)
+	}
+
+	plain, err := json.Marshal(got[0])
+	if err != nil {
+		t.Fatalf("marshal plain line: %v", err)
+	}
+	if strings.Contains(string(plain), "parts") {
+		t.Errorf("plain line JSON = %s, want no parts key", plain)
+	}
+	merged, err := json.Marshal(got[1])
+	if err != nil {
+		t.Fatalf("marshal merged line: %v", err)
+	}
+	if want := `"parts":["hello","你好"]`; !strings.Contains(string(merged), want) {
+		t.Errorf("merged line JSON = %s, want it to contain %s", merged, want)
 	}
 }
 

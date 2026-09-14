@@ -426,6 +426,50 @@ func TestPanelWindow_KaraokeFallsBackWhenWordsDoNotTile(t *testing.T) {
 	}
 }
 
+// Word timings belong to the first part of a merged line, so only that part
+// karaokes; the translation part falls back to a whole-line highlight because
+// its words do not tile its text (D12).
+func TestPanelWindow_KaraokeOnlyFirstPartOfMergedLine(t *testing.T) {
+	m := panelModel(t, 0)
+	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
+		Time:  0,
+		Text:  "Hello world | 你好世界",
+		Parts: []string{"Hello world", "你好世界"},
+		Words: []lyrics.WordFragment{
+			{Time: 0, Text: "Hello "},
+			{Time: 3 * time.Second, Text: "world"},
+		},
+	}}}
+	m.Audio.Elapsed = 2 * time.Second // the 3s word is still unplayed
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+
+	spans := rows[0].spans
+	if len(spans) != 2 {
+		t.Fatalf("row 0 has %d spans, want 2 (played/unplayed)", len(spans))
+	}
+	if spans[0].Text != "Hello " || spans[1].Text != "world" {
+		t.Errorf("row 0 spans = %q / %q, want %q / %q",
+			spans[0].Text, spans[1].Text, "Hello ", "world")
+	}
+	if spans[0].Style.Render("x") == spans[1].Style.Render("x") {
+		t.Errorf("played and unplayed spans render identically: %q", spans[0].Style.Render("x"))
+	}
+
+	if got := len(rows[1].spans); got != 1 {
+		t.Fatalf("row 1 has %d spans, want 1 whole-line span", got)
+	}
+	if got := panelRowText(rows[1]); got != "你好世界" {
+		t.Errorf("row 1 = %q, want the translation part whole", got)
+	}
+	if got := rows[1].spans[0].Style.Render("x"); got != panelCurrentStyle(m).Render("x") {
+		t.Errorf("row 1 style != current style: rendered %q, want %q", got, panelCurrentStyle(m).Render("x"))
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
 func TestPanelPlaceholderText(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -505,6 +549,198 @@ func TestRenderLyricsPanel_ExtremeSizes(t *testing.T) {
 						innerW, innerH, i, w, plan.PanelWidth)
 				}
 			}
+		}
+	}
+}
+
+// panelPartsModel is panelModel with a single event that carries several
+// display parts — what a bilingual LRC line or a multi-line SRT cue produces.
+func panelPartsModel(t *testing.T, contextLines int, parts []string) *Model {
+	t.Helper()
+	m := panelModel(t, contextLines)
+	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
+		Time:  0,
+		Text:  strings.Join(parts, " | "),
+		Parts: parts,
+	}}}
+	m.Audio.Elapsed = 0
+	m.Audio.UpdateLyricIndex()
+	return m
+}
+
+// One event with N parts occupies N rows (F1/F2): the second language is no
+// longer truncated away at the end of the first part's wrapped rows.
+func TestPanelWindow_MergedPartsEachGetARow(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	// A one-line song is shorter than the box, so anchorRows hugs the top
+	// (aboveRows=0 < the one-third target) and the group starts on row 0.
+	const anchor = 0
+
+	if got := panelRowText(rows[anchor]); got != "The rain I hear falls" {
+		t.Errorf("row %d = %q, want the first part", anchor, got)
+	}
+	if got := panelRowText(rows[anchor+1]); got != "我听见雨滴落在青青草地" {
+		t.Errorf("row %d = %q, want the second part", anchor+1, got)
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// Every part of one event is the same current line (D7): a bilingual event must
+// not render its first row highlighted and its second row grey.
+func TestPanelWindow_AllPartsShareCurrentStyle(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	current := panelCurrentStyle(m).Render("x")
+
+	for i := 0; i < 2; i++ {
+		if got := len(rows[i].spans); got != 1 {
+			t.Fatalf("row %d has %d spans, want 1 whole-line span", i, got)
+		}
+		got := rows[i].spans[0].Style.Render("x")
+		if got != current {
+			t.Errorf("row %d (%q) style == current: %v (rendered %q, want %q)",
+				i, panelRowText(rows[i]), got == current, got, current)
+		}
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// MaxWrapRows caps each part, not the event: two long parts occupy four rows
+// between them, and the group stops there.
+func TestPanelWindow_WrapCapIsPerPart(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{strings.Repeat("a", 40), strings.Repeat("b", 40)})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	const anchor = 0 // a one-line song hugs the top, see the test above
+
+	for i, want := range []string{"a", "a", "b", "b"} {
+		got := panelRowText(rows[anchor+i])
+		if got == "" || !strings.HasPrefix(got, want) {
+			t.Errorf("row %d = %q, want a %q row (part %d)", anchor+i, got, want, i/2)
+		}
+	}
+	if got := panelRowText(rows[anchor+4]); got != "" {
+		t.Errorf("row %d = %q, want empty: the group is at most 2 rows per part", anchor+4, got)
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// context_lines counts lyric lines, not rows (F4): a two-row event above the
+// current line spends one of the two allowed context lines.
+func TestPanelWindow_PartCountsAsOneContextLine(t *testing.T) {
+	m := panelModel(t, 2)
+	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{
+		{Time: 0, Text: "prev | 上一句", Parts: []string{"prev", "上一句"}},
+		{Time: 5 * time.Second, Text: "current"},
+		{Time: 10 * time.Second, Text: "next"},
+	}}
+	m.Audio.Elapsed = 5 * time.Second
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	anchor := panelAnchor(plan.PanelInnerH)
+
+	if got := panelRowText(rows[anchor-2]); got != "prev" {
+		t.Errorf("row %d = %q, want the first half of the context event", anchor-2, got)
+	}
+	if got := panelRowText(rows[anchor-1]); got != "上一句" {
+		t.Errorf("row %d = %q, want the second half of the context event", anchor-1, got)
+	}
+	if got := panelRowText(rows[anchor]); got != "current" {
+		t.Errorf("row %d = %q, want the current line", anchor, got)
+	}
+}
+
+// Five long parts are ten rows in a thirteen-row box (F3): nothing panics, the
+// group is truncated to the box, and every row stays inside it.
+func TestPanelWindow_FivePartsTruncateToInnerH(t *testing.T) {
+	parts := make([]string, 5)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("part%d %s", i+1, strings.Repeat("x", 30))
+	}
+	m := panelPartsModel(t, 0, parts)
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+
+	if len(rows) != plan.PanelInnerH {
+		t.Fatalf("rows = %d, want %d", len(rows), plan.PanelInnerH)
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// A blank part is data, not content: it never becomes a row.
+func TestPanelWindow_BlankPartProducesNoRow(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"kept", "   "})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	const anchor = 0 // a one-line song hugs the top, see the first test in this file
+
+	if got := panelRowText(rows[anchor]); got != "kept" {
+		t.Errorf("row %d = %q, want %q", anchor, got, "kept")
+	}
+	if got := panelRowText(rows[anchor+1]); got != "" {
+		t.Errorf("row %d = %q, want no row for the blank part", anchor+1, got)
+	}
+}
+
+// Simultaneous events at the same instant (bilingual ESLRC) are all current
+// (F9/D13). The parser returns only one of them as active, so the other one is
+// a context row in the window: without the same-instant rule it renders grey
+// while its twin is highlighted.
+func TestPanelWindow_SameTimeLinesAreBothCurrent(t *testing.T) {
+	m := panelModel(t, 0)
+	m.Audio.Lyrics = &lyrics.Data{Format: "eslrc", Lines: []lyrics.LyricLine{
+		{Time: 0, Text: "The rain I hear falls"},
+		{Time: 0, Text: "我听见雨滴落在青青草地"},
+	}}
+	m.Audio.Elapsed = 0
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	current := panelCurrentStyle(m).Render("x")
+
+	lit := 0
+	for _, r := range rows {
+		if len(r.spans) == 1 && r.spans[0].Style.Render("x") == current {
+			lit++
+		}
+	}
+	if lit != 2 {
+		t.Errorf("rows rendered with the current style = %d, want 2 (both same-instant lines)", lit)
+	}
+}
+
+// A line that is merely between two active lines is not current (F8/D13): the
+// window still spans first..last, but styling is decided per line.
+func TestPanelWindow_SandwichedLineStaysContext(t *testing.T) {
+	m := panelModel(t, 0)
+	m.Audio.Lyrics = &lyrics.Data{Format: "ttml", Lines: []lyrics.LyricLine{
+		{Time: 0, End: 10 * time.Second, Text: "A: first line"},
+		{Time: 5 * time.Second, End: 6 * time.Second, Text: "B: in between"},
+		{Time: 6 * time.Second, End: 12 * time.Second, Text: "C: overlapping"},
+	}}
+	m.Audio.Elapsed = 7 * time.Second // A and C are active, B is not
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	current := panelCurrentStyle(m).Render("x")
+
+	texts := make([]string, len(rows))
+	lit := make([]bool, len(rows))
+	for i, r := range rows {
+		texts[i] = panelRowText(r)
+		lit[i] = len(r.spans) == 1 && r.spans[0].Style.Render("x") == current
+	}
+	want := map[string]bool{"A: first line": true, "B: in between": false, "C: overlapping": true}
+	for i, text := range texts {
+		if expected, ok := want[text]; ok && lit[i] != expected {
+			t.Errorf("row %d (%q) current=%v, want %v", i, text, lit[i], expected)
 		}
 	}
 }

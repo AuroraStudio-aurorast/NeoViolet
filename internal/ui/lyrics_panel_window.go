@@ -34,10 +34,14 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 
 	format := panelFormatFor(m)
 	first, last, highlight := panelCurrent(m, visible)
+	currentTime := visible[first].Line.Time
+	lit := func(line lyrics.LyricLine) bool {
+		return panelLineIsCurrent(m, line, currentTime, highlight)
+	}
 
 	cur := make([]panelRow, 0, len(visible))
 	for pos := first; pos <= last; pos++ {
-		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, format.MaxWrapRows, highlight)...)
+		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, format.MaxWrapRows, lit(visible[pos].Line))...)
 	}
 	if len(cur) == 0 {
 		return rows
@@ -48,8 +52,8 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 
 	// Gather both sides in display order: the anchor decides how much of each
 	// survives, so an over-long side is trimmed back towards the group.
-	above := format.collectRows(m, visible, first-1, -1, innerW, innerH)
-	below := format.collectRows(m, visible, last+1, 1, innerW, innerH)
+	above := format.collectRows(m, visible, first-1, -1, innerW, innerH, lit)
+	below := format.collectRows(m, visible, last+1, 1, innerW, innerH, lit)
 
 	anchor := format.anchorRows(innerH, len(cur), len(above), len(below))
 	if len(above) > anchor {
@@ -118,14 +122,54 @@ func lineIsActive(line lyrics.LyricLine, active []lyrics.LyricLine) bool {
 	return false
 }
 
-// panelLineRows renders one lyric line into at most maxRows panel rows.
+// panelLineIsCurrent reports whether a line is drawn as "current": one of the
+// parser's active lines, or a visible line at the same instant as the current
+// group. The second rule lights up simultaneous lines that arrive as separate
+// events (bilingual ESLRC, overlapping spans) without merging them, and judging
+// each line instead of the whole first..last range stops the window from
+// lighting lines that merely sit between two active ones.
+func panelLineIsCurrent(m *Model, line lyrics.LyricLine, currentTime time.Duration, hasCurrent bool) bool {
+	if lineIsActive(line, m.Audio.ActiveLyricLines) {
+		return true
+	}
+	return hasCurrent && line.Time == currentTime
+}
+
+// panelLineRows renders one lyric line into panel rows: one block per display
+// part, each part wrapped to at most maxRows. Most lines have a single part, so
+// the common path is exactly one wrapSpans call.
 func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlight bool) []panelRow {
-	wrapped := wrapSpans(panelLineSpans(m, line, highlight), innerW, maxRows)
-	rows := make([]panelRow, 0, len(wrapped))
-	for _, spans := range wrapped {
-		rows = append(rows, panelRow{spans: spans})
+	if line.PartCount() == 1 {
+		return wrapLineRows(panelLineSpans(m, line, highlight), innerW, maxRows)
+	}
+	rows := make([]panelRow, 0, line.PartCount())
+	for i := 0; i < line.PartCount(); i++ {
+		if strings.TrimSpace(line.Part(i)) == "" {
+			continue // a blank part is data, not a row
+		}
+		rows = append(rows, wrapLineRows(panelLineSpans(m, partLine(line, i), highlight), innerW, maxRows)...)
 	}
 	return rows
+}
+
+// wrapLineRows wraps styled spans into panel rows.
+func wrapLineRows(spans []styledSpan, innerW, maxRows int) []panelRow {
+	wrapped := wrapSpans(spans, innerW, maxRows)
+	rows := make([]panelRow, 0, len(wrapped))
+	for _, s := range wrapped {
+		rows = append(rows, panelRow{spans: s})
+	}
+	return rows
+}
+
+// partLine returns a copy of line whose Text is its i-th display part. Words,
+// Agent, Time and End stay untouched: panelLineSpans falls back to a whole-line
+// highlight when the word timings do not tile the text, so the first part of a
+// merged line keeps its karaoke and the remaining parts highlight as a whole
+// without any branching here.
+func partLine(line lyrics.LyricLine, i int) lyrics.LyricLine {
+	line.Text = line.Part(i)
+	return line
 }
 
 // panelLineSpans styles a lyric line. The highlighted line is split into
