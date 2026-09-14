@@ -235,6 +235,7 @@ func buildLyricLinesJSON(data *lyrics.Data, elapsed time.Duration) []ipc.LyricLi
 				Time:      line.Time.Seconds(),
 				End:       line.End.Seconds(),
 				Text:      displayText,
+				Parts:     line.Parts,
 				Agent:     line.Agent,
 				AgentName: agentName,
 			})
