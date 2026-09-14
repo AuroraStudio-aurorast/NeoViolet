@@ -63,7 +63,7 @@ func (p *srtParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 		start := parseSRTTime(matches[1], matches[2], matches[3], matches[4])
 		end := parseSRTTime(matches[5], matches[6], matches[7], matches[8])
 
-		// Remaining lines are the text content
+		// Remaining lines are the text content.
 		text := ""
 		if len(entryLines) >= 3 {
 			text = strings.TrimSpace(entryLines[2])
@@ -73,10 +73,17 @@ func (p *srtParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			continue
 		}
 
+		parts := srtParts(text)
+		display := text
+		if parts != nil {
+			display = strings.Join(parts, " ")
+		}
+
 		lines = append(lines, LyricLine{
-			Time: start,
-			End:  end,
-			Text: text,
+			Time:  start,
+			End:   end,
+			Text:  display,
+			Parts: parts,
 		})
 	}
 
@@ -108,6 +115,25 @@ func splitSRTEntries(content string) []string {
 		}
 	}
 	return result
+}
+
+// srtParts splits a cue's text into display sub-lines, one per non-empty line.
+// A single-line cue returns nil so it stays a plain line. Text is rebuilt by the
+// caller as these sub-lines joined with a space: a raw \n inside Text is a hard
+// line break for the renderers, which used to add a row to the footer and break
+// the frame height.
+func srtParts(text string) []string {
+	raw := strings.Split(text, "\n")
+	parts := make([]string, 0, len(raw))
+	for _, line := range raw {
+		if line = strings.TrimSpace(line); line != "" {
+			parts = append(parts, line)
+		}
+	}
+	if len(parts) < 2 {
+		return nil
+	}
+	return parts
 }
 
 // parseSRTTime parses HH, MM, SS, mmm into a time.Duration.

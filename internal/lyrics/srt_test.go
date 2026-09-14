@@ -58,8 +58,13 @@ func TestSRT_BasicParse(t *testing.T) {
 	if d.Lines[1].End != 8500*time.Millisecond {
 		t.Errorf("line 1 End = %v, want 8500ms", d.Lines[1].End)
 	}
-	if d.Lines[1].Text != "Second subtitle text\nSecond line continues" {
+	// Multi-line cues fold their raw \n into a single space and move the
+	// display sub-lines into Parts (see TestSRT_MultiLineCueBecomesParts).
+	if d.Lines[1].Text != "Second subtitle text Second line continues" {
 		t.Errorf("line 1 Text = %q", d.Lines[1].Text)
+	}
+	if got, want := d.Lines[1].PartCount(), 2; got != want {
+		t.Errorf("line 1 PartCount() = %d, want %d", got, want)
 	}
 
 	// Third entry: 00:00:10,000 --> 00:00:12,000 with multi-line text
@@ -69,9 +74,12 @@ func TestSRT_BasicParse(t *testing.T) {
 	if d.Lines[2].End != 12*time.Second {
 		t.Errorf("line 2 End = %v, want 12s", d.Lines[2].End)
 	}
-	expectedMulti := "Third entry with\nmultiple\nlines"
+	expectedMulti := "Third entry with multiple lines"
 	if d.Lines[2].Text != expectedMulti {
 		t.Errorf("line 2 Text = %q, want %q", d.Lines[2].Text, expectedMulti)
+	}
+	if got, want := d.Lines[2].PartCount(), 3; got != want {
+		t.Errorf("line 2 PartCount() = %d, want %d", got, want)
 	}
 }
 
@@ -193,7 +201,7 @@ func TestSRT_ActiveLines(t *testing.T) {
 	if len(active) != 1 {
 		t.Fatalf("at 6s: expected 1 active, got %d", len(active))
 	}
-	if active[0].Text != "Second subtitle text\nSecond line continues" {
+	if active[0].Text != "Second subtitle text Second line continues" {
 		t.Errorf("at 6s: text = %q", active[0].Text)
 	}
 
@@ -315,5 +323,65 @@ second text`
 	}
 	if d.Lines[1].Text != "second text" {
 		t.Errorf("line 1 Text = %q", d.Lines[1].Text)
+	}
+}
+
+func TestSRT_MultiLineCueBecomesParts(t *testing.T) {
+	d, err := parseSRT("1\n00:00:05,000 --> 00:00:08,500\nSecond subtitle text\nSecond line continues\n")
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(d.Lines))
+	}
+
+	line := d.Lines[0]
+	if got, want := line.Text, "Second subtitle text Second line continues"; got != want {
+		t.Errorf("Text = %q, want %q", got, want)
+	}
+	if strings.ContainsAny(line.Text, "\n\r") {
+		t.Errorf("Text = %q, want no line break", line.Text)
+	}
+	if got, want := line.PartCount(), 2; got != want {
+		t.Fatalf("PartCount() = %d, want %d", got, want)
+	}
+	if got, want := line.Part(1), "Second line continues"; got != want {
+		t.Errorf("Part(1) = %q, want %q", got, want)
+	}
+}
+
+// A one-line cue must stay byte-identical to before the change: no Parts, and
+// the text as written.
+func TestSRT_SingleLineCueHasNoParts(t *testing.T) {
+	d, err := parseSRT("1\n00:00:01,000 --> 00:00:04,000\nFirst subtitle line\n")
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	line := d.Lines[0]
+	if line.Parts != nil {
+		t.Errorf("Parts = %v, want nil for a single-line cue", line.Parts)
+	}
+	if got, want := line.Text, "First subtitle line"; got != want {
+		t.Errorf("Text = %q, want %q", got, want)
+	}
+}
+
+// srtParts is the display-splitting contract on its own: interior blank lines
+// are dropped and each line is trimmed, so a caller never renders an empty row.
+// The parser cannot produce a blank interior line today (entries split on blank
+// lines), but the helper's contract must not depend on that.
+func TestSRTParts_TrimsAndDropsBlankLines(t *testing.T) {
+	got := srtParts("  first  \n   \nsecond\n")
+	want := []string{"first", "second"}
+	if len(got) != len(want) {
+		t.Fatalf("srtParts = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("part %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+	if srtParts("only one line") != nil {
+		t.Errorf("srtParts(single) = %v, want nil", srtParts("only one line"))
 	}
 }
