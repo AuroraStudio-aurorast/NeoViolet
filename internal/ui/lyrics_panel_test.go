@@ -426,6 +426,50 @@ func TestPanelWindow_KaraokeFallsBackWhenWordsDoNotTile(t *testing.T) {
 	}
 }
 
+// Word timings belong to the first part of a merged line, so only that part
+// karaokes; the translation part falls back to a whole-line highlight because
+// its words do not tile its text (D12).
+func TestPanelWindow_KaraokeOnlyFirstPartOfMergedLine(t *testing.T) {
+	m := panelModel(t, 0)
+	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
+		Time:  0,
+		Text:  "Hello world | 你好世界",
+		Parts: []string{"Hello world", "你好世界"},
+		Words: []lyrics.WordFragment{
+			{Time: 0, Text: "Hello "},
+			{Time: 3 * time.Second, Text: "world"},
+		},
+	}}}
+	m.Audio.Elapsed = 2 * time.Second // the 3s word is still unplayed
+	m.Audio.UpdateLyricIndex()
+
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+
+	spans := rows[0].spans
+	if len(spans) != 2 {
+		t.Fatalf("row 0 has %d spans, want 2 (played/unplayed)", len(spans))
+	}
+	if spans[0].Text != "Hello " || spans[1].Text != "world" {
+		t.Errorf("row 0 spans = %q / %q, want %q / %q",
+			spans[0].Text, spans[1].Text, "Hello ", "world")
+	}
+	if spans[0].Style.Render("x") == spans[1].Style.Render("x") {
+		t.Errorf("played and unplayed spans render identically: %q", spans[0].Style.Render("x"))
+	}
+
+	if got := len(rows[1].spans); got != 1 {
+		t.Fatalf("row 1 has %d spans, want 1 whole-line span", got)
+	}
+	if got := panelRowText(rows[1]); got != "你好世界" {
+		t.Errorf("row 1 = %q, want the translation part whole", got)
+	}
+	if got := rows[1].spans[0].Style.Render("x"); got != panelCurrentStyle(m).Render("x") {
+		t.Errorf("row 1 style != current style: rendered %q, want %q", got, panelCurrentStyle(m).Render("x"))
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
 func TestPanelPlaceholderText(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -539,6 +583,27 @@ func TestPanelWindow_MergedPartsEachGetARow(t *testing.T) {
 	}
 	if got := panelRowText(rows[anchor+1]); got != "我听见雨滴落在青青草地" {
 		t.Errorf("row %d = %q, want the second part", anchor+1, got)
+	}
+	panelRowWidths(t, rows, plan.PanelInnerW)
+}
+
+// Every part of one event is the same current line (D7): a bilingual event must
+// not render its first row highlighted and its second row grey.
+func TestPanelWindow_AllPartsShareCurrentStyle(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
+	plan := m.layoutPlan()
+	rows := panelWindow(m, plan)
+	current := panelCurrentStyle(m).Render("x")
+
+	for i := 0; i < 2; i++ {
+		if got := len(rows[i].spans); got != 1 {
+			t.Fatalf("row %d has %d spans, want 1 whole-line span", i, got)
+		}
+		got := rows[i].spans[0].Style.Render("x")
+		if got != current {
+			t.Errorf("row %d (%q) style == current: %v (rendered %q, want %q)",
+				i, panelRowText(rows[i]), got == current, got, current)
+		}
 	}
 	panelRowWidths(t, rows, plan.PanelInnerW)
 }
