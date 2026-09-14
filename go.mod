@@ -11,7 +11,7 @@ require (
 	github.com/EdlinOrg/prominentcolor v1.0.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
-	github.com/ebitengine/purego v0.10.1
+	github.com/ebitengine/purego v0.11.0
 	github.com/gen2brain/mpeg v0.5.0
 	github.com/godbus/dbus/v5 v5.2.2
 	github.com/gopxl/beep/v2 v2.1.1
