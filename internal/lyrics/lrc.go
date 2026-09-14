@@ -220,10 +220,21 @@ func mergeSameTimestamp(lines []LyricLine) []LyricLine {
 			Time:  lines[i].Time,
 			Text:  strings.Join(texts, " | "),
 			Words: lines[i].Words,
+			Parts: partsOrNil(texts),
 		})
 		i = j
 	}
 	return merged
+}
+
+// partsOrNil returns texts as display parts, or nil when the event has only one
+// text: a single text stays a plain line, so Parts != nil always means "this
+// event really has several display rows".
+func partsOrNil(texts []string) []string {
+	if len(texts) < 2 {
+		return nil
+	}
+	return texts
 }
 
 // CurrentLine returns the index of the line active at elapsed, or -1 if none.

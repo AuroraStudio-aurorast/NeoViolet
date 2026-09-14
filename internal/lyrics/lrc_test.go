@@ -595,3 +595,92 @@ func TestParseLRCEmpty(t *testing.T) {
 		t.Error("ParseLRC() error = nil, want error for empty input")
 	}
 }
+
+// Bilingual files put one language per timestamp on the same instant. The
+// parser merges them into one line whose " | " Text stays byte-identical
+// (one_line, lyricSig and MPRIS read it) and records the source texts as Parts
+// so the panel can lay each language out on its own row.
+func TestLRC_MergedLineKeepsParts(t *testing.T) {
+	d, err := parseLRC("[00:22.00]Hello world\n[00:22.00]你好世界\n[00:30.00]Bye\n")
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 2 {
+		t.Fatalf("lines = %d, want 2 (the two 22s entries merged)", len(d.Lines))
+	}
+
+	merged := d.Lines[0]
+	if got, want := merged.Text, "Hello world | 你好世界"; got != want {
+		t.Errorf("Text = %q, want %q", got, want)
+	}
+	if got, want := strings.Join(merged.Parts, " | "), merged.Text; got != want {
+		t.Errorf("Join(Parts, \" | \") = %q, want Text %q", got, want)
+	}
+	if got, want := merged.PartCount(), 2; got != want {
+		t.Fatalf("PartCount() = %d, want %d", got, want)
+	}
+	if got, want := merged.Part(0), "Hello world"; got != want {
+		t.Errorf("Part(0) = %q, want %q", got, want)
+	}
+	if got, want := merged.Part(1), "你好世界"; got != want {
+		t.Errorf("Part(1) = %q, want %q", got, want)
+	}
+
+	if single := d.Lines[1]; single.Parts != nil || single.PartCount() != 1 {
+		t.Errorf("unmerged line Parts = %v, PartCount = %d; want nil, 1",
+			single.Parts, single.PartCount())
+	}
+}
+
+// Enhanced LRC can carry word timings and a same-instant translation. Only the
+// first source line's words survive the merge, and they are exactly the ones
+// that tile Part(0) — which is what lets part-0 keep its karaoke after the
+// change (panelLineSpans falls back to a whole-line highlight when they do not
+// tile, so the translation row degrades gracefully).
+func TestLRC_MergedEnhancedLineKeepsFirstPartsWords(t *testing.T) {
+	d, err := parseLRC("[00:22.00]<00:22.00>Hello <00:22.50>world\n[00:22.00]你好世界\n")
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(d.Lines))
+	}
+
+	line := d.Lines[0]
+	if got, want := line.Part(0), "Hello world"; got != want {
+		t.Fatalf("Part(0) = %q, want %q", got, want)
+	}
+	var spelled string
+	for _, w := range line.Words {
+		spelled += w.Text
+	}
+	if spelled != line.Part(0) {
+		t.Errorf("word timings spell %q, want Part(0) %q (karaoke needs them to tile)",
+			spelled, line.Part(0))
+	}
+}
+
+// Three languages on one timestamp merge into one line with three parts, which
+// is what lets the panel show three rows instead of two truncated ones.
+func TestLRC_ThreeWayMergeKeepsAllParts(t *testing.T) {
+	d, err := parseLRC("[00:22.00]one\n[00:22.00]two\n[00:22.00]three\n")
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(d.Lines))
+	}
+
+	line := d.Lines[0]
+	if got, want := line.Text, "one | two | three"; got != want {
+		t.Errorf("Text = %q, want %q", got, want)
+	}
+	if got, want := line.PartCount(), 3; got != want {
+		t.Fatalf("PartCount() = %d, want %d", got, want)
+	}
+	for i, want := range []string{"one", "two", "three"} {
+		if got := line.Part(i); got != want {
+			t.Errorf("Part(%d) = %q, want %q", i, got, want)
+		}
+	}
+}
