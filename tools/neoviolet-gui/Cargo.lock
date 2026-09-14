@@ -870,6 +870,12 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "cfg_aliases"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
+
+[[package]]
+name = "cfg_aliases"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
@@ -2231,7 +2237,7 @@ dependencies = [
  "smallvec",
  "smol",
  "spin 0.10.0",
- "stacksafe 0.1.4",
+ "stacksafe",
  "strum 0.27.2",
  "taffy",
  "thiserror 2.0.18",
@@ -2868,15 +2874,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ioctl-rs"
-version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7970510895cee30b3e9128319f2cefd4bde883a39f38baa279567ba3a7eb97d"
-dependencies = [
- "libc",
-]
-
-[[package]]
 name = "ipnet"
 version = "2.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3242,15 +3239,6 @@ dependencies = [
 
 [[package]]
 name = "memoffset"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5aa361d4faea93603064a027415f07bd8e1d5c88c9fbf68bf56a285428fd79ce"
-dependencies = [
- "autocfg",
-]
-
-[[package]]
-name = "memoffset"
 version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "488016bfae457b036d996092f6cb448677611ce4449e970ceaf42695203f218a"
@@ -3350,7 +3338,7 @@ dependencies = [
  "arrayvec",
  "bit-set",
  "bitflags 2.13.0",
- "cfg_aliases",
+ "cfg_aliases 0.2.1",
  "codespan-reporting",
  "half",
  "hashbrown 0.15.5",
@@ -3390,7 +3378,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smol",
- "toml 0.8.23",
+ "toml 1.1.2+spec-1.1.0",
  "yororen_ui",
 ]
 
@@ -3402,16 +3390,14 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nix"
-version = "0.25.1"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f346ff70e7dbfd675fe90590b92d59ef2de15a8779ae305ebcbfd3f0caf59be4"
+checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
 dependencies = [
- "autocfg",
- "bitflags 1.3.2",
+ "bitflags 2.13.0",
  "cfg-if",
+ "cfg_aliases 0.1.1",
  "libc",
- "memoffset 0.6.5",
- "pin-utils",
 ]
 
 [[package]]
@@ -3422,7 +3408,7 @@ checksum = "71e2746dc3a24dd78b3cfcb7be93368c6de9963d30f43a6a73998a9cf4b17b46"
 dependencies = [
  "bitflags 2.13.0",
  "cfg-if",
- "cfg_aliases",
+ "cfg_aliases 0.2.1",
  "libc",
 ]
 
@@ -3434,7 +3420,7 @@ checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
 dependencies = [
  "bitflags 2.13.0",
  "cfg-if",
- "cfg_aliases",
+ "cfg_aliases 0.2.1",
  "libc",
 ]
 
@@ -4009,9 +3995,9 @@ dependencies = [
 
 [[package]]
 name = "portable-pty"
-version = "0.8.1"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "806ee80c2a03dbe1a9fb9534f8d19e4c0546b790cde8fd1fea9d6390644cb0be"
+checksum = "b4a596a2b3d2752d94f51fac2d4a96737b8705dddd311a32b9af47211f08671e"
 dependencies = [
  "anyhow",
  "bitflags 1.3.2",
@@ -4020,8 +4006,8 @@ dependencies = [
  "lazy_static",
  "libc",
  "log",
- "nix 0.25.1",
- "serial",
+ "nix 0.28.0",
+ "serial2",
  "shared_library",
  "shell-words",
  "winapi",
@@ -4188,7 +4174,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b9e20a958963c291dc322d98411f541009df2ced7b5a4f2bd52337638cfccf20"
 dependencies = [
  "bytes",
- "cfg_aliases",
+ "cfg_aliases 0.2.1",
  "pin-project-lite",
  "quinn-proto",
  "quinn-udp",
@@ -4228,7 +4214,7 @@ version = "0.5.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "addec6a0dcad8a8d96a771f815f0eaf55f9d1805756410b39f5fa81332574cbd"
 dependencies = [
- "cfg_aliases",
+ "cfg_aliases 0.2.1",
  "libc",
  "once_cell",
  "socket2",
@@ -4991,45 +4977,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "serial"
-version = "0.4.0"
+name = "serial2"
+version = "0.2.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1237a96570fc377c13baa1b88c7589ab66edced652e43ffb17088f003db3e86"
+checksum = "b16809bc35793b19ce4e0c53924bc0dce3937f15487997cfdaed936004180730"
 dependencies = [
- "serial-core",
- "serial-unix",
- "serial-windows",
-]
-
-[[package]]
-name = "serial-core"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f46209b345401737ae2125fe5b19a77acce90cd53e1658cda928e4fe9a64581"
-dependencies = [
+ "cfg-if",
  "libc",
-]
-
-[[package]]
-name = "serial-unix"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f03fbca4c9d866e24a459cbca71283f545a37f8e3e002ad8c70593871453cab7"
-dependencies = [
- "ioctl-rs",
- "libc",
- "serial-core",
- "termios",
-]
-
-[[package]]
-name = "serial-windows"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "15c6d3b776267a75d31bbdfd5d36c0ca051251caafc285827052bc53bcdc8162"
-dependencies = [
- "libc",
- "serial-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5244,17 +5199,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d9c1172965d317e87ddb6d364a040d958b40a1db82b6ef97da26253a8b3d090"
 dependencies = [
  "stacker",
- "stacksafe-macro 0.1.4",
-]
-
-[[package]]
-name = "stacksafe"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b738765988c43975135c78ade8b0ee940566ab87d7e324897662b7460c44ab83"
-dependencies = [
- "stacker",
- "stacksafe-macro 1.0.2",
+ "stacksafe-macro",
 ]
 
 [[package]]
@@ -5264,17 +5209,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "172175341049678163e979d9107ca3508046d4d2a7c6682bee46ac541b17db69"
 dependencies = [
  "proc-macro-error2",
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "stacksafe-macro"
-version = "1.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e30778b21fdee0c7dbfcf5cfc2d9e2a0dbc135faf7093c245bf19f088f9fa10"
-dependencies = [
- "proc-macro2",
  "quote",
  "syn 2.0.118",
 ]
@@ -5606,15 +5540,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "termios"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5d9cf598a6d7ce700a4e6a9199da127e6819a61e64b68609683cc9a01b5683a"
-dependencies = [
- "libc",
 ]
 
 [[package]]
@@ -5976,7 +5901,7 @@ version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
- "memoffset 0.9.1",
+ "memoffset",
  "tempfile",
  "windows-sys 0.61.2",
 ]
@@ -7207,9 +7132,26 @@ dependencies = [
 
 [[package]]
 name = "yororen_ui"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae424c3b1d288a90eb805b177dd5ab8849e03dbca8302e1d94ad7d1a55e08136"
+checksum = "ec84c6f13cc4b74aaab803b5127e7cae6775f7be10ed7b1c9acd698caa4581f9"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+ "yororen_ui_default_renderer",
+ "yororen_ui_locale_ar",
+ "yororen_ui_locale_en",
+ "yororen_ui_locale_zh_cn",
+ "yororen_ui_xml",
+ "yororen_ui_xml_macro",
+]
+
+[[package]]
+name = "yororen_ui_core"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38f5ff278f9fc6e35277cc2b0df252fd43644ff19833c1bb334ecebd1f9bff3e"
 dependencies = [
  "chrono",
  "gpui-ce",
@@ -7217,9 +7159,82 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "stacksafe 1.0.2",
  "unicode-segmentation",
- "uuid",
+]
+
+[[package]]
+name = "yororen_ui_default_renderer"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa0ac8c26ed093cbe04378f10dfa2b4a6a5f8c92112ef9e41ffb7c96ef9ee1ea"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_locale_ar"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b8474af9fd96e9bf78185a12d91b5ff5f7c0b6d4ebca75ec68065cb3fd14411"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_locale_en"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53c5dd754487a059bf6b0ba95e79f62b9bc1dea90d79f0d34c28121b7e4affd3"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_locale_zh_cn"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "efa10fc61b62f713e7a745d0a111b33730d907e5dc286fdd59a1e5037de6e4b8"
+dependencies = [
+ "gpui-ce",
+ "serde_json",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_xml"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6677b3c3c101d60129090b2e93212bc80f04a662e78f3a46bf26eaa73d707484"
+dependencies = [
+ "gpui-ce",
+ "inventory",
+ "proc-macro2",
+ "quote",
+ "roxmltree",
+ "serde",
+ "syn 2.0.118",
+ "toml 0.8.23",
+ "yororen_ui_core",
+]
+
+[[package]]
+name = "yororen_ui_xml_macro"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a184d0db90834b806d67bccbcd52e43fccb529f98fdfff614419b583bbe6643f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.118",
+ "toml 0.8.23",
+ "yororen_ui_core",
+ "yororen_ui_xml",
 ]
 
 [[package]]

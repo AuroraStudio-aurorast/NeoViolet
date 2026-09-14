@@ -16,7 +16,6 @@ use gpui::{
     SharedString, StrikethroughStyle, Style, TextRun, TextStyle, UTF16Selection, UnderlineStyle,
     Window, fill, point, px, rgb, size,
 };
-use yororen_ui::theme::ActiveTheme as _;
 
 use crate::app::TerminalApp;
 use crate::terminal::{
@@ -293,7 +292,7 @@ impl TerminalElement {
 
     fn base_text_style(&self, cx: &App) -> TextStyle {
         TextStyle {
-            color: cx.theme().content.primary,
+            color: crate::theme_colors::primary(cx),
             font_family: self.font_family.clone(),
             font_size: self.font_size.into(),
             line_height: self.line_height.into(),
@@ -384,7 +383,7 @@ impl TerminalElement {
                         1
                     },
                     color: if selected {
-                        cx.theme().content.primary
+                        crate::theme_colors::primary(cx)
                     } else if cell.flags.contains(Flags::INVERSE) {
                         color_to_hsla(cell.fg, true, cx)
                     } else {
@@ -459,7 +458,7 @@ impl TerminalElement {
             row: cursor.row,
             col: cursor.col,
             shape: cursor.shape,
-            color: cx.theme().content.primary,
+            color: crate::theme_colors::primary(cx),
         })
     }
 }
@@ -607,7 +606,7 @@ impl Element for TerminalElement {
                 None,
             );
             let bg_bounds = Bounds::new(pos, size(shaped.width, prepaint.metrics.line_height));
-            window.paint_quad(fill(bg_bounds, cx.theme().surface.canvas));
+            window.paint_quad(fill(bg_bounds, crate::theme_colors::canvas(cx)));
             shaped
                 .paint(pos, prepaint.metrics.line_height, window, cx)
                 .ok();
@@ -752,8 +751,8 @@ fn ansi_index_color(index: u8, _cx: &App) -> Hsla {
 
 fn named_color(named: NamedColor, _foreground: bool, cx: &App) -> Hsla {
     match named {
-        NamedColor::Foreground => cx.theme().content.primary,
-        NamedColor::Background => cx.theme().surface.canvas,
+        NamedColor::Foreground => crate::theme_colors::primary(cx),
+        NamedColor::Background => crate::theme_colors::canvas(cx),
         NamedColor::Black => Hsla::from(rgb(0x1f2430)),
         NamedColor::Red => Hsla::from(rgb(0xff5c57)),
         NamedColor::Green => Hsla::from(rgb(0x5af78e)),
@@ -770,9 +769,9 @@ fn named_color(named: NamedColor, _foreground: bool, cx: &App) -> Hsla {
         NamedColor::BrightMagenta => Hsla::from(rgb(0xff6ac1)),
         NamedColor::BrightCyan => Hsla::from(rgb(0x9aedfe)),
         NamedColor::BrightWhite => Hsla::from(rgb(0xffffff)),
-        NamedColor::Cursor => cx.theme().content.primary,
-        NamedColor::DimForeground => cx.theme().content.tertiary,
-        NamedColor::BrightForeground => cx.theme().content.primary,
+        NamedColor::Cursor => crate::theme_colors::primary(cx),
+        NamedColor::DimForeground => crate::theme_colors::tertiary(cx),
+        NamedColor::BrightForeground => crate::theme_colors::primary(cx),
         NamedColor::DimBlack => Hsla::from(rgb(0x3b4252)),
         NamedColor::DimRed => Hsla::from(rgb(0xbf616a)),
         NamedColor::DimGreen => Hsla::from(rgb(0xa3be8c)),

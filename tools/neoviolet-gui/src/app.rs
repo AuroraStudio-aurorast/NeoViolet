@@ -10,7 +10,6 @@ use gpui::{
     ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, SharedString, Styled,
     Window, div, point, px, size,
 };
-use yororen_ui::theme::ActiveTheme as _;
 
 use crate::backend;
 use crate::state::AppState;
@@ -595,7 +594,7 @@ impl Render for TerminalApp {
 
         div()
             .size_full()
-            .bg(cx.theme().surface.canvas)
+            .bg(crate::theme_colors::canvas(cx))
             .track_focus(&self.focus_handle)
             .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
                 this.on_terminal_key_down(event, window, cx);

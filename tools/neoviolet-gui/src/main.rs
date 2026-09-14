@@ -12,6 +12,7 @@ mod open_files;
 mod platform;
 mod state;
 mod terminal;
+mod theme_colors;
 mod util;
 
 use gpui::*;
@@ -19,9 +20,6 @@ use gpui::*;
 use std::sync::OnceLock;
 use std::sync::{Arc, Mutex};
 use yororen_ui::assets::UiAsset;
-use yororen_ui::component;
-use yororen_ui::i18n::{I18n, Locale};
-use yororen_ui::theme::{GlobalTheme, ThemeSet};
 
 use app::TerminalApp;
 use neo_violet_app::NeoVioletApp;
@@ -110,17 +108,17 @@ fn main() {
     });
 
     app.run(move |cx: &mut App| {
-        component::init(cx);
+        // Renderer + theme. 0.3 splits the old combined `component::init` and
+        // `GlobalTheme::set_global`: this one call installs the global theme and
+        // registers the renderers behind every headless component.
+        yororen_ui::renderer::themes::install_with(cx, dracula_theme::dracula_theme());
 
-        // Theme (Dracula)
-        let dracula = std::sync::Arc::new(dracula_theme::dracula_theme());
-        cx.set_global(GlobalTheme::new_with_themes(
-            WindowAppearance::Dark,
-            ThemeSet::new(dracula.clone()).dark(dracula),
-        ));
+        // Text-input keymap, idempotent. 0.2 initialised text input, text area
+        // and password input together here; dialogs only ever need the first.
+        yororen_ui::headless::text_input::init(cx);
 
-        // i18n
-        cx.set_global(I18n::with_embedded(Locale::new("en").unwrap()));
+        // Locale. 0.2 embedded `I18n`; 0.3 ships locales as installable crates.
+        yororen_ui::locale_en::install(cx);
 
         // AppState — seed with the shared pending-urls handle so that
         // NeoVioletApp can pick up late-arriving open-file events.

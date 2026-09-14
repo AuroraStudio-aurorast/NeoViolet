@@ -152,3 +152,124 @@ pub fn spawn_neoviolet_terminal(
 
     Ok(cmd_tx)
 }
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Everything the GUI shows sits on top of this file's small portable-pty
+    /// contract (openpty, spawn, drop the slave, take the reader/writer, resize,
+    /// then try_wait), and nothing else in the suite touches it — so a dependency
+    /// bump can change real behaviour while still compiling. That is precisely
+    /// what 0.9 did (it reworked the slave/`tty_name` handling and swapped the nix
+    /// version underneath), so this drives a real shell through the same sequence.
+    ///
+    /// Each step waits for the observable that proves the previous one landed
+    /// instead of sleeping: the child blocks on a second `read` until after the
+    /// resize, otherwise it could report the old size and flake.
+    #[test]
+    fn pty_contract_round_trips_input_resize_and_exit_status() {
+        let pty_system = native_pty_system();
+        let pair = pty_system
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("open PTY");
+
+        let mut cmd = CommandBuilder::new("/bin/sh");
+        cmd.arg("-c");
+        // Echo what it read, wait for a second line so the resize below has
+        // certainly happened, report the size it sees, then exit non-zero so the
+        // status is checked rather than merely observed.
+        cmd.arg("read line; echo got:$line; read again; stty size; exit 7");
+        cmd.env("TERM", "xterm-256color");
+
+        let mut child = pair.slave.spawn_command(cmd).expect("spawn /bin/sh");
+        assert!(
+            child.process_id().is_some(),
+            "the child pid is what the GUI hands to the IPC handshake"
+        );
+        drop(pair.slave);
+
+        let master = pair.master;
+        let mut reader = master.try_clone_reader().expect("clone PTY reader");
+        let mut writer = master.take_writer().expect("take PTY writer");
+
+        // Drain the master on a thread, exactly as the backend does, so a
+        // blocking read can never hang the test.
+        let (tx, rx) = mpsc::channel::<Vec<u8>>();
+        thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if tx.send(buf[..n].to_vec()).is_err() {
+                            break;
+                        }
+                    }
+                    // Some platforms report the end of the stream as an error
+                    // once the child is gone; the backend treats it as the end too.
+                    Err(_) => break,
+                }
+            }
+        });
+
+        let mut output = Vec::new();
+        let wait_for = |needles: &[&str], output: &mut Vec<u8>| {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                let seen = String::from_utf8_lossy(output).to_string();
+                if needles.iter().all(|n| seen.contains(n)) {
+                    return seen;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "timed out waiting for {needles:?}, saw {seen:?}"
+                );
+                match rx.recv_timeout(Duration::from_millis(200)) {
+                    Ok(chunk) => output.extend_from_slice(&chunk),
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    Err(mpsc::RecvTimeoutError::Disconnected) => {
+                        panic!("PTY reader closed while waiting for {needles:?}")
+                    }
+                }
+            }
+        };
+
+        writer.write_all(b"hello\n").expect("write input");
+        writer.flush().expect("flush input");
+        wait_for(&["got:hello"], &mut output);
+
+        master
+            .resize(PtySize {
+                rows: 30,
+                cols: 100,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("resize PTY");
+
+        writer.write_all(b"go\n").expect("write second input");
+        writer.flush().expect("flush second input");
+        wait_for(&["30 100"], &mut output);
+
+        let mut status = None;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline && status.is_none() {
+            status = child.try_wait().expect("try_wait");
+            if status.is_none() {
+                thread::sleep(Duration::from_millis(20));
+            }
+        }
+        assert_eq!(
+            status.expect("child never exited").exit_code(),
+            7,
+            "exit status did not survive the PTY"
+        );
+    }
+}
