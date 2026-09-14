@@ -9,6 +9,7 @@ require (
 	charm.land/lipgloss/v2 v2.0.4
 	charm.land/log/v2 v2.0.0
 	github.com/EdlinOrg/prominentcolor v1.0.0
+	github.com/charmbracelet/x/term v0.2.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/ebitengine/purego v0.10.1
 	github.com/gen2brain/mpeg v0.5.0
@@ -19,6 +20,7 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.4.0
 	github.com/pion/opus v0.1.0
 	github.com/spf13/cobra v1.10.2
+	golang.org/x/text v0.40.0
 )
 
 require (
@@ -30,7 +32,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.7 // indirect
 	github.com/charmbracelet/x/exp/ordered v0.1.0 // indirect
 	github.com/charmbracelet/x/exp/strings v0.1.0 // indirect
-	github.com/charmbracelet/x/term v0.2.2 // indirect
 	github.com/charmbracelet/x/termios v0.1.1 // indirect
 	github.com/charmbracelet/x/windows v0.2.2 // indirect
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
@@ -62,5 +63,4 @@ require (
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
 )
