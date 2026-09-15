@@ -62,6 +62,11 @@ func TestApplyHeaderField(t *testing.T) {
 	if applyHeaderField(&d, "re", "x") {
 		t.Error("an unknown metadata key must report ok=false")
 	}
+	// An empty key is not a metadata field: it must be silently ignored,
+	// leaving any already-read offset untouched.
+	if applyHeaderField(&d, "", "250") || d.Offset != 250 {
+		t.Errorf("an empty key must be silently ignored: offset=%d", d.Offset)
+	}
 }
 
 func TestShiftHelpers(t *testing.T) {

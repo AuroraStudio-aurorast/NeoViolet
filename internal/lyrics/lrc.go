@@ -71,10 +71,7 @@ func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 				isValidLine = true
 
 			case isMetadata(content):
-				key, val, hasField := lrcField(content)
-				if !hasField {
-					continue
-				}
+				key, val, _ := lrcField(content)
 				applyHeaderField(lyrics, key, val)
 
 			default:
