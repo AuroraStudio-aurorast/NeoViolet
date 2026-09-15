@@ -19,7 +19,6 @@ import (
 // 才被跳过，未列出的必须为绿。与 pending 的区别只是粒度——它让"部分迁移"的格式
 // 不必整条被无视。
 type contractCase struct {
-	name    string
 	parse   func(t *testing.T) *Data
 	expect  expectation
 	pending string

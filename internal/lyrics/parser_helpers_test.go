@@ -117,6 +117,10 @@ func TestScanWordTimed(t *testing.T) {
 		words []string
 		// starts, when set, pins the Time of each fragment in order.
 		starts []time.Duration
+		// start + wantStart pin the scan's Start; the flag is needed because 0 is
+		// itself a legitimate Start.
+		start     time.Duration
+		wantStart bool
 		// lineStart is the line's own start time; zero unless a case needs it.
 		lineStart time.Duration
 	}{
@@ -143,7 +147,12 @@ func TestScanWordTimed(t *testing.T) {
 			text:   "lead Hello",
 			end:    1500 * time.Millisecond,
 			words:  []string{"lead ", "Hello"},
-			starts: []time.Duration{0, 1000 * time.Millisecond},
+			starts: []time.Duration{500 * time.Millisecond, 1000 * time.Millisecond},
+			// The body opens with untimed text, so the head fragment is timed at
+			// the line start and Start is that fragment's Time.
+			start:     500 * time.Millisecond,
+			wantStart: true,
+			lineStart: 500 * time.Millisecond,
 		},
 		{
 			name:  "yrc text after each timestamp",
@@ -160,6 +169,12 @@ func TestScanWordTimed(t *testing.T) {
 			text:  "plain text",
 			end:   0,
 			words: []string{"plain text"},
+			// A body with no timestamp keeps its whole text as a single fragment
+			// timed at the line start (the no-match branch never sets End).
+			starts:    []time.Duration{500 * time.Millisecond},
+			start:     500 * time.Millisecond,
+			wantStart: true,
+			lineStart: 500 * time.Millisecond,
 		},
 		{
 			name:   "degenerate 0,0 tuple keeps its start and the boundary",
@@ -231,6 +246,9 @@ func TestScanWordTimed(t *testing.T) {
 				if got.Words[i].Time != want {
 					t.Errorf("Words[%d].Time = %v, want %v", i, got.Words[i].Time, want)
 				}
+			}
+			if tc.wantStart && got.Start != tc.start {
+				t.Errorf("Start = %v, want %v", got.Start, tc.start)
 			}
 			// Start is documented as Words[0].Time; LYS takes its line time
 			// from it, so the two must not drift apart.

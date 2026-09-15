@@ -190,8 +190,8 @@ type wordTimedScan struct {
 	// Start is the Time of Words[0]: lineStart when the body opens with untimed
 	// text, otherwise the first timed word's own start.
 	Start time.Duration
-	// End is the end of the last timed fragment (start + duration), or 0 when
-	// the body carried no timestamp at all.
+	// End is the greatest timed (start + duration) seen, or 0 when no
+	// timestamp carried a duration past lineStart.
 	End time.Duration
 	// Text is every fragment's text in order; it is always exactly the
 	// concatenation of Words, which is what the panel's karaoke needs (C6).
