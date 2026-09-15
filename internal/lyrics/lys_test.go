@@ -210,3 +210,34 @@ func TestLYS_UnrecognizedColonHeaderFallsThrough(t *testing.T) {
 		t.Errorf("Lines[0].Agent = %q, want %q (Atoi fails -> channel 0)", d.Lines[0].Agent, "v1")
 	}
 }
+
+// TestLYS_OffsetDoesNotInventEndForUnboundedLine pins the sentinel rule:
+// scanWordTimed leaves End at 0 when no duration crossed lineStart, and 0 is
+// the "no upper bound" sentinel — not a timestamp. Shifting it by a non-zero
+// [offset:] delta would give End == Time, and ActiveLines never activates a
+// line whose window is [t, t), so the line would never display.
+func TestLYS_OffsetDoesNotInventEndForUnboundedLine(t *testing.T) {
+	const src = "[offset:250]\n[0]plain text without timings"
+	var p lysParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	line := d.Lines[0]
+	if line.Time != 250*time.Millisecond {
+		t.Errorf("Time = %v, want 250ms (the offset still shifts the start)", line.Time)
+	}
+	if line.End != 0 {
+		t.Errorf("End = %v, want 0 (0 is the unbounded sentinel, not a timestamp)", line.End)
+	}
+	var sb strings.Builder
+	for _, w := range line.Words {
+		sb.WriteString(w.Text)
+	}
+	if sb.String() != line.Text {
+		t.Errorf("Words %q do not tile Text %q", sb.String(), line.Text)
+	}
+}

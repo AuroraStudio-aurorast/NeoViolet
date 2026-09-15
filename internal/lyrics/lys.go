@@ -73,13 +73,19 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 		// may have written lyrics.Offset), so [offset:] only shifts lines parsed
 		// after it — the same timing rule as LRC/QRC/YRC.
 		delta := time.Duration(lyrics.Offset) * time.Millisecond
-		lines = append(lines, LyricLine{
+		line := LyricLine{
 			Time:  shiftTime(scan.Start, delta),
-			End:   shiftTime(scan.End, delta),
 			Text:  scan.Text,
 			Words: shiftWords(scan.Words, delta),
 			Agent: channelToAgent[channel],
-		})
+		}
+		// scan.End == 0 is the unbounded sentinel (no duration crossed
+		// lineStart), not a timestamp: shifting it by a non-zero delta would
+		// make End == Time and the line would never activate.
+		if scan.End > 0 {
+			line.End = shiftTime(scan.End, delta)
+		}
+		lines = append(lines, line)
 	}
 
 	if len(lines) == 0 {
