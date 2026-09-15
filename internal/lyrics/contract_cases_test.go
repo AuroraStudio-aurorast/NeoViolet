@@ -31,11 +31,6 @@ var contractCases = map[string]contractCase{
 	"eslrc": {
 		parse:  viaParser("eslrc", eslrcContractSample),
 		expect: expectation{requireEnd: true, meta: true},
-		known: map[string]string{
-			"C6":         "空格片段不入 Words，且词时刻取了词尾（规格 §10 修）",
-			"requireEnd": "无 End（规格 §10.2 修）",
-			"meta":       "[ti:] 被静默丢弃（规格 §8.3 修）",
-		},
 	},
 	"lrc": {
 		parse:  viaParser("lrc", lrcContractSample),

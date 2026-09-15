@@ -225,8 +225,11 @@ func TestESLRC_BasicParse(t *testing.T) {
 	if len(d.Lines[0].Words) == 0 {
 		t.Fatal("line 0 has no word fragments")
 	}
-	if d.Lines[0].Words[0].Text != "I" || d.Lines[0].Words[0].Time != 39548*time.Millisecond {
-		t.Errorf("word[0] = %q @ %v, want 'I' @ 39548ms", d.Lines[0].Words[0].Text, d.Lines[0].Words[0].Time)
+	if d.Lines[0].Words[0].Text != "I" || d.Lines[0].Words[0].Time != 39345*time.Millisecond {
+		t.Errorf("word[0] = %q @ %v, want 'I' @ 39345ms", d.Lines[0].Words[0].Text, d.Lines[0].Words[0].Time)
+	}
+	if d.Lines[0].End != 43071*time.Millisecond {
+		t.Errorf("line 0 End = %v, want 43071ms", d.Lines[0].End)
 	}
 
 	if d.Lines[1].Time != 44085*time.Millisecond {
@@ -244,13 +247,13 @@ func TestESLRC_WordTimestamps(t *testing.T) {
 	}
 
 	line0 := d.Lines[0]
-	if len(line0.Words) != 11 {
-		t.Fatalf("expected 11 word fragments, got %d", len(line0.Words))
+	if len(line0.Words) != 20 {
+		t.Fatalf("expected 20 word fragments (spaces included), got %d", len(line0.Words))
 	}
-	if line0.Words[0].Text != "I" || line0.Words[0].Time != 39548*time.Millisecond {
+	if line0.Words[0].Text != "I" || line0.Words[0].Time != 39345*time.Millisecond {
 		t.Errorf("word[0] = %q @ %v", line0.Words[0].Text, line0.Words[0].Time)
 	}
-	if line0.Words[5].Text != "the" || line0.Words[5].Time != 41147*time.Millisecond {
+	if line0.Words[5].Text != "ver" || line0.Words[5].Time != 40198*time.Millisecond {
 		t.Errorf("word[5] = %q @ %v", line0.Words[5].Text, line0.Words[5].Time)
 	}
 }

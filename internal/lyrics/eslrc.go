@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 func init() {
@@ -26,8 +27,8 @@ func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	var lines []LyricLine
 
 	for _, rawLine := range strings.Split(string(data), "\n") {
-		rawLine = strings.TrimRight(rawLine, "\r\n\t ")
-		if strings.TrimSpace(rawLine) == "" {
+		rawLine = strings.TrimSpace(rawLine)
+		if rawLine == "" {
 			continue
 		}
 
@@ -37,6 +38,16 @@ func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 		}
 
 		firstContent := rawLine[groups[0][2]:groups[0][3]]
+
+		// Metadata headers share the "[key:value]" shape with LRC. They have to
+		// be handled before parseTimestamp, which rejects them as malformed and
+		// would skip the line before this branch could run.
+		if key, val, isField := lrcField(firstContent); isField {
+			if applyHeaderField(lyrics, key, val) {
+				continue
+			}
+		}
+
 		lineStart, err := parseTimestamp(firstContent)
 		if err != nil {
 			continue
@@ -44,56 +55,53 @@ func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 		var words []WordFragment
 		var fullText strings.Builder
-		hasWord := false
+		// In ESLRC each fragment's timestamp is the bracket that **follows**
+		// it, i.e. its end; the fragment's start is the previous boundary.
+		// "[00:00.000]" is a carry marker meaning "same as the last known
+		// boundary" (that is what spaces carry).
+		prevBoundary := lineStart
+		timed := false
 
-		for i := 0; i < len(groups); i++ {
-			bracketStart := groups[i][0]
-			bracketEnd := groups[i][1]
-
-			prevEnd := 0
-			if i > 0 {
-				prevEnd = groups[i-1][1]
+		for i := 1; i < len(groups); i++ {
+			if text := rawLine[groups[i-1][1]:groups[i][0]]; text != "" {
+				words = append(words, WordFragment{Time: prevBoundary, Text: text})
+				fullText.WriteString(text)
 			}
-			textBetween := rawLine[prevEnd:bracketStart]
-
-			if i == 0 {
-				continue
+			if b, bErr := parseTimestamp(rawLine[groups[i][2]:groups[i][3]]); bErr == nil && b > 0 {
+				prevBoundary = b
+				timed = true
 			}
-
-			bracketContent := rawLine[groups[i][2]:groups[i][3]]
-
-			wordDuration, wordErr := parseTimestamp(bracketContent)
-			if wordErr == nil && wordDuration > 0 {
-				words = append(words, WordFragment{
-					Time: wordDuration,
-					Text: textBetween,
-				})
-				hasWord = true
-			}
-
-			fullText.WriteString(textBetween)
-			_ = bracketEnd
 		}
 
 		lastEnd := groups[len(groups)-1][1]
 		if lastEnd < len(rawLine) {
-			tail := rawLine[lastEnd:]
-			fullText.WriteString(tail)
-		}
-
-		text := fullText.String()
-		if !hasWord {
-			text = strings.TrimSpace(text)
-			if text == "" {
-				continue
+			if tail := rawLine[lastEnd:]; tail != "" {
+				words = append(words, WordFragment{Time: prevBoundary, Text: tail})
+				fullText.WriteString(tail)
 			}
 		}
 
-		lines = append(lines, LyricLine{
-			Time:  lineStart,
+		text := fullText.String()
+		if !timed {
+			// No word timestamps at all (an LRC-shaped file): keep the old
+			// behaviour exactly — trimmed text, no Words, unbounded.
+			if text = strings.TrimSpace(text); text == "" {
+				continue
+			}
+			lines = append(lines, LyricLine{Time: lineStart, Text: text})
+			continue
+		}
+
+		delta := time.Duration(lyrics.Offset) * time.Millisecond
+		line := LyricLine{
+			Time:  shiftTime(lineStart, delta),
 			Text:  text,
-			Words: words,
-		})
+			Words: shiftWords(words, delta),
+		}
+		if prevBoundary > lineStart {
+			line.End = shiftTime(prevBoundary, delta)
+		}
+		lines = append(lines, line)
 	}
 
 	if len(lines) == 0 {
