@@ -1,6 +1,7 @@
 package lyrics
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -97,5 +98,153 @@ func TestShiftHelpers(t *testing.T) {
 	}
 	if got := shiftWords(words, 0); got[0].Time != words[0].Time || got[1].Time != words[1].Time {
 		t.Errorf("shiftWords with zero delta = %+v, want input unchanged", got)
+	}
+}
+
+// TestScanWordTimed pins the shared word-timed scanner QRC, YRC and LYS will
+// run: QRC and LYS write each word before its (start,duration) tuple, YRC after
+// its (start,duration,flag) tuple.
+func TestScanWordTimed(t *testing.T) {
+	qrc := wordTimedRe{re: qrcWordRe, text: 1, start: 2, duration: 3}
+	yrc := wordTimedRe{re: yrcWordRe, text: 4, start: 1, duration: 2}
+
+	cases := []struct {
+		name  string
+		body  string
+		re    wordTimedRe
+		text  string
+		end   time.Duration
+		words []string
+		// starts, when set, pins the Time of each fragment in order.
+		starts []time.Duration
+		// lineStart is the line's own start time; zero unless a case needs it.
+		lineStart time.Duration
+	}{
+		{
+			name:  "qrc text before each timestamp",
+			body:  "Hello(1000,500) (1500,500)world",
+			re:    qrc,
+			text:  "Hello world",
+			end:   2000 * time.Millisecond,
+			words: []string{"Hello", " ", "world"},
+		},
+		{
+			name:  "qrc trailing untimed text is kept",
+			body:  "Hello(1000,500) (1500,500)world trailing",
+			re:    qrc,
+			text:  "Hello world trailing",
+			end:   2000 * time.Millisecond,
+			words: []string{"Hello", " ", "world trailing"},
+		},
+		{
+			name:   "yrc leading untimed text is kept",
+			body:   "lead (1000,500,0)Hello",
+			re:     yrc,
+			text:   "lead Hello",
+			end:    1500 * time.Millisecond,
+			words:  []string{"lead ", "Hello"},
+			starts: []time.Duration{0, 1000 * time.Millisecond},
+		},
+		{
+			name:  "yrc text after each timestamp",
+			body:  "(1000,500,0)Hello(1500,500,0) world trailing",
+			re:    yrc,
+			text:  "Hello world trailing",
+			end:   2000 * time.Millisecond,
+			words: []string{"Hello", " world trailing"},
+		},
+		{
+			name:  "no timestamp at all",
+			body:  "  plain text  ",
+			re:    qrc,
+			text:  "plain text",
+			end:   0,
+			words: []string{"plain text"},
+		},
+		{
+			name:   "degenerate 0,0 tuple keeps its start and the boundary",
+			body:   "Hello(1000,500) (0,0)world",
+			re:     qrc,
+			text:   "Hello world",
+			end:    1500 * time.Millisecond,
+			words:  []string{"Hello", " ", "world"},
+			starts: []time.Duration{1000 * time.Millisecond, 0, 1500 * time.Millisecond},
+		},
+		{
+			name:   "only degenerate tuples leave no end",
+			body:   "Hello(0,0)",
+			re:     qrc,
+			text:   "Hello",
+			end:    0,
+			words:  []string{"Hello"},
+			starts: []time.Duration{0},
+			// A nonzero lineStart keeps this case from passing by accident: the
+			// degenerate tuple carries no duration, so the line must stay
+			// unbounded instead of inheriting lineStart as its End.
+			lineStart: 500 * time.Millisecond,
+		},
+		{
+			name:  "blank body scans to the zero value",
+			body:  "   ",
+			re:    qrc,
+			text:  "",
+			end:   0,
+			words: nil,
+		},
+		{
+			name:  "a timestamp carrying no text adds no fragment",
+			body:  "(1000,500,0)",
+			re:    yrc,
+			text:  "",
+			end:   0,
+			words: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := scanWordTimed(tc.body, tc.re, tc.lineStart)
+			if got.Text != tc.text {
+				t.Errorf("Text = %q, want %q", got.Text, tc.text)
+			}
+			if got.End != tc.end {
+				t.Errorf("End = %v, want %v", got.End, tc.end)
+			}
+			// A nil expectation means the body held no fragment at all, so the
+			// scan has to stay the zero value rather than an empty Words slice.
+			if tc.words == nil && got.Words != nil {
+				t.Errorf("Words = %v, want nil", got.Words)
+			}
+			var texts []string
+			for _, w := range got.Words {
+				texts = append(texts, w.Text)
+			}
+			if len(texts) != len(tc.words) {
+				t.Fatalf("Words = %v, want %v", texts, tc.words)
+			}
+			for i := range tc.words {
+				if texts[i] != tc.words[i] {
+					t.Errorf("Words[%d] = %q, want %q", i, texts[i], tc.words[i])
+				}
+			}
+			for i, want := range tc.starts {
+				if got.Words[i].Time != want {
+					t.Errorf("Words[%d].Time = %v, want %v", i, got.Words[i].Time, want)
+				}
+			}
+			// Start is documented as Words[0].Time; LYS takes its line time
+			// from it, so the two must not drift apart.
+			if len(got.Words) > 0 && got.Start != got.Words[0].Time {
+				t.Errorf("Start = %v, want Words[0].Time = %v", got.Start, got.Words[0].Time)
+			}
+			// C6 的本地形式：Words 必须铺满 Text。
+			var sb strings.Builder
+			for _, w := range got.Words {
+				sb.WriteString(w.Text)
+			}
+			if sb.String() != got.Text {
+				t.Errorf("Words %q do not tile Text %q", sb.String(), got.Text)
+			}
+		})
 	}
 }

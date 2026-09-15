@@ -174,3 +174,91 @@ func shiftWords(words []WordFragment, delta time.Duration) []WordFragment {
 	}
 	return out
 }
+
+// wordTimedRe describes one word-timed body format: the regex plus the capture
+// group holding each piece. QRC puts the text before its timestamp and YRC
+// after it, so the group indexes have to travel with the regex.
+type wordTimedRe struct {
+	re       *regexp.Regexp
+	text     int
+	start    int
+	duration int
+}
+
+// wordTimedScan is the result of one scan over a word-timed body.
+type wordTimedScan struct {
+	// Start is the Time of Words[0]: lineStart when the body opens with untimed
+	// text, otherwise the first timed word's own start.
+	Start time.Duration
+	// End is the end of the last timed fragment (start + duration), or 0 when
+	// the body carried no timestamp at all.
+	End time.Duration
+	// Text is every fragment's text in order; it is always exactly the
+	// concatenation of Words, which is what the panel's karaoke needs (C6).
+	Text string
+	// Words keeps untimed leading/trailing text as ordinary fragments too, so
+	// that Text and Words cannot disagree.
+	Words []WordFragment
+}
+
+// scanWordTimed scans a word-timed body (QRC, YRC and LYS share this).
+//
+// Text outside the matches — a leading fragment before the first timestamp and
+// a trailing one after the last — is kept as a fragment whose Time is the last
+// known boundary. Dropping it (the previous behaviour, which also made QRC and
+// YRC disagree with each other) would leave Words unable to tile Text, and the
+// panel silently degrades to whole-line highlighting when a line does not tile.
+func scanWordTimed(body string, groups wordTimedRe, lineStart time.Duration) wordTimedScan {
+	var scan wordTimedScan
+
+	locs := groups.re.FindAllStringSubmatchIndex(body, -1)
+	if len(locs) == 0 {
+		if text := strings.TrimSpace(body); text != "" {
+			scan.Start = lineStart
+			scan.Text = text
+			scan.Words = []WordFragment{{Time: lineStart, Text: text}}
+		}
+		return scan
+	}
+
+	var sb strings.Builder
+	boundary := lineStart
+	timed := false
+
+	if head := body[:locs[0][0]]; head != "" {
+		scan.Words = append(scan.Words, WordFragment{Time: boundary, Text: head})
+		sb.WriteString(head)
+	}
+
+	for _, loc := range locs {
+		text := body[loc[2*groups.text]:loc[2*groups.text+1]]
+		startMs, _ := strconv.Atoi(body[loc[2*groups.start]:loc[2*groups.start+1]])
+		durMs, _ := strconv.Atoi(body[loc[2*groups.duration]:loc[2*groups.duration+1]])
+
+		startAt := time.Duration(startMs) * time.Millisecond
+		if text != "" {
+			scan.Words = append(scan.Words, WordFragment{Time: startAt, Text: text})
+			sb.WriteString(text)
+		}
+		// Degenerate (0,0) tuples must not drag the boundary backwards.
+		if endAt := startAt + time.Duration(durMs)*time.Millisecond; endAt > boundary {
+			boundary = endAt
+			timed = true
+		}
+	}
+
+	if tail := body[locs[len(locs)-1][1]:]; tail != "" {
+		scan.Words = append(scan.Words, WordFragment{Time: boundary, Text: tail})
+		sb.WriteString(tail)
+	}
+
+	scan.Text = sb.String()
+	if len(scan.Words) == 0 {
+		return wordTimedScan{}
+	}
+	scan.Start = scan.Words[0].Time
+	if timed {
+		scan.End = boundary
+	}
+	return scan
+}
