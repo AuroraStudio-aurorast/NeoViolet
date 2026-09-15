@@ -385,6 +385,11 @@ func TestSMI_BrTagVariantsAndEmptyParts(t *testing.T) {
 		{"first<BR>second", []string{"first", "second"}},
 		{"first<br><br>second", []string{"first", "second"}},
 		{"first<br>", []string{"first"}},
+		{"first<br >second", []string{"first", "second"}},
+		// Attribute forms are still <br>: SAMI files use <br clear=all> and
+		// friends, and those must not fall through to the tag stripper.
+		{"first<br class=\"x\">second", []string{"first", "second"}},
+		{"first<br clear=all>second", []string{"first", "second"}},
 	}
 	for _, tc := range cases {
 		got := cleanSMIParts(tc.raw)
@@ -395,6 +400,29 @@ func TestSMI_BrTagVariantsAndEmptyParts(t *testing.T) {
 			if got[i] != tc.want[i] {
 				t.Errorf("cleanSMIParts(%q)[%d] = %q, want %q", tc.raw, i, got[i], tc.want[i])
 			}
+		}
+	}
+}
+
+func TestSMI_BrWithAttributesBecomesParts(t *testing.T) {
+	// <br> attributes do not change the tag's meaning: it is still a hard line
+	// break, so the full parse must produce two parts and a " | " joined Text.
+	for _, tag := range []string{`<br class="x">`, `<br clear=all>`, `<BR class="y"/>`} {
+		src := "<SMI><BODY><SYNC Start=1000><P Class=KRCC>first" + tag + "second</SYNC></BODY></SMI>"
+		var p smiParser
+		d, err := p.Parse(strings.NewReader(src), "")
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", tag, err)
+		}
+		if len(d.Lines) != 1 {
+			t.Fatalf("Parse(%q): len(Lines) = %d, want 1", tag, len(d.Lines))
+		}
+		line := d.Lines[0]
+		if len(line.Parts) != 2 || line.Parts[0] != "first" || line.Parts[1] != "second" {
+			t.Errorf("Parse(%q): Parts = %v, want [first second]", tag, line.Parts)
+		}
+		if line.Text != "first | second" {
+			t.Errorf("Parse(%q): Text = %q, want %q", tag, line.Text, "first | second")
 		}
 	}
 }
@@ -454,6 +482,12 @@ func TestSMI_BrOnlyClassProducesNoLine(t *testing.T) {
 	if d.Lines[0].Text != "kept" || d.Lines[0].Parts != nil {
 		t.Errorf("line 0 = %q with Parts %v, want %q without Parts", d.Lines[0].Text, d.Lines[0].Parts, "kept")
 	}
+	if d.Lines[0].Agent != "v1" {
+		t.Errorf("line 0 Agent = %q, want %q (the <br>-only class must not consume an agent slot)", d.Lines[0].Agent, "v1")
+	}
+	if len(d.Agents) != 1 || d.Agents["v1"] != "ENCC" {
+		t.Errorf("Agents = %v, want only v1=ENCC (the <br>-only class must not consume an agent slot)", d.Agents)
+	}
 }
 
 func TestSMI_NonBrTagsAreNotBreakPoints(t *testing.T) {
@@ -463,6 +497,10 @@ func TestSMI_NonBrTagsAreNotBreakPoints(t *testing.T) {
 	cases := []struct{ raw, want string }{
 		{"<b>first</b>", "first"},
 		{"first<brx>second", "firstsecond"},
+		{"first<bravo>second", "firstsecond"},
+		// An attribute does not rescue a non-br tag name: the word boundary
+		// after "br" is what matters, not the presence of attributes.
+		{"first<brx class=\"y\">second", "firstsecond"},
 		{"first<P Class=KRCC>second", "firstsecond"},
 	}
 	for _, tc := range cases {
@@ -472,16 +510,18 @@ func TestSMI_NonBrTagsAreNotBreakPoints(t *testing.T) {
 		}
 	}
 
-	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC>first<brx>second</SYNC></BODY></SMI>"
-	var p smiParser
-	d, err := p.Parse(strings.NewReader(src), "")
-	if err != nil {
-		t.Fatalf("Parse: %v", err)
-	}
-	if len(d.Lines) != 1 {
-		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
-	}
-	if d.Lines[0].Text != "firstsecond" || d.Lines[0].Parts != nil {
-		t.Errorf("line 0 = %q with Parts %v, want %q without Parts", d.Lines[0].Text, d.Lines[0].Parts, "firstsecond")
+	for _, tag := range []string{"<brx>", "<bravo>"} {
+		src := "<SMI><BODY><SYNC Start=1000><P Class=KRCC>first" + tag + "second</SYNC></BODY></SMI>"
+		var p smiParser
+		d, err := p.Parse(strings.NewReader(src), "")
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", tag, err)
+		}
+		if len(d.Lines) != 1 {
+			t.Fatalf("Parse(%q): len(Lines) = %d, want 1", tag, len(d.Lines))
+		}
+		if d.Lines[0].Text != "firstsecond" || d.Lines[0].Parts != nil {
+			t.Errorf("Parse(%q): line 0 = %q with Parts %v, want %q without Parts", tag, d.Lines[0].Text, d.Lines[0].Parts, "firstsecond")
+		}
 	}
 }

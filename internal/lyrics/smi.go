@@ -16,7 +16,10 @@ var (
 	htmlTagRe = regexp.MustCompile(`<[^>]*>`)
 	// smiBrRe matches the SMI line-break tags. They must become display part
 	// boundaries, so they are matched before htmlTagRe would silently delete them.
-	smiBrRe = regexp.MustCompile(`(?i)<br\s*/?>`)
+	// `\b` after "br" is load-bearing: it keeps attribute forms such as
+	// <br class="x"> or <br clear=all> inside the match while a longer tag name
+	// (<brx>, <bravo>) still falls through to htmlTagRe and is not a break.
+	smiBrRe = regexp.MustCompile(`(?i)<br\b[^>]*>`)
 	// smiSpaceRe collapses runs of whitespace inside one display part.
 	smiSpaceRe = regexp.MustCompile(`\s+`)
 
@@ -177,8 +180,8 @@ func (p *smiParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			}
 			if parts := partsOrNil(ct.Parts); parts != nil {
 				// Same " | " join as LRC: it is the only separator any legacy
-				// consumer splits on (Rust split_line's fallback, the one_line
-				// footer), so an older GUI still renders the sub-lines.
+				// consumer splits on (Rust split_line's fallback), so an older GUI
+				// still renders the sub-lines.
 				line.Parts = parts
 				line.Text = strings.Join(parts, " | ")
 			}
