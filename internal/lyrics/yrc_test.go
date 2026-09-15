@@ -28,6 +28,36 @@ func TestYRC_HeaderDurationAndMetadata(t *testing.T) {
 	}
 }
 
+func TestYRC_CRLFLineKeepsTextAndWordsClean(t *testing.T) {
+	// CRLF 文件的行尾 \r 绝不能进入 Text/Words（C2 与 C6 的本地形式）。
+	const src = "[1000,2000](1000,500,0)Hello\r\n"
+	var p yrcParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	line := d.Lines[0]
+	if strings.ContainsAny(line.Text, "\r\n") {
+		t.Errorf("Text = %q, must not contain \\r or \\n", line.Text)
+	}
+	if line.Text != "Hello" {
+		t.Errorf("Text = %q, want %q", line.Text, "Hello")
+	}
+	var sb strings.Builder
+	for _, w := range line.Words {
+		if strings.ContainsAny(w.Text, "\r\n") {
+			t.Errorf("Words has fragment %q with \\r or \\n", w.Text)
+		}
+		sb.WriteString(w.Text)
+	}
+	if sb.String() != line.Text {
+		t.Errorf("Words %q do not tile Text %q", sb.String(), line.Text)
+	}
+}
+
 func TestYRC_ParseSetsPath(t *testing.T) {
 	var p yrcParser
 	d, err := p.Parse(strings.NewReader("[1000,2000](1000,500,0)Hi\n"), "dir/song.yrc")

@@ -243,10 +243,13 @@ func parseWordTimedFile(data []byte, name string, groups wordTimedRe) (*Data, er
 	delta := time.Duration(lyrics.Offset) * time.Millisecond
 
 	// Pass 2: lyric lines. Metadata lines fall out on their own — "[ti:Title]"
-	// is not an integer, so the header parse below skips them.
+	// is not an integer, so the header parse below skips them. Each line is
+	// trimmed exactly once here, so header and body come from the same clean
+	// line: no trailing \r or whitespace can leak into Text/Words (C2).
 	var out []LyricLine
 	for _, raw := range lines {
-		inner, ok := bracketInner(raw)
+		line := strings.TrimSpace(raw)
+		inner, ok := bracketInner(line)
 		if !ok {
 			continue
 		}
@@ -260,22 +263,22 @@ func parseWordTimedFile(data []byte, name string, groups wordTimedRe) (*Data, er
 			durMs, _ = strconv.Atoi(strings.TrimSpace(header[1]))
 		}
 
-		body := raw[strings.IndexByte(raw, ']')+1:]
+		body := line[strings.IndexByte(line, ']')+1:]
 		start := time.Duration(startMs) * time.Millisecond
 		scan := scanWordTimed(body, groups, start)
 		if strings.TrimSpace(scan.Text) == "" {
 			continue
 		}
 
-		line := LyricLine{
+		entry := LyricLine{
 			Time:  shiftTime(start, delta),
 			Text:  scan.Text,
 			Words: shiftWords(scan.Words, delta),
 		}
 		if durMs > 0 {
-			line.End = shiftTime(start+time.Duration(durMs)*time.Millisecond, delta)
+			entry.End = shiftTime(start+time.Duration(durMs)*time.Millisecond, delta)
 		}
-		out = append(out, line)
+		out = append(out, entry)
 	}
 
 	if len(out) == 0 {

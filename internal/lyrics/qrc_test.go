@@ -37,15 +37,15 @@ func TestQRC_ZeroDurationStaysUnbounded(t *testing.T) {
 }
 
 func TestQRC_HeaderMetadata(t *testing.T) {
-	const src = "[ti:Title]\n[ar:Artist]\n[al:Album]\n[by:Creator]\n[offset:250]\n" +
+	const src = "[ti:Title]\n[ar:Artist]\n[al:Album]\n[au:Author]\n[by:Creator]\n[offset:250]\n" +
 		"[1000,2000]Hello(1000,500)\n"
 	var p qrcParser
 	d, err := p.Parse(strings.NewReader(src), "")
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	if d.Title != "Title" || d.Artist != "Artist" || d.Album != "Album" || d.Creator != "Creator" {
-		t.Errorf("metadata = %q/%q/%q/%q", d.Title, d.Artist, d.Album, d.Creator)
+	if d.Title != "Title" || d.Artist != "Artist" || d.Album != "Album" || d.Author != "Author" || d.Creator != "Creator" {
+		t.Errorf("metadata = %q/%q/%q/%q/%q", d.Title, d.Artist, d.Album, d.Author, d.Creator)
 	}
 	if d.Offset != 250 {
 		t.Errorf("Offset = %d, want 250", d.Offset)
@@ -114,6 +114,40 @@ func TestQRC_SkipsGarbageAndEmptyBodyLines(t *testing.T) {
 	}
 	if d.Lines[0].Time != 5000*time.Millisecond || d.Lines[0].Text != "Hi" {
 		t.Errorf("Lines[0] = %v %q, want 5000ms %q", d.Lines[0].Time, d.Lines[0].Text, "Hi")
+	}
+}
+
+func TestQRC_CRLFLinesKeepTextAndWordsClean(t *testing.T) {
+	// CRLF 文件的行尾 \r 绝不能进入 Text/Words（C2 与 C6 的本地形式）。
+	const src = "[1000,2000]Hello(1000,500)\r\n[3000,2000]Bye(3000,500)\r\n"
+	var p qrcParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 2 {
+		t.Fatalf("len(Lines) = %d, want 2", len(d.Lines))
+	}
+	for i, line := range d.Lines {
+		if strings.ContainsAny(line.Text, "\r\n") {
+			t.Errorf("Lines[%d].Text = %q, must not contain \\r or \\n", i, line.Text)
+		}
+		var sb strings.Builder
+		for _, w := range line.Words {
+			if strings.ContainsAny(w.Text, "\r\n") {
+				t.Errorf("Lines[%d].Words has fragment %q with \\r or \\n", i, w.Text)
+			}
+			sb.WriteString(w.Text)
+		}
+		if sb.String() != line.Text {
+			t.Errorf("Lines[%d].Words %q do not tile Text %q", i, sb.String(), line.Text)
+		}
+	}
+	if d.Lines[0].Text != "Hello" {
+		t.Errorf("Lines[0].Text = %q, want %q", d.Lines[0].Text, "Hello")
+	}
+	if d.Lines[0].End != 3000*time.Millisecond {
+		t.Errorf("Lines[0].End = %v, want 3000ms", d.Lines[0].End)
 	}
 }
 
