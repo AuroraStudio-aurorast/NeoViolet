@@ -348,3 +348,140 @@ func TestSMI_NoNoiseText(t *testing.T) {
 	t.Logf("line 0 text: %q", d.Lines[0].Text)
 	t.Logf("line 1 text: %q", d.Lines[1].Text)
 }
+
+func TestSMI_BrBecomesParts(t *testing.T) {
+	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC>first<br>second</SYNC></BODY></SMI>"
+	var p smiParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	line := d.Lines[0]
+	want := []string{"first", "second"}
+	if len(line.Parts) != len(want) {
+		t.Fatalf("Parts = %v, want %v", line.Parts, want)
+	}
+	for i := range want {
+		if line.Parts[i] != want[i] {
+			t.Errorf("Parts[%d] = %q, want %q", i, line.Parts[i], want[i])
+		}
+	}
+	if line.Text != "first | second" {
+		t.Errorf("Text = %q, want %q", line.Text, "first | second")
+	}
+}
+
+func TestSMI_BrTagVariantsAndEmptyParts(t *testing.T) {
+	cases := []struct {
+		raw  string
+		want []string
+	}{
+		{"first<br>second", []string{"first", "second"}},
+		{"first<br/>second", []string{"first", "second"}},
+		{"first<br />second", []string{"first", "second"}},
+		{"first<BR>second", []string{"first", "second"}},
+		{"first<br><br>second", []string{"first", "second"}},
+		{"first<br>", []string{"first"}},
+	}
+	for _, tc := range cases {
+		got := cleanSMIParts(tc.raw)
+		if len(got) != len(tc.want) {
+			t.Fatalf("cleanSMIParts(%q) = %v, want %v", tc.raw, got, tc.want)
+		}
+		for i := range tc.want {
+			if got[i] != tc.want[i] {
+				t.Errorf("cleanSMIParts(%q)[%d] = %q, want %q", tc.raw, i, got[i], tc.want[i])
+			}
+		}
+	}
+}
+
+func TestSMI_RawNewlineIsNotAPartBoundary(t *testing.T) {
+	// SMI 源码常被折行排版；只有 <br> 才是显示段边界，源码里的原始换行
+	// 仍折叠成空格（与迁移前逐字节一致）。
+	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC>first line\nsecond line</SYNC></BODY></SMI>"
+	var p smiParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	if d.Lines[0].Parts != nil {
+		t.Errorf("Parts = %v, want nil", d.Lines[0].Parts)
+	}
+	if d.Lines[0].Text != "first line second line" {
+		t.Errorf("Text = %q, want %q", d.Lines[0].Text, "first line second line")
+	}
+}
+
+func TestSMI_MultipleClassesStaySeparateEvents(t *testing.T) {
+	// B 类不变：一个 SYNC 下两个 <P Class=...> 仍是两个 LyricLine，各自的 <br>
+	// 只在自己那条线内分段。
+	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC>a<br>b<P Class=ENCC>c<br>d" +
+		"<SYNC Start=2000><P Class=KRCC>e</SYNC></BODY></SMI>"
+	var p smiParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 3 {
+		t.Fatalf("len(Lines) = %d, want 3", len(d.Lines))
+	}
+	for i, want := range []string{"a | b", "c | d", "e"} {
+		if d.Lines[i].Text != want {
+			t.Errorf("Lines[%d].Text = %q, want %q", i, d.Lines[i].Text, want)
+		}
+	}
+}
+
+func TestSMI_BrOnlyClassProducesNoLine(t *testing.T) {
+	// A <P> whose whole content is a break carries no display row: the class is
+	// dropped, so it neither yields an empty line nor claims an agent slot.
+	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC><br><P Class=ENCC>kept</SYNC></BODY></SMI>"
+	var p smiParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1 (the <br>-only class must not produce a line)", len(d.Lines))
+	}
+	if d.Lines[0].Text != "kept" || d.Lines[0].Parts != nil {
+		t.Errorf("line 0 = %q with Parts %v, want %q without Parts", d.Lines[0].Text, d.Lines[0].Parts, "kept")
+	}
+}
+
+func TestSMI_NonBrTagsAreNotBreakPoints(t *testing.T) {
+	// Only the <br> variants are line breaks. Any other tag keeps the old
+	// behaviour: cleanSMIText strips it, so the surrounding words stay in one
+	// display part instead of becoming two.
+	cases := []struct{ raw, want string }{
+		{"<b>first</b>", "first"},
+		{"first<brx>second", "firstsecond"},
+		{"first<P Class=KRCC>second", "firstsecond"},
+	}
+	for _, tc := range cases {
+		got := cleanSMIParts(tc.raw)
+		if len(got) != 1 || got[0] != tc.want {
+			t.Errorf("cleanSMIParts(%q) = %v, want [%q]", tc.raw, got, tc.want)
+		}
+	}
+
+	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC>first<brx>second</SYNC></BODY></SMI>"
+	var p smiParser
+	d, err := p.Parse(strings.NewReader(src), "")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	if d.Lines[0].Text != "firstsecond" || d.Lines[0].Parts != nil {
+		t.Errorf("line 0 = %q with Parts %v, want %q without Parts", d.Lines[0].Text, d.Lines[0].Parts, "firstsecond")
+	}
+}

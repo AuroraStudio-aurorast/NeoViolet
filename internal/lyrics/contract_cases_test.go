@@ -58,9 +58,6 @@ var contractCases = map[string]contractCase{
 	"smi": {
 		parse:  viaParser("smi", smiContractSample),
 		expect: expectation{hasParts: true},
-		known: map[string]string{
-			"hasParts": "<br> 被当作普通标签删掉（规格 §7 修）",
-		},
 	},
 	"srt": {
 		parse:  viaParser("srt", srtContractSample),

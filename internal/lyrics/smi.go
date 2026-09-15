@@ -10,13 +10,19 @@ import (
 )
 
 var (
-	smiSyncRe = regexp.MustCompile(`(?i)<SYNC\s+Start\s*=\s*(\d+)`)
+	smiSyncRe  = regexp.MustCompile(`(?i)<SYNC\s+Start\s*=\s*(\d+)`)
 	smiClassRe = regexp.MustCompile(`(?i)<P\s+Class\s*=\s*([^>\s]+)`)
 	// Strip HTML tags except we need to track content between them
 	htmlTagRe = regexp.MustCompile(`<[^>]*>`)
+	// smiBrRe matches the SMI line-break tags. They must become display part
+	// boundaries, so they are matched before htmlTagRe would silently delete them.
+	smiBrRe = regexp.MustCompile(`(?i)<br\s*/?>`)
+	// smiSpaceRe collapses runs of whitespace inside one display part.
+	smiSpaceRe = regexp.MustCompile(`\s+`)
+
 	// Match SMI metadata tags in HEAD
-	smiTitleRe  = regexp.MustCompile(`(?i)<TITLE>([^<]*)</TITLE>`)
-	smiBodyRe   = regexp.MustCompile(`(?is)<BODY[^>]*>(.*?)</BODY>`)
+	smiTitleRe = regexp.MustCompile(`(?i)<TITLE>([^<]*)</TITLE>`)
+	smiBodyRe  = regexp.MustCompile(`(?is)<BODY[^>]*>(.*?)</BODY>`)
 )
 
 // agentClassMapping maps common SMI language class IDs to agent IDs.
@@ -111,8 +117,8 @@ func (p *smiParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			}
 
 			rawText := section[textStart:textEnd]
-			cleanText := cleanSMIText(rawText)
-			if cleanText == "" {
+			parts := cleanSMIParts(rawText)
+			if len(parts) == 0 {
 				continue
 			}
 
@@ -124,7 +130,7 @@ func (p *smiParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 			classes = append(classes, classText{
 				Class: className,
-				Text:  cleanText,
+				Parts: parts,
 			})
 		}
 
@@ -163,12 +169,20 @@ func (p *smiParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 		for _, ct := range entry.classes {
 			agentID := agentClasses[ct.Class]
 
-			lines = append(lines, LyricLine{
+			line := LyricLine{
 				Time:  start,
 				End:   end,
-				Text:  ct.Text,
+				Text:  ct.Parts[0],
 				Agent: agentID,
-			})
+			}
+			if parts := partsOrNil(ct.Parts); parts != nil {
+				// Same " | " join as LRC: it is the only separator any legacy
+				// consumer splits on (Rust split_line's fallback, the one_line
+				// footer), so an older GUI still renders the sub-lines.
+				line.Parts = parts
+				line.Text = strings.Join(parts, " | ")
+			}
+			lines = append(lines, line)
 		}
 	}
 
@@ -184,10 +198,30 @@ func (p *smiParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 type classText struct {
 	Class string
-	Text  string
+	// Parts holds the display rows of this class' text at this SYNC point.
+	// Text is derived from it so the two can never disagree.
+	Parts []string
 }
 
-// cleanSMIText strips HTML tags, decodes common HTML entities, and trims whitespace.
+// cleanSMIParts turns one <P Class=...> fragment into its display parts.
+//
+// The split happens on the raw text, before any cleaning: <br> is a hard line
+// break in SMI and must become a part boundary, while a raw newline in the
+// source (SMI files are often wrapped for readability) is still just whitespace
+// and collapses to a space. Cleaning first would lose that distinction — it
+// would either eat the breaks or promote source formatting to part boundaries.
+func cleanSMIParts(raw string) []string {
+	var parts []string
+	for _, seg := range smiBrRe.Split(raw, -1) {
+		if seg = cleanSMIText(seg); seg != "" {
+			parts = append(parts, seg)
+		}
+	}
+	return parts
+}
+
+// cleanSMIText strips HTML tags, decodes common HTML entities, and normalizes
+// whitespace within a single display part.
 func cleanSMIText(raw string) string {
 	// Remove HTML tags
 	cleaned := htmlTagRe.ReplaceAllString(raw, "")
@@ -196,8 +230,7 @@ func cleanSMIText(raw string) string {
 	// Normalize whitespace
 	cleaned = strings.TrimSpace(cleaned)
 	// Collapse multiple spaces/newlines into single space
-	spaceRe := regexp.MustCompile(`\s+`)
-	cleaned = spaceRe.ReplaceAllString(cleaned, " ")
+	cleaned = smiSpaceRe.ReplaceAllString(cleaned, " ")
 	return cleaned
 }
 
