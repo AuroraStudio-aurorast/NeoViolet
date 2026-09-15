@@ -2,6 +2,7 @@ package lyrics
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -44,55 +45,6 @@ func sortLyricLines(lines []LyricLine) {
 	sort.SliceStable(lines, func(i, j int) bool {
 		return lines[i].Time < lines[j].Time
 	})
-}
-
-// parseWordTimedLine extracts word fragments from a lyric body using the given regex,
-// building both the full text and word-level fragments.
-func parseWordTimedLine(body string, wordRe *regexp.Regexp) (words []WordFragment, fullText string) {
-	matches := wordRe.FindAllStringSubmatch(body, -1)
-	if len(matches) == 0 {
-		return nil, ""
-	}
-	var sb strings.Builder
-	for _, m := range matches {
-		// Generic: each regex must capture (wordText, startMs) in any order.
-		// We use m[1] and m[2] as convention; subclasses define their own regex.
-		wordStart, _ := strconv.Atoi(m[2])
-		words = append(words, WordFragment{
-			Time: time.Duration(wordStart) * time.Millisecond,
-			Text: m[1],
-		})
-		sb.WriteString(m[1])
-	}
-	return words, sb.String()
-}
-
-// parseQRCWordTimedLine parses QRC-format word fragments.
-// QRC format: text(startMs,durationMs)
-func parseQRCWordTimedLine(body string) (words []WordFragment, fullText string) {
-	return parseWordTimedLine(body, qrcWordRe)
-}
-
-// parseYRCWordTimedLine parses YRC-format word fragments.
-// YRC format: (startMs,durationMs,flag)text
-func parseYRCWordTimedLine(body string) (words []WordFragment, fullText string) {
-	matches := yrcWordRe.FindAllStringSubmatch(body, -1)
-	if len(matches) == 0 {
-		return nil, ""
-	}
-	var sb strings.Builder
-	for _, m := range matches {
-		wordStart, _ := strconv.Atoi(m[1])
-		_ = m[2] // duration, unused
-		_ = m[3] // flag, unused
-		wordText := m[4]
-		words = append(words, WordFragment{
-			Time: time.Duration(wordStart) * time.Millisecond,
-			Text: wordText,
-		})
-		sb.WriteString(wordText)
-	}
-	return words, sb.String()
 }
 
 // readAllWithLimit reads from r up to maxLyricSize+1 bytes.
@@ -261,4 +213,90 @@ func scanWordTimed(body string, groups wordTimedRe, lineStart time.Duration) wor
 		scan.End = boundary
 	}
 	return scan
+}
+
+// qrcGroups / yrcGroups describe the two word-timed bodies this package parses
+// with scanWordTimed. LYS reuses qrcGroups (same "text(start,duration)" body).
+var (
+	qrcGroups = wordTimedRe{re: qrcWordRe, text: 1, start: 2, duration: 3}
+	yrcGroups = wordTimedRe{re: yrcWordRe, text: 4, start: 1, duration: 2}
+)
+
+// parseWordTimedFile is the shared skeleton of the QRC and YRC parsers: their
+// line headers are both "[startMs,durationMs]" and their bodies differ only in
+// wordTimedRe. Two passes are needed because [offset:] can appear anywhere in
+// the file, so every header must be read before any timestamp is adjusted.
+func parseWordTimedFile(data []byte, name string, groups wordTimedRe) (*Data, error) {
+	lyrics := &Data{}
+	lines := strings.Split(string(data), "\n")
+
+	// Pass 1: metadata headers.
+	for _, raw := range lines {
+		inner, ok := bracketInner(raw)
+		if !ok {
+			continue
+		}
+		if key, val, isField := lrcField(inner); isField {
+			applyHeaderField(lyrics, key, val)
+		}
+	}
+	delta := time.Duration(lyrics.Offset) * time.Millisecond
+
+	// Pass 2: lyric lines. Metadata lines fall out on their own — "[ti:Title]"
+	// is not an integer, so the header parse below skips them.
+	var out []LyricLine
+	for _, raw := range lines {
+		inner, ok := bracketInner(raw)
+		if !ok {
+			continue
+		}
+		header := strings.SplitN(inner, ",", 2)
+		startMs, err := strconv.Atoi(strings.TrimSpace(header[0]))
+		if err != nil {
+			continue
+		}
+		durMs := 0
+		if len(header) == 2 {
+			durMs, _ = strconv.Atoi(strings.TrimSpace(header[1]))
+		}
+
+		body := raw[strings.IndexByte(raw, ']')+1:]
+		start := time.Duration(startMs) * time.Millisecond
+		scan := scanWordTimed(body, groups, start)
+		if strings.TrimSpace(scan.Text) == "" {
+			continue
+		}
+
+		line := LyricLine{
+			Time:  shiftTime(start, delta),
+			Text:  scan.Text,
+			Words: shiftWords(scan.Words, delta),
+		}
+		if durMs > 0 {
+			line.End = shiftTime(start+time.Duration(durMs)*time.Millisecond, delta)
+		}
+		out = append(out, line)
+	}
+
+	if len(out) == 0 {
+		return nil, fmt.Errorf("no valid %s lines found", name)
+	}
+
+	sortLyricLines(out)
+	lyrics.Lines = out
+	return lyrics, nil
+}
+
+// bracketInner returns the inner content of a line whose first bracket is
+// "[...]", i.e. "[ti:Title]" -> "ti:Title" and "[1000,2000]Hello" -> "1000,2000".
+func bracketInner(line string) (string, bool) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "[") {
+		return "", false
+	}
+	end := strings.IndexByte(line, ']')
+	if end < 0 {
+		return "", false
+	}
+	return line[1:end], true
 }

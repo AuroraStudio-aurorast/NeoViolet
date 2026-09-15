@@ -50,10 +50,6 @@ var contractCases = map[string]contractCase{
 	"qrc": {
 		parse:  viaParser("qrc", qrcContractSample),
 		expect: expectation{requireEnd: true, meta: true},
-		known: map[string]string{
-			"requireEnd": "行头 duration 被丢弃（规格 §8.2 修）",
-			"meta":       "[ti:]/[ar:] 被静默丢弃（规格 §8.3 修）",
-		},
 	},
 	"smi": {
 		parse:  viaParser("smi", smiContractSample),
@@ -70,10 +66,6 @@ var contractCases = map[string]contractCase{
 	"yrc": {
 		parse:  viaParser("yrc", yrcContractSample),
 		expect: expectation{requireEnd: true, meta: true},
-		known: map[string]string{
-			"requireEnd": "行头 duration 被丢弃（规格 §8.2 修）",
-			"meta":       "[ti:]/[ar:] 被静默丢弃（规格 §8.3 修）",
-		},
 	},
 }
 
