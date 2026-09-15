@@ -5,7 +5,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"time"
 )
 
 func init() {
@@ -47,56 +46,34 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			continue
 		}
 
-		// Parse channel prefix [N] (e.g. [0], [2], [6])
+		// Parse channel prefix [N] (e.g. [0], [2], [6]).
 		channelStr := strings.TrimPrefix(parts[0], "[")
-		channel, _ := strconv.Atoi(channelStr)
 
 		body := parts[1]
-		matches := qrcWordRe.FindAllStringSubmatch(body, -1)
-		if len(matches) == 0 {
-			continue
-		}
 
-		var words []WordFragment
-		var fullText strings.Builder
-		lineStart := time.Duration(0)
-		lineEnd := time.Duration(0)
-
-		for _, m := range matches {
-			wordText := m[1]
-			wordStart, _ := strconv.Atoi(m[2])
-			wordDuration, _ := strconv.Atoi(m[3])
-
-			startDur := time.Duration(wordStart) * time.Millisecond
-			endDur := startDur + time.Duration(wordDuration)*time.Millisecond
-
-			words = append(words, WordFragment{
-				Time: startDur,
-				Text: wordText,
-			})
-			fullText.WriteString(wordText)
-
-			if lineStart == 0 && wordStart > 0 {
-				lineStart = startDur
-			}
-			if endDur > lineEnd {
-				lineEnd = endDur
+		// LYS headers are "[channel]"; "[ti:Title]" is not a channel, and
+		// applying it as metadata is harmless when the file has none.
+		if key, val, hasField := lrcField(channelStr); hasField {
+			if applyHeaderField(lyrics, key, val) {
+				continue
 			}
 		}
+		channel, _ := strconv.Atoi(channelStr)
 
-		text := fullText.String()
-		if strings.TrimSpace(text) == "" {
+		// LYS bodies are shaped like QRC's: text(startMs,durationMs), so they
+		// share qrcGroups. There is no duration in the header, so End comes
+		// from the last word's end.
+		scan := scanWordTimed(body, qrcGroups, 0)
+		if strings.TrimSpace(scan.Text) == "" {
 			continue
 		}
-
-		agent := channelToAgent[channel]
 
 		lines = append(lines, LyricLine{
-			Time:  lineStart,
-			End:   lineEnd,
-			Text:  text,
-			Words: words,
-			Agent: agent,
+			Time:  scan.Start,
+			End:   scan.End,
+			Text:  scan.Text,
+			Words: scan.Words,
+			Agent: channelToAgent[channel],
 		})
 	}
 
