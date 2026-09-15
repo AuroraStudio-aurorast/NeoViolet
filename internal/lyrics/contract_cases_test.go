@@ -23,10 +23,6 @@ var contractCases = map[string]contractCase{
 			return d
 		},
 		expect: expectation{hasParts: true},
-		known: map[string]string{
-			"C2":       "SYLT 的 \\n 直通 Text（规格 §11 修）",
-			"hasParts": "同上",
-		},
 	},
 	"eslrc": {
 		parse:  viaParser("eslrc", eslrcContractSample),

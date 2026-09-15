@@ -192,10 +192,28 @@ func parseSYLT(data []byte) *Data {
 		syncMs := binary.BigEndian.Uint32(data[pos:])
 		pos += 4
 
-		lines = append(lines, LyricLine{
+		// A SYLT text field can carry a hard line break; surface it as display
+		// parts (the same shape SRT uses) instead of letting a raw "\n" reach
+		// the renderers, where wrapSpans would silently fold it to a space.
+		var parts []string
+		for _, seg := range strings.Split(text, "\n") {
+			if seg = strings.TrimSpace(seg); seg != "" {
+				parts = append(parts, seg)
+			}
+		}
+		if len(parts) == 0 {
+			continue
+		}
+
+		line := LyricLine{
 			Time: time.Duration(syncMs) * time.Millisecond,
-			Text: text,
-		})
+			Text: parts[0],
+		}
+		if kept := partsOrNil(parts); kept != nil {
+			line.Parts = kept
+			line.Text = strings.Join(kept, " | ")
+		}
+		lines = append(lines, line)
 	}
 
 	if len(lines) == 0 {
