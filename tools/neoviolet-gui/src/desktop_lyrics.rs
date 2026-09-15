@@ -450,29 +450,47 @@ fn marquee_text(text: &str, scroll: f32, max_chars: usize) -> String {
 
 // ── Active-line detection ──
 
+/// Mirrors Go's `lyrics.Data.ActiveLines`, which the TUI uses, so the panel and
+/// the desktop lyrics cannot disagree about which lines are active.
+///
+/// A line is bounded when `end > 0`: it is active for `time <= t < end`. A line
+/// is unbounded when `end == 0`: it is active from `time` until the `time` of
+/// the next line with a greater `time` (the last line never expires).
+///
+/// This is evaluated per line. Treating "the file contains at least one bounded
+/// line" as a global switch — the previous shape — made every unbounded line
+/// unreachable in a mixed file, which is exactly what a SMI file looks like.
+///
+/// The bound is "the next line with a greater `time`" rather than "the next
+/// line", so lines sharing a `time` (a SMI SYNC with several `<P Class=...>`
+/// children) must not cut each other off.
 fn find_active_lines(lines: &[LyricLineData], elapsed: f64) -> Vec<String> {
     if lines.is_empty() {
         return vec![];
     }
     let elapsed_ms = (elapsed * 1000.0) as u64;
-    let any_bounded = lines.iter().any(|l| l.end > 0.0);
+    let ms = |secs: f64| (secs * 1000.0) as u64;
 
-    let active: Vec<&LyricLineData> = if any_bounded {
-        lines
-            .iter()
-            .filter(|l| {
-                l.end > 0.0
-                    && (l.time * 1000.0) as u64 <= elapsed_ms
-                    && elapsed_ms < (l.end * 1000.0) as u64
-            })
-            .collect()
-    } else {
-        lines
-            .iter()
-            .rfind(|l| (l.time * 1000.0) as u64 <= elapsed_ms)
-            .into_iter()
-            .collect()
-    };
+    let mut active: Vec<&LyricLineData> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        if l.end > 0.0 {
+            if ms(l.time) <= elapsed_ms && elapsed_ms < ms(l.end) {
+                active.push(l);
+            }
+            continue;
+        }
+        if ms(l.time) > elapsed_ms {
+            continue;
+        }
+        // The first later line with a greater time closes this one's window;
+        // "greater" and not "next" so that same-time siblings survive.
+        if let Some(next) = lines[i + 1..].iter().find(|n| ms(n.time) > ms(l.time))
+            && elapsed_ms >= ms(next.time)
+        {
+            continue;
+        }
+        active.push(l);
+    }
 
     // split_line expands the parser's display parts and falls back to the
     // legacy " | " split for an older TUI, so a merged line is always one
@@ -497,6 +515,18 @@ mod tests {
     fn char_width_ascii_and_cjk() {
         assert_eq!(char_width('a'), 1);
         assert_eq!(char_width('中'), 2);
+    }
+
+    /// A plain line with no sub-parts and no agent, so the tests read as data.
+    fn line(time: f64, end: f64, text: &str) -> LyricLineData {
+        LyricLineData {
+            time,
+            end,
+            text: text.into(),
+            parts: Vec::new(),
+            agent: None,
+            agent_name: None,
+        }
     }
 
     #[test]
@@ -560,5 +590,67 @@ mod tests {
             agent_name: None,
         }];
         assert_eq!(find_active_lines(&lines, 6.0), vec!["hello", "你好"]);
+    }
+
+    #[test]
+    fn find_active_lines_smi_shape_reaches_the_unbounded_last_line() {
+        // F3/F6：21 行有界 + 末行 end == 0（SMI 的形状）。旧的 any_bounded
+        // 全局开关让末行永远进不了候选，桌面歌词因此空白。
+        let mut lines: Vec<LyricLineData> = (0..3)
+            .map(|i| line(i as f64, i as f64 + 1.0, &format!("bounded{i}")))
+            .collect();
+        lines.push(line(3.0, 0.0, "last"));
+
+        let at_one = find_active_lines(&lines, 0.5);
+        assert_eq!(at_one, vec!["bounded0"]);
+
+        let at_last = find_active_lines(&lines, 3.0);
+        assert_eq!(at_last, vec!["last"]);
+
+        // 末行之后也不过期。
+        assert_eq!(find_active_lines(&lines, 60.0), vec!["last"]);
+    }
+
+    #[test]
+    fn find_active_lines_same_time_siblings_both_return() {
+        // 同一 time 的无界兄弟（SMI 一个 SYNC 下的双语 <P>）必须同时 active，
+        // 因此无界行的右边界取“下一个 time **更大**的行”，而不是“下一行”。
+        let lines = vec![
+            line(1.0, 0.0, "v1"),
+            line(1.0, 0.0, "v2"),
+            line(3.0, 0.0, "next"),
+        ];
+        assert_eq!(find_active_lines(&lines, 1.0), vec!["v1", "v2"]);
+        assert_eq!(find_active_lines(&lines, 2.0), vec!["v1", "v2"]);
+        assert_eq!(find_active_lines(&lines, 3.0), vec!["next"]);
+    }
+
+    #[test]
+    fn find_active_lines_bounded_siblings_also_both_return() {
+        // 有界路径下的同 time 不互相截断（回归钉，旧实现即绿）。
+        let lines = vec![line(1.0, 2.0, "b1"), line(1.0, 2.0, "b2")];
+        assert_eq!(find_active_lines(&lines, 1.0), vec!["b1", "b2"]);
+        assert_eq!(find_active_lines(&lines, 1.5), vec!["b1", "b2"]);
+        assert_eq!(find_active_lines(&lines, 2.0), Vec::<String>::new());
+    }
+
+    #[test]
+    fn find_active_lines_all_unbounded_keeps_a_single_line() {
+        // 无回归：全 end == 0 的文件（今天的 LRC 形状）行为不变。
+        let lines = vec![
+            line(0.0, 0.0, "one"),
+            line(5.0, 0.0, "two"),
+            line(10.0, 0.0, "three"),
+        ];
+        assert_eq!(find_active_lines(&lines, 6.0), vec!["two"]);
+        assert_eq!(find_active_lines(&lines, 0.0), vec!["one"]);
+    }
+
+    #[test]
+    fn find_active_lines_bounded_gap_stays_empty() {
+        // 无回归：全有界文件的句间留白仍然是留白。
+        let lines = vec![line(0.0, 1.0, "first"), line(3.0, 4.0, "second")];
+        assert_eq!(find_active_lines(&lines, 2.0), Vec::<String>::new());
+        assert_eq!(find_active_lines(&lines, 3.5), vec!["second"]);
     }
 }
