@@ -59,7 +59,6 @@ var contractCases = map[string]contractCase{
 		parse:  viaParser("smi", smiContractSample),
 		expect: expectation{hasParts: true},
 		known: map[string]string{
-			"C7":       "末句 End==0 永不 active（规格 §6 修）",
 			"hasParts": "<br> 被当作普通标签删掉（规格 §7 修）",
 		},
 	},
