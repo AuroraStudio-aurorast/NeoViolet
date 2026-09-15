@@ -5,6 +5,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func init() {
@@ -68,11 +69,15 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			continue
 		}
 
+		// delta is read at line-construction time (after applyHeaderField above
+		// may have written lyrics.Offset), so [offset:] only shifts lines parsed
+		// after it — the same timing rule as LRC/QRC/YRC.
+		delta := time.Duration(lyrics.Offset) * time.Millisecond
 		lines = append(lines, LyricLine{
-			Time:  scan.Start,
-			End:   scan.End,
+			Time:  shiftTime(scan.Start, delta),
+			End:   shiftTime(scan.End, delta),
 			Text:  scan.Text,
-			Words: scan.Words,
+			Words: shiftWords(scan.Words, delta),
 			Agent: channelToAgent[channel],
 		})
 	}

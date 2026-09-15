@@ -82,17 +82,19 @@ func (p *eslrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 		}
 
 		text := fullText.String()
+		delta := time.Duration(lyrics.Offset) * time.Millisecond
 		if !timed {
 			// No word timestamps at all (an LRC-shaped file): keep the old
-			// behaviour exactly — trimmed text, no Words, unbounded.
+			// behaviour exactly — trimmed text, no Words, unbounded. The offset
+			// still shifts Time (same delta as the word-bracket path), or a mixed
+			// file with [offset:] would sort on a mixed basis and misorder lines.
 			if text = strings.TrimSpace(text); text == "" {
 				continue
 			}
-			lines = append(lines, LyricLine{Time: lineStart, Text: text})
+			lines = append(lines, LyricLine{Time: shiftTime(lineStart, delta), Text: text})
 			continue
 		}
 
-		delta := time.Duration(lyrics.Offset) * time.Millisecond
 		line := LyricLine{
 			Time:  shiftTime(lineStart, delta),
 			Text:  text,

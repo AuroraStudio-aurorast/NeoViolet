@@ -172,6 +172,32 @@ func TestESLRC_OffsetShiftsTimes(t *testing.T) {
 	}
 }
 
+func TestESLRC_LRCLineWithOffsetShiftsTime(t *testing.T) {
+	// 同类缺口：applyHeaderField 会写 d.Offset，但 !timed（LRC 形状）出口
+	// 以前直接用 lineStart，不读 d.Offset。混合文件 + [offset:] 时一部分行
+	// 平移、一部分不平移，sortLyricLines 会按混合基准排序 → 行序错乱。
+	// 这条断言钉住：LRC 形状行的 Time 也走 shiftTime，且 Words 仍为 nil、
+	// End 仍为 0（R6 冻结的旧行为不能变）。
+	const src = "[offset:250]\n[00:01.00]Hello\n"
+	d, err := parseESLRC(src)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	line := d.Lines[0]
+	if line.Time != 1250*time.Millisecond {
+		t.Errorf("Time = %v, want 1250ms", line.Time)
+	}
+	if line.Words != nil {
+		t.Errorf("Words = %v, want nil", line.Words)
+	}
+	if line.End != 0 {
+		t.Errorf("End = %v, want 0", line.End)
+	}
+}
+
 func TestESLRC_WordBracketEqualToLineStartHasNoEnd(t *testing.T) {
 	// R7：prevBoundary > lineStart 的"假"侧。词括号等于行首时，末边界没有
 	// 越过 lineStart，End 应为 0（与 timed == false 的整行出口是不同分支）。
