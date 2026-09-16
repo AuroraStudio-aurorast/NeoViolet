@@ -71,7 +71,7 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 		// delta is read at line-construction time (after applyHeaderField above
 		// may have written lyrics.Offset), so [offset:] only shifts lines parsed
-		// after it — the same timing rule as LRC/QRC/YRC.
+		// after it — the same timing rule as LRC/ESLRC.
 		delta := time.Duration(lyrics.Offset) * time.Millisecond
 		line := LyricLine{
 			Time:  shiftTime(scan.Start, delta),

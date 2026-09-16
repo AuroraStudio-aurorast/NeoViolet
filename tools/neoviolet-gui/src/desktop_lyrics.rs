@@ -594,7 +594,7 @@ mod tests {
 
     #[test]
     fn find_active_lines_smi_shape_reaches_the_unbounded_last_line() {
-        // F3/F6：21 行有界 + 末行 end == 0（SMI 的形状）。旧的 any_bounded
+        // F3/F6：3 行有界 + 末行 end == 0（SMI 的形状）。旧的 any_bounded
         // 全局开关让末行永远进不了候选，桌面歌词因此空白。
         let mut lines: Vec<LyricLineData> = (0..3)
             .map(|i| line(i as f64, i as f64 + 1.0, &format!("bounded{i}")))

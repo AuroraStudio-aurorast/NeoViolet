@@ -84,7 +84,11 @@ func TestFormatContract(t *testing.T) {
 // 任务 11 时应只剩 ttml 的 pending。
 func TestFormatContractGaps(t *testing.T) {
 	for _, name := range AvailableParsers() {
-		c := contractCases[name]
+		c, ok := contractCases[name]
+		if !ok {
+			t.Logf("GAP %-9s missing contract case", name)
+			continue
+		}
 		if c.pending != "" {
 			t.Logf("GAP %-9s pending     %s", name, c.pending)
 			continue
