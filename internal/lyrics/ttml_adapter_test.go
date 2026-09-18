@@ -495,4 +495,12 @@ func TestTTML_BrIsNonGoal(t *testing.T) {
 	if d.Lines[0].Text != "firstsecond" {
 		t.Errorf("br Text = %q, want %q (the break is dropped and neighbours glue)", d.Lines[0].Text, "firstsecond")
 	}
+	// The library flags the dropped element (unknown-element, emitted at parse
+	// time so it is visible on both Diags and Diagnostics()); only the code's
+	// presence is pinned, not the count, wording or position.
+	doc := ttmlParseDoc(t, ttmlBrSample)
+	if !hasTTMLDiagnosticCode(doc, amllttml.CodeUnknownElement) {
+		t.Errorf("expected an %s diagnostic for the dropped <br/>, got %v",
+			amllttml.CodeUnknownElement, doc.Diagnostics())
+	}
 }

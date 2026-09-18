@@ -47,15 +47,17 @@ func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	// just a finding. We log them for debugging and keep reading the file.
 	logTTMLDiagnostics(doc)
 
-	// A cleanly parsed document with zero lines is "no lyrics", not an empty
-	// song: FindAndParsePreferred would otherwise let an empty song.ttml shadow
-	// a real song.lrc sitting next to it (the registry accepts any err == nil
-	// result).
-	if len(doc.Lines) == 0 {
+	// A cleanly parsed document that maps to zero displayable lines is "no
+	// lyrics", not an empty song: FindAndParsePreferred would otherwise let an
+	// empty song.ttml shadow a real song.lrc sitting next to it (the registry
+	// accepts any err == nil result). The count is taken AFTER the adapter
+	// dropped every <p> that maps to nothing, not on the raw <p> count.
+	d := ttmlToData(doc, sourcePath)
+	if len(d.Lines) == 0 {
 		return nil, ErrNoLyrics
 	}
 
-	return ttmlToData(doc, sourcePath), nil
+	return d, nil
 }
 
 // ttmlParseError maps the library's resource-limit errors back onto the sentinel
