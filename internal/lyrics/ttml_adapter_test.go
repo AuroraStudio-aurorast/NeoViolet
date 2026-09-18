@@ -1,6 +1,7 @@
 package lyrics
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -294,6 +295,41 @@ func TestTTML_AdapterEndFromEffectiveInterval(t *testing.T) {
 	}
 }
 
+// TestTTML_AdapterBackgroundWidensEnd pins the background-vocal half of the End
+// derivation. The <p> declares 1s..2s while its background vocal runs to 5s: the
+// library folds the x-bg interval into EffectiveInterval, so End is the background
+// end. Reading the declared interval alone would report 2s here.
+func TestTTML_AdapterBackgroundWidensEnd(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal">
+  <body>
+    <div>
+      <p begin="1s" end="2s" itunes:key="L1">
+        <span begin="1s" end="2s">main</span>
+        <span ttm:role="x-bg" begin="1s" end="5s">ooh</span>
+      </p>
+    </div>
+  </body>
+</tt>`
+
+	doc := ttmlParseDoc(t, sample)
+	// Premise: the declared interval really stops at 2s, so the 5s asserted below
+	// can only come from the background vocal.
+	if got := doc.Lines[0].Interval.EndMillis(); got != 2000 {
+		t.Fatalf("declared interval end = %dms, want 2000ms (the premise)", got)
+	}
+
+	data := ttmlToData(doc, "song.ttml")
+	if len(data.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(data.Lines))
+	}
+	if got, want := data.Lines[0].End, 5*time.Second; got != want {
+		t.Errorf("End = %v, want %v (the background vocal's end)", got, want)
+	}
+	if want := []string{"main", "ooh"}; !slices.Equal(data.Lines[0].Parts, want) {
+		t.Errorf("Parts = %q, want %q", data.Lines[0].Parts, want)
+	}
+}
+
 // TestTTML_AdapterSortsByTime pins that the adapter re-establishes time order:
 // the library keeps the document order of <p> elements (10s, 1s, 5s below), but
 // the cross-format contract requires ascending Time and ActiveLines' per-line
@@ -460,6 +496,49 @@ func TestTTML_AdapterLineWithEmptyOriginalButSegmentsIsKept(t *testing.T) {
 	}
 	if wantText := "ooh | 译文"; data.Lines[0].Text != wantText {
 		t.Errorf("Text = %q, want %q", data.Lines[0].Text, wantText)
+	}
+}
+
+// TestTTML_AdapterLoneDisplaySegmentIsKept covers the other half of the drop rule:
+// a <p> whose original text is empty and which carries exactly ONE other display
+// segment. A single segment folds back to Parts == nil, so a drop rule that looks
+// at Parts cannot see it and would delete the line - and a file made only of such
+// lines would report "no lyrics" and silently fall back to another format.
+func TestTTML_AdapterLoneDisplaySegmentIsKept(t *testing.T) {
+	head := `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"><body>`
+	tail := `</body></tt>`
+	cases := []struct{ name, body, wantText string }{
+		{"translation only", `<p begin="1s" end="2s" itunes:key="L1"><span ttm:role="x-translation" xml:lang="zh">译文</span></p>`, "译文"},
+		{"background only", `<p begin="1s" end="2s" itunes:key="L1"><span ttm:role="x-bg" begin="1s" end="2s">ooh</span></p>`, "ooh"},
+		{"untimed background only", `<p begin="1s" end="2s" itunes:key="L1"><span ttm:role="x-bg">ooh</span></p>`, "ooh"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			doc := ttmlParseDoc(t, head+c.body+tail)
+			// Premise: the original segment really is empty, which is what makes the
+			// lone segment the only thing the line has to show.
+			if len(doc.Lines) != 1 || doc.Lines[0].Text != "" {
+				t.Fatalf("lib line = %+v, want one line with an empty Text (the premise)", doc.Lines)
+			}
+
+			data := ttmlToData(doc, "song.ttml")
+			if len(data.Lines) != 1 {
+				t.Fatalf("lines = %d, want 1 (the lone segment is displayable)", len(data.Lines))
+			}
+			line := data.Lines[0]
+			if line.Text != c.wantText {
+				t.Errorf("Text = %q, want %q", line.Text, c.wantText)
+			}
+			if line.Parts != nil {
+				t.Errorf("Parts = %q, want nil for a single segment", line.Parts)
+			}
+		})
+	}
+
+	// Negative control: a <p> with nothing to show is still dropped, so an empty
+	// document keeps reporting "no lyrics" instead of gaining a blank line.
+	if _, err := parseTTML(head + `<p begin="1s" end="2s" itunes:key="L1">  </p>` + tail); !errors.Is(err, ErrNoLyrics) {
+		t.Errorf("Parse() error = %v, want ErrNoLyrics for a <p> with nothing to show", err)
 	}
 }
 

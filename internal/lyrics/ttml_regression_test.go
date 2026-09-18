@@ -26,32 +26,6 @@ import (
 // run, which is what makes C6 ("Words must tile the main text") hold for
 // bare-text lines.
 
-// ttmlAppleRegressionSample is a verbatim copy of the ttmlAppleStyle fixture
-// (ttml_test.go, now a package-level constant). The apple subtest of
-// TestTTML_RegressionTable asserts the two stay byte-identical, so a drift in
-// either copy turns that subtest red instead of silently weakening the
-// "verbatim copy" claim.
-const ttmlAppleRegressionSample = `<tt xmlns="http://www.w3.org/ns/ttml"
-    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
-    xmlns:itunes="http://music.apple.com/lyric-ttml-internal" itunes:timing="Word">
-  <body dur="0:10.000">
-    <div begin="0.000" end="0:10.000">
-      <p begin="1.345" end="3.071" itunes:key="L1" ttm:agent="v1">
-        <span begin="1.345" end="1.548">I </span>
-        <span begin="1.548" end="1.938">could </span>
-        <span begin="1.938" end="2.198">find </span>
-        <span begin="2.198" end="2.770">you</span>
-        <span ttm:role="x-translation" xml:lang="zh-CN">我找到了你</span>
-      </p>
-      <p begin="4.085" end="6.505" itunes:key="L2" ttm:agent="v1">
-        <span begin="4.085" end="4.510">Hello </span>
-        <span begin="4.510" end="4.953">world</span>
-        <span ttm:role="x-translation" xml:lang="zh-CN">你好世界</span>
-      </p>
-    </div>
-  </body>
-</tt>`
-
 // regWord is one expected word fragment reading, in milliseconds.
 type regWord struct {
 	timeMs int64
@@ -131,13 +105,8 @@ func TestTTML_RegressionTable(t *testing.T) {
 	})
 
 	t.Run("apple", func(t *testing.T) {
-		// Sync guard: the regression copy must stay byte-identical to the source
-		// fixture (a verbatim copy is what makes this row a re-run of the source
-		// test). One character of drift in either constant turns this red.
-		if ttmlAppleStyle != ttmlAppleRegressionSample {
-			t.Fatalf("ttmlAppleRegressionSample drifted from ttmlAppleStyle; keep the verbatim copy in sync")
-		}
-		// Two differences, both expected:
+		// The shared ttmlAppleStyle fixture, so this row re-runs the source test on
+		// exactly the same bytes. Two differences, both expected:
 		//   1. Text: "I could find you" -> "I could find you | 我找到了你"
 		//      (spec §6 item 1: the inline x-translation is no longer dropped,
 		//      it becomes Parts[1]).
@@ -145,7 +114,7 @@ func TestTTML_RegressionTable(t *testing.T) {
 		//      inter-word spaces written into the span text) carried through
 		//      EndsWithSpace by spec §4.2; the word TIMES are identical.
 		// Word COUNT is unchanged (4 and 2) - no bare-text synthesis here.
-		d, err := parseTTML(ttmlAppleRegressionSample)
+		d, err := parseTTML(ttmlAppleStyle)
 		if err != nil {
 			t.Fatalf("Parse() error: %v", err)
 		}
@@ -297,7 +266,7 @@ func TestTTML_RegressionTable_TitleSource(t *testing.T) {
 		{"testTTMLOffset", testTTMLOffset, "", "", ""},
 		{"testTTMLMinimal", testTTMLMinimal, "", "", ""},
 		{"testTTMLFrames", testTTMLFrames, "", "", ""},
-		{"apple", ttmlAppleRegressionSample, "", "", ""},
+		{"apple", ttmlAppleStyle, "", "", ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

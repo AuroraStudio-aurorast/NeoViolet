@@ -82,14 +82,29 @@ func TestTTML_ExplicitEmptyKeyLineIsKept(t *testing.T) {
 }
 
 func TestTTML_TooLargeMatchesErrLyricTooLarge(t *testing.T) {
-	// This assertion merges two gates: readAllWithLimit (the primary 1 MB
-	// ceiling) and the library's WithMaxBytes limit mapped back to the sentinel
-	// by ttmlParseError. A single run cannot tell them apart - the primary gate
-	// fires first - which is why the mutation evidence in §1.3 relaxes the
-	// primary gate to prove the second gate and its mapping are also live.
+	// readAllWithLimit is the ceiling that fires here: it reads one byte past
+	// maxLyricSize and rejects the result, so the library never sees oversized
+	// input. TestTTMLParseErrorMapsCodeTooLarge pins the mapping of the library's
+	// own too-large error, which this path keeps out of reach.
 	_, err := parseTTML(strings.Repeat("a", maxLyricSize+1))
 	if !errors.Is(err, ErrLyricTooLarge) {
 		t.Errorf("Parse() error = %v, want ErrLyricTooLarge", err)
+	}
+}
+
+func TestTTMLParseErrorMapsCodeTooLarge(t *testing.T) {
+	// The library's own size limit sits behind readAllWithLimit, so its error code
+	// has to keep mapping to the sentinel the registry understands even though
+	// Parse cannot reach that branch while the primary ceiling is in front.
+	if got := ttmlParseError(&amllttml.Error{Code: amllttml.CodeTooLarge}); !errors.Is(got, ErrLyricTooLarge) {
+		t.Errorf("ttmlParseError(CodeTooLarge) = %v, want ErrLyricTooLarge", got)
+	}
+
+	// Everything else is passed through unchanged: a malformed document must stay a
+	// reported error rather than becoming "the file is too large".
+	other := &amllttml.Error{Code: amllttml.CodeXMLSyntax, Msg: "boom"}
+	if got := ttmlParseError(other); !errors.Is(got, other) {
+		t.Errorf("ttmlParseError(%v) = %v, want the error unchanged", other, got)
 	}
 }
 

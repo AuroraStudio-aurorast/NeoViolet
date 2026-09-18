@@ -45,17 +45,22 @@ func ttmlToData(doc *amllttml.Document, sourcePath string) *Data {
 }
 
 // ttmlLine maps one <p> onto a LyricLine. ok is false for a line with nothing to
-// display (no text and no other display segment), which would render as a blank
-// row; XML formatting turns real files full of those.
+// display at all, which would render as a blank row; XML formatting turns real
+// files full of those.
 func ttmlLine(l *amllttml.Line, doc *amllttml.Document) (LyricLine, bool) {
-	parts := ttmlParts(l, doc)
+	segments := ttmlSegments(l, doc)
+	if len(segments) == 0 {
+		return LyricLine{}, false
+	}
 
-	text := l.Text
+	// Two or more segments become parts; a lone segment is the whole display text.
+	// For an ordinary line that segment is the <p>'s own text, and for a <p> with no
+	// original text at all - only a background vocal, or only a translation - it is
+	// that segment, so the line is still shown instead of vanishing.
+	parts := partsOrNil(segments)
+	text := segments[0]
 	if parts != nil {
 		text = strings.Join(parts, " | ")
-	}
-	if text == "" && parts == nil {
-		return LyricLine{}, false
 	}
 
 	// EffectiveInterval is the library's port of the reference
@@ -84,11 +89,14 @@ func ttmlLine(l *amllttml.Line, doc *amllttml.Document) (LyricLine, bool) {
 	}, true
 }
 
-// ttmlParts returns the display parts of a line in the fixed order
-// [original, background vocal, translation], keeping only segments that exist
-// and that differ from the ones already collected. partsOrNil then turns a
-// single-segment result into nil, preserving "Parts != nil implies len >= 2".
-func ttmlParts(l *amllttml.Line, doc *amllttml.Document) []string {
+// ttmlSegments returns the display segments of a line in the fixed order
+// [original, background vocal, translation], keeping only segments that exist and
+// that differ from the ones already collected.
+//
+// The result is deliberately unfolded: partsOrNil collapses a single segment back
+// to nil to preserve "Parts != nil implies len >= 2", and the caller still has to
+// tell "nothing to show" apart from "one segment to show".
+func ttmlSegments(l *amllttml.Line, doc *amllttml.Document) []string {
 	candidates := []string{l.Text}
 	if l.Background != nil {
 		candidates = append(candidates, l.Background.Text)
@@ -113,7 +121,7 @@ func ttmlParts(l *amllttml.Line, doc *amllttml.Document) []string {
 			parts = append(parts, c)
 		}
 	}
-	return partsOrNil(parts)
+	return parts
 }
 
 // ttmlTranslationText returns the translation segment of a line, or "". It goes

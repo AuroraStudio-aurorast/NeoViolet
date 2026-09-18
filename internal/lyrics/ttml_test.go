@@ -2,6 +2,8 @@ package lyrics
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -226,18 +228,34 @@ func TestTTML_SortedOutput(t *testing.T) {
 	}
 }
 
+// TestTTML_FindSidecar drives the lookup itself: .ttml wins over .xml, .xml is the
+// fallback when only it exists, and no sidecar yields "".
 func TestTTML_FindSidecar(t *testing.T) {
-	ext := ".mp3"
-	path := "/some/path/song.mp3"
-	base := path[:len(path)-len(ext)]
-	ttmlExpected := base + ".ttml"
-	xmlExpected := base + ".xml"
-
-	if ttmlExpected != "/some/path/song.ttml" {
-		t.Errorf("ttml path = %q", ttmlExpected)
+	dir := t.TempDir()
+	audio := filepath.Join(dir, "song.mp3")
+	ttmlPath := filepath.Join(dir, "song.ttml")
+	xmlPath := filepath.Join(dir, "song.xml")
+	for _, f := range []string{ttmlPath, xmlPath} {
+		if err := os.WriteFile(f, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if xmlExpected != "/some/path/song.xml" {
-		t.Errorf("xml path = %q", xmlExpected)
+
+	parser := &ttmlParser{}
+	if got := parser.FindSidecar(audio); got != ttmlPath {
+		t.Errorf("FindSidecar = %q, want %q when both extensions exist", got, ttmlPath)
+	}
+	if err := os.Remove(ttmlPath); err != nil {
+		t.Fatal(err)
+	}
+	if got := parser.FindSidecar(audio); got != xmlPath {
+		t.Errorf("FindSidecar = %q, want the .xml fallback %q", got, xmlPath)
+	}
+	if err := os.Remove(xmlPath); err != nil {
+		t.Fatal(err)
+	}
+	if got := parser.FindSidecar(audio); got != "" {
+		t.Errorf("FindSidecar = %q, want none without a sidecar", got)
 	}
 }
 
@@ -282,24 +300,9 @@ func TestTTML_CurrentLineIntegration(t *testing.T) {
 	}
 }
 
-func TestTTML_SidecarExtensionPreference(t *testing.T) {
-	ext := ".mp3"
-	path := "/some/path/song.mp3"
-	base := path[:len(path)-len(ext)]
-	ttmlPath := base + ".ttml"
-	if ttmlPath != "/some/path/song.ttml" {
-		t.Errorf("ttml path = %q", ttmlPath)
-	}
-	xmlPath := base + ".xml"
-	if xmlPath != "/some/path/song.xml" {
-		t.Errorf("xml path = %q", xmlPath)
-	}
-}
-
-// ttmlAppleStyle is the Apple-style (iTunes) word-timing fixture used by
-// TestTTML_WordSyncWithTranslation. ttmlAppleRegressionSample (in
-// ttml_regression_test.go) is a verbatim copy of it; that copy's sync guard
-// asserts the two stay byte-identical.
+// ttmlAppleStyle is the Apple-style (iTunes) word-timing fixture. It backs both
+// TestTTML_WordSyncWithTranslation and the apple row of the old-parser regression
+// table, which is why it is a package-level constant.
 const ttmlAppleStyle = `<tt xmlns="http://www.w3.org/ns/ttml"
     xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
     xmlns:itunes="http://music.apple.com/lyric-ttml-internal" itunes:timing="Word">
