@@ -11,9 +11,10 @@ import (
 
 // contractCase 是一个格式的契约样例。
 //
-// pending 非空表示整条 case 挂起（不参与红绿），用于"已勘定但本轮搁置"的格式
-// （规格 §18.4 的 TTML）。它是显式记账：TestFormatContract 的完备性断言仍然要求
-// 该条目存在，所以搁置是记在账上的洞，不是静默跳过。
+// pending 非空表示整条 case 挂起（不参与红绿），用于"已勘定但本轮搁置"的格式。
+// 它是显式记账：TestFormatContract 的完备性断言仍然要求该条目存在，所以搁置是
+// 记在账上的洞，不是静默跳过。当前没有任何格式挂起（TTML 在任务 4 已激活），
+// 字段保留是因为 TestFormatContract 与 TestFormatContractGaps 都读它。
 //
 // known 列出该格式**当前已知未满足**的不变量/声明（值给出原因）：只有列出来的
 // 才被跳过，未列出的必须为绿。与 pending 的区别只是粒度——它让"部分迁移"的格式
@@ -37,6 +38,10 @@ type expectation struct {
 	// meta 声明该样例的 [ti:]/[ar:] 头必须被解析进 Data（值为 exact 断言由
 	// 各格式的单测负责，见规格 §14.2）。
 	meta bool
+	// looseTiling 声明本格式的 Words 只保证铺满 Part(0) 的**前缀**（上游
+	// INV-9：语料 5/717085 行的行尾裸文本不产词，且全部前缀锚定，故卡拉OK
+	// 永不误定位）。只有 TTML 声明它，其余格式仍是严格相等。
+	looseTiling bool
 }
 
 // viaParser 把"用注册表里的解析器解析一段内联文本"包成一个 parse 函数。
@@ -81,7 +86,7 @@ func TestFormatContract(t *testing.T) {
 
 // TestFormatContractGaps 打印当前的缺口记账（规格 §14.1 的"待迁移量"清单）。
 // 它只打日志、从不断言，所以永远不会红；随着任务推进它会自动变短，
-// 任务 11 时应只剩 ttml 的 pending。
+// 全部格式激活后（TTML 是最后一个）它应无输出。
 func TestFormatContractGaps(t *testing.T) {
 	for _, name := range AvailableParsers() {
 		c, ok := contractCases[name]
@@ -120,11 +125,32 @@ func runContract(t *testing.T, d *Data, c contractCase) {
 		t.Logf("known gap %s: %s", k, c.known[k])
 	}
 
-	runInvariants(t, d, skip)
+	runInvariants(t, d, c.expect, skip)
 	runExpectations(t, d, c.expect, skip)
 }
 
-func runInvariants(t *testing.T, d *Data, skip map[string]bool) {
+// wordsTile reports whether a line's Words tile its display text under the
+// contract's C6 rule. The strict form requires ΣWords to equal some Part; when
+// looseTiling is set, the fallback accepts ΣWords covering a non-empty prefix
+// of Part(0) (upstream INV-9: a bare tail text node next to a timed span
+// produces no word, so the words tile only a prefix of the display text). The
+// strict form is always tried first because the loose form is a strictly weaker
+// guarantee, and the sb.Len() > 0 guard keeps a line whose words concatenate to
+// the empty string from passing (an empty string is a prefix of anything).
+func wordsTile(l LyricLine, looseTiling bool) bool {
+	var sb strings.Builder
+	for _, w := range l.Words {
+		sb.WriteString(w.Text)
+	}
+	for j := 0; j < l.PartCount(); j++ {
+		if sb.String() == l.Part(j) {
+			return true
+		}
+	}
+	return looseTiling && sb.Len() > 0 && strings.HasPrefix(l.Part(0), sb.String())
+}
+
+func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 	t.Helper()
 
 	// C8：Time 非降序且非负。
@@ -170,18 +196,11 @@ func runInvariants(t *testing.T, d *Data, skip map[string]bool) {
 
 		// C6：Words 必须铺满某个 Part，否则面板静默退化为整行高亮。
 		if !skip["C6"] && len(l.Words) > 0 {
-			var sb strings.Builder
-			for _, w := range l.Words {
-				sb.WriteString(w.Text)
-			}
-			tiled := false
-			for j := 0; j < l.PartCount(); j++ {
-				if sb.String() == l.Part(j) {
-					tiled = true
-					break
+			if !wordsTile(l, e.looseTiling) {
+				var sb strings.Builder
+				for _, w := range l.Words {
+					sb.WriteString(w.Text)
 				}
-			}
-			if !tiled {
 				t.Errorf("C6 %s: Words %q tile no Part of %v", tag, sb.String(), l.Parts)
 			}
 		}
@@ -255,6 +274,38 @@ func runExpectations(t *testing.T, d *Data, e expectation, skip map[string]bool)
 		if d.Artist == "" {
 			t.Error("meta: Artist is empty, the sample carries [ar:]")
 		}
+	}
+}
+
+// TestWordsTileLoosePrefix pins the C6 loose form's discriminating power. The
+// line reproduces the upstream INV-9 shape (spec §5) measured in Task 4: a
+// timed span followed by a bare tail text node, so the words tile only a strict
+// prefix of the display text. Feeding it to the strict form must fail
+// (ΣWords != Part(0)) and the loose form must accept it; a line whose words
+// concatenate to the empty string must never pass the loose form.
+func TestWordsTileLoosePrefix(t *testing.T) {
+	// Same shape as the measured probe: Words == ["ユー"], Text == "ユー💀",
+	// Parts stays nil so Part(0) degrades to Text per C3.
+	prefix := LyricLine{
+		Text:  "ユー💀",
+		Words: []WordFragment{{Text: "ユー"}},
+	}
+
+	if wordsTile(prefix, false) {
+		t.Error("strict form accepted a prefix-only tile: ΣWords != Part(0)")
+	}
+	if !wordsTile(prefix, true) {
+		t.Error("loose form rejected a valid prefix-only tile")
+	}
+
+	// Discriminator: the sb.Len() > 0 guard. A concatenation that is empty is a
+	// prefix of any Part, so without the guard it would pass.
+	empty := LyricLine{
+		Text:  "x",
+		Words: []WordFragment{{Text: ""}},
+	}
+	if wordsTile(empty, true) {
+		t.Error("loose form accepted empty words (empty string is a prefix of anything)")
 	}
 }
 
