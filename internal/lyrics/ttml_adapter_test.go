@@ -1,8 +1,10 @@
 package lyrics
 
 import (
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	amllttml "github.com/WhatDamon/go-amll-ttml-parser"
 )
@@ -56,10 +58,31 @@ const ttmlBrSample = `<tt xmlns="http://www.w3.org/ns/ttml">
   </body>
 </tt>`
 
-// TestTTML_AdapterSketch pins what task 1 puts in ttmlToData: the mapping layer
-// exists, Path comes from the caller, and Format matches the name the TTML
-// parser is registered under. Task 2 fills in the rest.
-func TestTTML_AdapterSketch(t *testing.T) {
+// ttmlSampleDoc parses ttmlAMLLSample the way the adapter's caller will:
+// keyless <p> elements are kept (spec D3), because the hand-written parser
+// accepted them too and most non-AMLL TTML has no itunes:key.
+func ttmlSampleDoc(t *testing.T) *amllttml.Document {
+	t.Helper()
+	doc, err := amllttml.ParseReader(strings.NewReader(ttmlAMLLSample),
+		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep))
+	if err != nil {
+		t.Fatalf("amllttml.ParseReader() error: %v", err)
+	}
+	return doc
+}
+
+// joinWordText concatenates the word fragments of a line.
+func joinWordText(words []WordFragment) string {
+	var b strings.Builder
+	for _, w := range words {
+		b.WriteString(w.Text)
+	}
+	return b.String()
+}
+
+// TestTTML_AdapterPath pins that the adapter passes the caller's path through.
+// Format is not the adapter's business: registry.go is its only writer.
+func TestTTML_AdapterPath(t *testing.T) {
 	doc, err := amllttml.ParseReader(strings.NewReader(ttmlAMLLSample))
 	if err != nil {
 		t.Fatalf("amllttml.ParseReader() error: %v", err)
@@ -69,8 +92,243 @@ func TestTTML_AdapterSketch(t *testing.T) {
 	if data.Path != "song.ttml" {
 		t.Errorf("Path = %q, want %q", data.Path, "song.ttml")
 	}
-	if data.Format != ttmlFormat {
-		t.Errorf("Format = %q, want %q", data.Format, ttmlFormat)
+}
+
+// TestTTML_AdapterMapsSample pins the line projection of ttmlAMLLSample: one
+// line per <p> (keyless included), Parts in [original, background, translation]
+// order, Text joined with " | ", words from the original segment only, and the
+// library's derived times.
+func TestTTML_AdapterMapsSample(t *testing.T) {
+	data := ttmlToData(ttmlSampleDoc(t), "song.ttml")
+
+	if len(data.Lines) != 3 {
+		t.Fatalf("lines = %d, want 3 (the keyless <p> is kept)", len(data.Lines))
+	}
+
+	// Line 1 is keyed and plain: no x-bg (so Line.Background is nil - reading
+	// .Text without a nil check would panic here) and no translation, hence no
+	// second segment and Parts stays nil.
+	first := data.Lines[0]
+	if first.Parts != nil {
+		t.Errorf("line 1 Parts = %q, want nil", first.Parts)
+	}
+	if first.Text != "I could find you" {
+		t.Errorf("line 1 Text = %q, want %q", first.Text, "I could find you")
+	}
+	if len(first.Words) != 4 {
+		t.Fatalf("line 1 words = %d, want 4", len(first.Words))
+	}
+	if got := joinWordText(first.Words); got != first.Text {
+		t.Errorf("line 1 words join = %q, want the line text %q", got, first.Text)
+	}
+	// WordFragment.Time is the word's own begin, absolute in the document.
+	if first.Words[0].Time != time.Second {
+		t.Errorf("line 1 word 1 Time = %v, want 1s", first.Words[0].Time)
+	}
+	if want := 3*time.Second + 250*time.Millisecond; first.Words[3].Time != want {
+		t.Errorf("line 1 word 4 Time = %v, want %v", first.Words[3].Time, want)
+	}
+	if first.Time != time.Second || first.End != 4*time.Second {
+		t.Errorf("line 1 window = [%v,%v], want [1s,4s]", first.Time, first.End)
+	}
+	if first.Agent != "v1" {
+		t.Errorf("line 1 Agent = %q, want %q", first.Agent, "v1")
+	}
+
+	// Line 2 carries all three segments; the order is fixed by spec D6.
+	second := data.Lines[1]
+	wantParts := []string{"Ooh, I found you", "ooh", "我找到了你"}
+	if !slices.Equal(second.Parts, wantParts) {
+		t.Errorf("line 2 Parts = %q, want %q", second.Parts, wantParts)
+	}
+	if want := strings.Join(wantParts, " | "); second.Text != want {
+		t.Errorf("line 2 Text = %q, want %q", second.Text, want)
+	}
+	if len(second.Words) != 4 {
+		t.Fatalf("line 2 words = %d, want 4 (original segment only)", len(second.Words))
+	}
+	// The words tile Parts[0]: the background vocal "ooh" and the translation
+	// are display text without word timing.
+	//
+	// This fixture only contains timed spans, so the tiling is strict here. Real
+	// corpus files are not always that tidy: 5 of 717085 lines expose the words
+	// as a PREFIX of the display text (a bare text node next to a span, upstream
+	// INV-9, spec §5). Task 4's contract assertion is consequently written in the
+	// looser prefix form for the registered parser; the strict form here is what
+	// the sample is built to satisfy, not a contradiction.
+	if got := joinWordText(second.Words); got != second.Parts[0] {
+		t.Errorf("line 2 words join = %q, want Parts[0] %q", got, second.Parts[0])
+	}
+	for _, w := range second.Words {
+		if strings.Contains(w.Text, "ooh") || strings.Contains(w.Text, "我找到了你") {
+			t.Errorf("line 2 word %q comes from a non-original segment", w.Text)
+		}
+	}
+	if second.Time != 4*time.Second || second.End != 7*time.Second {
+		t.Errorf("line 2 window = [%v,%v], want [4s,7s]", second.Time, second.End)
+	}
+
+	// Line 3 has no itunes:key; the adapter must not lose it.
+	third := data.Lines[2]
+	if third.Parts != nil {
+		t.Errorf("line 3 Parts = %q, want nil", third.Parts)
+	}
+	if third.Agent != "v2" {
+		t.Errorf("line 3 Agent = %q, want %q", third.Agent, "v2")
+	}
+	if third.Time != 7*time.Second || third.End != 10*time.Second {
+		t.Errorf("line 3 window = [%v,%v], want [7s,10s]", third.Time, third.End)
+	}
+}
+
+// TestTTML_AdapterMapsSampleMetadata pins the metadata projection of
+// ttmlAMLLSample, including the two deliberate behaviour changes: Properties
+// keeps the FIRST value of a repeated key, and Creator is wired to the AMLL
+// author meta.
+func TestTTML_AdapterMapsSampleMetadata(t *testing.T) {
+	data := ttmlToData(ttmlSampleDoc(t), "song.ttml")
+
+	if data.Title != "Sample Song" {
+		t.Errorf("Title = %q, want %q", data.Title, "Sample Song")
+	}
+	if data.Artist != "Alice" {
+		t.Errorf("Artist = %q, want %q", data.Artist, "Alice")
+	}
+	if data.Album != "Sample Album" {
+		t.Errorf("Album = %q, want %q", data.Album, "Sample Album")
+	}
+	// The fixture declares no ttmlAuthorGithubLogin meta, so Creator stays empty
+	// here; the field is wired, this sample just cannot exercise it.
+	if data.Creator != "" {
+		t.Errorf("Creator = %q, want empty", data.Creator)
+	}
+
+	if got := data.Properties["musicName"]; got != "Sample Song" {
+		t.Errorf("Properties[musicName] = %q, want %q", got, "Sample Song")
+	}
+	if got := data.Properties["album"]; got != "Sample Album" {
+		t.Errorf("Properties[album] = %q, want %q", got, "Sample Album")
+	}
+	// "artists" appears twice (Alice, Bob): the first value wins, where the
+	// hand-written parser's map kept the last one ("Bob", spec §6 item 3).
+	if got := data.Properties["artists"]; got != "Alice" {
+		t.Errorf("Properties[artists] = %q, want %q (first value wins)", got, "Alice")
+	}
+
+	// Neither agent declares a ttm:name, so the names come from the artists meta
+	// in agent document order.
+	if got := data.Agents["v1"]; got != "Alice" {
+		t.Errorf("Agents[v1] = %q, want %q", got, "Alice")
+	}
+	if got := data.Agents["v2"]; got != "Bob" {
+		t.Errorf("Agents[v2] = %q, want %q", got, "Bob")
+	}
+}
+
+// TestTTML_AdapterEndFromEffectiveInterval pins the End sentinel. Both <p>
+// elements declare a begin and no end:
+//
+//   - the first has a word without its own end, so nothing bounds the line and
+//     End stays 0 - the unbounded sentinel ActiveLines' per-line rule relies on;
+//   - the second has a word that ends, so the library's EffectiveInterval widens
+//     the declared (endless) interval to the word's end (spec §6 item 5).
+func TestTTML_AdapterEndFromEffectiveInterval(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body>
+    <div>
+      <p begin="00:01.000"><span begin="00:01.000">unbounded</span></p>
+      <p begin="00:03.000"><span begin="00:03.000" end="00:04.500">bounded</span></p>
+    </div>
+  </body>
+</tt>`
+
+	doc, err := amllttml.ParseReader(strings.NewReader(sample),
+		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep))
+	if err != nil {
+		t.Fatalf("amllttml.ParseReader() error: %v", err)
+	}
+	data := ttmlToData(doc, "song.ttml")
+	if len(data.Lines) != 2 {
+		t.Fatalf("lines = %d, want 2", len(data.Lines))
+	}
+
+	unbounded := data.Lines[0]
+	if unbounded.Time != time.Second {
+		t.Errorf("unbounded Time = %v, want 1s", unbounded.Time)
+	}
+	if unbounded.End != 0 {
+		t.Errorf("unbounded End = %v, want 0 (the sentinel must survive the conversion)", unbounded.End)
+	}
+
+	bounded := data.Lines[1]
+	if bounded.Time != 3*time.Second {
+		t.Errorf("bounded Time = %v, want 3s", bounded.Time)
+	}
+	if want := 4*time.Second + 500*time.Millisecond; bounded.End != want {
+		t.Errorf("bounded End = %v, want the word's end %v", bounded.End, want)
+	}
+}
+
+// TestTTML_AdapterSortsByTime pins that the adapter re-establishes time order:
+// the library keeps the document order of <p> elements (10s, 1s, 5s below), but
+// the cross-format contract requires ascending Time and ActiveLines' per-line
+// scan of unbounded lines assumes it.
+func TestTTML_AdapterSortsByTime(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body>
+    <div>
+      <p begin="00:00:10.000">Later</p>
+      <p begin="00:00:01.000">Earlier</p>
+      <p begin="00:00:05.000">Middle</p>
+    </div>
+  </body>
+</tt>`
+
+	doc, err := amllttml.ParseReader(strings.NewReader(sample),
+		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep))
+	if err != nil {
+		t.Fatalf("amllttml.ParseReader() error: %v", err)
+	}
+	data := ttmlToData(doc, "song.ttml")
+	if len(data.Lines) != 3 {
+		t.Fatalf("lines = %d, want 3", len(data.Lines))
+	}
+	for i := 1; i < len(data.Lines); i++ {
+		if data.Lines[i].Time < data.Lines[i-1].Time {
+			t.Errorf("lines not sorted at index %d: %v after %v",
+				i, data.Lines[i].Time, data.Lines[i-1].Time)
+		}
+	}
+}
+
+// TestTTML_AdapterEmptyParagraphIsDropped pins the drop rule: a <p> with no
+// text and no other display segment must not become a blank row.
+func TestTTML_AdapterEmptyParagraphIsDropped(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body>
+    <div>
+      <p begin="00:01.000" end="00:02.000"></p>
+      <p begin="00:03.000" end="00:04.000"><span begin="00:03.000" end="00:04.000">kept</span></p>
+    </div>
+  </body>
+</tt>`
+
+	doc, err := amllttml.ParseReader(strings.NewReader(sample),
+		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep))
+	if err != nil {
+		t.Fatalf("amllttml.ParseReader() error: %v", err)
+	}
+	// The library keeps the empty <p> as a line with an empty Text; dropping it is
+	// the adapter's rule, so this count is what proves the rule fired.
+	if len(doc.Lines) != 2 {
+		t.Fatalf("parsed lines = %d, want 2", len(doc.Lines))
+	}
+	data := ttmlToData(doc, "song.ttml")
+	if len(data.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1 (the empty <p> is dropped)", len(data.Lines))
+	}
+	if data.Lines[0].Text != "kept" {
+		t.Errorf("Text = %q, want %q", data.Lines[0].Text, "kept")
 	}
 }
 
