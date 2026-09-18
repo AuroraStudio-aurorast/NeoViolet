@@ -1,6 +1,7 @@
 package lyrics
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +10,8 @@ import (
 const testTTML = `<?xml version="1.0" encoding="UTF-8"?>
 <tt xmlns="http://www.w3.org/ns/ttml"
     xmlns:tts="http://www.w3.org/ns/ttml#styling"
+    xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
+    xmlns:ttp="http://www.w3.org/ns/ttml#parameter"
     ttp:frameRate="24"
     ttp:tickRate="1000">
   <head>
@@ -22,9 +25,9 @@ const testTTML = `<?xml version="1.0" encoding="UTF-8"?>
       <p begin="00:00:04.000" end="00:00:07.500">Second line here</p>
       <p begin="00:00:07.500" end="00:00:12.000">Third line goes on</p>
       <p begin="00:00:12.000" end="00:00:15.500">
-        <span begin="00:00:12.000">word</span>
-        <span begin="00:00:13.000">level</span>
-        <span begin="00:00:14.000">sync</span>
+        <span begin="00:00:12.000" end="00:00:13.000">word </span>
+        <span begin="00:00:13.000" end="00:00:14.000">level </span>
+        <span begin="00:00:14.000" end="00:00:15.500">sync</span>
       </p>
     </div>
   </body>
@@ -42,9 +45,10 @@ const testTTMLOffset = `<?xml version="1.0" encoding="UTF-8"?>
 
 const testTTMLFrames = `<?xml version="1.0" encoding="UTF-8"?>
 <tt xmlns="http://www.w3.org/ns/ttml"
-    ttp:frameRate="30"
-    ttp:frameRateMultiplier="1"
-    ttp:subFrameRate="1">
+    xmlns:ttp="http://www.w3.org/ns/ttml#parameter"
+    ttp:frameRate="60"
+    ttp:frameRateMultiplier="1001 1000"
+    ttp:subFrameRate="2">
   <body>
     <div>
       <p begin="00:00:01:15" end="00:00:02:00">Frames-based timestamp</p>
@@ -111,14 +115,54 @@ func TestTTML_WordLevelSync(t *testing.T) {
 	if len(line3.Words) != 3 {
 		t.Fatalf("expected 3 word fragments, got %d", len(line3.Words))
 	}
-	if line3.Words[0].Text != "word" || line3.Words[0].Time != 12000*time.Millisecond {
-		t.Errorf("word[0] = %q @ %v, want 'word' @ 12s", line3.Words[0].Text, line3.Words[0].Time)
+	if line3.Words[0].Text != "word " || line3.Words[0].Time != 12000*time.Millisecond {
+		t.Errorf("word[0] = %q @ %v, want 'word ' @ 12s (trailing space merged)", line3.Words[0].Text, line3.Words[0].Time)
 	}
-	if line3.Words[1].Text != "level" || line3.Words[1].Time != 13000*time.Millisecond {
-		t.Errorf("word[1] = %q @ %v, want 'level' @ 13s", line3.Words[1].Text, line3.Words[1].Time)
+	if line3.Words[1].Text != "level " || line3.Words[1].Time != 13000*time.Millisecond {
+		t.Errorf("word[1] = %q @ %v, want 'level ' @ 13s (trailing space merged)", line3.Words[1].Text, line3.Words[1].Time)
 	}
 	if line3.Words[2].Text != "sync" || line3.Words[2].Time != 14000*time.Millisecond {
 		t.Errorf("word[2] = %q @ %v, want 'sync' @ 14s", line3.Words[2].Text, line3.Words[2].Time)
+	}
+}
+
+func TestTTML_NoSpaceIsNotInvented(t *testing.T) {
+	noSpace := `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body><div>
+    <p begin="00:00:12.000" end="00:00:15.500">
+      <span begin="00:00:12.000" end="00:00:13.000">word</span>
+      <span begin="00:00:13.000" end="00:00:14.000">level</span>
+      <span begin="00:00:14.000" end="00:00:15.500">sync</span>
+    </p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(noSpace)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("expected 1 line, got %d", len(d.Lines))
+	}
+
+	// The library must never invent inter-word spaces (spec D5): spans with no
+	// real whitespace between them stay glued together. Each timed span keeps
+	// its own word fragment, and concatenating the fragments reproduces the
+	// glued Text with no invented spaces - the exact opposite of the CJK/space
+	// heuristics the old hand-written parser applied.
+	if d.Lines[0].Text != "wordlevelsync" {
+		t.Errorf("Text = %q, want %q (spaces are never invented)", d.Lines[0].Text, "wordlevelsync")
+	}
+	if len(d.Lines[0].Words) != 3 {
+		t.Errorf("words = %d, want 3 (each timed span stays its own fragment)", len(d.Lines[0].Words))
+	}
+	var joined strings.Builder
+	for _, w := range d.Lines[0].Words {
+		joined.WriteString(w.Text)
+	}
+	if joined.String() != d.Lines[0].Text {
+		t.Errorf("joined fragments = %q, want glued Text %q", joined.String(), d.Lines[0].Text)
 	}
 }
 
@@ -148,6 +192,14 @@ func TestTTML_NoParagraphs(t *testing.T) {
 	_, err := parseTTML(noP)
 	if err == nil {
 		t.Error("expected error for TTML with no paragraphs")
+	}
+}
+
+func TestTTML_ZeroLinesIsAnError(t *testing.T) {
+	noP := `<tt xmlns="http://www.w3.org/ns/ttml"><body><div></div></body></tt>`
+	_, err := parseTTML(noP)
+	if !errors.Is(err, ErrNoLyrics) {
+		t.Errorf("Parse() error = %v, want ErrNoLyrics", err)
 	}
 }
 
@@ -251,14 +303,14 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
   <body dur="0:10.000">
     <div begin="0.000" end="0:10.000">
       <p begin="1.345" end="3.071" itunes:key="L1" ttm:agent="v1">
-        <span begin="1.345" end="1.548">I</span>
-        <span begin="1.548" end="1.938">could</span>
-        <span begin="1.938" end="2.198">find</span>
+        <span begin="1.345" end="1.548">I </span>
+        <span begin="1.548" end="1.938">could </span>
+        <span begin="1.938" end="2.198">find </span>
         <span begin="2.198" end="2.770">you</span>
         <span ttm:role="x-translation" xml:lang="zh-CN">我找到了你</span>
       </p>
       <p begin="4.085" end="6.505" itunes:key="L2" ttm:agent="v1">
-        <span begin="4.085" end="4.510">Hello</span>
+        <span begin="4.085" end="4.510">Hello </span>
         <span begin="4.510" end="4.953">world</span>
         <span ttm:role="x-translation" xml:lang="zh-CN">你好世界</span>
       </p>
@@ -275,28 +327,33 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
 		t.Fatalf("expected 2 lines, got %d", len(d.Lines))
 	}
 
-	if d.Lines[0].Text != "I could find you" {
-		t.Errorf("line 0 text = %q, want 'I could find you' (no translation)", d.Lines[0].Text)
+	// The inline translation is no longer dropped (spec §6 item 1): it becomes
+	// the second display part, while Text and Words stay on the original segment.
+	if len(d.Lines[0].Parts) != 2 || d.Lines[0].Parts[0] != "I could find you" || d.Lines[0].Parts[1] != "我找到了你" {
+		t.Errorf("line 0 Parts = %q, want [%q %q]", d.Lines[0].Parts, "I could find you", "我找到了你")
 	}
-	if strings.Contains(d.Lines[0].Text, "我") {
-		t.Error("translation text leaked into line 0")
+	if want := "I could find you | 我找到了你"; d.Lines[0].Text != want {
+		t.Errorf("line 0 Text = %q, want %q", d.Lines[0].Text, want)
 	}
 
 	if len(d.Lines[0].Words) != 4 {
 		t.Fatalf("expected 4 word fragments (not translation), got %d", len(d.Lines[0].Words))
 	}
-	if d.Lines[0].Words[0].Text != "I" || d.Lines[0].Words[0].Time != 1345*time.Millisecond {
-		t.Errorf("word[0] = %q @ %v", d.Lines[0].Words[0].Text, d.Lines[0].Words[0].Time)
+	if d.Lines[0].Words[0].Text != "I " || d.Lines[0].Words[0].Time != 1345*time.Millisecond {
+		t.Errorf("word[0] = %q @ %v, want 'I ' @ 1345ms", d.Lines[0].Words[0].Text, d.Lines[0].Words[0].Time)
 	}
 	if d.Lines[0].Words[3].Text != "you" || d.Lines[0].Words[3].Time != 2198*time.Millisecond {
-		t.Errorf("word[3] = %q @ %v", d.Lines[0].Words[3].Text, d.Lines[0].Words[3].Time)
+		t.Errorf("word[3] = %q @ %v, want 'you' @ 2198ms", d.Lines[0].Words[3].Text, d.Lines[0].Words[3].Time)
 	}
 
 	if d.Lines[1].Time != 4085*time.Millisecond {
 		t.Errorf("line 1 time = %v, want 4085ms", d.Lines[1].Time)
 	}
-	if d.Lines[1].Text != "Hello world" {
-		t.Errorf("line 1 text = %q, want 'Hello world'", d.Lines[1].Text)
+	if len(d.Lines[1].Parts) != 2 || d.Lines[1].Parts[0] != "Hello world" || d.Lines[1].Parts[1] != "你好世界" {
+		t.Errorf("line 1 Parts = %q, want [%q %q]", d.Lines[1].Parts, "Hello world", "你好世界")
+	}
+	if want := "Hello world | 你好世界"; d.Lines[1].Text != want {
+		t.Errorf("line 1 Text = %q, want %q", d.Lines[1].Text, want)
 	}
 }
 
@@ -376,19 +433,19 @@ const testTTMLAgents = `<?xml version="1.0" encoding="UTF-8"?>
   <body dur="03:08.002">
     <div>
       <p begin="00:00.000" end="00:02.593" ttm:agent="v1">
-        <span begin="00:00.000" end="00:00.223">I</span>
+        <span begin="00:00.000" end="00:00.223">I </span>
         <span begin="00:00.223" end="00:00.394">promise</span>
       </p>
       <p begin="00:03.490" end="00:05.848" ttm:agent="v1">
-        <span begin="00:03.490" end="00:03.553">I</span>
+        <span begin="00:03.490" end="00:03.553">I </span>
         <span begin="00:03.553" end="00:03.722">know</span>
       </p>
       <p begin="00:58.854" end="01:01.239" ttm:agent="v2">
-        <span begin="00:58.854" end="00:59.025">I</span>
+        <span begin="00:58.854" end="00:59.025">I </span>
         <span begin="00:59.025" end="00:59.176">know</span>
       </p>
       <p begin="02:46.447" end="02:47.814" ttm:agent="v2">
-        <span begin="02:46.447" end="02:46.572">I'm</span>
+        <span begin="02:46.447" end="02:46.572">I'm </span>
         <span begin="02:46.572" end="02:46.732">the</span>
       </p>
       <p begin="02:50.728" end="02:52.328" ttm:agent="v3">

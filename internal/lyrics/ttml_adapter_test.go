@@ -476,54 +476,20 @@ func TestTTML_AdapterDuplicateBackgroundSegmentCollapses(t *testing.T) {
 	}
 }
 
-// TestTTML_OldParserBaseline records what the hand-written parser in ttml.go
-// makes of ttmlAMLLSample. These readings are the red evidence for tasks 3 and
-// 4: the sample is AMLL-shaped, and the hand-written parser has no Parts, drops
-// the x-translation span, loses the nested x-bg text behind an empty word, and
-// cannot tile Text with Words (C6).
-//
-// TEMPORARY. Task 3 replaces the hand-written parser with
-// go-amll-ttml-parser, so these readings change by design - rewrite or delete
-// this test then; it is a record, not a regression guard.
-func TestTTML_OldParserBaseline(t *testing.T) {
-	joinWords := func(words []WordFragment) string {
-		var b strings.Builder
-		for _, w := range words {
-			b.WriteString(w.Text)
-		}
-		return b.String()
-	}
-
-	d, err := parseTTML(ttmlAMLLSample)
+// TestTTML_BrIsNonGoal pins that inline <br/> stays a non-goal (spec §14.2):
+// the parser drops the element and the derived text glues its neighbours, but
+// the line survives and nothing panics. The hand-written parser behaved the
+// same way, so this is a behaviour we are intentionally keeping rather than
+// fixing.
+func TestTTML_BrIsNonGoal(t *testing.T) {
+	d, err := parseTTML(ttmlBrSample)
 	if err != nil {
-		t.Fatalf("old parseTTML() error: %v", err)
+		t.Fatalf("Parse() error: %v", err)
 	}
-	if len(d.Lines) != 3 {
-		t.Fatalf("old parser lines = %d, want 3 (the keyless <p> is parsed too)", len(d.Lines))
+	if len(d.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(d.Lines))
 	}
-
-	t.Logf("old meta: Title=%q Artist=%q Album=%q Creator=%q", d.Title, d.Artist, d.Album, d.Creator)
-	t.Logf("old meta: Properties=%v Agents=%v", d.Properties, d.Agents)
-	for i, l := range d.Lines {
-		t.Logf("old line %d: Time=%v End=%v Agent=%q Parts=%v Text=%q",
-			i, l.Time, l.End, l.Agent, l.Parts, l.Text)
-		for j, w := range l.Words {
-			t.Logf("old line %d word %d: Time=%v Text=%q", i, j, w.Time, w.Text)
-		}
-		t.Logf("old line %d: wordsJoin=%q Text=%q C6WordsTileText=%v",
-			i, joinWords(l.Words), l.Text, joinWords(l.Words) == l.Text)
-	}
-
-	br, err := parseTTML(ttmlBrSample)
-	if err != nil {
-		t.Fatalf("old parseTTML(br sample) error: %v", err)
-	}
-	if len(br.Lines) != 1 {
-		t.Fatalf("old parser br lines = %d, want 1", len(br.Lines))
-	}
-	t.Logf("old br probe: Text=%q words=%d", br.Lines[0].Text, len(br.Lines[0].Words))
-	// The break is gone and the two halves are glued: <br/> is not modelled.
-	if br.Lines[0].Text != "firstsecond" {
-		t.Errorf("old br Text = %q, want %q", br.Lines[0].Text, "firstsecond")
+	if d.Lines[0].Text != "firstsecond" {
+		t.Errorf("br Text = %q, want %q (the break is dropped and neighbours glue)", d.Lines[0].Text, "firstsecond")
 	}
 }
