@@ -74,18 +74,13 @@ func ttmlLine(l *amllttml.Line, doc *amllttml.Document) (LyricLine, bool) {
 // [original, background vocal, translation], keeping only segments that exist
 // and that differ from the ones already collected. partsOrNil then turns a
 // single-segment result into nil, preserving "Parts != nil implies len >= 2".
-//
-// The translation is doc.TranslationsFor(key)[0]: the library merges the inline
-// x-translation span and the head-side <text for="key"> block into one list with
-// inline first, so the first entry is the inline one and a head-only file still
-// yields its translation.
 func ttmlParts(l *amllttml.Line, doc *amllttml.Document) []string {
 	candidates := []string{l.Text}
 	if l.Background != nil {
 		candidates = append(candidates, l.Background.Text)
 	}
-	if tr := doc.TranslationsFor(l.Key); len(tr) > 0 {
-		candidates = append(candidates, tr[0].Text)
+	if tr := ttmlTranslationText(l, doc); tr != "" {
+		candidates = append(candidates, tr)
 	}
 
 	var parts []string
@@ -105,6 +100,43 @@ func ttmlParts(l *amllttml.Line, doc *amllttml.Document) []string {
 		}
 	}
 	return partsOrNil(parts)
+}
+
+// ttmlTranslationText returns the translation segment of a line, or "". It goes
+// through the key-based lookup for keyed lines and through the line's own inline
+// tracks for keyless ones.
+//
+// The split is forced by how the library indexes lines: LineByKey skips empty
+// keys on purpose (a keyless <p> is not addressable by key), so Document.Line("")
+// never resolves and TranslationsFor("") collects no inline translation at all -
+// it cannot, and reading the tracks off the line is the only way to keep a
+// keyless line's own translation. It does collect every head-side <text> whose
+// for attribute is missing, because the library filters those on it.For != key
+// and a missing for is "", which matches the "" key of every keyless line: one
+// such entry would translate every one of them. Those entries are ignored here,
+// consistently with the keyed path, where a for-less <text> matches no key
+// either. A head block that does not say which line it translates therefore
+// shows nothing - an accepted limitation of the format, not of this mapping.
+//
+// For keyed lines TranslationsFor merges the inline span and the head-side
+// <text for="key"> block with the inline one first (spec §4.2.1), so [0] is the
+// inline translation and a head-only file still yields its translation.
+// For keyless lines the inline tracks are read in that same order: the line's
+// own translations, then its background vocal's.
+func ttmlTranslationText(l *amllttml.Line, doc *amllttml.Document) string {
+	if l.Key == "" {
+		if len(l.Translations) > 0 {
+			return l.Translations[0].Text
+		}
+		if l.Background != nil && len(l.Background.Translations) > 0 {
+			return l.Background.Translations[0].Text
+		}
+		return ""
+	}
+	if tr := doc.TranslationsFor(l.Key); len(tr) > 0 {
+		return tr[0].Text
+	}
+	return ""
 }
 
 // ttmlWords maps the words of the ORIGINAL segment only: the background vocal
@@ -174,9 +206,12 @@ func ttmlFirst(values []string) string {
 	return values[0]
 }
 
-// ttmlAgents names every declared agent with the three-step fallback the
-// hand-written parser had: the <ttm:name> child, else the i-th
-// amll:meta key="artists" value, else the uppercased id ("v3" -> "V3").
+// ttmlAgents names every declared agent with a three-step fallback. The first
+// two steps are the ones the hand-written parser had (ttml.go: the i-th
+// amll:meta key="artists" value, else the uppercased id, "v3" -> "V3"); the
+// <ttm:name> child in front of them is new with this renovation - the
+// hand-written parser's agent struct held only ID and Type and never read the
+// name, so an explicitly named agent displays differently from now on (spec §6).
 //
 // AgentOrder is the declarations' document order; the Agents map's iteration
 // order is random and therefore unusable for the artists correspondence.

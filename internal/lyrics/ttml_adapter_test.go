@@ -14,7 +14,7 @@ import (
 //
 //   - the root declares every namespace it uses (no undeclared prefixes);
 //   - <head> carries two ttm:agent declarations plus amll:meta
-//     musicName/artists/album;
+//     musicName/artists/album and the author login;
 //   - line 1 is keyed (itunes:key) with word-level spans and real inter-word
 //     spaces;
 //   - line 2 is keyed and adds an x-bg background span (inner span carries both
@@ -36,6 +36,7 @@ const ttmlAMLLSample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://
       <amll:meta key="artists" value="Alice"/>
       <amll:meta key="artists" value="Bob"/>
       <amll:meta key="album" value="Sample Album"/>
+      <amll:meta key="ttmlAuthorGithubLogin" value="SampleAuthor"/>
     </metadata>
   </head>
   <body>
@@ -63,7 +64,14 @@ const ttmlBrSample = `<tt xmlns="http://www.w3.org/ns/ttml">
 // accepted them too and most non-AMLL TTML has no itunes:key.
 func ttmlSampleDoc(t *testing.T) *amllttml.Document {
 	t.Helper()
-	doc, err := amllttml.ParseReader(strings.NewReader(ttmlAMLLSample),
+	return ttmlParseDoc(t, ttmlAMLLSample)
+}
+
+// ttmlParseDoc parses any fixture with the keyless policy the adapter's caller
+// uses (spec D3: a <p> without itunes:key is still a lyric line).
+func ttmlParseDoc(t *testing.T, sample string) *amllttml.Document {
+	t.Helper()
+	doc, err := amllttml.ParseReader(strings.NewReader(sample),
 		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep))
 	if err != nil {
 		t.Fatalf("amllttml.ParseReader() error: %v", err)
@@ -184,7 +192,7 @@ func TestTTML_AdapterMapsSample(t *testing.T) {
 // TestTTML_AdapterMapsSampleMetadata pins the metadata projection of
 // ttmlAMLLSample, including the two deliberate behaviour changes: Properties
 // keeps the FIRST value of a repeated key, and Creator is wired to the AMLL
-// author meta.
+// author login meta (the hand-written parser never set Creator at all).
 func TestTTML_AdapterMapsSampleMetadata(t *testing.T) {
 	data := ttmlToData(ttmlSampleDoc(t), "song.ttml")
 
@@ -197,10 +205,8 @@ func TestTTML_AdapterMapsSampleMetadata(t *testing.T) {
 	if data.Album != "Sample Album" {
 		t.Errorf("Album = %q, want %q", data.Album, "Sample Album")
 	}
-	// The fixture declares no ttmlAuthorGithubLogin meta, so Creator stays empty
-	// here; the field is wired, this sample just cannot exercise it.
-	if data.Creator != "" {
-		t.Errorf("Creator = %q, want empty", data.Creator)
+	if data.Creator != "SampleAuthor" {
+		t.Errorf("Creator = %q, want %q", data.Creator, "SampleAuthor")
 	}
 
 	if got := data.Properties["musicName"]; got != "Sample Song" {
@@ -329,6 +335,144 @@ func TestTTML_AdapterEmptyParagraphIsDropped(t *testing.T) {
 	}
 	if data.Lines[0].Text != "kept" {
 		t.Errorf("Text = %q, want %q", data.Lines[0].Text, "kept")
+	}
+}
+
+// TestTTML_AdapterAgentNameBeatsArtistsMeta pins the newly added first step of
+// the agent naming: a <ttm:name> child wins over the positional
+// amll:meta key="artists" value. The hand-written parser read no <ttm:name> at
+// all (its ttmlAgent struct carried only ID and Type), so whenever a file names
+// its agents explicitly the displayed name changes with this renovation.
+//
+// Its own fixture on purpose: ttmlAMLLSample is the contract sample of tasks 3
+// and 4, so its agents must keep exercising the artists-meta path.
+func TestTTML_AdapterAgentNameBeatsArtistsMeta(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:amll="http://www.example.com/ns/amll">
+  <head>
+    <metadata>
+      <ttm:agent xml:id="v1" type="person"><ttm:name type="person">Real Name</ttm:name></ttm:agent>
+      <amll:meta key="artists" value="Other"/>
+    </metadata>
+  </head>
+  <body>
+    <div><p begin="00:01.000" end="00:02.000" ttm:agent="v1">Hi</p></div>
+  </body>
+</tt>`
+
+	doc := ttmlParseDoc(t, sample)
+	// Premise: the library reports the explicit name, and the artists meta
+	// disagrees with it.
+	if got := doc.Agents["v1"].Name(); got != "Real Name" {
+		t.Fatalf("lib Agent.Name() = %q, want %q", got, "Real Name")
+	}
+
+	data := ttmlToData(doc, "song.ttml")
+	if got := data.Agents["v1"]; got != "Real Name" {
+		t.Errorf("Agents[v1] = %q, want %q (ttm:name wins over the artists meta)", got, "Real Name")
+	}
+	// The artists meta is still read - it just does not name this agent.
+	if data.Artist != "Other" {
+		t.Errorf("Artist = %q, want %q", data.Artist, "Other")
+	}
+}
+
+// TestTTML_AdapterHeadlessDocumentDefaults pins the values produced when a
+// document has no <head> at all: the library leaves Document.Metadata nil there,
+// so every metadata field must come out empty rather than crash. The lines
+// themselves are unaffected.
+func TestTTML_AdapterHeadlessDocumentDefaults(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body>
+    <div><p begin="00:01.000" end="00:02.000">Solo</p></div>
+  </body>
+</tt>`
+
+	doc := ttmlParseDoc(t, sample)
+	if doc.Metadata != nil {
+		t.Fatalf("lib Metadata = %+v, want nil for a head-less document (the premise)", doc.Metadata)
+	}
+
+	data := ttmlToData(doc, "song.ttml")
+	if data.Title != "" || data.Artist != "" || data.Album != "" || data.Creator != "" {
+		t.Errorf("metadata = [%q %q %q %q], want all empty", data.Title, data.Artist, data.Album, data.Creator)
+	}
+	// Non-nil empty maps, like the hand-written and SMI parsers produce: callers
+	// may look up a key without a nil check.
+	if data.Properties == nil || len(data.Properties) != 0 {
+		t.Errorf("Properties = %v, want non-nil and empty", data.Properties)
+	}
+	if data.Agents == nil || len(data.Agents) != 0 {
+		t.Errorf("Agents = %v, want non-nil and empty", data.Agents)
+	}
+	if len(data.Lines) != 1 || data.Lines[0].Text != "Solo" {
+		t.Fatalf("lines = %v, want the single \"Solo\" line", data.Lines)
+	}
+}
+
+// TestTTML_AdapterLineWithEmptyOriginalButSegmentsIsKept pins the second half of
+// the drop rule. A <p> whose original text is empty but which carries a
+// background vocal and a translation still has something to show, so it must
+// survive: dropping on the text alone would delete it.
+func TestTTML_AdapterLineWithEmptyOriginalButSegmentsIsKept(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal">
+  <body>
+    <div>
+      <p begin="00:01.000" end="00:04.000" itunes:key="L1"><span ttm:role="x-bg" begin="00:01.000" end="00:02.000"><span begin="00:01.000" end="00:02.000">ooh</span></span><span ttm:role="x-translation">译文</span></p>
+    </div>
+  </body>
+</tt>`
+
+	doc := ttmlParseDoc(t, sample)
+	// Premise: the original segment really is empty here.
+	if len(doc.Lines) != 1 || doc.Lines[0].Text != "" {
+		t.Fatalf("lib line = %+v, want one line with an empty Text (the premise)", doc.Lines)
+	}
+
+	data := ttmlToData(doc, "song.ttml")
+	if len(data.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1 (the line has display segments even without original text)", len(data.Lines))
+	}
+	want := []string{"ooh", "译文"}
+	if !slices.Equal(data.Lines[0].Parts, want) {
+		t.Errorf("Parts = %q, want %q", data.Lines[0].Parts, want)
+	}
+	if wantText := "ooh | 译文"; data.Lines[0].Text != wantText {
+		t.Errorf("Text = %q, want %q", data.Lines[0].Text, wantText)
+	}
+}
+
+// TestTTML_AdapterDuplicateBackgroundSegmentCollapses pins a deliberate spec
+// §4.2.1 decision: a segment is appended only when it differs from the ones
+// already collected. A chorus echo whose background text equals the original
+// therefore collapses into the original segment, and Parts stays nil instead of
+// rendering the same text twice.
+func TestTTML_AdapterDuplicateBackgroundSegmentCollapses(t *testing.T) {
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal">
+  <body>
+    <div>
+      <p begin="00:01.000" end="00:04.000" itunes:key="L1">echo<span ttm:role="x-bg" begin="00:02.000" end="00:03.000"><span begin="00:02.000" end="00:03.000">echo</span></span></p>
+    </div>
+  </body>
+</tt>`
+
+	doc := ttmlParseDoc(t, sample)
+	// Premise: the background text duplicates the original one.
+	if len(doc.Lines) != 1 || doc.Lines[0].Background == nil {
+		t.Fatalf("lib lines = %+v, want one line with a background vocal", doc.Lines)
+	}
+	if got, want := doc.Lines[0].Background.Text, doc.Lines[0].Text; got != want {
+		t.Fatalf("background text = %q, want it to equal the original %q (the premise)", got, want)
+	}
+
+	data := ttmlToData(doc, "song.ttml")
+	if len(data.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(data.Lines))
+	}
+	if data.Lines[0].Parts != nil {
+		t.Errorf("Parts = %q, want nil (the duplicate segment collapses into the original)", data.Lines[0].Parts)
+	}
+	if data.Lines[0].Text != "echo" {
+		t.Errorf("Text = %q, want %q", data.Lines[0].Text, "echo")
 	}
 }
 
