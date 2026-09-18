@@ -62,10 +62,21 @@ func ttmlLine(l *amllttml.Line, doc *amllttml.Document) (LyricLine, bool) {
 	// calculateTimeRange: the declared <p> interval widened to cover its words
 	// and the background vocal. It is already in whole milliseconds.
 	iv := l.EffectiveInterval()
+	startMs, endMs := iv.BeginMillis(), iv.EndMillis()
+	if endMs <= startMs {
+		// A zero-length (begin == end) or reversed (end < begin) interval carries
+		// no usable duration. Keeping the library's value would make the per-line
+		// window Time <= t < End empty - the line would never display - and would
+		// also violate the End > 0 => End > Time invariant. Real corpus instance:
+		// ncm-lyrics/2158558246.ttml declares <p begin="03:49.093" end="03:49.093">.
+		// End == 0 is the "unbounded" sentinel, so the line stays reachable.
+		// endMs == 0 (no end attribute) lands here too and keeps its meaning.
+		endMs = 0
+	}
 
 	return LyricLine{
-		Time:  millisToDuration(iv.BeginMillis()),
-		End:   millisToDuration(iv.EndMillis()),
+		Time:  millisToDuration(startMs),
+		End:   millisToDuration(endMs),
 		Text:  text,
 		Words: ttmlWords(l),
 		Agent: l.AgentID,

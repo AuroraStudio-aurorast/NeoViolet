@@ -359,3 +359,66 @@ func TestTTML_UntimedBackgroundSpanStillContributesText(t *testing.T) {
 		t.Errorf("words tile %q, want Part(0) %q", got, data.Lines[0].Part(0))
 	}
 }
+
+func TestTTML_ZeroLengthIntervalBecomesUnbounded(t *testing.T) {
+	// The corpus hit (C5/C7, ncm-lyrics/2158558246.ttml): a <p> declaring
+	// begin == end. EffectiveInterval reports Begin == End, and End == Time makes
+	// the per-line window Time <= t < End empty, so the line never displays; the
+	// value also violates the End > 0 => End > Time invariant. The adapter
+	// normalises any interval without usable duration - zero-length or reversed -
+	// onto the End == 0 unbounded sentinel, which keeps both properties.
+	const zeroLength = `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body>
+    <div>
+      <p begin="00:01.000" end="00:01.000">啊</p>
+    </div>
+  </body>
+</tt>`
+
+	d, err := parseTTML(zeroLength)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(d.Lines))
+	}
+	if d.Lines[0].Time != time.Second {
+		t.Errorf("Time = %v, want 1s", d.Lines[0].Time)
+	}
+	if d.Lines[0].End != 0 {
+		t.Errorf("End = %v, want 0 (the unbounded sentinel)", d.Lines[0].End)
+	}
+	if d.Lines[0].Text != "啊" {
+		t.Errorf("Text = %q, want %q", d.Lines[0].Text, "啊")
+	}
+	// End to end: the line is reachable at its own Time rather than owning a
+	// permanently empty window.
+	active := d.ActiveLines(time.Second)
+	if len(active) != 1 || active[0].Text != "啊" {
+		t.Errorf("ActiveLines(1s) = %v, want the zero-length line to be reachable", active)
+	}
+
+	// A reversed interval (end < begin) is the same class of instance - an
+	// interval that carries no usable duration - so it is normalised the same way.
+	const reversed = `<tt xmlns="http://www.w3.org/ns/ttml">
+  <body>
+    <div>
+      <p begin="00:02.000" end="00:01.000">x</p>
+    </div>
+  </body>
+</tt>`
+
+	rd, err := parseTTML(reversed)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(rd.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(rd.Lines))
+	}
+	if rd.Lines[0].Time != 2*time.Second {
+		t.Errorf("reversed Time = %v, want 2s", rd.Lines[0].Time)
+	}
+	if rd.Lines[0].End != 0 {
+		t.Errorf("reversed End = %v, want 0 (no usable duration)", rd.Lines[0].End)
+	}
+}
