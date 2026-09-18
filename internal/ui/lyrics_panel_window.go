@@ -52,15 +52,23 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 	if len(cur) == 0 {
 		return rows
 	}
-	// A long wait for the next line gets the countdown on its own row directly
-	// under the current group, so the wait is visible without moving the lyrics
-	// the eye is on. The dots are part of the group rather than of the context
-	// below, which keeps them next to the line they follow however the rest of the
-	// window is configured. highlight is false exactly when nothing is being sung
-	// (a gap or the wait before the first line), so a sung line never counts down.
+	// A long wait for the next line gets the countdown on its own row, directly
+	// above the line it counts down to, so the wait is visible without moving the
+	// lyrics the eye is on. In a gap that puts it under the line that just ended;
+	// before the first line of the song nothing is held yet, so the group already is
+	// the line being waited for and the dots lead it instead. They are part of the
+	// group rather than of the context below, which keeps them in that position
+	// however the rest of the window is configured. highlight is false exactly when
+	// nothing is being sung (a gap or the wait before the first line), so a sung
+	// line never counts down.
 	if !highlight {
-		if dots, ok := lyricCountdownDots(m); ok {
-			cur = append(cur, panelRow{spans: []styledSpan{{Text: dots, Style: panelCurrentStyle(m)}}})
+		if text, ok := lyricCountdownDots(m); ok {
+			dots := panelRow{spans: []styledSpan{{Text: text, Style: panelCurrentStyle(m)}}}
+			if currentTime > m.Audio.Elapsed {
+				cur = append([]panelRow{dots}, cur...)
+			} else {
+				cur = append(cur, dots)
+			}
 		}
 	}
 	if len(cur) > innerH {

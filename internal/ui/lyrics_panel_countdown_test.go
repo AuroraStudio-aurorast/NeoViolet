@@ -8,8 +8,10 @@ import (
 )
 
 // This file covers the panel's waiting state: a gap long enough to be worth
-// announcing shows the same three-dot countdown as the one-line footer, on its
-// own row directly under the line the panel is holding.
+// announcing shows the same three-dot countdown as the one-line footer, on its own
+// row directly above the line being waited for — under the held line in a gap (see
+// TestPanelWindow_LongGapShowsCountdownDots), and above the first line of the song
+// when nothing is held yet.
 
 // panelGapModel builds a panel sitting in a gap: line "first" fills 0..end, line
 // "next" starts at nextStart, and elapsed is between the two. contextLines caps
@@ -120,8 +122,9 @@ func TestPanelWindow_CountdownStartsAfterFiveSeconds(t *testing.T) {
 	}
 }
 
-// The wait before the first line is a gap too, so a long intro counts down and
-// the first line stays unhighlighted until it starts.
+// The wait before the first line counts down too, and the dots lead into the line
+// they count down to, so they sit above the first line rather than under it. The
+// line stays unhighlighted until it starts, and the countdown is gone once it does.
 func TestPanelWindow_CountdownAtSongStart(t *testing.T) {
 	m := panelModel(t, 2)
 	m.Audio.Lyrics = &lyrics.Data{Lines: []lyrics.LyricLine{
@@ -131,18 +134,34 @@ func TestPanelWindow_CountdownAtSongStart(t *testing.T) {
 	m.Audio.Elapsed = 0
 	m.Audio.UpdateLyricIndex()
 
-	plan := m.layoutPlan()
-	rows := panelWindow(m, plan)
-	anchor := panelAnchor(plan.PanelInnerH)
-	if got, want := panelRowText(rows[anchor]), "first"; got != want {
-		t.Errorf("row %d = %q, want %q", anchor, got, want)
+	equalRows(t, panelTexts(t, m), []string{wantDots(m, 8), "first", "second"})
+	if got, want := panelRowStyle(t, panelWindow(m, m.layoutPlan()), "first"), panelContextStyle.Render("x"); got != want {
+		t.Errorf("first line style = %q, want the context style %q before it starts", got, want)
 	}
-	if got, want := panelRowText(rows[anchor+1]), wantDots(m, 8); got != want {
-		t.Errorf("row %d = %q, want the countdown %q", anchor+1, got, want)
+
+	m.Audio.Elapsed = 8 * time.Second
+	m.Audio.UpdateLyricIndex()
+	equalRows(t, panelTexts(t, m), []string{"first", "second"})
+	if got, want := panelRowStyle(t, panelWindow(m, m.layoutPlan()), "first"), panelCurrentStyle(m).Render("x"); got != want {
+		t.Errorf("first line style = %q, want the current style %q once it starts", got, want)
 	}
-	if got := panelRowText(rows[anchor+2]); got != "second" {
-		t.Errorf("row %d = %q, want the upcoming line", anchor+2, got)
+}
+
+// panelRowStyle renders the style of the row showing want, so a test can check
+// styling without depending on the row the anchor picked.
+func panelRowStyle(t *testing.T, rows []panelRow, want string) string {
+	t.Helper()
+	for _, r := range rows {
+		if panelRowText(r) != want {
+			continue
+		}
+		if len(r.spans) == 0 {
+			t.Fatalf("row %q has no spans", want)
+		}
+		return r.spans[0].Style.Render("x")
 	}
+	t.Fatalf("no row showing %q in the window", want)
+	return ""
 }
 
 // The countdown belongs to the wait: while a line is being sung the panel shows
