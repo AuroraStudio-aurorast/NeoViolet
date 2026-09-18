@@ -33,7 +33,7 @@ func TestTTML_KeylessFileYieldsLines(t *testing.T) {
 			len(doc.Lines), doc.Lines[0].Key)
 	}
 
-	// Consumer side (spec D3): a keyless line is still a lyric line, so the
+	// Consumer side: a keyless line is still a lyric line, so the
 	// adapter keeps it. WithMissingLineKey(MissingKeyKeep) is the only thing
 	// that makes this hold; Drop would empty the file.
 	d, err := parseTTML(sample)
@@ -60,7 +60,7 @@ func TestTTML_ExplicitEmptyKeyLineIsKept(t *testing.T) {
 			len(doc.Lines), doc.Lines[0].Key)
 	}
 	// The published library flags the explicit empty key; only the code's
-	// presence is pinned (§1.2), not the count, wording or position.
+	// presence is pinned, not the count, wording or position.
 	if !hasTTMLDiagnosticCode(doc, amllttml.CodeEmptyKey) {
 		t.Errorf("expected an %s diagnostic for the explicit empty key, got %v",
 			amllttml.CodeEmptyKey, doc.Diagnostics())
@@ -127,7 +127,7 @@ func TestTTML_DiagnosticsDoNotFail(t *testing.T) {
 }
 
 func TestTTML_LyricOffsetIsNotApplied(t *testing.T) {
-	// D12 (spec §8 item 3): itunes:lyricOffset is a non-goal this round. The
+	// itunes:lyricOffset is a non-goal this round. The
 	// library reads it (into Metadata.Audios[i].LyricOffset, a verbatim string),
 	// but the adapter does not consume it, so Data.Offset must stay 0 and the
 	// line times must not shift. The <audio> is unnamespaced inside the
@@ -216,7 +216,7 @@ func TestTTML_UnboundedLineStaysUnbounded(t *testing.T) {
 
 func TestTTML_DurIsMinOfEndAndDur(t *testing.T) {
 	// TTML1 §10.2.3: the computed end is min(dur, end-begin). The library owns
-	// this resolution (spec D1); the adapter surfaces it through
+	// this resolution; the adapter surfaces it through
 	// EffectiveInterval, so the assertions below pin the library's math rather
 	// than any Neoviolet dur code (there is none).
 	cases := []struct {
@@ -273,7 +273,7 @@ func TestTTML_PathAndFormat(t *testing.T) {
 	if data == nil {
 		t.Fatal("FindAndParse returned nil")
 	}
-	// Format is written by the registry alone (T1-B1); Path by the parser.
+	// Format is written by the registry alone; Path by the parser.
 	if data.Format != "ttml" {
 		t.Errorf("Format = %q, want %q (the registry writes it)", data.Format, "ttml")
 	}

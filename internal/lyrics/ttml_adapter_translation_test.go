@@ -263,8 +263,8 @@ func TestTTML_AdapterKeyedInlineTranslationBecomesPart(t *testing.T) {
 	}
 }
 
-// TestTTML_AdapterKeyedInlineTranslationWinsOverHead pins the spec §4.2.1
-// priority: when a line is translated by both an inline span and the head block,
+// TestTTML_AdapterKeyedInlineTranslationWinsOverHead pins the priority rule:
+// when a line is translated by both an inline span and the head block,
 // the inline one is Parts[1]. The library returns inline first, so index 0 is
 // the inline entry; nothing else in the suite would notice that order flipping.
 func TestTTML_AdapterKeyedInlineTranslationWinsOverHead(t *testing.T) {

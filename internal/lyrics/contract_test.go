@@ -26,8 +26,8 @@ type contractCase struct {
 	known   map[string]string
 }
 
-// expectation 是对一个格式样例的规格级声明。它不是现状快照：这些值由规格
-// §7–§11 决定，实现与声明不一致时以实现为错。
+// expectation 是对一个格式样例的规格级声明。它不是现状快照：这些值由
+// 各格式的语义契约决定，实现与声明不一致时以实现为错。
 type expectation struct {
 	// requireEnd 声明该样例的**每一行**都必须 End > 0。
 	// false 表示该格式允许（甚至必然）存在无界行。
@@ -36,7 +36,7 @@ type expectation struct {
 	// 未声明则断言**不**产出 Parts（每行 Parts == nil）。
 	hasParts bool
 	// meta 声明该样例的 [ti:]/[ar:] 头必须被解析进 Data（值为 exact 断言由
-	// 各格式的单测负责，见规格 §14.2）。
+	// 各格式的单测负责）。
 	meta bool
 	// looseTiling 声明本格式的 Words 只保证铺满 Part(0) 的**前缀**（上游
 	// INV-9：语料 5/717085 行的行尾裸文本不产词，且全部前缀锚定，故卡拉OK
@@ -84,7 +84,7 @@ func TestFormatContract(t *testing.T) {
 	}
 }
 
-// TestFormatContractGaps 打印当前的缺口记账（规格 §14.1 的"待迁移量"清单）。
+// TestFormatContractGaps 打印当前的缺口记账（各格式的"待迁移量"清单）。
 // 它只打日志、从不断言，所以永远不会红；随着任务推进它会自动变短，
 // 全部格式激活后（TTML 是最后一个）它应无输出。
 func TestFormatContractGaps(t *testing.T) {
@@ -278,7 +278,7 @@ func runExpectations(t *testing.T, d *Data, e expectation, skip map[string]bool)
 }
 
 // TestWordsTileLoosePrefix pins the C6 loose form's discriminating power. The
-// line reproduces the upstream INV-9 shape (spec §5) measured in Task 4: a
+// line reproduces the measured upstream INV-9 shape: a
 // timed span followed by a bare tail text node, so the words tile only a strict
 // prefix of the display text. Feeding it to the strict form must fail
 // (ΣWords != Part(0)) and the loose form must accept it; a line whose words

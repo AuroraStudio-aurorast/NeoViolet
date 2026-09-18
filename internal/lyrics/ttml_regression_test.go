@@ -7,24 +7,22 @@ import (
 
 // TestTTML_RegressionTable pins the new (go-amll-ttml-parser) readings of the
 // six existing fixtures against the old hand-written parser's readings. The old
-// readings were captured by Task 6's throwaway oracle (git worktree at ace5995,
-// where "ttml" was still the old parser), persisted as:
-//
-//	.superpowers/sdd/2026-09-18-ttml-renovation/task-6-oldparser-oracle.txt        (old parser x new text)
-//	.superpowers/sdd/2026-09-18-ttml-renovation/task-6-oldparser-oracle-oldtext.txt (old parser x pre-T3 text)
+// readings were measured by running the old parser at commit ace5995 (the last
+// commit where "ttml" still registered it), twice: once on today's fixture text
+// and once on the pre-rewrite text, so a fixture edit cannot masquerade as a
+// parser change.
 //
 // Every difference from the old parser is annotated "旧值 → 新值" and classified
-// as either a fixture change (T3 deliberately rewrote three fixtures: added
+// as either a fixture change (three fixtures were deliberately rewritten: added
 // xmlns:ttm/xmlns:ttp, real inter-word spaces, span end attributes, and the
-// non-default frameRate=60 sentinel), a declared parser change (spec §6), or
-// both. See task-6-report.md for the full item-by-item table.
+// non-default frameRate=60 sentinel), a declared parser change, or both.
 //
 // The bare-text difference (a <p> with no timed <span> now maps to ONE word
 // fragment - the whole line text at the line's begin - instead of zero
-// fragments) is now spec §6 item 14. It follows directly from spec §4.2
-// ("Words = Line.Words"): the library synthesises one word per untimed text
-// run, which is what makes C6 ("Words must tile the main text") hold for
-// bare-text lines.
+// fragments) is a deliberate change of this renovation. It follows directly
+// from mapping Words straight to the library's Line.Words: the library
+// synthesises one word per untimed text run, which is what makes C6 ("Words
+// must tile the main text") hold for bare-text lines.
 
 // regWord is one expected word fragment reading, in milliseconds.
 type regWord struct {
@@ -77,9 +75,9 @@ func assertRegLines(t *testing.T, d *Data, want []regLine) {
 
 func TestTTML_RegressionTable(t *testing.T) {
 	t.Run("testTTMLOffset", func(t *testing.T) {
-		// Text unchanged (fixture not rewritten by T3). The only difference is
-		// len(Words): 0 -> 1 (spec §4.2 Words = Line.Words: a bare-text line
-		// becomes one synthesised word). Time/End identical.
+		// Text unchanged (this fixture was not rewritten). The only difference is
+		// len(Words): 0 -> 1 (Words maps straight to the library's Line.Words, so a
+		// bare-text line becomes one synthesised word). Time/End identical.
 		d, err := parseTTML(testTTMLOffset)
 		if err != nil {
 			t.Fatalf("Parse() error: %v", err)
@@ -91,10 +89,10 @@ func TestTTML_RegressionTable(t *testing.T) {
 	})
 
 	t.Run("testTTMLMinimal", func(t *testing.T) {
-		// Text unchanged. len(Words) 0 -> 1 (same §4.2 bare-text synthesis).
+		// Text unchanged. len(Words) 0 -> 1 (the same bare-text synthesis).
 		// End stays 0: a begin-only line has no end attribute and no words to
-		// widen the interval, so it remains unbounded (spec §6 item 5 does not
-		// fire here; old parser also read End=0).
+		// widen the interval, so it remains unbounded (the End derivation has
+		// nothing to widen from here; the old parser also read End=0).
 		d, err := parseTTML(testTTMLMinimal)
 		if err != nil {
 			t.Fatalf("Parse() error: %v", err)
@@ -108,11 +106,11 @@ func TestTTML_RegressionTable(t *testing.T) {
 		// The shared ttmlAppleStyle fixture, so this row re-runs the source test on
 		// exactly the same bytes. Two differences, both expected:
 		//   1. Text: "I could find you" -> "I could find you | 我找到了你"
-		//      (spec §6 item 1: the inline x-translation is no longer dropped,
-		//      it becomes Parts[1]).
-		//   2. Word text: "I" -> "I " etc. This is the T3 fixture change (real
+		//      (the inline x-translation is no longer dropped; it becomes
+		//      Parts[1]).
+		//   2. Word text: "I" -> "I " etc. This is the fixture rewrite (real
 		//      inter-word spaces written into the span text) carried through
-		//      EndsWithSpace by spec §4.2; the word TIMES are identical.
+		//      EndsWithSpace by the library; the word TIMES are identical.
 		// Word COUNT is unchanged (4 and 2) - no bare-text synthesis here.
 		d, err := parseTTML(ttmlAppleStyle)
 		if err != nil {
@@ -140,9 +138,9 @@ func TestTTML_RegressionTable(t *testing.T) {
 
 	t.Run("testTTML", func(t *testing.T) {
 		// Lines 0-2: Text/Time/End unchanged; len(Words) 0 -> 1 (bare-text
-		// synthesis, spec §4.2).
-		// Line 3: the T3 fixture change (real spaces in span text + span end
-		// attributes) meets spec §6 item 2 (no invented spaces). Net readings:
+		// synthesis).
+		// Line 3: the fixture rewrite (real spaces in span text + span end
+		// attributes) meets the no-invented-spaces guarantee. Net readings:
 		//   - Text stays "word level sync" (old parser invented the spaces with
 		//     needsSpace, the library keeps the fixture's real spaces), so the
 		//     TEXT is identical but the cause differs.
@@ -170,9 +168,10 @@ func TestTTML_RegressionTable(t *testing.T) {
 
 	t.Run("testTTMLAgents", func(t *testing.T) {
 		// Same two differences as apple's words, without the translation:
-		//   - Text stays "I promise" (the T3 fixture change writes the real
-		//     space; the old parser invented it, the library keeps it - spec §6
-		//     item 2). No double space because the library never invents one.
+		//   - Text stays "I promise" (the fixture rewrite writes the real space;
+		//     the old parser invented it, the library keeps it, so the text is
+		//     unchanged for a different reason). No double space: the library
+		//     never invents one.
 		//   - Word text "I" -> "I " (fixture's real trailing space).
 		// Word counts and all Time/End are unchanged.
 		d, err := parseTTML(testTTMLAgents)
@@ -189,13 +188,13 @@ func TestTTML_RegressionTable(t *testing.T) {
 	})
 
 	t.Run("testTTMLFrames", func(t *testing.T) {
-		// EXPECTED difference (spec §6 item 10 + T3 sentinel): the library does
-		// not implement the hh:mm:ss:ff frame clock, so Time is 0 and the End
-		// cannot be derived (0), while the old parser read 1500ms/2000ms from
-		// the old frameRate=30 text. The T3 sentinel (frameRate=60) additionally
-		// makes the OLD parser fail outright (frameRateMultiplier="1001 1000" is
-		// not an int) - see task-6-report.md. The line survives with its text;
-		// len(Words) is 1 via the bare-text synthesis (spec §4.2).
+		// EXPECTED difference: the library does not implement the hh:mm:ss:ff
+		// frame clock, so Time is 0 and the End cannot be derived (0), while the
+		// old parser read 1500ms/2000ms from the old frameRate=30 text. The
+		// rewritten fixture's frameRate=60 sentinel additionally makes the OLD
+		// parser fail outright (frameRateMultiplier="1001 1000" is not an int).
+		// The line survives with its text; len(Words) is 1 via the bare-text
+		// synthesis.
 		d, err := parseTTML(testTTMLFrames)
 		if err != nil {
 			t.Fatalf("Parse() error: %v", err)
@@ -206,11 +205,11 @@ func TestTTML_RegressionTable(t *testing.T) {
 	})
 }
 
-// ttmlSpaceBareSample is the bare-text half of the spec §6 item 6 fixture pair:
-// a <p> with no timed <span>, whose text carries a U+3000 ideographic space and
-// a run of two ASCII spaces (spelled \u3000 and "  " so the escapes stay visible
-// in source). Old parser: strings.TrimSpace(para.Text), which trims the ends
-// only, so it read "A\u3000B  C" (ace5995:internal/lyrics/ttml.go). New parser:
+// ttmlSpaceBareSample is the bare-text half of the whitespace-normalisation
+// fixture pair: a <p> with no timed <span>, whose text carries a U+3000
+// ideographic space and a run of two ASCII spaces (spelled \u3000 and "  " so the
+// escapes stay visible in source). Old parser: strings.TrimSpace(para.Text),
+// which trims the ends only, so it read "A\u3000B  C" (at ace5995). New parser:
 // "A B C" - the library folds every whitespace run to one half-width space.
 const ttmlSpaceBareSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>" +
 	"<p begin=\"0s\">A\u3000B  C</p>" +
@@ -229,16 +228,16 @@ const ttmlSpaceSpanSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>
 // from. The hand-written parser only ever set Title from an amll:meta musicName
 // property - its ttmlMetadata struct held nothing but Agents and AMLLs - so it
 // never read <ttm:title>. The library reads the first non-empty <ttm:title>
-// (spec §6 implementation-time addition: <ttm:title> is a new Title source) and
+// (a new Title source this renovation added) and
 // exposes it as a musicName prop, the adapter takes Metadata.Titles[0], and
 // testTTML therefore gains a title. Nothing else in the repo asserts this: the
 // only <ttm:title> in a fixture is testTTML's (ttml_test.go), and the other title
 // assertions (ttml_test.go, ttml_meta_test.go, ttml_adapter_test.go) all read
 // data that came from amll:meta musicName.
 //
-// Old value -> new value per fixture, from the T6 oracle and task-6-report.md §1.3:
+// Old value -> new value per fixture, from the old parser's readings:
 //
-//	testTTML        Title ""      -> "Test Song"  new: <ttm:title> source (§6)
+//	testTTML        Title ""      -> "Test Song"  new: <ttm:title> source
 //	testTTMLAgents  Title "ME!"   -> "ME!"        unchanged: amll:meta musicName
 //	testTTMLOffset  Title ""      -> ""           no <head>/<metadata> at all
 //	testTTMLMinimal Title ""      -> ""           no <head>/<metadata> at all
@@ -288,8 +287,8 @@ func TestTTML_RegressionTable_TitleSource(t *testing.T) {
 }
 
 // TestTTML_RegressionTable_SpaceNormalization supplements the regression table
-// with the second metadata-free difference it does not cover, spec §6 item 6:
-// the whitespace FORM of Text is normalised by the library, where the
+// with the second metadata-free difference it does not cover: the whitespace
+// FORM of Text is normalised by the library, where the
 // hand-written parser preserved inner whitespace verbatim (its bare-text branch
 // used strings.TrimSpace(para.Text), which strips the ends only). A file written
 // with an ideographic space or doubled spaces therefore displays them verbatim

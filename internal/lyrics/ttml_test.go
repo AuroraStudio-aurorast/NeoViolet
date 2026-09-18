@@ -148,7 +148,7 @@ func TestTTML_NoSpaceIsNotInvented(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(d.Lines))
 	}
 
-	// The library must never invent inter-word spaces (spec D5): spans with no
+	// The library must never invent inter-word spaces: spans with no
 	// real whitespace between them stay glued together. Each timed span keeps
 	// its own word fragment, and concatenating the fragments reproduces the
 	// glued Text with no invented spaces - the exact opposite of the CJK/space
@@ -334,7 +334,7 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
 		t.Fatalf("expected 2 lines, got %d", len(d.Lines))
 	}
 
-	// The inline translation is no longer dropped (spec §6 item 1): it becomes
+	// The inline translation is no longer dropped: it becomes
 	// the second display part, while Text and Words stay on the original segment.
 	if len(d.Lines[0].Parts) != 2 || d.Lines[0].Parts[0] != "I could find you" || d.Lines[0].Parts[1] != "我找到了你" {
 		t.Errorf("line 0 Parts = %q, want [%q %q]", d.Lines[0].Parts, "I could find you", "我找到了你")
@@ -364,10 +364,10 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
 	}
 }
 
-// TestTTML_CJKNoInventedSpace pins spec §6 item 2 for CJK text: the library
-// never invents inter-word spaces. The old hand-written parser's isCJKLang /
-// isCJKContent heuristics were deleted; this name now points at the fidelity
-// guarantee those heuristics used to approximate.
+// TestTTML_CJKNoInventedSpace pins the no-invented-space guarantee for CJK text:
+// the library never invents inter-word spaces. The old hand-written parser's
+// isCJKLang / isCJKContent heuristics were deleted; this name now points at the
+// fidelity guarantee those heuristics used to approximate.
 func TestTTML_CJKNoInventedSpace(t *testing.T) {
 	cjk := `<tt xmlns="http://www.w3.org/ns/ttml"
     xmlns:ttm="http://www.w3.org/ns/ttml#metadata"

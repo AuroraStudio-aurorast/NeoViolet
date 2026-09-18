@@ -428,7 +428,7 @@ func TestPanelWindow_KaraokeFallsBackWhenWordsDoNotTile(t *testing.T) {
 
 // Word timings belong to the first part of a merged line, so only that part
 // karaokes; the translation part falls back to a whole-line highlight because
-// its words do not tile its text (D12).
+// its words do not tile its text.
 func TestPanelWindow_KaraokeOnlyFirstPartOfMergedLine(t *testing.T) {
 	m := panelModel(t, 0)
 	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
@@ -587,7 +587,7 @@ func TestPanelWindow_MergedPartsEachGetARow(t *testing.T) {
 	panelRowWidths(t, rows, plan.PanelInnerW)
 }
 
-// Every part of one event is the same current line (D7): a bilingual event must
+// Every part of one event is the same current line: a bilingual event must
 // not render its first row highlighted and its second row grey.
 func TestPanelWindow_AllPartsShareCurrentStyle(t *testing.T) {
 	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
@@ -655,7 +655,7 @@ func TestPanelWindow_PartCountsAsOneContextLine(t *testing.T) {
 	}
 }
 
-// Five long parts are ten rows in a thirteen-row box (F3): nothing panics, the
+// Five long parts are ten rows in a thirteen-row box: nothing panics, the
 // group is truncated to the box, and every row stays inside it.
 func TestPanelWindow_FivePartsTruncateToInnerH(t *testing.T) {
 	parts := make([]string, 5)
@@ -687,8 +687,8 @@ func TestPanelWindow_BlankPartProducesNoRow(t *testing.T) {
 	}
 }
 
-// Simultaneous events at the same instant (bilingual ESLRC) are all current
-// (F9/D13). The parser returns only one of them as active, so the other one is
+// Simultaneous events at the same instant (bilingual ESLRC) are all current.
+// The parser returns only one of them as active, so the other one is
 // a context row in the window: without the same-instant rule it renders grey
 // while its twin is highlighted.
 func TestPanelWindow_SameTimeLinesAreBothCurrent(t *testing.T) {
@@ -715,7 +715,7 @@ func TestPanelWindow_SameTimeLinesAreBothCurrent(t *testing.T) {
 	}
 }
 
-// A line that is merely between two active lines is not current (F8/D13): the
+// A line that is merely between two active lines is not current: the
 // window still spans first..last, but styling is decided per line.
 func TestPanelWindow_SandwichedLineStaysContext(t *testing.T) {
 	m := panelModel(t, 0)

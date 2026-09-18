@@ -36,7 +36,7 @@ var contractCases = map[string]contractCase{
 		parse: viaParser("lys", lysContractSample),
 		// requireEnd 保持 false：End 由末词推出，词时缺失时退化为无界属可接受降级。
 		// 样例的 End > 0 由 format_test.go 的 TestLYS_EndIsLastWordEnd 专门断言，
-		// 避免这条 false 变成永远绿灯（规格 §5.2 脚注 1）。
+		// 避免这条 false 变成永远绿灯。
 	},
 	"qrc": {
 		parse:  viaParser("qrc", qrcContractSample),

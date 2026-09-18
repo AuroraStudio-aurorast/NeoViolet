@@ -20,17 +20,17 @@ import (
 //     author login;
 //   - line 1 is keyed (itunes:key) with word-level spans and real inter-word
 //     spaces;
-//   - line 2 is keyed and adds an x-bg background span (the x-bg element itself
-//     carries begin and end, so upstream keeps its inner word: Background.Words
-//     == 1 - the C8 matrix's deciding factor is whether the x-bg element itself
-//     has timing, not the inner span) and an inline ttm:role="x-translation"
+//   - line 2 is keyed and adds an x-bg background span; the x-bg element itself
+//     carries begin and end, which is what decides whether the library derives a
+//     timed word for it (it does here: Background.Words == 1, a library detail
+//     this adapter does not assert), plus an inline ttm:role="x-translation"
 //     span next to the original text;
 //   - line 3 has no itunes:key at all, so the sample also covers the keyless
 //     path (upstream MissingKeyKeep).
 //
 // Inline <br/> is deliberately absent: a non-goal this round. See ttmlBrSample.
 //
-// Task 4 reuses this constant as the contract sample, so it must stay the only
+// The contract test reuses this constant as its sample, so it must stay the only
 // definition.
 const ttmlAMLLSample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal" xmlns:amll="http://www.example.com/ns/amll" xml:lang="en">
   <head>
@@ -55,7 +55,7 @@ const ttmlAMLLSample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://
   </body>
 </tt>`
 
-// ttmlBrSample probes inline <br/>, which spec §14.2 ruled a non-goal this
+// ttmlBrSample probes inline <br/>, which is a non-goal this
 // round (no AMLL corpus file uses it). The reading is still pinned: the parser
 // drops the element and concatenates its neighbours.
 const ttmlBrSample = `<tt xmlns="http://www.w3.org/ns/ttml">
@@ -67,7 +67,7 @@ const ttmlBrSample = `<tt xmlns="http://www.w3.org/ns/ttml">
 </tt>`
 
 // ttmlSampleDoc parses ttmlAMLLSample the way the adapter's caller will:
-// keyless <p> elements are kept (spec D3), because the hand-written parser
+// keyless <p> elements are kept, because the hand-written parser
 // accepted them too and most non-AMLL TTML has no itunes:key.
 func ttmlSampleDoc(t *testing.T) *amllttml.Document {
 	t.Helper()
@@ -75,7 +75,7 @@ func ttmlSampleDoc(t *testing.T) *amllttml.Document {
 }
 
 // ttmlParseDoc parses any fixture with the keyless policy the adapter's caller
-// uses (spec D3: a <p> without itunes:key is still a lyric line).
+// uses (a <p> without itunes:key is still a lyric line).
 func ttmlParseDoc(t *testing.T, sample string) *amllttml.Document {
 	t.Helper()
 	doc, err := amllttml.ParseReader(strings.NewReader(sample),
@@ -150,7 +150,7 @@ func TestTTML_AdapterMapsSample(t *testing.T) {
 		t.Errorf("line 1 Agent = %q, want %q", first.Agent, "v1")
 	}
 
-	// Line 2 carries all three segments; the order is fixed by spec D6.
+	// Line 2 carries all three segments, in the fixed display order.
 	second := data.Lines[1]
 	wantParts := []string{"Ooh, I found you", "ooh", "我找到了你"}
 	if !slices.Equal(second.Parts, wantParts) {
@@ -167,10 +167,10 @@ func TestTTML_AdapterMapsSample(t *testing.T) {
 	//
 	// This fixture only contains timed spans, so the tiling is strict here. Real
 	// corpus files are not always that tidy: 5 of 717085 lines expose the words
-	// as a PREFIX of the display text (a bare text node next to a span, upstream
-	// INV-9, spec §5). Task 4's contract assertion is consequently written in the
-	// looser prefix form for the registered parser; the strict form here is what
-	// the sample is built to satisfy, not a contradiction.
+	// as a PREFIX of the display text (a bare text node next to a span, the shape
+	// the upstream spec calls INV-9). The contract assertion is consequently
+	// written in the looser prefix form for the registered parser; the strict form
+	// here is what the sample is built to satisfy, not a contradiction.
 	if got := joinWordText(second.Words); got != second.Parts[0] {
 		t.Errorf("line 2 words join = %q, want Parts[0] %q", got, second.Parts[0])
 	}
@@ -236,7 +236,7 @@ func TestTTML_AdapterMapsSampleMetadata(t *testing.T) {
 		t.Errorf("Properties[album] = %q, want %q", got, "Sample Album")
 	}
 	// "artists" appears twice (Alice, Bob): the first value wins, where the
-	// hand-written parser's map kept the last one ("Bob", spec §6 item 3).
+	// hand-written parser's map kept the last one ("Bob").
 	if got := data.Properties["artists"]; got != "Alice" {
 		t.Errorf("Properties[artists] = %q, want %q (first value wins)", got, "Alice")
 	}
@@ -257,7 +257,7 @@ func TestTTML_AdapterMapsSampleMetadata(t *testing.T) {
 //   - the first has a word without its own end, so nothing bounds the line and
 //     End stays 0 - the unbounded sentinel ActiveLines' per-line rule relies on;
 //   - the second has a word that ends, so the library's EffectiveInterval widens
-//     the declared (endless) interval to the word's end (spec §6 item 5).
+//     the declared (endless) interval to the word's end.
 func TestTTML_AdapterEndFromEffectiveInterval(t *testing.T) {
 	const sample = `<tt xmlns="http://www.w3.org/ns/ttml">
   <body>
@@ -542,8 +542,8 @@ func TestTTML_AdapterLoneDisplaySegmentIsKept(t *testing.T) {
 	}
 }
 
-// TestTTML_AdapterDuplicateBackgroundSegmentCollapses pins a deliberate spec
-// §4.2.1 decision: a segment is appended only when it differs from the ones
+// TestTTML_AdapterDuplicateBackgroundSegmentCollapses pins the dedup rule: a
+// segment is appended only when it differs from the ones
 // already collected. A chorus echo whose background text equals the original
 // therefore collapses into the original segment, and Parts stays nil instead of
 // rendering the same text twice.
@@ -577,7 +577,7 @@ func TestTTML_AdapterDuplicateBackgroundSegmentCollapses(t *testing.T) {
 	}
 }
 
-// TestTTML_BrIsNonGoal pins that inline <br/> stays a non-goal (spec §14.2):
+// TestTTML_BrIsNonGoal pins that inline <br/> stays a non-goal:
 // the parser drops the element and the derived text glues its neighbours, but
 // the line survives and nothing panics. The hand-written parser behaved the
 // same way, so this is a behaviour we are intentionally keeping rather than

@@ -23,10 +23,13 @@ func (p *ttmlParser) FindSidecar(audioPath string) string {
 // Parse reads TTML through go-amll-ttml-parser and maps the result onto Data.
 // The hand-written XML structs, clock-time parsing and CJK spacing heuristics
 // that used to live here are all gone: the library owns each of those concerns
-// now (spec D1/D5), so this is a thin shell around ParseReader.
+// now, so this is a thin shell around ParseReader.
 func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
-	// readAllWithLimit is the primary 1 MB ceiling (ErrLyricTooLarge). The
-	// library's WithMaxBytes below is a second guard, never the first.
+	// readAllWithLimit is the 1 MB ceiling (ErrLyricTooLarge): it reads one byte
+	// past maxLyricSize and rejects the result, so nothing larger ever reaches the
+	// library. WithMaxBytes below repeats the same limit on the library side, where
+	// it cannot fire while this gate is in front of it; it stays as a backstop in
+	// case this ceiling ever moves.
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, err
@@ -34,7 +37,7 @@ func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 	doc, err := amllttml.ParseReader(bytes.NewReader(data),
 		amllttml.WithMaxBytes(maxLyricSize),
-		// A <p> without itunes:key is still a lyric line (spec D3): most
+		// A <p> without itunes:key is still a lyric line: most
 		// non-AMLL TTML has no key, and dropping those lines would empty files.
 		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep),
 	)
@@ -42,7 +45,7 @@ func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 		return nil, ttmlParseError(err)
 	}
 
-	// Diagnostics never change success (spec D10): the library guarantees Parse
+	// Diagnostics never change success: the library guarantees Parse
 	// fails only on XML-level problems, and an Error-severity finding is still
 	// just a finding. We log them for debugging and keep reading the file.
 	logTTMLDiagnostics(doc)

@@ -141,7 +141,7 @@ func ttmlSegments(l *amllttml.Line, doc *amllttml.Document) []string {
 // shows nothing - an accepted limitation of the format, not of this mapping.
 //
 // For keyed lines TranslationsFor merges the inline span and the head-side
-// <text for="key"> block with the inline one first (spec §4.2.1), so [0] is the
+// <text for="key"> block with the inline one first, so [0] is the
 // inline translation and a head-only file still yields its translation.
 // For keyless lines the inline tracks are read in that same order: the line's
 // own translations, then its background vocal's.
@@ -202,7 +202,7 @@ func millisToDuration(ms int64) time.Duration {
 // ttmlProperties projects every <amll:meta> pair onto a map, keeping the FIRST
 // value of a repeated key. Props keeps document order and duplicates, so the
 // first match per key wins. That is a deliberate change from the hand-written
-// parser, whose map was overwritten last-wins (spec §6 item 3).
+// parser, whose map was overwritten last-wins.
 //
 // The map is non-nil even when the document has no <head> metadata, matching the
 // hand-written parser and the SMI parser.
@@ -229,11 +229,11 @@ func ttmlFirst(values []string) string {
 }
 
 // ttmlAgents names every declared agent with a three-step fallback. The first
-// two steps are the ones the hand-written parser had (ttml.go: the i-th
+// two steps are the ones the hand-written parser had (the i-th
 // amll:meta key="artists" value, else the uppercased id, "v3" -> "V3"); the
 // <ttm:name> child in front of them is new with this renovation - the
 // hand-written parser's agent struct held only ID and Type and never read the
-// name, so an explicitly named agent displays differently from now on (spec §6).
+// name, so an explicitly named agent displays differently from now on.
 //
 // AgentOrder is the declarations' document order; the Agents map's iteration
 // order is random and therefore unusable for the artists correspondence.

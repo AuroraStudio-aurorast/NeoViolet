@@ -41,7 +41,7 @@ func TestLyricLine_PartAccessors_MergedLine(t *testing.T) {
 }
 
 func TestActiveLines_UnboundedAfterBoundedIsReachable(t *testing.T) {
-	// F3：文件里既有有界行（A/B）又有无界末行（C）。旧的全局开关只看"有没有
+	// 文件里既有有界行（A/B）又有无界末行（C）。旧的全局开关只看"有没有
 	// 任何一行有界"，于是 C 永远进不了候选。
 	d := &Data{Lines: []LyricLine{
 		{Time: 1 * time.Second, End: 2 * time.Second, Text: "A"},
