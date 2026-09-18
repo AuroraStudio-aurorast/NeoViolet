@@ -228,3 +228,142 @@ func TestTTML_RegressionTable(t *testing.T) {
 		})
 	})
 }
+
+// ttmlSpaceBareSample is the bare-text half of the spec §6 item 6 fixture pair:
+// a <p> with no timed <span>, whose text carries a U+3000 ideographic space and
+// a run of two ASCII spaces (spelled \u3000 and "  " so the escapes stay visible
+// in source). Old parser: strings.TrimSpace(para.Text), which trims the ends
+// only, so it read "A\u3000B  C" (ace5995:internal/lyrics/ttml.go). New parser:
+// "A B C" - the library folds every whitespace run to one half-width space.
+const ttmlSpaceBareSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>" +
+	"<p begin=\"0s\">A\u3000B  C</p>" +
+	"</div></body></tt>"
+
+// ttmlSpaceSpanSample is the timed-span half of the same pair: the whitespace
+// sits inside one <span>, so the line also has Words and the normalisation has
+// to reach them as well (old parser: "A\u3000B  C" in both Text and Words[0];
+// new parser: "A B C" in both).
+const ttmlSpaceSpanSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>" +
+	"<p begin=\"0s\" end=\"1s\"><span begin=\"0s\" end=\"1s\">A\u3000B  C</span></p>" +
+	"</div></body></tt>"
+
+// TestTTML_RegressionTable_TitleSource supplements the regression table above by
+// pinning the one metadata difference it does not cover: where Data.Title comes
+// from. The hand-written parser only ever set Title from an amll:meta musicName
+// property - its ttmlMetadata struct held nothing but Agents and AMLLs - so it
+// never read <ttm:title>. The library reads the first non-empty <ttm:title>
+// (spec §6 implementation-time addition: <ttm:title> is a new Title source) and
+// exposes it as a musicName prop, the adapter takes Metadata.Titles[0], and
+// testTTML therefore gains a title. Nothing else in the repo asserts this: the
+// only <ttm:title> in a fixture is testTTML's (ttml_test.go), and the other title
+// assertions (ttml_test.go, ttml_meta_test.go, ttml_adapter_test.go) all read
+// data that came from amll:meta musicName.
+//
+// Old value -> new value per fixture, from the T6 oracle and task-6-report.md §1.3:
+//
+//	testTTML        Title ""      -> "Test Song"  new: <ttm:title> source (§6)
+//	testTTMLAgents  Title "ME!"   -> "ME!"        unchanged: amll:meta musicName
+//	testTTMLOffset  Title ""      -> ""           no <head>/<metadata> at all
+//	testTTMLMinimal Title ""      -> ""           no <head>/<metadata> at all
+//	testTTMLFrames  Title ""      -> ""           head has only ttp:* attributes
+//	apple           Title ""      -> ""           xmlns:ttm declared, no <ttm:title>
+//
+// Artist/Album are asserted alongside where the fixture declares them (only
+// testTTMLAgents); Creator is "" in both parsers for every fixture here, so it is
+// not repeated. Pinning the empty expectations too is what makes this test fail
+// if the library ever starts deriving a title from another source.
+//
+// Mutation evidence for this test is recorded in task-6.5-report.md: blanking the
+// adapter's `data.Title = ttmlFirst(md.Titles)` line turns the testTTML case red
+// and leaves the other five green.
+func TestTTML_RegressionTable_TitleSource(t *testing.T) {
+	cases := []struct {
+		name   string
+		src    string
+		title  string
+		artist string
+		album  string
+	}{
+		{"testTTML", testTTML, "Test Song", "", ""},
+		{"testTTMLAgents", testTTMLAgents, "ME!", "Taylor Swift", "ME! (feat. Brendon Urie)"},
+		{"testTTMLOffset", testTTMLOffset, "", "", ""},
+		{"testTTMLMinimal", testTTMLMinimal, "", "", ""},
+		{"testTTMLFrames", testTTMLFrames, "", "", ""},
+		{"apple", ttmlAppleRegressionSample, "", "", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d, err := parseTTML(c.src)
+			if err != nil {
+				t.Fatalf("Parse() error: %v", err)
+			}
+			if d.Title != c.title {
+				t.Errorf("Title = %q, want %q", d.Title, c.title)
+			}
+			if d.Artist != c.artist {
+				t.Errorf("Artist = %q, want %q", d.Artist, c.artist)
+			}
+			if d.Album != c.album {
+				t.Errorf("Album = %q, want %q", d.Album, c.album)
+			}
+		})
+	}
+}
+
+// TestTTML_RegressionTable_SpaceNormalization supplements the regression table
+// with the second metadata-free difference it does not cover, spec §6 item 6:
+// the whitespace FORM of Text is normalised by the library, where the
+// hand-written parser preserved inner whitespace verbatim (its bare-text branch
+// used strings.TrimSpace(para.Text), which strips the ends only). A file written
+// with an ideographic space or doubled spaces therefore displays them verbatim
+// before this renovation and as a single half-width space after it.
+//
+// Both mapping paths are pinned because they are separate library code paths
+// (bare text node vs. timed span) and Text is normalised on each.
+//
+// The span case additionally probes C6 - Words tile the display text - on this
+// input, because the dangerous failure mode is not "Text keeps the U+3000" but
+// "Text is folded while Words keeps \u3000": that would silently misalign word
+// highlighting. A fold that reaches Text but not Words fails this test.
+//
+// This behaviour lives inside the library, so there is no adapter-level mutation
+// that can turn it red (unlike the title-source test above); the corpus path is
+// the assertion itself.
+func TestTTML_RegressionTable_SpaceNormalization(t *testing.T) {
+	t.Run("bare-text", func(t *testing.T) {
+		d, err := parseTTML(ttmlSpaceBareSample)
+		if err != nil {
+			t.Fatalf("Parse() error: %v", err)
+		}
+		if len(d.Lines) != 1 {
+			t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+		}
+		if got := d.Lines[0].Text; got != "A B C" {
+			t.Errorf("Text = %q, want %q (U+3000 and the doubled space fold to one space)", got, "A B C")
+		}
+	})
+
+	t.Run("timed-span", func(t *testing.T) {
+		d, err := parseTTML(ttmlSpaceSpanSample)
+		if err != nil {
+			t.Fatalf("Parse() error: %v", err)
+		}
+		if len(d.Lines) != 1 {
+			t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+		}
+		line := d.Lines[0]
+		if got := line.Text; got != "A B C" {
+			t.Errorf("Text = %q, want %q (U+3000 and the doubled space fold to one space)", got, "A B C")
+		}
+		if len(line.Words) != 1 {
+			t.Fatalf("len(Words) = %d, want 1 (the single timed span)", len(line.Words))
+		}
+		if got := line.Words[0].Text; got != "A B C" {
+			t.Errorf("Words[0].Text = %q, want %q (the fold must reach Words too)", got, "A B C")
+		}
+		// C6 on a whitespace-heavy input: the words still tile the display text.
+		if !wordsTile(line, false) {
+			t.Errorf("C6: Words %q do not tile Text %q", joinWordText(line.Words), line.Text)
+		}
+	})
+}
