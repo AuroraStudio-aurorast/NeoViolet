@@ -39,9 +39,15 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 		return panelLineIsCurrent(m, line, currentTime, highlight)
 	}
 
+	// The agent label marks a change of singer, so it is decided once for the
+	// whole visible sequence and shared by the current group and the context
+	// lines; deciding it per rendered window would relabel the same singer
+	// whenever the window scrolled.
+	labels := panelAgentLabels(visible)
+
 	cur := make([]panelRow, 0, len(visible))
 	for pos := first; pos <= last; pos++ {
-		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, format.MaxWrapRows, lit(visible[pos].Line))...)
+		cur = append(cur, panelLineRows(m, visible[pos].Line, innerW, format.MaxWrapRows, lit(visible[pos].Line), labels[pos])...)
 	}
 	if len(cur) == 0 {
 		return rows
@@ -52,8 +58,8 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 
 	// Gather both sides in display order: the anchor decides how much of each
 	// survives, so an over-long side is trimmed back towards the group.
-	above := format.collectRows(m, visible, first-1, -1, innerW, innerH, lit)
-	below := format.collectRows(m, visible, last+1, 1, innerW, innerH, lit)
+	above := format.collectRows(m, visible, first-1, -1, innerW, innerH, lit, labels)
+	below := format.collectRows(m, visible, last+1, 1, innerW, innerH, lit, labels)
 
 	anchor := format.anchorRows(innerH, len(cur), len(above), len(below))
 	if len(above) > anchor {
@@ -137,17 +143,20 @@ func panelLineIsCurrent(m *Model, line lyrics.LyricLine, currentTime time.Durati
 
 // panelLineRows renders one lyric line into panel rows: one block per display
 // part, each part wrapped to at most maxRows. Most lines have a single part, so
-// the common path is exactly one wrapSpans call.
-func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlight bool) []panelRow {
+// the common path is exactly one wrapSpans call. showAgent is the label decision
+// for the line as a whole, so only its first part carries the label.
+func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlight, showAgent bool) []panelRow {
 	if line.PartCount() == 1 {
-		return wrapLineRows(panelLineSpans(m, line, highlight), innerW, maxRows)
+		return wrapLineRows(panelLineSpans(m, line, highlight, showAgent), innerW, maxRows)
 	}
 	rows := make([]panelRow, 0, line.PartCount())
 	for i := 0; i < line.PartCount(); i++ {
 		if strings.TrimSpace(line.Part(i)) == "" {
 			continue // a blank part is data, not a row
 		}
-		rows = append(rows, wrapLineRows(panelLineSpans(m, partLine(line, i), highlight), innerW, maxRows)...)
+		// The label belongs to the line, not to each of its parts: the
+		// translation row of a bilingual line must not repeat "NAME: ".
+		rows = append(rows, wrapLineRows(panelLineSpans(m, partLine(line, i), highlight, i == 0 && showAgent), innerW, maxRows)...)
 	}
 	return rows
 }
@@ -174,25 +183,29 @@ func partLine(line lyrics.LyricLine, i int) lyrics.LyricLine {
 
 // panelLineSpans styles a lyric line. The highlighted line is split into
 // played/unplayed spans when the format carries word timings that tile the text.
-func panelLineSpans(m *Model, line lyrics.LyricLine, highlight bool) []styledSpan {
+// showAgent adds the "NAME: " label; the panel shows it only where the singer
+// changes, so when it is due it stays out of the karaoke split.
+func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent bool) []styledSpan {
 	current := panelCurrentStyle(m)
 	if !highlight {
-		return []styledSpan{{Text: m.Audio.Lyrics.LineDisplayText(line), Style: panelContextStyle}}
+		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: panelContextStyle}}
 	}
 	if len(line.Words) == 0 {
-		return []styledSpan{{Text: m.Audio.Lyrics.LineDisplayText(line), Style: current}}
+		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}
 
 	played, rest := splitWordsAt(line, m.Audio.Elapsed)
 	if played+rest != line.Text {
 		// Word timings do not tile the text (translations, stray fragments):
 		// fall back to a whole-line highlight rather than losing characters.
-		return []styledSpan{{Text: m.Audio.Lyrics.LineDisplayText(line), Style: current}}
+		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}
 
 	spans := make([]styledSpan, 0, 3)
-	if prefix := agentPrefix(m.Audio.Lyrics, line); prefix != "" {
-		spans = append(spans, styledSpan{Text: prefix, Style: current})
+	if showAgent {
+		if prefix := agentPrefix(m.Audio.Lyrics, line); prefix != "" {
+			spans = append(spans, styledSpan{Text: prefix, Style: current})
+		}
 	}
 	if played != "" {
 		spans = append(spans, styledSpan{Text: played, Style: current})
@@ -224,4 +237,33 @@ func agentPrefix(d *lyrics.Data, line lyrics.LyricLine) string {
 		return ""
 	}
 	return strings.TrimSuffix(d.LineDisplayText(line), line.Text)
+}
+
+// panelLineText returns the text the panel draws for one line: the full display
+// text (agent label included) when the label is due, otherwise the line's own
+// text. LineDisplayText itself is untouched, because the one-line footer still
+// labels every line it shows.
+func panelLineText(d *lyrics.Data, line lyrics.LyricLine, showAgent bool) string {
+	if !showAgent {
+		return line.Text
+	}
+	return d.LineDisplayText(line)
+}
+
+// panelAgentLabels marks the lines whose agent label the panel shows. The label
+// marks a change of singer rather than repeating the same name on every line:
+// the first line carrying an agent is labelled, and so is every later line whose
+// agent differs from the previous line that carried one. A line without an agent
+// is never labelled and never resets the block, so a single-singer file is
+// labelled once and an agentless interlude does not re-label the same singer.
+func panelAgentLabels(visible []lyrics.VisibleLine) []bool {
+	labels := make([]bool, len(visible))
+	last := ""
+	for i := range visible {
+		if agent := visible[i].Line.Agent; agent != "" && agent != last {
+			labels[i] = true
+			last = agent
+		}
+	}
+	return labels
 }
