@@ -1,6 +1,7 @@
 package lyrics
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -331,6 +332,7 @@ func TestTTML_RegressionTable_TitleSource(t *testing.T) {
 // the assertion itself.
 func TestTTML_RegressionTable_SpaceNormalization(t *testing.T) {
 	t.Run("bare-text", func(t *testing.T) {
+		assertSpaceFoldFixture(t, ttmlSpaceBareSample)
 		d, err := parseTTML(ttmlSpaceBareSample)
 		if err != nil {
 			t.Fatalf("Parse() error: %v", err)
@@ -344,6 +346,7 @@ func TestTTML_RegressionTable_SpaceNormalization(t *testing.T) {
 	})
 
 	t.Run("timed-span", func(t *testing.T) {
+		assertSpaceFoldFixture(t, ttmlSpaceSpanSample)
 		d, err := parseTTML(ttmlSpaceSpanSample)
 		if err != nil {
 			t.Fatalf("Parse() error: %v", err)
@@ -366,4 +369,21 @@ func TestTTML_RegressionTable_SpaceNormalization(t *testing.T) {
 			t.Errorf("C6: Words %q do not tile Text %q", joinWordText(line.Words), line.Text)
 		}
 	})
+}
+
+// assertSpaceFoldFixture guards the discriminating power of the test above: its
+// Text == "A B C" assertion holds only because the fixture really carries a
+// U+3000 and a doubled ASCII space for the library to fold. Swap the \u3000 for
+// a plain space (or the doubled space for a single one) and the pin stays green
+// while proving nothing. The anchors keep the neighbouring letters on purpose -
+// a bare strings.Contains(src, "  ") would be trivially true on the XML
+// attributes and indentation.
+func assertSpaceFoldFixture(t *testing.T, src string) {
+	t.Helper()
+	if !strings.Contains(src, "A\u3000B") {
+		t.Fatal("fixture no longer carries U+3000 + doubled space; this pin would silently prove nothing")
+	}
+	if !strings.Contains(src, "B  C") {
+		t.Fatal("fixture no longer carries U+3000 + doubled space; this pin would silently prove nothing")
+	}
 }
