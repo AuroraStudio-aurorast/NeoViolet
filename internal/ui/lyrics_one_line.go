@@ -14,6 +14,11 @@ import (
 // marquee-scrolls when the line is wider than the footer. The code was moved
 // out of view.go unchanged; lyrics_panel.go is the multi-line counterpart.
 
+// lyricGapDotsThreshold is how long a wait has to be before a view announces the
+// next line with the three-dot countdown instead of staying quiet. The panel and
+// the one-line footer share it so both start counting at the same instant.
+const lyricGapDotsThreshold = 5 * time.Second
+
 // renderOneLineLyrics renders the footer's single lyric row. ok is false when
 // there is nothing to show, which is also what removes the row and gives its
 // height back to the content area.
@@ -48,11 +53,8 @@ func oneLineLyricText(m *Model) string {
 	case m.Audio.LyricNextIndex >= 0 && m.Audio.LyricNextIndex < len(m.Audio.Lyrics.Lines):
 		next := m.Audio.Lyrics.Lines[m.Audio.LyricNextIndex]
 		// Show waiting dots if the total gap (previous line end to next line
-		// start) exceeds 5 seconds, otherwise use a simple placeholder. The dots
-		// themselves animate only in the last 3 seconds.
-		if m.Audio.LyricGapDuration > 5*time.Second {
-			secs := (next.Time - m.Audio.Elapsed).Seconds()
-			dots := buildLyricCountdown(secs, m.Icons.LyricFilled, m.Icons.LyricEmpty)
+		// start) is long enough, otherwise use a simple placeholder.
+		if dots, ok := lyricCountdownDots(m); ok {
 			return dots + "  " + m.Audio.Lyrics.LineDisplayText(next)
 		}
 		return "-"
@@ -61,6 +63,23 @@ func oneLineLyricText(m *Model) string {
 		// Past the end, or no upcoming line.
 		return "-"
 	}
+}
+
+// lyricCountdownDots returns the countdown dots for the line the views are
+// waiting for, and whether the wait is long enough to show them at all. ok is
+// false when there is no upcoming line (the song is past its last line) or the
+// gap is too short to announce; the dots themselves animate over the last three
+// seconds only (see buildLyricCountdown).
+func lyricCountdownDots(m *Model) (string, bool) {
+	if m.Audio.Lyrics == nil || m.Audio.LyricGapDuration <= lyricGapDotsThreshold {
+		return "", false
+	}
+	next := m.Audio.LyricNextIndex
+	if next < 0 || next >= len(m.Audio.Lyrics.Lines) {
+		return "", false
+	}
+	secs := (m.Audio.Lyrics.Lines[next].Time - m.Audio.Elapsed).Seconds()
+	return buildLyricCountdown(secs, m.Icons.LyricFilled, m.Icons.LyricEmpty), true
 }
 
 // renderSingleLyricLine renders a single lyric line with marquee scroll support.

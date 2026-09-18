@@ -52,6 +52,17 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 	if len(cur) == 0 {
 		return rows
 	}
+	// A long wait for the next line gets the countdown on its own row directly
+	// under the current group, so the wait is visible without moving the lyrics
+	// the eye is on. The dots are part of the group rather than of the context
+	// below, which keeps them next to the line they follow however the rest of the
+	// window is configured. highlight is false exactly when nothing is being sung
+	// (a gap or the wait before the first line), so a sung line never counts down.
+	if !highlight {
+		if dots, ok := lyricCountdownDots(m); ok {
+			cur = append(cur, panelRow{spans: []styledSpan{{Text: dots, Style: panelCurrentStyle(m)}}})
+		}
+	}
 	if len(cur) > innerH {
 		cur = cur[:innerH]
 	}
@@ -85,8 +96,9 @@ func place(rows []panelRow, start int, rs []panelRow) {
 }
 
 // panelCurrent returns the positions in visible of the current line group.
-// highlight is false before the first line starts: nothing has been sung yet,
-// so the first line is shown unhighlighted at the top of the window.
+// highlight is false when nothing is being sung: before the first line starts,
+// and in a gap, where the panel holds the last line that already started without
+// drawing it as the current one (it has ended).
 func panelCurrent(m *Model, visible []lyrics.VisibleLine) (first, last int, highlight bool) {
 	if active := m.Audio.ActiveLyricLines; len(active) > 0 {
 		first, last = -1, -1
@@ -103,8 +115,11 @@ func panelCurrent(m *Model, visible []lyrics.VisibleLine) (first, last int, high
 		}
 	}
 
-	// No active line: hold the last line that already started. In a gap the
-	// previous line stays on screen (no countdown dots in the panel).
+	// No active line: hold the last line that already started, so the eye stays
+	// where the lyrics were. Nothing is being sung right now, so the held line is
+	// not drawn as current: it has ended. Only a line carrying an end can leave the
+	// panel in this state, because an unbounded line stays active until the next one
+	// starts, so this never dims a line a format considers still playing.
 	best := -1
 	for i := range visible {
 		if visible[i].Line.Time > m.Audio.Elapsed {
@@ -115,7 +130,7 @@ func panelCurrent(m *Model, visible []lyrics.VisibleLine) (first, last int, high
 	if best < 0 {
 		return 0, 0, false
 	}
-	return best, best, true
+	return best, best, false
 }
 
 // lineIsActive reports whether line is one of the active lines.

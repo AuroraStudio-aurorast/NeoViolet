@@ -302,15 +302,15 @@ func TestPanelWindow_LongLineWrapsToTwoRows(t *testing.T) {
 	}
 }
 
-// A gap holds the previous line: the panel has no countdown dots, because the
-// upcoming line is already visible as a context row.
-func TestPanelWindow_GapHoldsPreviousLine(t *testing.T) {
+// A short gap still holds the previous line: it is under the countdown threshold,
+// so the window keeps its shape and the upcoming line stays a context row.
+func TestPanelWindow_ShortGapHoldsPreviousLine(t *testing.T) {
 	m := panelModel(t, 2)
 	m.Audio.Lyrics = &lyrics.Data{Lines: []lyrics.LyricLine{
 		{Time: 0, End: 5 * time.Second, Text: "first"},
-		{Time: 12 * time.Second, Text: "next"},
+		{Time: 8 * time.Second, Text: "next"},
 	}}
-	m.Audio.Elapsed = 10 * time.Second
+	m.Audio.Elapsed = 6 * time.Second // a 3s gap
 	m.Audio.UpdateLyricIndex()
 
 	plan := m.layoutPlan()
@@ -321,7 +321,7 @@ func TestPanelWindow_GapHoldsPreviousLine(t *testing.T) {
 		t.Errorf("row %d = %q, want the previous line held through the gap", anchor, got)
 	}
 	if got := panelRowText(rows[anchor+1]); got != "next" {
-		t.Errorf("row %d = %q, want the upcoming line", anchor+1, got)
+		t.Errorf("row %d = %q, want the upcoming line right below it", anchor+1, got)
 	}
 }
 
