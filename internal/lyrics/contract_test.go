@@ -147,6 +147,11 @@ func wordsTile(l LyricLine, looseTiling bool) bool {
 			return true
 		}
 	}
+	// The loose form accepts a strict prefix of the display text, which is the shape
+	// the upstream INV-9 bare tail text produces. It deliberately cannot tell such a
+	// prefix from a truncated word list - dropping the last fragment still leaves a
+	// prefix - so word-list truncation is pinned by the per-format unit tests
+	// (len(Words) assertions), not by this invariant.
 	return looseTiling && sb.Len() > 0 && strings.HasPrefix(l.Part(0), sb.String())
 }
 
