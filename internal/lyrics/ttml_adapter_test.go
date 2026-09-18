@@ -14,12 +14,16 @@ import (
 //
 //   - the root declares every namespace it uses (no undeclared prefixes);
 //   - <head> carries two ttm:agent declarations plus amll:meta
-//     musicName/artists/album and the author login;
+//     musicName/artists/album (musicName and album are deliberately duplicated
+//     with DIFFERENT values so the first-wins mapping is discriminating) and the
+//     author login;
 //   - line 1 is keyed (itunes:key) with word-level spans and real inter-word
 //     spaces;
-//   - line 2 is keyed and adds an x-bg background span (inner span carries both
-//     begin and end: a begin-only x-bg yields zero words upstream) and an
-//     inline ttm:role="x-translation" span next to the original text;
+//   - line 2 is keyed and adds an x-bg background span (the x-bg element itself
+//     carries begin and end, so upstream keeps its inner word: Background.Words
+//     == 1 - the C8 matrix's deciding factor is whether the x-bg element itself
+//     has timing, not the inner span) and an inline ttm:role="x-translation"
+//     span next to the original text;
 //   - line 3 has no itunes:key at all, so the sample also covers the keyless
 //     path (upstream MissingKeyKeep).
 //
@@ -33,9 +37,11 @@ const ttmlAMLLSample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://
       <ttm:agent xml:id="v1" type="person"/>
       <ttm:agent xml:id="v2" type="person"/>
       <amll:meta key="musicName" value="Sample Song"/>
+      <amll:meta key="musicName" value="Second Title"/>
       <amll:meta key="artists" value="Alice"/>
       <amll:meta key="artists" value="Bob"/>
       <amll:meta key="album" value="Sample Album"/>
+      <amll:meta key="album" value="Second Album"/>
       <amll:meta key="ttmlAuthorGithubLogin" value="SampleAuthor"/>
     </metadata>
   </head>
@@ -194,7 +200,20 @@ func TestTTML_AdapterMapsSample(t *testing.T) {
 // keeps the FIRST value of a repeated key, and Creator is wired to the AMLL
 // author login meta (the hand-written parser never set Creator at all).
 func TestTTML_AdapterMapsSampleMetadata(t *testing.T) {
-	data := ttmlToData(ttmlSampleDoc(t), "song.ttml")
+	doc := ttmlSampleDoc(t)
+	// Premise: the fixture really carries two DIFFERENT musicName and album
+	// values. The library dedupes only identical values (metadata.go
+	// dedupeStrings), so both survive into Titles/Albums; if the duplicates were
+	// identical, first-wins and last-wins would be indistinguishable and the
+	// Title/Album pins below would stay green under a last-wins regression.
+	if got := doc.Metadata.Titles; !slices.Equal(got, []string{"Sample Song", "Second Title"}) {
+		t.Fatalf("lib Titles = %q, want [%q %q] (the premise)", got, "Sample Song", "Second Title")
+	}
+	if got := doc.Metadata.Albums; !slices.Equal(got, []string{"Sample Album", "Second Album"}) {
+		t.Fatalf("lib Albums = %q, want [%q %q] (the premise)", got, "Sample Album", "Second Album")
+	}
+
+	data := ttmlToData(doc, "song.ttml")
 
 	if data.Title != "Sample Song" {
 		t.Errorf("Title = %q, want %q", data.Title, "Sample Song")
@@ -485,6 +504,15 @@ func TestTTML_AdapterDuplicateBackgroundSegmentCollapses(t *testing.T) {
 // same way, so this is a behaviour we are intentionally keeping rather than
 // fixing.
 func TestTTML_BrIsNonGoal(t *testing.T) {
+	// Anchor guard: the fixture really carries an inline <br/> between the two
+	// neighbours. Without this, swapping <br/> for another unknown element (say
+	// <foo/>) keeps both the glue assertion and the unknown-element diagnostic
+	// green while silently de-targeting the br contract. The neighbouring letters
+	// are part of the anchor so the match cannot coincide with anything else.
+	if !strings.Contains(ttmlBrSample, "first<br/>second") {
+		t.Fatal(`ttmlBrSample no longer contains "first<br/>second": the br contract is de-targeted (the test would stay green if <br/> were swapped for any other unknown element)`)
+	}
+
 	d, err := parseTTML(ttmlBrSample)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)

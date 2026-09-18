@@ -111,6 +111,56 @@ func TestTTML_DiagnosticsDoNotFail(t *testing.T) {
 	}
 }
 
+func TestTTML_LyricOffsetIsNotApplied(t *testing.T) {
+	// D12 (spec §8 item 3): itunes:lyricOffset is a non-goal this round. The
+	// library reads it (into Metadata.Audios[i].LyricOffset, a verbatim string),
+	// but the adapter does not consume it, so Data.Offset must stay 0 and the
+	// line times must not shift. The <audio> is unnamespaced inside the
+	// iTunesMetadata subtree that re-declares the default namespace - the exact
+	// shape the pinned library's own corpus/metadata tests use.
+	const sample = `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:itunes="http://music.apple.com/lyric-ttml-internal">
+  <head>
+    <metadata>
+      <iTunesMetadata xmlns="http://music.apple.com/lyric-ttml-internal">
+        <audio role="spatial" lyricOffset="0.105"/>
+      </iTunesMetadata>
+    </metadata>
+  </head>
+  <body>
+    <div>
+      <p begin="00:01.000" end="00:04.000">Hello</p>
+    </div>
+  </body>
+</tt>`
+
+	doc := ttmlParseDoc(t, sample)
+	// Premise: the library really reads the lyricOffset. Without this the
+	// Offset == 0 pin would be vacuous - a fixture the library ignores would
+	// keep it green no matter what the adapter does.
+	if len(doc.Metadata.Audios) != 1 || doc.Metadata.Audios[0].LyricOffset != "0.105" {
+		t.Fatalf("lib Audios = %+v, want one audio with LyricOffset %q (the premise)",
+			doc.Metadata.Audios, "0.105")
+	}
+
+	d, err := parseTTML(sample)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if d.Offset != 0 {
+		t.Errorf("Offset = %d, want 0 (lyricOffset is not applied)", d.Offset)
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("lines = %d, want 1", len(d.Lines))
+	}
+	if d.Lines[0].Time != time.Second {
+		t.Errorf("Time = %v, want 1s (unshifted by lyricOffset)", d.Lines[0].Time)
+	}
+	if d.Lines[0].End != 4*time.Second {
+		t.Errorf("End = %v, want 4s (unshifted by lyricOffset)", d.Lines[0].End)
+	}
+}
+
 func TestTTML_UnboundedLineStaysUnbounded(t *testing.T) {
 	const sample = `<tt xmlns="http://www.w3.org/ns/ttml">
   <body>

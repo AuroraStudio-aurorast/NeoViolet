@@ -19,17 +19,18 @@ import (
 // non-default frameRate=60 sentinel), a declared parser change (spec §6), or
 // both. See task-6-report.md for the full item-by-item table.
 //
-// The one difference not explicitly numbered in spec §6's list is that a <p>
-// with no timed <span> (a bare-text line) now maps to ONE word fragment - the
-// whole line text at the line's begin - instead of zero fragments. It follows
-// directly from spec §4.2 ("Words = Line.Words"): the library synthesises one
-// word per untimed text run, which is what makes C6 ("Words must tile the main
-// text") hold for bare-text lines.
+// The bare-text difference (a <p> with no timed <span> now maps to ONE word
+// fragment - the whole line text at the line's begin - instead of zero
+// fragments) is now spec §6 item 14. It follows directly from spec §4.2
+// ("Words = Line.Words"): the library synthesises one word per untimed text
+// run, which is what makes C6 ("Words must tile the main text") hold for
+// bare-text lines.
 
-// ttmlAppleRegressionSample is a verbatim copy of the appleStyle fixture inside
-// TestTTML_WordSyncWithTranslation (ttml_test.go). That fixture is a local
-// variable, so the regression table needs its own copy; it must stay in sync
-// with the source.
+// ttmlAppleRegressionSample is a verbatim copy of the ttmlAppleStyle fixture
+// (ttml_test.go, now a package-level constant). The apple subtest of
+// TestTTML_RegressionTable asserts the two stay byte-identical, so a drift in
+// either copy turns that subtest red instead of silently weakening the
+// "verbatim copy" claim.
 const ttmlAppleRegressionSample = `<tt xmlns="http://www.w3.org/ns/ttml"
     xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
     xmlns:itunes="http://music.apple.com/lyric-ttml-internal" itunes:timing="Word">
@@ -130,6 +131,12 @@ func TestTTML_RegressionTable(t *testing.T) {
 	})
 
 	t.Run("apple", func(t *testing.T) {
+		// Sync guard: the regression copy must stay byte-identical to the source
+		// fixture (a verbatim copy is what makes this row a re-run of the source
+		// test). One character of drift in either constant turns this red.
+		if ttmlAppleStyle != ttmlAppleRegressionSample {
+			t.Fatalf("ttmlAppleRegressionSample drifted from ttmlAppleStyle; keep the verbatim copy in sync")
+		}
 		// Two differences, both expected:
 		//   1. Text: "I could find you" -> "I could find you | 我找到了你"
 		//      (spec §6 item 1: the inline x-translation is no longer dropped,

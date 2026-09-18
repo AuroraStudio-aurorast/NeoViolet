@@ -296,8 +296,11 @@ func TestTTML_SidecarExtensionPreference(t *testing.T) {
 	}
 }
 
-func TestTTML_WordSyncWithTranslation(t *testing.T) {
-	appleStyle := `<tt xmlns="http://www.w3.org/ns/ttml"
+// ttmlAppleStyle is the Apple-style (iTunes) word-timing fixture used by
+// TestTTML_WordSyncWithTranslation. ttmlAppleRegressionSample (in
+// ttml_regression_test.go) is a verbatim copy of it; that copy's sync guard
+// asserts the two stay byte-identical.
+const ttmlAppleStyle = `<tt xmlns="http://www.w3.org/ns/ttml"
     xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
     xmlns:itunes="http://music.apple.com/lyric-ttml-internal" itunes:timing="Word">
   <body dur="0:10.000">
@@ -318,7 +321,8 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
   </body>
 </tt>`
 
-	d, err := parseTTML(appleStyle)
+func TestTTML_WordSyncWithTranslation(t *testing.T) {
+	d, err := parseTTML(ttmlAppleStyle)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
 	}
@@ -357,7 +361,11 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
 	}
 }
 
-func TestTTML_CJKLangNoSpace(t *testing.T) {
+// TestTTML_CJKNoInventedSpace pins spec §6 item 2 for CJK text: the library
+// never invents inter-word spaces. The old hand-written parser's isCJKLang /
+// isCJKContent heuristics were deleted; this name now points at the fidelity
+// guarantee those heuristics used to approximate.
+func TestTTML_CJKNoInventedSpace(t *testing.T) {
 	cjk := `<tt xmlns="http://www.w3.org/ns/ttml"
     xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
     xml:lang="zh-CN">
@@ -388,7 +396,10 @@ func TestTTML_CJKLangNoSpace(t *testing.T) {
 	}
 }
 
-func TestTTML_CJKAutoDetectNoSpace(t *testing.T) {
+// TestTTML_CJKWithoutLang pins the same no-invented-space fidelity for a CJK
+// file that carries no xml:lang hint: the glueing is the library's default, not
+// a language-detection heuristic (isCJKContent no longer exists).
+func TestTTML_CJKWithoutLang(t *testing.T) {
 	cjkNoLang := `<tt xmlns="http://www.w3.org/ns/ttml">
   <body><div>
     <p begin="1.345" end="3.071">
@@ -410,7 +421,7 @@ func TestTTML_CJKAutoDetectNoSpace(t *testing.T) {
 	}
 
 	if d.Lines[0].Text != `我找到了你` {
-		t.Errorf("auto-detected CJK should have no spaces, got %q", d.Lines[0].Text)
+		t.Errorf("CJK without xml:lang should have no spaces, got %q", d.Lines[0].Text)
 	}
 }
 
