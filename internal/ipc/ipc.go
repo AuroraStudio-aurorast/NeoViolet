@@ -54,7 +54,7 @@ type Message struct {
 // LyricLineJSON is a single lyric line serialized for IPC.
 type LyricLineJSON struct {
 	Time      float64  `json:"time"`            // seconds
-	End       float64  `json:"end"`             // seconds; 0 = unbounded (legacy LRC/QRC/YRC/ESLRC)
+	End       float64  `json:"end"`             // seconds; 0 = unbounded (valid until the next line)
 	Text      string   `json:"text"`            // display text (with agent prefix if applicable)
 	Parts     []string `json:"parts,omitempty"` // display sub-lines of a merged event; nil = plain line
 	Agent     string   `json:"agent"`           // agent ID, "" for no agent

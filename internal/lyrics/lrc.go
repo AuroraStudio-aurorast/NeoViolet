@@ -34,7 +34,6 @@ func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 	lyrics := &Data{Path: sourcePath}
 	var lines []LyricLine
-	offset := 0
 
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimRight(line, "\r\n\t ")
@@ -72,26 +71,8 @@ func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 				isValidLine = true
 
 			case isMetadata(content):
-				key, val, _ := strings.Cut(content, ":")
-				key = strings.ToLower(strings.TrimSpace(key))
-				val = strings.TrimSpace(val)
-				switch key {
-				case "ti":
-					lyrics.Title = val
-				case "ar":
-					lyrics.Artist = val
-				case "al":
-					lyrics.Album = val
-				case "au":
-					lyrics.Author = val
-				case "by":
-					lyrics.Creator = val
-				case "offset":
-					n, err := strconv.Atoi(val)
-					if err == nil {
-						offset = n
-					}
-				}
+				key, val, _ := lrcField(content)
+				applyHeaderField(lyrics, key, val)
 
 			default:
 				if t, err := parseTimestamp(content); err == nil {
@@ -129,20 +110,12 @@ func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			timestamps = append(timestamps, words[0].Time)
 		}
 
+		delta := time.Duration(lyrics.Offset) * time.Millisecond
 		for _, ts := range timestamps {
-			adjusted := ts + time.Duration(offset)*time.Millisecond
-			if adjusted < 0 {
-				adjusted = 0
-			}
+			adjusted := shiftTime(ts, delta)
 			var wc []WordFragment
 			if len(words) > 0 {
-				wc = make([]WordFragment, len(words))
-				for i, w := range words {
-					wc[i] = WordFragment{
-						Time: w.Time + time.Duration(offset)*time.Millisecond,
-						Text: w.Text,
-					}
-				}
+				wc = shiftWords(words, delta)
 			}
 			lines = append(lines, LyricLine{
 				Time:  adjusted,

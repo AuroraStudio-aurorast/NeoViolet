@@ -58,7 +58,8 @@ type Data struct {
 	Format  string // parser name that produced this data ("lrc", "ttml", etc.)
 
 	// Agents maps agent ID to display name (e.g. "v1" -> "Taylor Swift").
-	// Populated by TTML parser from <ttm:agent> + <amll:meta key="artists">.
+	// Populated by the TTML parser from <ttm:agent> + <amll:meta key="artists">,
+	// and by the SMI parser from <P Class=...>.
 	Agents map[string]string
 
 	// Properties stores extended metadata (e.g. "ncmMusicId", "musicName").
@@ -70,11 +71,35 @@ type Data struct {
 	AgentFilter string
 }
 
+// activeLimits[i] is the Time of the first line after i with a greater Time,
+// or -1 when there is none. One backward pass keeps the per-line rule of
+// ActiveLines O(n) instead of a scan per unbounded line.
+//
+// The bound is "the next line with a greater Time" rather than "the next line"
+// on purpose: lines sharing a Time (a SMI SYNC with several <P Class=...>
+// children) must not cut each other off.
+func activeLimits(lines []LyricLine) []time.Duration {
+	limits := make([]time.Duration, len(lines))
+	next := time.Duration(-1)
+	for i := len(lines) - 1; i >= 0; i-- {
+		limits[i] = next
+		if i > 0 && lines[i].Time > lines[i-1].Time {
+			next = lines[i].Time
+		}
+	}
+	return limits
+}
+
 // ActiveLines returns all lines that are active at the given elapsed time.
 //
-// For lines with End > 0 (TTML): active when begin <= t < end.
-// For lines with End == 0 (all other formats): uses CurrentLine() legacy behavior,
-// returning at most one line whose Time is the greatest <= elapsed.
+// A line is bounded when End > 0: it is active for Time <= t < End.
+// A line is unbounded when End == 0: it is active from Time until the Time of
+// the next line with a greater Time (the last line never expires).
+//
+// This is evaluated per line. Treating "the file contains at least one bounded
+// line" as a global switch — the previous shape — made every unbounded line
+// unreachable in a mixed file, which is exactly what a SMI file looks like
+// (every SYNC bounded except the last one).
 //
 // When AgentFilter is set, only lines matching that agent are returned.
 func (d *Data) ActiveLines(elapsed time.Duration) []LyricLine {
@@ -82,24 +107,24 @@ func (d *Data) ActiveLines(elapsed time.Duration) []LyricLine {
 		return nil
 	}
 
-	// Phase 1: collect End-bounded active lines
+	limit := activeLimits(d.Lines)
+
+	// Phase 1: collect active lines, each against its own window.
 	var active []LyricLine
-	anyBounded := false
-	for _, line := range d.Lines {
+	for i, line := range d.Lines {
 		if line.End > 0 {
-			anyBounded = true
 			if line.Time <= elapsed && elapsed < line.End {
 				active = append(active, line)
 			}
+			continue
 		}
-	}
-
-	// Phase 2: if no bounded lines matched, fall back to legacy behavior
-	if !anyBounded {
-		idx := d.CurrentLine(elapsed)
-		if idx >= 0 {
-			active = append(active, d.Lines[idx])
+		if line.Time > elapsed {
+			continue
 		}
+		if limit[i] >= 0 && elapsed >= limit[i] {
+			continue
+		}
+		active = append(active, line)
 	}
 
 	// Phase 3: apply agent filter

@@ -3,6 +3,7 @@ package lyrics
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -30,5 +31,106 @@ func TestEmbeddedParserWithTestdata(t *testing.T) {
 			}
 			t.Logf("OK: %d lines", len(data.Lines))
 		})
+	}
+}
+
+func TestParseSYLT_MultiLineTextBecomesParts(t *testing.T) {
+	d := parseSYLT(syltBody(
+		syltEntry{"第一行\n第二行", 1000},
+		syltEntry{"third", 2000},
+	))
+	if d == nil {
+		t.Fatal("parseSYLT returned nil")
+	}
+	if len(d.Lines) != 2 {
+		t.Fatalf("len(Lines) = %d, want 2", len(d.Lines))
+	}
+	line := d.Lines[0]
+	if line.Text != "第一行 | 第二行" {
+		t.Errorf("Text = %q, want %q", line.Text, "第一行 | 第二行")
+	}
+	if len(line.Parts) != 2 || line.Parts[0] != "第一行" || line.Parts[1] != "第二行" {
+		t.Errorf("Parts = %v, want [第一行 第二行]", line.Parts)
+	}
+	if d.Lines[1].Parts != nil || d.Lines[1].Text != "third" {
+		t.Errorf("Lines[1] = %q parts=%v, want plain %q", d.Lines[1].Text, d.Lines[1].Parts, "third")
+	}
+}
+
+func TestParseSYLT_BlankOnlyTextIsDropped(t *testing.T) {
+	d := parseSYLT(syltBody(
+		syltEntry{"\n", 1000},
+		syltEntry{"kept", 2000},
+	))
+	if d == nil {
+		t.Fatal("parseSYLT returned nil")
+	}
+	if len(d.Lines) != 1 || d.Lines[0].Text != "kept" {
+		t.Fatalf("Lines = %+v, want a single %q line", d.Lines, "kept")
+	}
+}
+
+func TestParseSYLT_PartsCarryNoNewline(t *testing.T) {
+	// C2 的本地形式。
+	d := parseSYLT(syltBody(syltEntry{"a\nb\nc", 1000}))
+	if d == nil {
+		t.Fatal("parseSYLT returned nil")
+	}
+	line := d.Lines[0]
+	if strings.ContainsAny(line.Text, "\n\r") {
+		t.Errorf("Text contains a newline: %q", line.Text)
+	}
+	for i, p := range line.Parts {
+		if strings.ContainsAny(p, "\n\r") {
+			t.Errorf("Parts[%d] contains a newline: %q", i, p)
+		}
+	}
+}
+
+func TestParseSYLT_CRLFTextBecomesParts(t *testing.T) {
+	// Windows 打的标签给出 "\r\n"；切分按 "\n" 做，段尾的 "\r" 靠 TrimSpace 清掉。
+	d := parseSYLT(syltBody(syltEntry{"a\r\nb", 1000}))
+	if d == nil {
+		t.Fatal("parseSYLT returned nil")
+	}
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	line := d.Lines[0]
+	if line.Text != "a | b" {
+		t.Errorf("Text = %q, want %q", line.Text, "a | b")
+	}
+	if len(line.Parts) != 2 || line.Parts[0] != "a" || line.Parts[1] != "b" {
+		t.Fatalf("Parts = %v, want [a b]", line.Parts)
+	}
+	if strings.ContainsRune(line.Text, '\r') {
+		t.Errorf("Text contains a CR: %q", line.Text)
+	}
+	for i, p := range line.Parts {
+		if strings.ContainsRune(p, '\r') {
+			t.Errorf("Parts[%d] contains a CR: %q", i, p)
+		}
+	}
+}
+
+func TestParseSYLT_EmptySegmentsAreDropped(t *testing.T) {
+	// 空段与纯空白段都不进 Parts（否则会有空显示行）。
+	d := parseSYLT(syltBody(syltEntry{"a\n\n  \nb", 1000}))
+	if d == nil {
+		t.Fatal("parseSYLT returned nil")
+	}
+	line := d.Lines[0]
+	if line.Text != "a | b" {
+		t.Errorf("Text = %q, want %q", line.Text, "a | b")
+	}
+	if len(line.Parts) != 2 || line.Parts[0] != "a" || line.Parts[1] != "b" {
+		t.Errorf("Parts = %v, want [a b]", line.Parts)
+	}
+}
+
+func TestParseSYLT_AllBlankTextsYieldNil(t *testing.T) {
+	// 全部条目都只剩空白时不留空 Data：nil 让 embeddedParser 接着试下一个 tag。
+	if d := parseSYLT(syltBody(syltEntry{"\n", 1000}, syltEntry{"  \r\n", 2000})); d != nil {
+		t.Fatalf("parseSYLT(blank entries) = %+v, want nil", d)
 	}
 }

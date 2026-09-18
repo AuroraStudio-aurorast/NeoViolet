@@ -47,57 +47,45 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			continue
 		}
 
-		// Parse channel prefix [N] (e.g. [0], [2], [6])
+		// Parse channel prefix [N] (e.g. [0], [2], [6]).
 		channelStr := strings.TrimPrefix(parts[0], "[")
-		channel, _ := strconv.Atoi(channelStr)
 
 		body := parts[1]
-		matches := qrcWordRe.FindAllStringSubmatch(body, -1)
-		if len(matches) == 0 {
+
+		// LYS headers are "[channel]"; "[ti:Title]" is not a channel, and
+		// applying it as metadata is harmless when the file has none.
+		if key, val, hasField := lrcField(channelStr); hasField {
+			if applyHeaderField(lyrics, key, val) {
+				continue
+			}
+		}
+		channel, _ := strconv.Atoi(channelStr)
+
+		// LYS bodies are shaped like QRC's: text(startMs,durationMs), so they
+		// share qrcGroups. There is no duration in the header, so End comes
+		// from the last word's end.
+		scan := scanWordTimed(body, qrcGroups, 0)
+		if strings.TrimSpace(scan.Text) == "" {
 			continue
 		}
 
-		var words []WordFragment
-		var fullText strings.Builder
-		lineStart := time.Duration(0)
-		lineEnd := time.Duration(0)
-
-		for _, m := range matches {
-			wordText := m[1]
-			wordStart, _ := strconv.Atoi(m[2])
-			wordDuration, _ := strconv.Atoi(m[3])
-
-			startDur := time.Duration(wordStart) * time.Millisecond
-			endDur := startDur + time.Duration(wordDuration)*time.Millisecond
-
-			words = append(words, WordFragment{
-				Time: startDur,
-				Text: wordText,
-			})
-			fullText.WriteString(wordText)
-
-			if lineStart == 0 && wordStart > 0 {
-				lineStart = startDur
-			}
-			if endDur > lineEnd {
-				lineEnd = endDur
-			}
+		// delta is read at line-construction time (after applyHeaderField above
+		// may have written lyrics.Offset), so [offset:] only shifts lines parsed
+		// after it — the same timing rule as LRC/ESLRC.
+		delta := time.Duration(lyrics.Offset) * time.Millisecond
+		line := LyricLine{
+			Time:  shiftTime(scan.Start, delta),
+			Text:  scan.Text,
+			Words: shiftWords(scan.Words, delta),
+			Agent: channelToAgent[channel],
 		}
-
-		text := fullText.String()
-		if strings.TrimSpace(text) == "" {
-			continue
+		// scan.End == 0 is the unbounded sentinel (no duration crossed
+		// lineStart), not a timestamp: shifting it by a non-zero delta would
+		// make End == Time and the line would never activate.
+		if scan.End > 0 {
+			line.End = shiftTime(scan.End, delta)
 		}
-
-		agent := channelToAgent[channel]
-
-		lines = append(lines, LyricLine{
-			Time:  lineStart,
-			End:   lineEnd,
-			Text:  text,
-			Words: words,
-			Agent: agent,
-		})
+		lines = append(lines, line)
 	}
 
 	if len(lines) == 0 {

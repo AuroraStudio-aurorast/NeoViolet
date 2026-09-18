@@ -3,6 +3,7 @@ package lyrics
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // A line that never went through a merge carries no Parts: Part(0) is the text
@@ -36,5 +37,86 @@ func TestLyricLine_PartAccessors_MergedLine(t *testing.T) {
 	}
 	if got, want := strings.Join(merged.Parts, " | "), merged.Text; got != want {
 		t.Errorf("Join(Parts, \" | \") = %q, want Text %q", got, want)
+	}
+}
+
+func TestActiveLines_UnboundedAfterBoundedIsReachable(t *testing.T) {
+	// F3：文件里既有有界行（A/B）又有无界末行（C）。旧的全局开关只看"有没有
+	// 任何一行有界"，于是 C 永远进不了候选。
+	d := &Data{Lines: []LyricLine{
+		{Time: 1 * time.Second, End: 2 * time.Second, Text: "A"},
+		{Time: 1 * time.Second, End: 2 * time.Second, Text: "B"},
+		{Time: 2 * time.Second, Text: "C"},
+	}}
+
+	cases := []struct {
+		at   time.Duration
+		want []string
+	}{
+		{500 * time.Millisecond, nil},
+		{1 * time.Second, []string{"A", "B"}},
+		{1999 * time.Millisecond, []string{"A", "B"}},
+		{2 * time.Second, []string{"C"}},
+		{30 * time.Second, []string{"C"}},
+	}
+	for _, tc := range cases {
+		got := d.ActiveLines(tc.at)
+		var texts []string
+		for _, l := range got {
+			texts = append(texts, l.Text)
+		}
+		if len(texts) != len(tc.want) {
+			t.Fatalf("ActiveLines(%v) = %v, want %v", tc.at, texts, tc.want)
+		}
+		for i := range texts {
+			if texts[i] != tc.want[i] {
+				t.Errorf("ActiveLines(%v)[%d] = %q, want %q", tc.at, i, texts[i], tc.want[i])
+			}
+		}
+	}
+}
+
+func TestActiveLines_SameTimeSiblingsDoNotCutEachOtherOff(t *testing.T) {
+	// 同一 Time 的兄弟行（SMI 一个 SYNC 下的双语 <P>）必须同时 active，
+	// 因此无界行的右边界取"下一个 Time **更大**的行"，而不是"下一行"。
+	d := &Data{Lines: []LyricLine{
+		{Time: 1 * time.Second, Text: "v1"},
+		{Time: 1 * time.Second, Text: "v2"},
+		{Time: 3 * time.Second, Text: "next"},
+	}}
+	if got := len(d.ActiveLines(1 * time.Second)); got != 2 {
+		t.Errorf("ActiveLines(1s) returned %d lines, want 2", got)
+	}
+	if got := len(d.ActiveLines(2 * time.Second)); got != 2 {
+		t.Errorf("ActiveLines(2s) returned %d lines, want 2", got)
+	}
+	if got := len(d.ActiveLines(3 * time.Second)); got != 1 {
+		t.Errorf("ActiveLines(3s) returned %d lines, want 1", got)
+	}
+}
+
+func TestActiveLines_RegressionUnboundedFilesAndBoundedGaps(t *testing.T) {
+	// 两条无回归断言：全无界文件仍恰好一行（LRC 行为逐字节不变），
+	// 全有界文件的句间留白仍然是留白（TTML 不会被"粘住上一句"）。
+	allUnbounded := &Data{Lines: []LyricLine{
+		{Time: 0, Text: "one"},
+		{Time: 5 * time.Second, Text: "two"},
+		{Time: 10 * time.Second, Text: "three"},
+	}}
+	for _, at := range []time.Duration{0, 4 * time.Second, 5 * time.Second, 9 * time.Second, 20 * time.Second} {
+		if got := len(allUnbounded.ActiveLines(at)); got != 1 {
+			t.Errorf("all-unbounded ActiveLines(%v) returned %d lines, want exactly 1", at, got)
+		}
+	}
+
+	withGaps := &Data{Lines: []LyricLine{
+		{Time: 0, End: 1 * time.Second, Text: "first"},
+		{Time: 3 * time.Second, End: 4 * time.Second, Text: "second"},
+	}}
+	if got := withGaps.ActiveLines(2 * time.Second); len(got) != 0 {
+		t.Errorf("bounded gap ActiveLines(2s) = %v, want empty", got)
+	}
+	if got := withGaps.ActiveLines(3 * time.Second); len(got) != 1 || got[0].Text != "second" {
+		t.Errorf("bounded ActiveLines(3s) = %v, want [second]", got)
 	}
 }
