@@ -20,6 +20,9 @@ func ttmlToData(doc *amllttml.Document, sourcePath string) *Data {
 		Properties: ttmlProperties(doc),
 		Agents:     ttmlAgents(doc),
 	}
+	// The guard is live, not dead code: Metadata is still a pointer field, and
+	// while the published library allocates it unconditionally (Parse never
+	// returns nil here), a hand-built zero-value Document reaches it.
 	if md := doc.Metadata; md != nil {
 		data.Title = ttmlFirst(md.Titles)
 		data.Artist = ttmlFirst(md.Artists)

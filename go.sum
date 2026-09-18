@@ -12,8 +12,8 @@ github.com/EdlinOrg/prominentcolor v1.0.0 h1:sQNY8Dtsv3PK3J1LbmrDmtlZm9Y9U8Loi1i
 github.com/EdlinOrg/prominentcolor v1.0.0/go.mod h1:mYmDsxfcmBz6izH/SqtSzfsUiZdPNPpPgUPKCZq70KQ=
 github.com/MakeNowJust/heredoc v1.0.0 h1:cXCdzVdstXyiTqTvfqk9SDHpKNjxuom+DOlyEeQ4pzQ=
 github.com/MakeNowJust/heredoc v1.0.0/go.mod h1:mG5amYoWBHf8vpLOuehzbGGw0EHxpZZ6lCpQ4fNJ8LE=
-github.com/WhatDamon/go-amll-ttml-parser v0.0.0-20260918054547-955331c3edb5 h1:MUjj86TF3vcLxlb9zDADVbiupa5tbQrkxvo/hmCbQnE=
-github.com/WhatDamon/go-amll-ttml-parser v0.0.0-20260918054547-955331c3edb5/go.mod h1:3Sw4oePcHgjABkEyaO4GcWFOMuICDjrcv2LJxeq/RtA=
+github.com/WhatDamon/go-amll-ttml-parser v0.0.0-20260918094540-d8fe6ac26bd6 h1:Jgt3/Qmb7LG2Pcy9wa7XLeeHyQN6u4NTshG0D2UgJV4=
+github.com/WhatDamon/go-amll-ttml-parser v0.0.0-20260918094540-d8fe6ac26bd6/go.mod h1:3Sw4oePcHgjABkEyaO4GcWFOMuICDjrcv2LJxeq/RtA=
 github.com/atotto/clipboard v0.1.4 h1:EH0zSVneZPSuFR11BlR9YppQTVDbh5+16AmcJi4g1z4=
 github.com/atotto/clipboard v0.1.4/go.mod h1:ZY9tmq7sm5xIbd9bOK4onWV4S6X0u6GY7Vn0Yu86PYI=
 github.com/aymanbagabas/go-udiff v0.4.1 h1:OEIrQ8maEeDBXQDoGCbbTTXYJMYRCRO1fnodZ12Gv5o=

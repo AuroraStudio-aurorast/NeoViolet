@@ -377,9 +377,9 @@ func TestTTML_AdapterAgentNameBeatsArtistsMeta(t *testing.T) {
 }
 
 // TestTTML_AdapterHeadlessDocumentDefaults pins the values produced when a
-// document has no <head> at all: the library leaves Document.Metadata nil there,
-// so every metadata field must come out empty rather than crash. The lines
-// themselves are unaffected.
+// document has no <head> at all: the library reports that absence on
+// Document.HeadPresent, and every metadata field must come out empty rather than
+// crash. The lines themselves are unaffected.
 func TestTTML_AdapterHeadlessDocumentDefaults(t *testing.T) {
 	const sample = `<tt xmlns="http://www.w3.org/ns/ttml">
   <body>
@@ -388,8 +388,11 @@ func TestTTML_AdapterHeadlessDocumentDefaults(t *testing.T) {
 </tt>`
 
 	doc := ttmlParseDoc(t, sample)
-	if doc.Metadata != nil {
-		t.Fatalf("lib Metadata = %+v, want nil for a head-less document (the premise)", doc.Metadata)
+	// Premise: the source really has no <head>. Document.Metadata is not the
+	// marker for that - the published library allocates it unconditionally, so it
+	// is never nil here - HeadPresent is.
+	if doc.HeadPresent {
+		t.Fatal("lib HeadPresent = true, want false for a head-less document (the premise)")
 	}
 
 	data := ttmlToData(doc, "song.ttml")

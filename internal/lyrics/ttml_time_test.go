@@ -43,9 +43,9 @@ func TestTTML_FramesTime(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(d.Lines))
 	}
 
-	// Frames (hh:mm:ss:ff) are a long-standing non-goal: the pinned library does
-	// not implement the frame-count clock, so the line survives but its Time
-	// stays 0 (every such line crowds at 0:00) and its text is not lost.
+	// Frames (hh:mm:ss:ff) are a long-standing non-goal: the library does not
+	// implement the frame-count clock, so the line survives but its Time stays 0
+	// (every such line crowds at 0:00) and its text is not lost.
 	if d.Lines[0].Time != 0 {
 		t.Errorf("frames time = %v, want 0 (frames are unsupported)", d.Lines[0].Time)
 	}
@@ -53,15 +53,15 @@ func TestTTML_FramesTime(t *testing.T) {
 		t.Errorf("frames line text = %q, want 'Frames-based timestamp' (text must survive)", d.Lines[0].Text)
 	}
 
-	// The library flags the frame field instead of failing the parse: an
-	// error-severity diagnostic exists in the public Diagnostics() surface (the
-	// pinned version never stores bad-time-syntax in doc.Diags). Only existence
-	// is pinned - no code, no count, no wording. When we bump to a version that
-	// ships the dedicated clock-frames-unsupported code, tighten this to assert
-	// that code alongside bad-time-syntax, with Time still 0.
+	// The library flags the frame field instead of failing the parse, and the
+	// published version names the failure: clock-frames-unsupported accompanies
+	// bad-time-syntax on a four-field clock literal. Only the code's presence is
+	// pinned - no count, no wording, no severity, because Diagnostics() dedupes by
+	// (Code, Pos) and the rest of the bookkeeping is upstream's to change.
 	doc := ttmlParseDoc(t, testTTMLFrames)
-	if !doc.Diagnostics().HasErrors() {
-		t.Error("expected an error-severity diagnostic for the unsupported frame field")
+	if !hasTTMLDiagnosticCode(doc, amllttml.CodeClockFramesUnsupported) {
+		t.Errorf("expected a %s diagnostic for the unsupported frame field, got %v",
+			amllttml.CodeClockFramesUnsupported, doc.Diagnostics())
 	}
 }
 
@@ -197,11 +197,12 @@ func TestTTML_TickRateSentinel(t *testing.T) {
 // filters by code on purpose - a headless/keyless document always carries
 // missing-head + line-no-key, so a zero-diagnostics assertion would be wrong.
 //
-// The pinned library defines both codes but never emits them for root ttp
-// parameters (ttp-not-on-root has no emission points, and the root-attribute
-// reader does not report attr-ns-fallback), so this assertion cannot fail today;
-// it is a forward-looking guard that becomes real once we bump to the upstream
-// commit that adds the detection (c2a4796).
+// Both codes are live on the published library: attr-ns-fallback fires whenever
+// an attribute resolves by local name (a legacy iTunes URI, say) and
+// ttp-not-on-root whenever a ttp timing parameter sits below the root <tt>.
+// The guard is therefore real - the fixtures below pass it because they declare
+// ttp exactly and keep its parameters on the root, not because the library is
+// silent.
 func assertNoTTMLHygieneDiagnostics(t *testing.T, sample string) {
 	t.Helper()
 	doc, err := amllttml.ParseReader(strings.NewReader(sample),
@@ -214,4 +215,16 @@ func assertNoTTMLHygieneDiagnostics(t *testing.T, sample string) {
 			t.Errorf("unexpected hygiene diagnostic %s: %s", diag.Code, diag.Msg)
 		}
 	}
+}
+
+// hasTTMLDiagnosticCode reports whether the document carries a diagnostic with
+// the given code. Callers use it to pin a code without pinning counts, wording
+// or severity, all of which are upstream's to change.
+func hasTTMLDiagnosticCode(doc *amllttml.Document, code amllttml.Code) bool {
+	for _, diag := range doc.Diagnostics() {
+		if diag.Code == code {
+			return true
+		}
+	}
+	return false
 }
