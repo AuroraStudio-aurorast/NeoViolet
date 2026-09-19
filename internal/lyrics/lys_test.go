@@ -207,7 +207,7 @@ func TestLYS_UnrecognizedColonHeaderFallsThrough(t *testing.T) {
 		t.Errorf("Lines[0].Text = %q, want %q", d.Lines[0].Text, "Hello")
 	}
 	if d.Lines[0].Agent != "v1" {
-		t.Errorf("Lines[0].Agent = %q, want %q (Atoi fails -> channel 0)", d.Lines[0].Agent, "v1")
+		t.Errorf("Lines[0].Agent = %q, want %q (Atoi fails -> property 0 -> the default side)", d.Lines[0].Agent, "v1")
 	}
 }
 

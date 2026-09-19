@@ -14,13 +14,32 @@ func init() {
 
 type lysParser struct{}
 
-// channelToAgent maps LYS channel numbers to agent IDs matching TTML conventions.
-// Channel 0 is lead vocal (v1), 2 is duet (v2), 6 and 8 are backing vocals (v3, v4).
-var channelToAgent = map[int]string{
-	0: "v1",
-	2: "v2",
-	6: "v3",
-	8: "v4",
+// propertyToAgent maps an LYS line property onto the agent id of its duet-view
+// side. The property is the Lyricify Syllable table of (背景人声, 对唱视图):
+//
+//	0 = 未设置/未设置   1 = 未设置/左   2 = 未设置/右
+//	3 = 否/未设置       4 = 否/左       5 = 否/右
+//	6 = 是/未设置       7 = 是/左       8 = 是/右
+//
+// so the view side is property%3 and only it names a performer. The
+// background-vocal flag is a role, not an identity: reading 6 and 8 as "channel"
+// numbers invented the agents v3 and v4 for singers that do not exist. LYS
+// carries no performer names at all, so these ids are everything the display has
+// to work with.
+//
+// 未设置 (0, 3, 6) means the line sits on no side. For a single-singer file that
+// is the whole file, and for a duet it is the default performer - both read as
+// v1, which is also how the TTML files for these songs assign their lines. A
+// property outside 0..8 is malformed data whose meaning we cannot know, so it
+// yields no agent rather than a guessed side.
+func propertyToAgent(property int) string {
+	if property < 0 || property > 8 {
+		return ""
+	}
+	if property%3 == 2 { // 对唱视图：右
+		return "v2"
+	}
+	return "v1"
 }
 
 func (p *lysParser) FindSidecar(audioPath string) string {
@@ -47,19 +66,19 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			continue
 		}
 
-		// Parse channel prefix [N] (e.g. [0], [2], [6]).
-		channelStr := strings.TrimPrefix(parts[0], "[")
+		// Parse the line property [N] (e.g. [0], [2], [6]).
+		propertyStr := strings.TrimPrefix(parts[0], "[")
 
 		body := parts[1]
 
-		// LYS headers are "[channel]"; "[ti:Title]" is not a channel, and
+		// LYS headers are "[property]"; "[ti:Title]" is not a property, and
 		// applying it as metadata is harmless when the file has none.
-		if key, val, hasField := lrcField(channelStr); hasField {
+		if key, val, hasField := lrcField(propertyStr); hasField {
 			if applyHeaderField(lyrics, key, val) {
 				continue
 			}
 		}
-		channel, _ := strconv.Atoi(channelStr)
+		property, _ := strconv.Atoi(propertyStr)
 
 		// LYS bodies are shaped like QRC's: text(startMs,durationMs), so they
 		// share qrcGroups. There is no duration in the header, so End comes
@@ -77,7 +96,7 @@ func (p *lysParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			Time:  shiftTime(scan.Start, delta),
 			Text:  scan.Text,
 			Words: shiftWords(scan.Words, delta),
-			Agent: channelToAgent[channel],
+			Agent: propertyToAgent(property),
 		}
 		// scan.End == 0 is the unbounded sentinel (no duration crossed
 		// lineStart), not a timestamp: shifting it by a non-zero delta would

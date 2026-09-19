@@ -1,6 +1,7 @@
 package lyrics
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -374,7 +375,9 @@ func TestLYS_CurrentLine(t *testing.T) {
 	}
 }
 
-// LYS multi-agent test data: channels 0,2,6,8 mapped to v1-v4
+// LYS test data covering the duet-view dimension: property 0 and 1 are the
+// default/left side, 2 is the right side, and 6/8 are the same two sides with
+// the background-vocal flag set.
 const testLYSMultiAgent = `[0]I(1000,500) (0,0)am(1500,300) (0,0)lead(1800,400)
 [2]I(1000,500) (0,0)am(1500,300) (0,0)duet(1800,400)
 [6]backing(2000,600) (0,0)vocals(2600,500)
@@ -385,7 +388,54 @@ func parseLYSMulti(s string) (*Data, error) {
 	return p.Parse(strings.NewReader(s), "")
 }
 
-func TestLYS_AgentAssignment(t *testing.T) {
+// TestLYS_PropertyAgentAssignment pins the Lyricify Syllable property table
+// (背景人声, 对唱视图):
+//
+//	0 = 未设置/未设置   1 = 未设置/左   2 = 未设置/右
+//	3 = 否/未设置       4 = 否/左       5 = 否/右
+//	6 = 是/未设置       7 = 是/左       8 = 是/右
+//
+// The view side is property%3 with 0=未设置, 1=左, 2=右, and only the view side
+// names a performer, so only it becomes an agent. The background-vocal flag is
+// a role, not an identity: reading it as "channel 6/8" invented the agents v3
+// and v4 for singers that do not exist.
+func TestLYS_PropertyAgentAssignment(t *testing.T) {
+	cases := []struct {
+		property int
+		want     string
+		meaning  string
+	}{
+		{0, "v1", "未设置/未设置"},
+		{1, "v1", "未设置/左"},
+		{2, "v2", "未设置/右"},
+		{3, "v1", "否/未设置"},
+		{4, "v1", "否/左"},
+		{5, "v2", "否/右"},
+		{6, "v1", "是/未设置"},
+		{7, "v1", "是/左"},
+		{8, "v2", "是/右"},
+	}
+	for _, tc := range cases {
+		t.Run(strconv.Itoa(tc.property), func(t *testing.T) {
+			src := "[" + strconv.Itoa(tc.property) + "]Hello(1000,500)\n"
+			d, err := parseLYS(src)
+			if err != nil {
+				t.Fatalf("Parse() error: %v", err)
+			}
+			if len(d.Lines) != 1 {
+				t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+			}
+			if got := d.Lines[0].Agent; got != tc.want {
+				t.Errorf("property %d (%s): Agent = %q, want %q", tc.property, tc.meaning, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestLYS_BackingVocalSharesTheDuetSide pins the concrete shift on the shared
+// fixture: properties 6 and 8 used to become the invented agents v3/v4, and now
+// join the duet side they belong to.
+func TestLYS_BackingVocalSharesTheDuetSide(t *testing.T) {
 	d, err := parseLYSMulti(testLYSMultiAgent)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
@@ -395,17 +445,11 @@ func TestLYS_AgentAssignment(t *testing.T) {
 		t.Fatalf("expected 4 lines, got %d", len(d.Lines))
 	}
 
-	if d.Lines[0].Agent != "v1" {
-		t.Errorf("line 0 (channel 0): Agent = %q, want v1", d.Lines[0].Agent)
-	}
-	if d.Lines[1].Agent != "v2" {
-		t.Errorf("line 1 (channel 2): Agent = %q, want v2", d.Lines[1].Agent)
-	}
-	if d.Lines[2].Agent != "v3" {
-		t.Errorf("line 2 (channel 6): Agent = %q, want v3", d.Lines[2].Agent)
-	}
-	if d.Lines[3].Agent != "v4" {
-		t.Errorf("line 3 (channel 8): Agent = %q, want v4", d.Lines[3].Agent)
+	want := []string{"v1", "v2", "v1", "v2"}
+	for i, w := range want {
+		if d.Lines[i].Agent != w {
+			t.Errorf("line %d: Agent = %q, want %q", i, d.Lines[i].Agent, w)
+		}
 	}
 }
 
@@ -482,8 +526,11 @@ func TestLYS_ActiveLinesFilter(t *testing.T) {
 	}
 }
 
-func TestLYS_NoAgentForUnknownChannel(t *testing.T) {
-	input := `[42]unknown(1000,500) (0,0)channel(1500,300)`
+// The spec's property domain is 0..8. A numeric property outside it is
+// malformed data whose meaning we cannot know, so the line gets no agent rather
+// than an invented side.
+func TestLYS_NoAgentForOutOfRangeProperty(t *testing.T) {
+	input := `[42]unknown(1000,500) (0,0)property(1500,300)`
 	d, err := parseLYS(input)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
