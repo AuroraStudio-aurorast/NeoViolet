@@ -46,7 +46,7 @@
 |--------|-------------|---------|
 | `lrc` | Standard Synced Lyrics File |  |
 | `srt` | SubRip Text | |
-| `ttml` | Timed Text Markup Language | EXPERIMENTAL |
+| `ttml` | Timed Text Markup Language (AMLL-flavored) | EXPERIMENTAL |
 | `yrc` | NetEase Cloud Music Word-for-Word Lyrics | EXPERIMENTAL |
 | `qrc` | QQ Music Word-for-Word Lyrics | EXPERIMENTAL |
 | `eslrc` | Enhanced Synced Lyrics File | EXPERIMENTAL |
