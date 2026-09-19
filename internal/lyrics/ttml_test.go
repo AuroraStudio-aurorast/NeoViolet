@@ -465,6 +465,86 @@ const testTTMLAgents = `<?xml version="1.0" encoding="UTF-8"?>
   </body>
 </tt>`
 
+// ttmlSpaceBareSample is the bare-text half of the whitespace-folding fixture
+// pair: a <p> with no timed <span>, carrying a U+3000 ideographic space and a run
+// of two ASCII spaces (spelled \u3000 and "  " so the escapes stay visible in
+// source).
+const ttmlSpaceBareSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>" +
+	"<p begin=\"0s\">A\u3000B  C</p>" +
+	"</div></body></tt>"
+
+// ttmlSpaceSpanSample is the timed-span half of the same pair: the whitespace
+// sits inside one <span>, so the line also has Words, which the folding has to
+// reach as well.
+const ttmlSpaceSpanSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>" +
+	"<p begin=\"0s\" end=\"1s\"><span begin=\"0s\" end=\"1s\">A\u3000B  C</span></p>" +
+	"</div></body></tt>"
+
+// TestTTML_SpaceFoldReachesWords pins where whitespace normalisation lands: the
+// library folds every whitespace run — including the U+3000 ideographic space —
+// to one half-width space, and the fold has to reach both the line's Text and its
+// Words. Both mapping paths are pinned because they are separate library code
+// paths (bare text node vs. timed span).
+//
+// The dangerous failure mode is not "Text keeps the U+3000" but "Text is folded
+// while Words keeps \u3000", which would silently misalign word highlighting, so
+// the span case checks word tiling too.
+func TestTTML_SpaceFoldReachesWords(t *testing.T) {
+	t.Run("bare-text", func(t *testing.T) {
+		assertSpaceFoldFixture(t, ttmlSpaceBareSample)
+		d, err := parseTTML(ttmlSpaceBareSample)
+		if err != nil {
+			t.Fatalf("Parse() error: %v", err)
+		}
+		if len(d.Lines) != 1 {
+			t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+		}
+		if got := d.Lines[0].Text; got != "A B C" {
+			t.Errorf("Text = %q, want %q (U+3000 and the doubled space fold to one space)", got, "A B C")
+		}
+	})
+
+	t.Run("timed-span", func(t *testing.T) {
+		assertSpaceFoldFixture(t, ttmlSpaceSpanSample)
+		d, err := parseTTML(ttmlSpaceSpanSample)
+		if err != nil {
+			t.Fatalf("Parse() error: %v", err)
+		}
+		if len(d.Lines) != 1 {
+			t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+		}
+		line := d.Lines[0]
+		if got := line.Text; got != "A B C" {
+			t.Errorf("Text = %q, want %q (U+3000 and the doubled space fold to one space)", got, "A B C")
+		}
+		if len(line.Words) != 1 {
+			t.Fatalf("len(Words) = %d, want 1 (the single timed span)", len(line.Words))
+		}
+		if got := line.Words[0].Text; got != "A B C" {
+			t.Errorf("Words[0].Text = %q, want %q (the fold must reach Words too)", got, "A B C")
+		}
+		if !wordsTile(line, false) {
+			t.Errorf("Words %q do not tile Text %q", joinWordText(line.Words), line.Text)
+		}
+	})
+}
+
+// assertSpaceFoldFixture guards the discriminating power of the test above: its
+// Text == "A B C" assertion holds only because the fixture really carries a U+3000
+// and a doubled ASCII space for the library to fold. Swap either for a single
+// plain space and the pin stays green while proving nothing. The neighbouring
+// letters are part of the anchors on purpose — a bare strings.Contains(src, "  ")
+// would be trivially true on the XML attributes and indentation.
+func assertSpaceFoldFixture(t *testing.T, src string) {
+	t.Helper()
+	if !strings.Contains(src, "A\u3000B") {
+		t.Fatal("fixture no longer carries U+3000; this pin would silently prove nothing")
+	}
+	if !strings.Contains(src, "B  C") {
+		t.Fatal("fixture no longer carries a doubled space; this pin would silently prove nothing")
+	}
+}
+
 func TestTTML_FullIntegration(t *testing.T) {
 	d, err := parseTTML(testTTMLAgents)
 	if err != nil {
