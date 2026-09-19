@@ -236,7 +236,7 @@ SOFTWARE.
 
 ### github.com/gotracker/playback
 
-Licensed under `MIT License`
+Licensed under **MIT License**
 
 ~~~
 The MIT License (MIT)

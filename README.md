@@ -50,7 +50,7 @@
 | `yrc` | NetEase Cloud Music Word-for-Word Lyrics | EXPERIMENTAL |
 | `qrc` | QQ Music Word-for-Word Lyrics | EXPERIMENTAL |
 | `eslrc` | Enhanced Synced Lyrics File | EXPERIMENTAL |
-| `lys` | LYS Lyrics File | EXPERIMENTAL |
+| `lys` | Lyricify Syllable File | EXPERIMENTAL |
 | `smi` | Synchronized Accessible Media Interchange | EXPERIMENTAL |
 
 ## OS Integration
@@ -67,7 +67,7 @@
 
 > [!TIP]
 > **Modern terminal emulators like Windows Terminal, Konsole, iTerm2 or Ghostty is recommended!**
-> Issues may occurred when using this program on outdated terminal emulators like xterm.
+> Issues may occurred when using this program on outdated terminal emulators like legacy xterm.
 
 #### *nix:
 

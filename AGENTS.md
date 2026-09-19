@@ -1,104 +1,97 @@
 # AGENTS.md
 
-## Principle
+For AI agents. Read [Keeping this file honest](#keeping-this-file-honest) before editing it.
 
-- **Think before coding**: List interpretations, propose simpler alternatives, ask if unsure.
-- **Simplicity first**: Minimum code, no extras/abstractions unless requested.
-- **Surgical changes**: Edit only what's needed, don't refactor what isn't broken, match existing style.
-- **Goal-driven**: Task → testable goal → plan → verify checkpoints → iterate until pass.
+## Working agreement
 
-## Build & Test
+- **Think before coding** — state your interpretations and simpler alternatives; ask if unsure.
+- **Simplicity first** — minimum code, no extras or abstractions unless requested.
+- **Surgical changes** — edit only what's needed, match existing style, don't refactor working code.
+- **Goal-driven** — task → testable goal → plan → verify checkpoints → iterate until pass.
+- **No unsolicited commits** — leave changes in the working tree.
+- **Keep working documents out of the repo, and never reference them from it.** Specs, plans
+  and other engineering docs you produce are committed only if explicitly asked. Nothing
+  tracked may refer to an untracked document in any form — not code comments, tracked docs,
+  commit messages or PR descriptions.
 
-All operations go through `make` — never call `go build`/`go test`/`cargo build` directly:
+## Hard constraints
 
-```bash
-make build               # Go TUI + apecli + neoviolet-gui (auto-detects libopenmpt)
-make build/race          # Race detector
-make build/debug         # Debug symbols (dlv-compatible)
-make build/noopenmpt     # Without libopenmpt support
+- **`make` only** — never run `go build`/`go test`/`cargo build`/`cargo test` directly; you lose
+  the build tags, `-ldflags` and test flags the Makefile adds.
+- **CGo is required** — check `CGO_ENABLED=1` and a working `CC` before blaming a link error on source.
+- **`make test` is not a Rust build** — it only runs `cargo test`; the release binaries the app
+  spawns need `make apetools` / `make gui`.
+- **Rust is optional at runtime** — `apecli` comes from PATH or beside the binary (ffmpeg/macOS
+  fallback), the GUI is an optional wrapper. No cargo → `make build` warns and continues, by design.
+- **Never commit build artifacts or local state** — root binaries, `coverage.*`, `config.json`,
+  `history.txt`, `caches/`.
 
-make gui                 # Release (LTO) → ./neoviolet-gui
-make gui/debug           # Debug build
-make run/gui ARGS=...    # Build GUI + launch
-make build/osxappbundle  # macOS .app bundle (macOS only)
+## License boundary — GPL must not reach the MIT side
 
-make apetools            # cargo build --release in tools/apecli/
-make apetools/debug      # cargo build (debug)
-
-make run ARGS="<file>"   # Build TUI + run
-make install             # → $GOPATH/bin
-
-make test                # All tests
-make test/verbose        # -v
-make test/race           # Race detector
-make test/cover          # → coverage.html
-make test/short          # Skip integration tests
-
-make vet                 # go vet
-make lint                # golangci-lint (falls back to go vet)
-make tidy                # go mod tidy
-make clean               # Go + Rust artifacts
-```
-
-### Prerequisites
-
-- **Go 1.26+** — [Download](https://go.dev/dl/). Windows: use MSYS2.
-- **Rust + cargo** — builds `apecli` and `neoviolet-gui`. Missing → warns + exits cleanly. Install via [rustup](https://rustup.rs/).
-- **C compiler** — CGo links C libs. `CGO_ENABLED=1`; `CC=clang` recommended.
-- **`make`**, **`pkg-config`**
-- **`libopenmpt`** (optional) — tracker playback (`.mptm`). Most formats work via `gotracker/playback`.
-- **Linux GUI**: `libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev` (see [`docs/BUILD.md#gui-prerequisites`](docs/BUILD.md#gui-prerequisites)).
-- **macOS GUI**: no extra deps; Makefile uses `runtime_shaders` to skip Metal Toolchain.
-
-**For AI agents:** Always verify `CGO_ENABLED=1` and `CC`. `make test` does NOT rebuild Rust — run `make apetools`/`make gui` first after Rust changes.
-
----
-
-## Architecture
-
-```
-cmd/neoviolet/              # Go entry → TUI (Bubble Tea, Elm architecture)
-internal/
-  audio/format/             # Format decoders (registerFormat + register*Probe in init)
-  audio/synth/              # MIDI SoundFont synthesis
-  config/ cover/ lyrics/    # Config, album art, pluggable lyric parsers (RegisterParser)
-  ui/                       # model/view/update, keyboard, audio_state
-  mediactl/                 # OS media control (per-OS build tags)
-  accent/ logger/
-
-tools/neoviolet-gui/        # Native GUI (Rust, gpui-ce + yororen-ui)
-  src/
-    main.rs neo_violet_app.rs  # Entry, app shell, IPC dispatch
-    app.rs backend.rs           # PTY terminal + neoviolet child process
-    ipc.rs state.rs config.rs   # TCP IPC, shared state, GuiConfig
-    menus.rs desktop_lyrics.rs  # Actions, keybindings, lyrics overlay
-    components/ terminal/       # Dialogs, alacritty_terminal rendering
-    platform.rs dracula_theme.rs util.rs
-
-tools/apecli/               # APE decoder (Rust, stdin→PCM stdout)
-```
-
-**GUI ↔ TUI:** GUI spawns `neoviolet` in a PTY. Two channels: PTY for terminal I/O, TCP IPC (temp-file address + token auth) for structured control. GUI is optional — TUI runs standalone.
-
----
-
-## Common Tasks
-
-### TUI (Go)
-
-| Task | Where |
+| Path | License |
 |---|---|
-| Add lyrics format | New file in `internal/lyrics/`, `LyricParser` + `RegisterParser()` in `init()` |
-| Add audio format | New file in `internal/audio/format/`, `registerFormat()` + appropriate `register*Probe()` in `init()` |
-| Change shortcuts | `KeyMap` in `internal/ui/types.go` + handler in `internal/ui/update_keyboard.go` |
-| Tweak UI | Lipgloss styles in `internal/ui/view.go` and `internal/ui/types.go` |
+| root, `cmd/`, `internal/` (TUI) | MIT |
+| `tools/apecli/` | MIT |
+| `tools/neoviolet-gui/` (GUI) | GPL-3.0-or-later |
 
-### GUI (Rust)
+Copyleft must never flow into the MIT side: don't copy code, types, strings or comments out of the
+GUI; don't link, embed, vendor or share sources across them; don't add copyleft dependencies to the
+MIT side. MIT → GUI is compatible. Keep them **separate programs** — the PTY + IPC split is the
+license boundary, so never merge them into one binary. Leave the license fields and the
+per-component `LICENSE` files alone; the app bundle ships both.
 
-| Task | Where |
-|---|---|
-| Add menu action / keybinding | `menus.rs`: define action → `setup()` → handle in `neo_violet_app.rs` |
-| Add IPC message | `ipc.rs`: add variant → dispatch in `neo_violet_app.rs` → send from Go `internal/ui/` |
-| Add dialog | `components/dialogs.rs`: render fn → trigger via `AppState` flag |
-| Change theme / font | `dracula_theme.rs` / `platform.rs` + `config.rs` |
-| Tweak desktop lyrics | `desktop_lyrics.rs` |
+## Quality gates
+
+`make check` is the local aggregate; CI runs the same gates individually
+(`.github/workflows/build.yml`, which also pins Go/Rust/linter versions). Thresholds live with
+their gate, not here: `make lint` (`.golangci.yml`), `make lint/rust` (clippy `-D warnings`),
+`make test` / `test/race` (`TEST_FLAGS`), `make test/coverage` (`COVERAGE_MIN`),
+`make check/linelength`, `make tidy/check`, `make vet`.
+
+## Architecture invariants
+
+```
+neoviolet (Go)        TUI — Bubble Tea, Elm-style model/view/update
+neoviolet-gui (Rust)  optional native wrapper (gpui-ce + yororen-ui)
+apecli (Rust)         optional APE decoder subprocess, stdin → PCM stdout
+```
+
+- The GUI holds no playback state: it spawns `neoviolet` in a PTY and drives it over TCP IPC
+  (loopback, random port + token in a temp file). **The TUI must run standalone** — anything that
+  works only with the GUI attached is a bug.
+- IPC message types live in the `internal/ipc` package comment, the contract both sides are
+  written against. Add the variant there first.
+- OS integration sits behind per-OS build tags or platform modules; don't branch on
+  `runtime.GOOS` in shared code.
+
+### Extension points
+
+Register in `init()` beside the existing entries:
+
+| Concern | Mechanism | Check the current set |
+|---|---|---|
+| Audio format | `registerFormat` + `register*Probe`, `internal/audio/format` | `grep -rn 'registerFormat(' internal/audio` |
+| Lyrics format | `LyricParser` + `RegisterParser`, `internal/lyrics` | `grep -rn 'RegisterParser(' internal/lyrics` |
+| Lyric source | `internal/lyrics/fetch` (client, matching, cache, rate limit) | package comment |
+| Keybinding | `KeyMap` + a handler beside the others, `internal/ui` | `grep -rn 'KeyMap' internal/ui` |
+| TUI styling | Lipgloss styles beside the views, `internal/ui` | `grep -rn 'lipgloss.Style' internal/ui` |
+| GUI menu action | action in `menus.rs` → `setup()` → handled in `neo_violet_app.rs` | read `menus.rs` |
+| GUI dialog / theme | `AppState` flag + dialogs module; theme module + `GuiConfig` | module docs |
+
+## Working in this repo
+
+- **Discovery beats memory**: `make help` (targets), `go list ./...` (packages), `docs/BUILD.md`
+  (prereqs, platforms, troubleshooting), `docs/ACKNOWLEDGEMENTS.md` (third-party code, assets,
+  dependency licenses), `go doc ./internal/<pkg>` (subsystem intent).
+- **Loop**: register beside the existing entries, keep the logic in its own file next to its
+  peers, test in the same package, iterate with `make test/short`, finish with `make check`. If
+  your change falsifies anything here — including the license table — fix it in the same change.
+
+## Keeping this file honest
+
+- Write invariants, contracts and workflows — things that hold as files move.
+- Don't add directory trees, per-file inventories, version or threshold numbers, or the full
+  `make` target list; each has a live home (`go list`, `.github/workflows/build.yml`, `Makefile`,
+  `make help`). Copying them here is how this file rots.
+- Don't restate what the code documents; point at the package. When a statement stops being true,
+  fix or delete it — never append a correction.
