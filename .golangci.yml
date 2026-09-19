@@ -19,3 +19,16 @@ linters:
         - fmt.Println
   exclusions:
     generated: lax
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      # The formatter defaults to `gofmt -s`, which rewrites composite
+      # literals and slice expressions. That is a code change, not a layout
+      # one, and it does not match what `gofmt -w` or an editor's
+      # format-on-save produces, so the gate would reject code a contributor
+      # had just formatted the standard way. Keep it to plain gofmt.
+      simplify: false
+  exclusions:
+    generated: lax
