@@ -171,14 +171,14 @@ func TestLYS_OffsetShiftsLinesAfterIt(t *testing.T) {
 	if len(d.Lines) != 2 {
 		t.Fatalf("len(Lines) = %d, want 2", len(d.Lines))
 	}
-	// [offset:] 之前的行不受影响。
+	// Lines before [offset:] are unaffected.
 	if d.Lines[0].Time != 1000*time.Millisecond || d.Lines[0].End != 1500*time.Millisecond {
 		t.Errorf("Lines[0] = [%v, %v), want [1000ms, 1500ms)", d.Lines[0].Time, d.Lines[0].End)
 	}
 	if len(d.Lines[0].Words) != 1 || d.Lines[0].Words[0].Time != 1000*time.Millisecond {
 		t.Errorf("Lines[0].Words = %+v, want single @1000ms", d.Lines[0].Words)
 	}
-	// [offset:] 之后的行 Time/End/Words[0].Time 全部 +250ms。
+	// Lines after [offset:] shift Time/End/Words[0].Time by +250ms.
 	if d.Lines[1].Time != 3250*time.Millisecond || d.Lines[1].End != 3750*time.Millisecond {
 		t.Errorf("Lines[1] = [%v, %v), want [3250ms, 3750ms)", d.Lines[1].Time, d.Lines[1].End)
 	}

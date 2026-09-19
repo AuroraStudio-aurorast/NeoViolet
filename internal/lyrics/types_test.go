@@ -41,8 +41,9 @@ func TestLyricLine_PartAccessors_MergedLine(t *testing.T) {
 }
 
 func TestActiveLines_UnboundedAfterBoundedIsReachable(t *testing.T) {
-	// 文件里既有有界行（A/B）又有无界末行（C）。旧的全局开关只看"有没有
-	// 任何一行有界"，于是 C 永远进不了候选。
+	// The file has both bounded lines (A/B) and an unbounded last line (C). A
+	// single global "does any line carry an end" switch would keep C out of the
+	// candidate set forever, so the rule has to be decided per line.
 	d := &Data{Lines: []LyricLine{
 		{Time: 1 * time.Second, End: 2 * time.Second, Text: "A"},
 		{Time: 1 * time.Second, End: 2 * time.Second, Text: "B"},
@@ -77,8 +78,9 @@ func TestActiveLines_UnboundedAfterBoundedIsReachable(t *testing.T) {
 }
 
 func TestActiveLines_SameTimeSiblingsDoNotCutEachOtherOff(t *testing.T) {
-	// 同一 Time 的兄弟行（SMI 一个 SYNC 下的双语 <P>）必须同时 active，
-	// 因此无界行的右边界取"下一个 Time **更大**的行"，而不是"下一行"。
+	// Sibling lines at the same Time (the two languages of one SMI <SYNC> <P>)
+	// must be active together, so an unbounded line's right edge is the next line
+	// with a **greater** Time, not simply the next line.
 	d := &Data{Lines: []LyricLine{
 		{Time: 1 * time.Second, Text: "v1"},
 		{Time: 1 * time.Second, Text: "v2"},
@@ -96,8 +98,9 @@ func TestActiveLines_SameTimeSiblingsDoNotCutEachOtherOff(t *testing.T) {
 }
 
 func TestActiveLines_RegressionUnboundedFilesAndBoundedGaps(t *testing.T) {
-	// 两条无回归断言：全无界文件仍恰好一行（LRC 行为逐字节不变），
-	// 全有界文件的句间留白仍然是留白（TTML 不会被"粘住上一句"）。
+	// Two regression pins: an all-unbounded file still yields exactly one line
+	// (LRC behaviour, unchanged), and an all-bounded file keeps its inter-line
+	// gaps as gaps (a TTML line is not "stuck" to the previous one).
 	allUnbounded := &Data{Lines: []LyricLine{
 		{Time: 0, Text: "one"},
 		{Time: 5 * time.Second, Text: "two"},
@@ -129,7 +132,7 @@ func TestActiveLines_ZeroLengthLineIsReachable(t *testing.T) {
 	// the test pins ActiveLines alone, not any parser's output.
 	const text = "啊"
 
-	// ① A lone zero-length line is reachable at its own Time and, being last,
+	// 1. A lone zero-length line is reachable at its own Time and, being last,
 	// is never closed.
 	lone := &Data{Lines: []LyricLine{{Time: 10 * time.Second, End: 10 * time.Second, Text: text}}}
 	if got := lone.ActiveLines(10 * time.Second); len(got) != 1 || got[0].Text != text {
@@ -142,7 +145,7 @@ func TestActiveLines_ZeroLengthLineIsReachable(t *testing.T) {
 		t.Errorf("ActiveLines(9.999s) = %v, want nil (before its Time)", got)
 	}
 
-	// ② With a later line it has the unbounded semantics: the next greater Time
+	// 2. With a later line it has the unbounded semantics: the next greater Time
 	// closes its window, so it must not stick.
 	withNext := &Data{Lines: []LyricLine{
 		{Time: 10 * time.Second, End: 10 * time.Second, Text: text},
@@ -155,7 +158,7 @@ func TestActiveLines_ZeroLengthLineIsReachable(t *testing.T) {
 		t.Errorf("ActiveLines(20s) = %v, want only the next line", got)
 	}
 
-	// ③ Regression: a genuinely bounded line keeps its strict window, and an
+	// 3. Regression: a genuinely bounded line keeps its strict window, and an
 	// End == 0 line keeps the plain unbounded rule.
 	bounded := &Data{Lines: []LyricLine{
 		{Time: 1 * time.Second, End: 2 * time.Second, Text: "bounded"},

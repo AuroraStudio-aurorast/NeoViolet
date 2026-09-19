@@ -62,7 +62,7 @@ func TestQRC_HeaderMetadata(t *testing.T) {
 }
 
 func TestQRC_TimestampHeaderIsNotMetadata(t *testing.T) {
-	// "[1000,2000]" 有逗号没有冒号，绝不能走进元数据分支。
+	// "[1000,2000]" has a comma but no colon, so it must never reach the metadata branch.
 	const src = "[1000,2000]Hello(1000,500)\n"
 	var p qrcParser
 	d, err := p.Parse(strings.NewReader(src), "")
@@ -78,8 +78,9 @@ func TestQRC_TimestampHeaderIsNotMetadata(t *testing.T) {
 }
 
 func TestQRC_OffsetAfterLyricLineAppliesToEarlierLine(t *testing.T) {
-	// 两趟扫描的有意差异：pass 1 先读完所有元数据头，所以 [offset:] 即使出现在
-	// 歌词行之后，也照样作用于该行（LRC 的语义是只作用于其后）。
+	// The deliberate difference between the two passes: pass 1 reads every metadata
+	// header before the lyric lines, so an [offset:] applies to a line even when it
+	// stands after that line (LRC's semantics apply it only to what follows).
 	const src = "[1000,2000]Hello(1000,500)\n[offset:250]\n"
 	var p qrcParser
 	d, err := p.Parse(strings.NewReader(src), "")
@@ -98,7 +99,8 @@ func TestQRC_OffsetAfterLyricLineAppliesToEarlierLine(t *testing.T) {
 }
 
 func TestQRC_SkipsGarbageAndEmptyBodyLines(t *testing.T) {
-	// 覆盖骨架的跳过路径：无 '['、无 ']'、行头非整数、body 为空。
+	// Covers the skeleton's skip paths: no '[', no ']', a non-integer line header,
+	// and an empty body.
 	const src = "no bracket here\n" +
 		"[1000,2000\n" +
 		"[2000,1000]\n" +
@@ -118,7 +120,8 @@ func TestQRC_SkipsGarbageAndEmptyBodyLines(t *testing.T) {
 }
 
 func TestQRC_CRLFLinesKeepTextAndWordsClean(t *testing.T) {
-	// CRLF 文件的行尾 \r 绝不能进入 Text/Words（C2 与 C6 的本地形式）。
+	// A CRLF file's trailing \r must never reach Text/Words (the local form of C2 and
+	// C6).
 	const src = "[1000,2000]Hello(1000,500)\r\n[3000,2000]Bye(3000,500)\r\n"
 	var p qrcParser
 	d, err := p.Parse(strings.NewReader(src), "")

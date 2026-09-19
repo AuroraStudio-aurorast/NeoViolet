@@ -282,7 +282,7 @@ func TestScanWordTimed(t *testing.T) {
 			if len(got.Words) > 0 && got.Start != got.Words[0].Time {
 				t.Errorf("Start = %v, want Words[0].Time = %v", got.Start, got.Words[0].Time)
 			}
-			// C6 的本地形式：Words 必须铺满 Text。
+			// The local form of C6: Words must tile Text.
 			var sb strings.Builder
 			for _, w := range got.Words {
 				sb.WriteString(w.Text)

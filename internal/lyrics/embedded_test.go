@@ -71,7 +71,7 @@ func TestParseSYLT_BlankOnlyTextIsDropped(t *testing.T) {
 }
 
 func TestParseSYLT_PartsCarryNoNewline(t *testing.T) {
-	// C2 的本地形式。
+	// The local form of C2.
 	d := parseSYLT(syltBody(syltEntry{"a\nb\nc", 1000}))
 	if d == nil {
 		t.Fatal("parseSYLT returned nil")
@@ -88,7 +88,8 @@ func TestParseSYLT_PartsCarryNoNewline(t *testing.T) {
 }
 
 func TestParseSYLT_CRLFTextBecomesParts(t *testing.T) {
-	// Windows 打的标签给出 "\r\n"；切分按 "\n" 做，段尾的 "\r" 靠 TrimSpace 清掉。
+	// A Windows-written tag yields "\r\n"; the split is on "\n", and a segment's
+	// trailing "\r" is removed by TrimSpace.
 	d := parseSYLT(syltBody(syltEntry{"a\r\nb", 1000}))
 	if d == nil {
 		t.Fatal("parseSYLT returned nil")
@@ -114,7 +115,8 @@ func TestParseSYLT_CRLFTextBecomesParts(t *testing.T) {
 }
 
 func TestParseSYLT_EmptySegmentsAreDropped(t *testing.T) {
-	// 空段与纯空白段都不进 Parts（否则会有空显示行）。
+	// Neither empty nor whitespace-only segments reach Parts, which would otherwise
+	// produce a blank display row.
 	d := parseSYLT(syltBody(syltEntry{"a\n\n  \nb", 1000}))
 	if d == nil {
 		t.Fatal("parseSYLT returned nil")
@@ -129,7 +131,8 @@ func TestParseSYLT_EmptySegmentsAreDropped(t *testing.T) {
 }
 
 func TestParseSYLT_AllBlankTextsYieldNil(t *testing.T) {
-	// 全部条目都只剩空白时不留空 Data：nil 让 embeddedParser 接着试下一个 tag。
+	// When every entry reduces to whitespace no empty Data is left behind: nil lets
+	// embeddedParser move on to the next tag.
 	if d := parseSYLT(syltBody(syltEntry{"\n", 1000}, syltEntry{"  \r\n", 2000})); d != nil {
 		t.Fatalf("parseSYLT(blank entries) = %+v, want nil", d)
 	}

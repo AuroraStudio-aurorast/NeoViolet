@@ -29,7 +29,8 @@ func TestYRC_HeaderDurationAndMetadata(t *testing.T) {
 }
 
 func TestYRC_CRLFLineKeepsTextAndWordsClean(t *testing.T) {
-	// CRLF 文件的行尾 \r 绝不能进入 Text/Words（C2 与 C6 的本地形式）。
+	// A CRLF file's trailing \r must never reach Text/Words (the local form of
+	// C2 and C6).
 	const src = "[1000,2000](1000,500,0)Hello\r\n"
 	var p yrcParser
 	d, err := p.Parse(strings.NewReader(src), "")

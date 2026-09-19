@@ -2,13 +2,16 @@ package lyrics
 
 import "testing"
 
-// contractCases 是每个已注册解析器的一份代表性样例。加一个格式就必须加一条：
-// TestFormatContract 会断言 AvailableParsers() 里的每个名字都在这里。
+// contractCases holds one representative sample per registered parser. Adding a
+// format means adding an entry: TestFormatContract asserts that every name in
+// AvailableParsers() appears here.
 //
-// embedded 的样例直接驱动 parseSYLT 而不是 embeddedParser.Parse：后者需要一个
-// 真正的音频容器（io.ReadSeeker + tag.ReadFrom），内联字节串喂不进去。SYLT 正是
-// embedded 唯一产出多显示行的路径（纯文本按 \n 拆成独立行，LRC 走 lrcParser），
-// 容器级行为由 embedded_test.go 的真实 fixture 覆盖。
+// embedded's sample drives parseSYLT directly instead of embeddedParser.Parse:
+// the latter needs a real audio container (io.ReadSeeker + tag.ReadFrom), which
+// an inline byte string cannot provide. SYLT is the only path by which embedded
+// produces multiple display lines (plain text splits on \n into separate lines,
+// and LRC goes through lrcParser); container-level behaviour is covered by the
+// real fixture in embedded_test.go.
 var contractCases = map[string]contractCase{
 	"embedded": {
 		parse: func(t *testing.T) *Data {
@@ -34,9 +37,11 @@ var contractCases = map[string]contractCase{
 	},
 	"lys": {
 		parse: viaParser("lys", lysContractSample),
-		// requireEnd 保持 false：End 由末词推出，词时缺失时退化为无界属可接受降级。
-		// 样例的 End > 0 由 format_test.go 的 TestLYS_EndIsLastWordEnd 专门断言，
-		// 避免这条 false 变成永远绿灯。
+		// requireEnd stays false: End is derived from the last word, so falling
+		// back to unbounded when word times are missing is an acceptable
+		// degradation. The sample's End > 0 is asserted specifically by
+		// TestLYS_EndIsLastWordEnd in format_test.go, so this false cannot turn
+		// into a permanent green light.
 	},
 	"qrc": {
 		parse:  viaParser("qrc", qrcContractSample),
@@ -69,21 +74,24 @@ const (
 	qrcContractSample = "[ti:Contract]\n[ar:Tester]\n[offset:250]\n" +
 		"[1000,2000]Hello(1000,500) (1500,500)world\n" +
 		"[3000,2000]Bye(3000,500)\n" +
-		// 平台的真实形状：词间空格写成退化的 (0,0) filler 元组，本身不带时间。
+		// The platform's real shape: the space between words is written as a
+		// degenerate (0,0) filler tuple that carries no time itself.
 		"[5000,2000]I(5000,200) (0,0)could(5200,300) (0,0)not(5500,300)\n"
 
 	yrcContractSample = "[ti:Contract]\n[ar:Tester]\n[offset:250]\n" +
 		"[1000,2000](1000,500,0)Hello(1500,500,0) world\n" +
 		"[3000,2000](3000,500,0)Bye\n" +
-		// 同一个 filler 形状，元组在文本之前。
+		// The same filler shape, with the tuples before the text.
 		"[5000,2000](5000,200,0)I(0,0,0) (5200,300,0)could(0,0,0) (5500,300,0)not\n"
 
-	// LYS 的行头是 [channel]，body 与 QRC 同形（文本在时间戳之前）。
+	// LYS line headers are [channel], and the body has the same shape as QRC's
+	// (text before the timestamps).
 	lysContractSample = "[0]Hello(1000,500) (1500,500)world\n" +
 		"[2]Duet(3000,500)\n" +
 		"[0]I(5000,200) (0,0)could(5200,300) (0,0)not(5500,300)\n"
 
-	// 一个 SYNC 下两个 <P Class=...> 是 B 类（两个 LyricLine），<br> 是 A 类（Parts）。
+	// Two <P Class=...> under one SYNC is the B shape (two LyricLines); <br> is the
+	// A shape (Parts).
 	smiContractSample = "<SMI><BODY>" +
 		"<SYNC Start=1000><P Class=KRCC>first<br>second" +
 		"<P Class=ENCC>uno<br>dos" +
@@ -98,7 +106,9 @@ const (
 		"bye\n"
 )
 
-// eslrcContractSample = 元数据头 + 规范逐字样例（format_test.go:200 的 testESLRC）。
-// 头只加 [ti:]/[ar:] 不加 [offset:]：offset 的精确语义由 format_test.go 的单测
-// 覆盖，这里保持时刻不变以便与 testESLRC 的既有断言共用一份数据。
+// eslrcContractSample = metadata header + the spec word-by-word sample (testESLRC
+// in format_test.go:200). The header adds only [ti:]/[ar:] and no [offset:]: the
+// exact semantics of offset are covered by the unit tests in format_test.go, so
+// keeping the timings unchanged here lets this share one data set with testESLRC's
+// existing assertions.
 const eslrcContractSample = "[ti:Contract]\n[ar:Tester]\n" + testESLRC

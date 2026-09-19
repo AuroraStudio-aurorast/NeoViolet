@@ -846,8 +846,10 @@ mod tests {
 
     #[test]
     fn find_active_lines_smi_shape_reaches_the_unbounded_last_line() {
-        // 3 行有界 + 末行 end == 0（SMI 的形状）。旧的 any_bounded
-        // 全局开关让末行永远进不了候选，桌面歌词因此空白。
+        // Three bounded lines plus a last line with end == 0 (the shape SMI
+        // produces). A global "any bounded line exists" switch would keep the
+        // last line out of the candidate set forever, leaving the desktop
+        // lyrics blank.
         let mut lines: Vec<LyricLineData> = (0..3)
             .map(|i| line(i as f64, i as f64 + 1.0, &format!("bounded{i}")))
             .collect();
@@ -859,14 +861,16 @@ mod tests {
         let at_last = texts(&find_active_lines(&lines, 3.0));
         assert_eq!(at_last, vec!["last"]);
 
-        // 末行之后也不过期。
+        // The last line does not expire after it ends either.
         assert_eq!(texts(&find_active_lines(&lines, 60.0)), vec!["last"]);
     }
 
     #[test]
     fn find_active_lines_same_time_siblings_both_return() {
-        // 同一 time 的无界兄弟（SMI 一个 SYNC 下的双语 <P>）必须同时 active，
-        // 因此无界行的右边界取“下一个 time **更大**的行”，而不是“下一行”。
+        // Unbounded siblings at the same time (the two languages of one SMI
+        // <P> under a single SYNC) must both be active, so an unbounded
+        // line's right edge is the next line with a **greater** time, not
+        // simply the next line.
         let lines = vec![
             line(1.0, 0.0, "v1"),
             line(1.0, 0.0, "v2"),
@@ -879,7 +883,8 @@ mod tests {
 
     #[test]
     fn find_active_lines_bounded_siblings_also_both_return() {
-        // 有界路径下的同 time 不互相截断（回归钉，旧实现即绿）。
+        // On the bounded path, same-time lines do not truncate each other
+        // (pinned so a shared-edge truncation rule cannot come back).
         let lines = vec![line(1.0, 2.0, "b1"), line(1.0, 2.0, "b2")];
         assert_eq!(texts(&find_active_lines(&lines, 1.0)), vec!["b1", "b2"]);
         assert_eq!(texts(&find_active_lines(&lines, 1.5)), vec!["b1", "b2"]);
@@ -888,7 +893,8 @@ mod tests {
 
     #[test]
     fn find_active_lines_all_unbounded_keeps_a_single_line() {
-        // 无回归：全 end == 0 的文件（今天的 LRC 形状）行为不变。
+        // No regression: a file with end == 0 throughout (the shape LRC
+        // produces) behaves unchanged.
         let lines = vec![
             line(0.0, 0.0, "one"),
             line(5.0, 0.0, "two"),
@@ -900,17 +906,17 @@ mod tests {
 
     #[test]
     fn find_active_lines_bounded_gap_stays_empty() {
-        // 无回归：全有界文件的句间留白仍然是留白。
+        // No regression: gaps between lines in an all-bounded file stay gaps.
         let lines = vec![line(0.0, 1.0, "first"), line(3.0, 4.0, "second")];
         assert_eq!(texts(&find_active_lines(&lines, 2.0)), Vec::<String>::new());
         assert_eq!(texts(&find_active_lines(&lines, 3.5)), vec!["second"]);
     }
 
     /// Mirrors Go's `TestActiveLines_ZeroLengthLineIsReachable`: a line whose
-    /// `end == time` carries no usable duration. Under the old "bounded when
-    /// `end > 0`" rule its window was empty, so it was unreachable forever (the
-    /// corpus hit: an AMLL TTML `<p>` with `begin == end`). `end <= time` is now
-    /// unbounded: reachable from `time` until the next greater `time`.
+    /// `end == time` carries no usable duration (the corpus hit: an AMLL TTML
+    /// `<p>` with `begin == end`). Treating `end <= time` as unbounded keeps it
+    /// reachable from `time` until the next greater `time`; treating it as
+    /// bounded would give it an empty window and make it unreachable forever.
     #[test]
     fn find_active_lines_zero_length_line_is_reachable() {
         let with_next = vec![line(10.0, 10.0, "啊"), line(20.0, 0.0, "next")];
@@ -918,7 +924,8 @@ mod tests {
         assert_eq!(texts(&find_active_lines(&with_next, 10.5)), vec!["啊"]);
         assert_eq!(texts(&find_active_lines(&with_next, 20.0)), vec!["next"]);
 
-        // 末行零长线不过期（无界语义），且它之前不可达。
+        // A zero-length last line does not expire (unbounded semantics), and
+        // it is unreachable before its own start.
         let lone = vec![line(10.0, 10.0, "啊")];
         assert_eq!(
             texts(&find_active_lines(&lone, 9.999)),

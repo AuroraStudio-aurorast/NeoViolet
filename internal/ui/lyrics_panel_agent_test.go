@@ -128,7 +128,8 @@ func TestPanelWindow_AgentlessLineDoesNotRelabel(t *testing.T) {
 }
 
 // The label belongs to the line, not to each of its display parts: a bilingual
-// line must not repeat it on the translation row (TTML Parts = [原文, 背景, 译文]).
+// line must not repeat it on the translation row (TTML Parts = [original,
+// background, translation]).
 func TestPanelWindow_MergedPartsLabelFirstPartOnly(t *testing.T) {
 	m := panelModel(t, 0)
 	m.Audio.Lyrics = &lyrics.Data{

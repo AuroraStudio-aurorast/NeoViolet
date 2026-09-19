@@ -9,16 +9,20 @@ import (
 	"time"
 )
 
-// contractCase 是一个格式的契约样例。
+// contractCase is one format's contract sample.
 //
-// pending 非空表示整条 case 挂起（不参与红绿），用于"已勘定但本轮搁置"的格式。
-// 它是显式记账：TestFormatContract 的完备性断言仍然要求该条目存在，所以搁置是
-// 记在账上的洞，不是静默跳过。当前没有任何格式挂起（TTML 在任务 4 已激活），
-// 字段保留是因为 TestFormatContract 与 TestFormatContractGaps 都读它。
+// A non-empty pending suspends the whole case (it takes no part in red/green),
+// for a format that has been scoped but is shelved this round. It is explicit
+// bookkeeping: TestFormatContract's completeness assertion still requires the
+// entry to exist, so a shelved format is a hole on the books rather than a
+// silent skip. No format is pending today; the field stays because both
+// TestFormatContract and TestFormatContractGaps read it.
 //
-// known 列出该格式**当前已知未满足**的不变量/声明（值给出原因）：只有列出来的
-// 才被跳过，未列出的必须为绿。与 pending 的区别只是粒度——它让"部分迁移"的格式
-// 不必整条被无视。
+// known lists the invariants/declarations this format is **currently known not
+// to satisfy** (the value gives the reason): only the listed ones are skipped,
+// everything else must be green. The difference from pending is only
+// granularity - it lets a partially migrated format avoid being written off
+// whole.
 type contractCase struct {
 	parse   func(t *testing.T) *Data
 	expect  expectation
@@ -26,25 +30,31 @@ type contractCase struct {
 	known   map[string]string
 }
 
-// expectation 是对一个格式样例的规格级声明。它不是现状快照：这些值由
-// 各格式的语义契约决定，实现与声明不一致时以实现为错。
+// expectation is a specification-level claim about one format sample. It is not
+// a snapshot of current behaviour: these values follow from each format's
+// semantic contract, so when the implementation disagrees with the declaration,
+// the implementation is wrong.
 type expectation struct {
-	// requireEnd 声明该样例的**每一行**都必须 End > 0。
-	// false 表示该格式允许（甚至必然）存在无界行。
+	// requireEnd declares that **every line** of this sample must have End > 0.
+	// false means the format allows (or necessarily has) unbounded lines.
 	requireEnd bool
-	// hasParts 声明该样例**必须**产出 Parts（至少一行）；
-	// 未声明则断言**不**产出 Parts（每行 Parts == nil）。
+	// hasParts declares that this sample **must** produce Parts (on at least one
+	// line); otherwise the assertion is that it does **not** (every line has
+	// Parts == nil).
 	hasParts bool
-	// meta 声明该样例的 [ti:]/[ar:] 头必须被解析进 Data（值为 exact 断言由
-	// 各格式的单测负责）。
+	// meta declares that this sample's [ti:]/[ar:] header must be parsed into
+	// Data (exact values are asserted by the per-format unit tests).
 	meta bool
-	// looseTiling 声明本格式的 Words 只保证铺满 Part(0) 的**前缀**（上游
-	// INV-9：语料 5/717085 行的行尾裸文本不产词，且全部前缀锚定，故卡拉OK
-	// 永不误定位）。只有 TTML 声明它，其余格式仍是严格相等。
+	// looseTiling declares that this format's Words only guarantee covering a
+	// **prefix** of Part(0) (upstream INV-9: on 5/717085 corpus lines a bare tail
+	// text node produces no word, and every such case is prefix-anchored, so
+	// karaoke never mispositions). Only TTML declares it; the other formats stay
+	// strict.
 	looseTiling bool
 }
 
-// viaParser 把"用注册表里的解析器解析一段内联文本"包成一个 parse 函数。
+// viaParser wraps "parse an inline string with the registered parser" into a
+// parse function.
 func viaParser(name, src string) func(t *testing.T) *Data {
 	return func(t *testing.T) *Data {
 		t.Helper()
@@ -63,7 +73,7 @@ func viaParser(name, src string) func(t *testing.T) *Data {
 	}
 }
 
-// TestFormatContract 对每个已注册解析器跑一遍契约。
+// TestFormatContract runs the contract over every registered parser.
 func TestFormatContract(t *testing.T) {
 	for _, name := range AvailableParsers() {
 		if _, ok := contractCases[name]; !ok {
@@ -84,9 +94,10 @@ func TestFormatContract(t *testing.T) {
 	}
 }
 
-// TestFormatContractGaps 打印当前的缺口记账（各格式的"待迁移量"清单）。
-// 它只打日志、从不断言，所以永远不会红；随着任务推进它会自动变短，
-// 全部格式激活后（TTML 是最后一个）它应无输出。
+// TestFormatContractGaps prints the current gap accounting (each format's
+// "still to migrate" list). It only logs and never asserts, so it can never go
+// red; it shortens on its own as the work lands, and once every format is active
+// it should print nothing.
 func TestFormatContractGaps(t *testing.T) {
 	for _, name := range AvailableParsers() {
 		c, ok := contractCases[name]
@@ -155,10 +166,35 @@ func wordsTile(l LyricLine, looseTiling bool) bool {
 	return looseTiling && sb.Len() > 0 && strings.HasPrefix(l.Part(0), sb.String())
 }
 
+// runInvariants checks the contract invariants every registered parser must
+// satisfy. The ids are stable labels - the inline checks below and the
+// per-format unit tests cite them by number - so the definitions live here.
+//
+//	C1  When Parts is non-nil it holds at least 2 parts; a single-part line has
+//	    no reason to carry the slice and should degrade to Text instead (C3).
+//	C2  Text and every Part are free of newlines. A raw \n is a hard line break
+//	    for the renderers: it adds a row and breaks the frame height.
+//	C3  With no Parts, the accessors degrade to Text: PartCount() == 1 and
+//	    Part(0) == Text.
+//	C4  The accessors cover [0, PartCount()), never panic, and PartCount() is at
+//	    least 1.
+//	C5  A bounded line is neither zero-length nor inverted: when End > 0 it must
+//	    also hold that End > Time.
+//	C6  Words tile a Part, so the panel's word-by-word highlighting cannot
+//	    silently degrade to whole-line highlighting. wordsTile holds both the
+//	    strict form and the loose one.
+//	C7  A line whose display text is non-empty is reachable at its own Time:
+//	    ActiveLines(Time) returns it once the agent filter is cleared.
+//	C8  Time is non-negative and non-decreasing across Lines.
+//	C9  Words are non-decreasing in Time. C6 only compares the concatenated
+//	    text, so a reversed word timeline passes it; the panel splits Words into
+//	    played/rest by time and re-concatenates each, so once the timeline is
+//	    reversed played+rest no longer equals Text and word-by-word highlighting
+//	    silently degrades to whole-line highlighting.
 func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 	t.Helper()
 
-	// C8：Time 非降序且非负。
+	// C8: Time is non-negative and non-decreasing.
 	if !skip["C8"] {
 		var prev time.Duration
 		for i, l := range d.Lines {
@@ -172,12 +208,12 @@ func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 	for i, l := range d.Lines {
 		tag := fmt.Sprintf("line %d (%q)", i, l.Text)
 
-		// C1：Parts 非 nil 时至少 2 段。
+		// C1: Parts, when present, has at least 2 entries.
 		if !skip["C1"] && l.Parts != nil && len(l.Parts) < 2 {
 			t.Errorf("C1 %s: len(Parts) = %d, want >= 2", tag, len(l.Parts))
 		}
 
-		// C2：Text 与每个 Part 都不含换行。
+		// C2: Text and every Part are newline-free.
 		if !skip["C2"] {
 			if strings.ContainsAny(l.Text, "\n\r") {
 				t.Errorf("C2 %s: Text contains a newline: %q", tag, l.Text)
@@ -189,17 +225,17 @@ func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 			}
 		}
 
-		// C3：无 Parts 时访问器退化到 Text。
+		// C3: With no Parts the accessors degrade to Text.
 		if !skip["C3"] && l.Parts == nil && (l.PartCount() != 1 || l.Part(0) != l.Text) {
 			t.Errorf("C3 %s: PartCount() = %d, Part(0) = %q, Text = %q", tag, l.PartCount(), l.Part(0), l.Text)
 		}
 
-		// C5：有界行不能零长度或倒挂。
+		// C5: A bounded line is neither zero-length nor inverted.
 		if !skip["C5"] && l.End > 0 && l.End <= l.Time {
 			t.Errorf("C5 %s: End %v <= Time %v", tag, l.End, l.Time)
 		}
 
-		// C6：Words 必须铺满某个 Part，否则面板静默退化为整行高亮。
+		// C6: Words tile a Part (see wordsTile).
 		if !skip["C6"] && len(l.Words) > 0 {
 			if !wordsTile(l, e.looseTiling) {
 				var sb strings.Builder
@@ -210,9 +246,7 @@ func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 			}
 		}
 
-		// C9：Words 的时刻非降序。C6 只看 Words 拼接后的文本，看不出时间轴倒挂；
-		// 而面板的逐字切分是按时间把 Words 分成 played/rest 两组再各自拼接的，
-		// 一旦倒挂，played+rest 就不再等于 Text，逐字高亮静默退化成整行高亮。
+		// C9: Words are non-decreasing in Time.
 		if !skip["C9"] {
 			for i := 1; i < len(l.Words); i++ {
 				if l.Words[i].Time < l.Words[i-1].Time {
@@ -222,7 +256,7 @@ func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 			}
 		}
 
-		// C7：显示文本非空的行在它自己的 Time 时刻必须可达。
+		// C7: A non-empty line is reachable at its own Time.
 		if !skip["C7"] && strings.TrimSpace(l.Part(0)) != "" {
 			saved := d.AgentFilter
 			d.AgentFilter = ""
@@ -233,7 +267,7 @@ func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 			}
 		}
 
-		// C4：访问器覆盖 [0, PartCount()) 且不 panic。
+		// C4: The accessors cover [0, PartCount()) without panicking.
 		if !skip["C4"] {
 			func() {
 				defer func() {
@@ -326,15 +360,16 @@ func TestWordsTileLoosePrefix(t *testing.T) {
 	}
 }
 
-// syltEntry 是 SYLT frame 里的一对 (文本, 绝对毫秒同步时间)。
+// syltEntry is one (text, absolute-millisecond sync time) pair inside a SYLT
+// frame.
 type syltEntry struct {
 	text string
 	ms   uint32
 }
 
-// syltBody 构造一个 ID3v2 SYLT frame body：encoding 0（ISO-8859-1）、
-// language "eng"、contentType 1（lyrics）、timeFormat 1（绝对毫秒）、
-// 空内容描述符，随后是若干 (文本, 4 字节大端同步时间) 对。
+// syltBody builds an ID3v2 SYLT frame body: encoding 0 (ISO-8859-1), language
+// "eng", contentType 1 (lyrics), timeFormat 1 (absolute milliseconds), an empty
+// content descriptor, then the (text, 4-byte big-endian sync time) pairs.
 func syltBody(entries ...syltEntry) []byte {
 	buf := []byte{0, 'e', 'n', 'g', 1, 1, 0}
 	for _, e := range entries {
@@ -347,8 +382,9 @@ func syltBody(entries ...syltEntry) []byte {
 	return buf
 }
 
-// TestSortedKeys 钉住缺口报告与跳过表依赖的顺序：报告要能被后续任务逐行 diff。
-// 它同时覆盖 sortedKeys 的空表、单条与需要插入排序的分支。
+// TestSortedKeys pins the ordering the gap report and the skip table depend on:
+// the report has to stay line-diffable from run to run. It also covers
+// sortedKeys' empty, single-entry and insertion-sort branches.
 func TestSortedKeys(t *testing.T) {
 	tests := []struct {
 		name string
@@ -372,9 +408,10 @@ func TestSortedKeys(t *testing.T) {
 	}
 }
 
-// TestSyltBody 钉住 embedded 样例依赖的 frame 布局：7 字节头（ISO-8859-1、"eng"、
-// contentType 1、timeFormat 1、空内容描述符），其后每条是 NUL 结尾文本 + 4 字节大端
-// 同步时间。头用字节字面量断言，条目则走 parseSYLT 往返核对。
+// TestSyltBody pins the frame layout the embedded sample depends on: a 7-byte
+// header (ISO-8859-1, "eng", contentType 1, timeFormat 1, an empty content
+// descriptor), then each entry as NUL-terminated text + a 4-byte big-endian sync
+// time. The header is asserted as bytes; the entries round-trip through parseSYLT.
 func TestSyltBody(t *testing.T) {
 	if got, want := syltBody(), []byte{0, 'e', 'n', 'g', 1, 1, 0}; !bytes.Equal(got, want) {
 		t.Errorf("syltBody() = %v, want the bare 7-byte header %v", got, want)

@@ -428,8 +428,8 @@ func TestSMI_BrWithAttributesBecomesParts(t *testing.T) {
 }
 
 func TestSMI_RawNewlineIsNotAPartBoundary(t *testing.T) {
-	// SMI 源码常被折行排版；只有 <br> 才是显示段边界，源码里的原始换行
-	// 仍折叠成空格（与迁移前逐字节一致）。
+	// SMI sources are often wrapped for layout; only <br> is a display-segment
+	// boundary, and a raw newline in the source still folds to a single space.
 	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC>first line\nsecond line</SYNC></BODY></SMI>"
 	var p smiParser
 	d, err := p.Parse(strings.NewReader(src), "")
@@ -448,8 +448,9 @@ func TestSMI_RawNewlineIsNotAPartBoundary(t *testing.T) {
 }
 
 func TestSMI_MultipleClassesStaySeparateEvents(t *testing.T) {
-	// B 类不变：一个 SYNC 下两个 <P Class=...> 仍是两个 LyricLine，各自的 <br>
-	// 只在自己那条线内分段。
+	// Class B (two events under one SYNC): two <P Class=...> under one SYNC stay
+	// two separate LyricLine values, and each one's <br> splits only within its own
+	// line.
 	const src = "<SMI><BODY><SYNC Start=1000><P Class=KRCC>a<br>b<P Class=ENCC>c<br>d" +
 		"<SYNC Start=2000><P Class=KRCC>e</SYNC></BODY></SMI>"
 	var p smiParser

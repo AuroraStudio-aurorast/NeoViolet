@@ -389,15 +389,15 @@ func parseLYSMulti(s string) (*Data, error) {
 }
 
 // TestLYS_PropertyAgentAssignment pins the Lyricify Syllable property table
-// (背景人声, 对唱视图):
+// (background vocal, duet side):
 //
-//	0 = 未设置/未设置   1 = 未设置/左   2 = 未设置/右
-//	3 = 否/未设置       4 = 否/左       5 = 否/右
-//	6 = 是/未设置       7 = 是/左       8 = 是/右
+//	0 = unset/unset    1 = unset/left    2 = unset/right
+//	3 = no/unset       4 = no/left       5 = no/right
+//	6 = yes/unset      7 = yes/left      8 = yes/right
 //
-// The view side is property%3 with 0=未设置, 1=左, 2=右, and only the view side
-// names a performer, so only it becomes an agent. The background-vocal flag is
-// a role, not an identity: reading it as "channel 6/8" invented the agents v3
+// The view side is property%3 with 0=unset, 1=left, 2=right, and only the view
+// side names a performer, so only it becomes an agent. The background-vocal flag
+// is a role, not an identity: treating it as channel 6/8 would invent agents v3
 // and v4 for singers that do not exist.
 func TestLYS_PropertyAgentAssignment(t *testing.T) {
 	cases := []struct {

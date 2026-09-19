@@ -15,11 +15,12 @@ func init() {
 type lysParser struct{}
 
 // propertyToAgent maps an LYS line property onto the agent id of its duet-view
-// side. The property is the Lyricify Syllable table of (背景人声, 对唱视图):
+// side. The property is the Lyricify Syllable table of (background vocal, duet
+// view):
 //
-//	0 = 未设置/未设置   1 = 未设置/左   2 = 未设置/右
-//	3 = 否/未设置       4 = 否/左       5 = 否/右
-//	6 = 是/未设置       7 = 是/左       8 = 是/右
+//	0 = unset/unset   1 = unset/left   2 = unset/right
+//	3 = no/unset      4 = no/left      5 = no/right
+//	6 = yes/unset     7 = yes/left     8 = yes/right
 //
 // so the view side is property%3 and only it names a performer. The
 // background-vocal flag is a role, not an identity: reading 6 and 8 as "channel"
@@ -27,7 +28,7 @@ type lysParser struct{}
 // carries no performer names at all, so these ids are everything the display has
 // to work with.
 //
-// 未设置 (0, 3, 6) means the line sits on no side. For a single-singer file that
+// unset (0, 3, 6) means the line sits on no side. For a single-singer file that
 // is the whole file, and for a duet it is the default performer - both read as
 // v1, which is also how the TTML files for these songs assign their lines. A
 // property outside 0..8 is malformed data whose meaning we cannot know, so it
@@ -36,7 +37,7 @@ func propertyToAgent(property int) string {
 	if property < 0 || property > 8 {
 		return ""
 	}
-	if property%3 == 2 { // 对唱视图：右
+	if property%3 == 2 { // duet view: right
 		return "v2"
 	}
 	return "v1"

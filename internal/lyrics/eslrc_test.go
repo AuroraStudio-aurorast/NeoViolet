@@ -7,8 +7,9 @@ import (
 )
 
 func TestESLRC_WordStartTimesFollowPreviousBracket(t *testing.T) {
-	// F2：片段的起点是它**前面**那个 bracket，"[00:00.000]" 表示"沿用上一个
-	// 已知边界"。旧实现取后一个 bracket（词的终点），整行逐字因此滞后一个词。
+	// A fragment starts at the bracket BEFORE it: "[00:00.000]" means "reuse
+	// the previous known boundary". Taking the following bracket instead (the
+	// word's end) would lag the whole line's karaoke by one word.
 	d, err := parseESLRC(testESLRC)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
@@ -37,7 +38,8 @@ func TestESLRC_WordStartTimesFollowPreviousBracket(t *testing.T) {
 		t.Errorf("End = %v, want 43071ms", line0.End)
 	}
 
-	// C6 的本地形式：Words 必须铺满 Text（旧实现里空格不入 Words，铺不满）。
+	// The local form of C6 (Words must tile Text): spaces are in Words too, or
+	// the fragments would not cover the display text.
 	var sb strings.Builder
 	for _, w := range line0.Words {
 		sb.WriteString(w.Text)
@@ -48,9 +50,10 @@ func TestESLRC_WordStartTimesFollowPreviousBracket(t *testing.T) {
 }
 
 func TestESLRC_TrailingUntimedTextBecomesAFragment(t *testing.T) {
-	// 尾段必须成为片段：它同时补上 Time 与 tiling，否则 "fly" 会粘在 "could"
-	// 后面且铺不满（旧的 text = "I couldfly"）。空格片段也进入 Words，所以这里
-	// 是 4 个片段（"I"、" "、"could"、"fly"），"fly" 在 Words[3]。
+	// The trailing segment must become a fragment: it supplies both the Time and
+	// the tiling, otherwise "fly" sticks on to "could" with nothing to tile it
+	// (that reads "I couldfly"). Space fragments enter Words as well, so this
+	// yields 4 fragments ("I", " ", "could", "fly") with "fly" at Words[3].
 	const src = "[00:01.000]I[00:01.548] [00:00.000]could[00:01.938]fly"
 	d, err := parseESLRC(src)
 	if err != nil {
@@ -90,8 +93,9 @@ func TestESLRC_HeaderMetadata(t *testing.T) {
 }
 
 func TestESLRC_LineWithoutWordBracketsStaysUnbounded(t *testing.T) {
-	// LRC 形状的 .eslrc（仓库 fixture 就是这种）：Text 仍 trim、Words 仍为 nil、
-	// End 仍为 0。这是可接受降级，不是缺陷。
+	// An LRC-shaped .eslrc (which is what the repo fixtures are): Text is still
+	// trimmed, Words is still nil and End is still 0. That is an acceptable
+	// degradation, not a defect.
 	const src = "[00:01.00]  first line  \n[00:05.00]second line\n"
 	d, err := parseESLRC(src)
 	if err != nil {
@@ -109,7 +113,8 @@ func TestESLRC_LineWithoutWordBracketsStaysUnbounded(t *testing.T) {
 }
 
 func TestESLRC_CRLFLineEndings(t *testing.T) {
-	// R2：骨架只有循环顶部一次 TrimSpace，CRLF 的 \r 不应漏进 Text/Words。
+	// The skeleton trims exactly once, at the top of the loop, so a CRLF \r must
+	// not leak into Text or Words.
 	const src = "[00:01.000]I[00:01.548] [00:00.000]could[00:01.938]fly[00:02.000]\r\n" +
 		"[00:03.000]Hi[00:03.500]\r\n"
 	d, err := parseESLRC(src)
@@ -142,7 +147,8 @@ func TestESLRC_CRLFLineEndings(t *testing.T) {
 }
 
 func TestESLRC_OffsetShiftsTimes(t *testing.T) {
-	// R4：offset 必须平移 Time/Words/End，而不是只写进 d.Offset。
+	// An [offset:] header must shift Time/Words/End, not merely be recorded in
+	// d.Offset.
 	const src = "[offset:250]\n[00:01.000]Hello[00:01.500] world[00:02.000]\n"
 	d, err := parseESLRC(src)
 	if err != nil {
@@ -173,11 +179,13 @@ func TestESLRC_OffsetShiftsTimes(t *testing.T) {
 }
 
 func TestESLRC_LRCLineWithOffsetShiftsTime(t *testing.T) {
-	// 同类缺口：applyHeaderField 会写 d.Offset，但 !timed（LRC 形状）出口
-	// 以前直接用 lineStart，不读 d.Offset。混合文件 + [offset:] 时一部分行
-	// 平移、一部分不平移，sortLyricLines 会按混合基准排序 → 行序错乱。
-	// 这条断言钉住：LRC 形状行的 Time 也走 shiftTime，且 Words 仍为 nil、
-	// End 仍为 0（R6 冻结的旧行为不能变）。
+	// The matching gap: applyHeaderField records d.Offset, but the !timed
+	// (LRC-shaped) exit reads lineStart directly. In a mixed file that carries
+	// [offset:], some lines shift and some do not, so sortLyricLines sorts
+	// against two different bases and scrambles the line order.
+	//
+	// This pins the contract: an LRC-shaped line's Time goes through shiftTime
+	// too, while Words stays nil and End stays 0.
 	const src = "[offset:250]\n[00:01.00]Hello\n"
 	d, err := parseESLRC(src)
 	if err != nil {
@@ -199,8 +207,9 @@ func TestESLRC_LRCLineWithOffsetShiftsTime(t *testing.T) {
 }
 
 func TestESLRC_WordBracketEqualToLineStartHasNoEnd(t *testing.T) {
-	// R7：prevBoundary > lineStart 的"假"侧。词括号等于行首时，末边界没有
-	// 越过 lineStart，End 应为 0（与 timed == false 的整行出口是不同分支）。
+	// The "false" side of prevBoundary > lineStart: when a word bracket equals
+	// the line start, the terminal boundary never crossed lineStart, so End must
+	// be 0. This is a different branch from the whole-line timed == false exit.
 	const src = "[00:01.000]I[00:01.000]you"
 	d, err := parseESLRC(src)
 	if err != nil {
