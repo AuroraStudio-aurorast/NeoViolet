@@ -92,6 +92,7 @@ var (
 	selSharedCommandCenter   objc.SEL
 	selAddTargetAction       objc.SEL
 	selSetPreferredIntervals objc.SEL
+	selInterval              objc.SEL
 
 	selDataWithBytes objc.SEL
 	selInitWithData  objc.SEL
@@ -108,6 +109,7 @@ var (
 	_handlerSels = struct {
 		play, pause, stop, toggle objc.SEL
 		next, prev, changePos     objc.SEL
+		skipBackward, skipForward objc.SEL
 		sleep, wake               objc.SEL
 	}{}
 
@@ -207,6 +209,7 @@ func registerObjCRuntime() error {
 	selSharedCommandCenter = objc.RegisterName("sharedCommandCenter")
 	selAddTargetAction = objc.RegisterName("addTarget:action:")
 	selSetPreferredIntervals = objc.RegisterName("setPreferredIntervals:")
+	selInterval = objc.RegisterName("interval")
 
 	selDataWithBytes = objc.RegisterName("dataWithBytes:length:")
 	selInitWithData = objc.RegisterName("initWithData:")
@@ -229,6 +232,8 @@ func registerObjCRuntime() error {
 	_handlerSels.next = objc.RegisterName("handleNextTrackCommand:")
 	_handlerSels.prev = objc.RegisterName("handlePreviousTrackCommand:")
 	_handlerSels.changePos = objc.RegisterName("handleChangePlaybackPositionCommand:")
+	_handlerSels.skipBackward = objc.RegisterName("handleSkipBackwardCommand:")
+	_handlerSels.skipForward = objc.RegisterName("handleSkipForwardCommand:")
 	_handlerSels.sleep = objc.RegisterName("handleWillSleepOrPowerOff:")
 	_handlerSels.wake = objc.RegisterName("handleDidWake:")
 
@@ -262,6 +267,8 @@ func registerObjCRuntime() error {
 			{Cmd: _handlerSels.next, Fn: handleNext},
 			{Cmd: _handlerSels.prev, Fn: handlePrev},
 			{Cmd: _handlerSels.changePos, Fn: handleChangePos},
+			{Cmd: _handlerSels.skipBackward, Fn: handleSkipBackward},
+			{Cmd: _handlerSels.skipForward, Fn: handleSkipForward},
 			{Cmd: _handlerSels.sleep, Fn: handleSleep},
 			{Cmd: _handlerSels.wake, Fn: handleWake},
 		},

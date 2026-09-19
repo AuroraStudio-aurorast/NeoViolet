@@ -17,6 +17,14 @@ func handleToggle(_ objc.ID, _ objc.SEL, _ objc.ID) int32 { return sendCmd(CmdPl
 func handleNext(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdNext) }
 func handlePrev(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdPrev) }
 
+// skipIntervalSeconds is both the interval advertised on the skip buttons — which
+// the system draws as goforward.10 / gobackward.10 — and the distance used when a
+// skip event arrives without one.
+const skipIntervalSeconds = 10.0
+
+func handleSkipForward(_ objc.ID, _ objc.SEL, event objc.ID) int32  { return sendSkip(event, 1) }
+func handleSkipBackward(_ objc.ID, _ objc.SEL, event objc.ID) int32 { return sendSkip(event, -1) }
+
 func handleChangePos(_ objc.ID, _ objc.SEL, event objc.ID) int32 {
 	_darwinCtrlMu.Lock()
 	c := _darwinCtrl
@@ -31,6 +39,37 @@ func handleChangePos(_ objc.ID, _ objc.SEL, event objc.ID) int32 {
 	default:
 	}
 	return cmdHandlerSuccess
+}
+
+// sendSkip forwards the interval the system put on the pressed skip button as a
+// relative seek. Taking it from the event rather than hardcoding the distance is
+// what stops the number drawn on the button from drifting away from the distance
+// actually moved.
+func sendSkip(event objc.ID, sign int64) int32 {
+	_darwinCtrlMu.Lock()
+	c := _darwinCtrl
+	_darwinCtrlMu.Unlock()
+	if c == nil {
+		return cmdHandlerCommandFailed
+	}
+	select {
+	case c.cmdChan <- skipCommand(objc.Send[float64](event, selInterval), sign):
+	default:
+	}
+	return cmdHandlerSuccess
+}
+
+// skipCommand turns a skip event's interval into the relative seek it stands for.
+// A zero or missing interval falls back to the advertised one; `!(secs > 0)`
+// rather than `secs <= 0` so a NaN from the runtime takes that path too.
+func skipCommand(secs float64, sign int64) Command {
+	if !(secs > 0) {
+		secs = skipIntervalSeconds
+	}
+	return Command{
+		Type:  CmdSeek,
+		Value: int64(secs*float64(time.Second/time.Microsecond)) * sign,
+	}
 }
 
 func handleSleep(_ objc.ID, _ objc.SEL, _ objc.ID) {
@@ -52,13 +91,32 @@ func handleWake(_ objc.ID, _ objc.SEL, _ objc.ID) {}
 // Caller MUST be inside an autorelease pool.
 
 func (c *darwinCtrl) registerCommands() {
-	skip := nsDouble(15.0)
+	skip := nsDouble(skipIntervalSeconds)
 	arr := objc.ID(classNSArray).Send(selArrayWithObject, skip)
 
 	c.remoteCmd.Send(_cmdSels.skipBackward).Send(selSetPreferredIntervals, arr)
 	c.remoteCmd.Send(_cmdSels.skipForward).Send(selSetPreferredIntervals, arr)
 
-	pairs := []struct{ cmd, handler objc.SEL }{
+	for _, p := range remoteCommandHandlers() {
+		c.remoteCmd.Send(p.cmd).Send(selAddTargetAction, c.handler, p.handler)
+	}
+}
+
+// cmdHandler pairs a remote command with the handler method that services it.
+type cmdHandler struct {
+	cmd, handler objc.SEL
+}
+
+// remoteCommandHandlers is every MPRemoteCommandCenter command this app services.
+//
+// nextTrack/previousTrack stay here even though there is no track list to advance:
+// they are what the F7/F9 media keys deliver, and both seek today. The seek
+// buttons proper are the skip pair, drawn with the interval badge.
+//
+// A command left off this list keeps its default enabled state, so the system may
+// still draw a control for it that cannot do anything.
+func remoteCommandHandlers() []cmdHandler {
+	return []cmdHandler{
 		{_cmdSels.play, _handlerSels.play},
 		{_cmdSels.pause, _handlerSels.pause},
 		{_cmdSels.stop, _handlerSels.stop},
@@ -66,9 +124,8 @@ func (c *darwinCtrl) registerCommands() {
 		{_cmdSels.next, _handlerSels.next},
 		{_cmdSels.prev, _handlerSels.prev},
 		{_cmdSels.changePos, _handlerSels.changePos},
-	}
-	for _, p := range pairs {
-		c.remoteCmd.Send(p.cmd).Send(selAddTargetAction, c.handler, p.handler)
+		{_cmdSels.skipBackward, _handlerSels.skipBackward},
+		{_cmdSels.skipForward, _handlerSels.skipForward},
 	}
 }
 
