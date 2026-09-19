@@ -1,8 +1,11 @@
 package lyrics
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	amllttml "github.com/WhatDamon/go-amll-ttml-parser"
 )
 
 func TestTTML_OffsetTime(t *testing.T) {
@@ -40,9 +43,25 @@ func TestTTML_FramesTime(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(d.Lines))
 	}
 
-	expected := 1500 * time.Millisecond
-	if d.Lines[0].Time != expected {
-		t.Errorf("frames time = %v, want %v", d.Lines[0].Time, expected)
+	// Frames (hh:mm:ss:ff) are a long-standing non-goal: the library does not
+	// implement the frame-count clock, so the line survives but its Time stays 0
+	// (every such line crowds at 0:00) and its text is not lost.
+	if d.Lines[0].Time != 0 {
+		t.Errorf("frames time = %v, want 0 (frames are unsupported)", d.Lines[0].Time)
+	}
+	if d.Lines[0].Text != "Frames-based timestamp" {
+		t.Errorf("frames line text = %q, want 'Frames-based timestamp' (text must survive)", d.Lines[0].Text)
+	}
+
+	// The library flags the frame field instead of failing the parse, and the
+	// published version names the failure: clock-frames-unsupported accompanies
+	// bad-time-syntax on a four-field clock literal. Only the code's presence is
+	// pinned - no count, no wording, no severity, because Diagnostics() dedupes by
+	// (Code, Pos) and the rest of the bookkeeping is upstream's to change.
+	doc := ttmlParseDoc(t, testTTMLFrames)
+	if !hasTTMLDiagnosticCode(doc, amllttml.CodeClockFramesUnsupported) {
+		t.Errorf("expected a %s diagnostic for the unsupported frame field, got %v",
+			amllttml.CodeClockFramesUnsupported, doc.Diagnostics())
 	}
 }
 
@@ -127,4 +146,85 @@ func TestTTML_MixedBareSecondsAndPartial(t *testing.T) {
 	if d.Lines[1].Time != 61643*time.Millisecond {
 		t.Errorf("1:01.643 = %v, want 61643ms", d.Lines[1].Time)
 	}
+}
+
+// TestTTML_FrameRateSentinel proves the ttp:frameRate parameter on the root is
+// really read: 50 frames at 60 fps is 833ms, whereas the ignored default of 30
+// would give 1667ms.
+func TestTTML_FrameRateSentinel(t *testing.T) {
+	sample := `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttp="http://www.w3.org/ns/ttml#parameter"
+    ttp:frameRate="60">
+  <body><div>
+    <p begin="50f">Fifty frames</p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(sample)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 || d.Lines[0].Time != 833*time.Millisecond {
+		t.Errorf("50f @ frameRate=60 = %v, want 833ms (default 30 would give 1667ms)", d.Lines[0].Time)
+	}
+	assertNoTTMLHygieneDiagnostics(t, sample)
+}
+
+// TestTTML_TickRateSentinel proves the ttp:tickRate parameter on the root is
+// really read: 50 ticks at 100 ticks/s is 500ms, whereas the ignored default of
+// one tick per second would give 50000ms.
+func TestTTML_TickRateSentinel(t *testing.T) {
+	sample := `<tt xmlns="http://www.w3.org/ns/ttml"
+    xmlns:ttp="http://www.w3.org/ns/ttml#parameter"
+    ttp:tickRate="100">
+  <body><div>
+    <p begin="50t">Fifty ticks</p>
+  </div></body>
+</tt>`
+
+	d, err := parseTTML(sample)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if len(d.Lines) != 1 || d.Lines[0].Time != 500*time.Millisecond {
+		t.Errorf("50t @ tickRate=100 = %v, want 500ms (default 1/s would give 50000ms)", d.Lines[0].Time)
+	}
+	assertNoTTMLHygieneDiagnostics(t, sample)
+}
+
+// assertNoTTMLHygieneDiagnostics asserts the fixture declares and places its ttp
+// parameters correctly: zero attr-ns-fallback and zero ttp-not-on-root. It
+// filters by code on purpose - a headless/keyless document always carries
+// missing-head + line-no-key, so a zero-diagnostics assertion would be wrong.
+//
+// Both codes are live on the published library: attr-ns-fallback fires whenever
+// an attribute resolves by local name (a legacy iTunes URI, say) and
+// ttp-not-on-root whenever a ttp timing parameter sits below the root <tt>.
+// The guard is therefore real - the fixtures below pass it because they declare
+// ttp exactly and keep its parameters on the root, not because the library is
+// silent.
+func assertNoTTMLHygieneDiagnostics(t *testing.T, sample string) {
+	t.Helper()
+	doc, err := amllttml.ParseReader(strings.NewReader(sample),
+		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep))
+	if err != nil {
+		t.Fatalf("amllttml.ParseReader() error: %v", err)
+	}
+	for _, diag := range doc.Diagnostics() {
+		if diag.Code == amllttml.CodeAttrNSFallback || diag.Code == amllttml.CodeTTPNotOnRoot {
+			t.Errorf("unexpected hygiene diagnostic %s: %s", diag.Code, diag.Msg)
+		}
+	}
+}
+
+// hasTTMLDiagnosticCode reports whether the document carries a diagnostic with
+// the given code. Callers use it to pin a code without pinning counts, wording
+// or severity, all of which are upstream's to change.
+func hasTTMLDiagnosticCode(doc *amllttml.Document, code amllttml.Code) bool {
+	for _, diag := range doc.Diagnostics() {
+		if diag.Code == code {
+			return true
+		}
+	}
+	return false
 }

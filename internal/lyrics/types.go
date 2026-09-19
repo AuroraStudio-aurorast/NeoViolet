@@ -92,9 +92,13 @@ func activeLimits(lines []LyricLine) []time.Duration {
 
 // ActiveLines returns all lines that are active at the given elapsed time.
 //
-// A line is bounded when End > 0: it is active for Time <= t < End.
-// A line is unbounded when End == 0: it is active from Time until the Time of
-// the next line with a greater Time (the last line never expires).
+// A line is bounded when End > Time: it is active for Time <= t < End.
+// A line is unbounded when End == 0 or End <= Time: it is active from Time
+// until the Time of the next line with a greater Time (the last line never
+// expires). A zero-length or reversed interval is treated as unbounded because
+// its Time <= t < End window is empty - the line would be unreachable - and
+// because the End > 0 => End > Time invariant keeps producers from emitting
+// that shape in the first place (ttmlLine normalises it).
 //
 // This is evaluated per line. Treating "the file contains at least one bounded
 // line" as a global switch — the previous shape — made every unbounded line
@@ -112,7 +116,7 @@ func (d *Data) ActiveLines(elapsed time.Duration) []LyricLine {
 	// Phase 1: collect active lines, each against its own window.
 	var active []LyricLine
 	for i, line := range d.Lines {
-		if line.End > 0 {
+		if line.End > line.Time { // bounded: End must be strictly greater than Time
 			if line.Time <= elapsed && elapsed < line.End {
 				active = append(active, line)
 			}

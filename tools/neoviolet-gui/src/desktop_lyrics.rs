@@ -453,9 +453,13 @@ fn marquee_text(text: &str, scroll: f32, max_chars: usize) -> String {
 /// Mirrors Go's `lyrics.Data.ActiveLines`, which the TUI uses, so the panel and
 /// the desktop lyrics cannot disagree about which lines are active.
 ///
-/// A line is bounded when `end > 0`: it is active for `time <= t < end`. A line
-/// is unbounded when `end == 0`: it is active from `time` until the `time` of
-/// the next line with a greater `time` (the last line never expires).
+/// A line is bounded when `end > time`: it is active for `time <= t < end`. A
+/// line is unbounded when `end == 0` or `end <= time`: it is active from `time`
+/// until the `time` of the next line with a greater `time` (the last line never
+/// expires). A zero-length or reversed interval is treated as unbounded because
+/// its `time <= t < end` window is empty — the line would be unreachable — and
+/// because the `end > 0` ⇒ `end > time` invariant keeps producers from emitting
+/// that shape in the first place (Go's `ttmlLine` normalises it).
 ///
 /// This is evaluated per line. Treating "the file contains at least one bounded
 /// line" as a global switch — the previous shape — made every unbounded line
@@ -473,7 +477,7 @@ fn find_active_lines(lines: &[LyricLineData], elapsed: f64) -> Vec<String> {
 
     let mut active: Vec<&LyricLineData> = Vec::new();
     for (i, l) in lines.iter().enumerate() {
-        if l.end > 0.0 {
+        if l.end > l.time {
             if ms(l.time) <= elapsed_ms && elapsed_ms < ms(l.end) {
                 active.push(l);
             }
@@ -594,7 +598,7 @@ mod tests {
 
     #[test]
     fn find_active_lines_smi_shape_reaches_the_unbounded_last_line() {
-        // F3/F6：3 行有界 + 末行 end == 0（SMI 的形状）。旧的 any_bounded
+        // 3 行有界 + 末行 end == 0（SMI 的形状）。旧的 any_bounded
         // 全局开关让末行永远进不了候选，桌面歌词因此空白。
         let mut lines: Vec<LyricLineData> = (0..3)
             .map(|i| line(i as f64, i as f64 + 1.0, &format!("bounded{i}")))
@@ -652,5 +656,24 @@ mod tests {
         let lines = vec![line(0.0, 1.0, "first"), line(3.0, 4.0, "second")];
         assert_eq!(find_active_lines(&lines, 2.0), Vec::<String>::new());
         assert_eq!(find_active_lines(&lines, 3.5), vec!["second"]);
+    }
+
+    /// Mirrors Go's `TestActiveLines_ZeroLengthLineIsReachable`: a line whose
+    /// `end == time` carries no usable duration. Under the old "bounded when
+    /// `end > 0`" rule its window was empty, so it was unreachable forever (the
+    /// corpus hit: an AMLL TTML `<p>` with `begin == end`). `end <= time` is now
+    /// unbounded: reachable from `time` until the next greater `time`.
+    #[test]
+    fn find_active_lines_zero_length_line_is_reachable() {
+        let with_next = vec![line(10.0, 10.0, "啊"), line(20.0, 0.0, "next")];
+        assert_eq!(find_active_lines(&with_next, 10.0), vec!["啊"]);
+        assert_eq!(find_active_lines(&with_next, 10.5), vec!["啊"]);
+        assert_eq!(find_active_lines(&with_next, 20.0), vec!["next"]);
+
+        // 末行零长线不过期（无界语义），且它之前不可达。
+        let lone = vec![line(10.0, 10.0, "啊")];
+        assert_eq!(find_active_lines(&lone, 9.999), Vec::<String>::new());
+        assert_eq!(find_active_lines(&lone, 10.0), vec!["啊"]);
+        assert_eq!(find_active_lines(&lone, 60.0), vec!["啊"]);
     }
 }

@@ -41,7 +41,7 @@ func TestLyricLine_PartAccessors_MergedLine(t *testing.T) {
 }
 
 func TestActiveLines_UnboundedAfterBoundedIsReachable(t *testing.T) {
-	// F3：文件里既有有界行（A/B）又有无界末行（C）。旧的全局开关只看"有没有
+	// 文件里既有有界行（A/B）又有无界末行（C）。旧的全局开关只看"有没有
 	// 任何一行有界"，于是 C 永远进不了候选。
 	d := &Data{Lines: []LyricLine{
 		{Time: 1 * time.Second, End: 2 * time.Second, Text: "A"},
@@ -118,5 +118,53 @@ func TestActiveLines_RegressionUnboundedFilesAndBoundedGaps(t *testing.T) {
 	}
 	if got := withGaps.ActiveLines(3 * time.Second); len(got) != 1 || got[0].Text != "second" {
 		t.Errorf("bounded ActiveLines(3s) = %v, want [second]", got)
+	}
+}
+
+func TestActiveLines_ZeroLengthLineIsReachable(t *testing.T) {
+	// A line with End == Time carries no usable duration. Under the old
+	// "bounded when End > 0" rule its window Time <= t < End was empty, so the
+	// line was unreachable forever (corpus hit: an AMLL TTML <p> with begin ==
+	// end). End <= Time is now treated as unbounded. Data is hand-built here so
+	// the test pins ActiveLines alone, not any parser's output.
+	const text = "啊"
+
+	// ① A lone zero-length line is reachable at its own Time and, being last,
+	// is never closed.
+	lone := &Data{Lines: []LyricLine{{Time: 10 * time.Second, End: 10 * time.Second, Text: text}}}
+	if got := lone.ActiveLines(10 * time.Second); len(got) != 1 || got[0].Text != text {
+		t.Errorf("ActiveLines(10s) = %v, want the zero-length line itself", got)
+	}
+	if got := lone.ActiveLines(10*time.Second + time.Millisecond); len(got) != 1 || got[0].Text != text {
+		t.Errorf("ActiveLines(10s+1ms) = %v, want the zero-length line still active", got)
+	}
+	if got := lone.ActiveLines(9999 * time.Millisecond); got != nil {
+		t.Errorf("ActiveLines(9.999s) = %v, want nil (before its Time)", got)
+	}
+
+	// ② With a later line it has the unbounded semantics: the next greater Time
+	// closes its window, so it must not stick.
+	withNext := &Data{Lines: []LyricLine{
+		{Time: 10 * time.Second, End: 10 * time.Second, Text: text},
+		{Time: 20 * time.Second, Text: "next"},
+	}}
+	if got := withNext.ActiveLines(10*time.Second + time.Millisecond); len(got) != 1 || got[0].Text != text {
+		t.Errorf("ActiveLines(10s+1ms) = %v, want the zero-length line", got)
+	}
+	if got := withNext.ActiveLines(20 * time.Second); len(got) != 1 || got[0].Text != "next" {
+		t.Errorf("ActiveLines(20s) = %v, want only the next line", got)
+	}
+
+	// ③ Regression: a genuinely bounded line keeps its strict window, and an
+	// End == 0 line keeps the plain unbounded rule.
+	bounded := &Data{Lines: []LyricLine{
+		{Time: 1 * time.Second, End: 2 * time.Second, Text: "bounded"},
+		{Time: 5 * time.Second, Text: "unbounded"},
+	}}
+	if got := bounded.ActiveLines(2 * time.Second); len(got) != 0 {
+		t.Errorf("ActiveLines(2s) = %v, want empty (a bounded line expires at End)", got)
+	}
+	if got := bounded.ActiveLines(5 * time.Second); len(got) != 1 || got[0].Text != "unbounded" {
+		t.Errorf("ActiveLines(5s) = %v, want the unbounded line", got)
 	}
 }

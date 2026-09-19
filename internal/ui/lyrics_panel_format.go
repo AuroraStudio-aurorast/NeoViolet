@@ -101,13 +101,16 @@ func (f panelFormat) anchorRows(innerH, curRows, aboveRows, belowRows int) int {
 //
 // The cap counts lyric lines while innerH bounds rendered rows, so a line that
 // wraps to two rows costs two of the budget.
-func (f panelFormat) collectRows(m *Model, visible []lyrics.VisibleLine, start, dir, innerW, innerH int, lit func(lyrics.LyricLine) bool) []panelRow {
+//
+// labels is the per-line agent label decision, indexed like visible, so a context
+// line that starts a new singer keeps its label.
+func (f panelFormat) collectRows(m *Model, visible []lyrics.VisibleLine, start, dir, innerW, innerH int, lit func(lyrics.LyricLine) bool, labels []bool) []panelRow {
 	rows := make([]panelRow, 0, maxInt(innerH, 0))
 	for pos, lines := start, 0; pos >= 0 && pos < len(visible); pos, lines = pos+dir, lines+1 {
 		if f.ContextLines > 0 && lines >= f.ContextLines {
 			break
 		}
-		lineRows := panelLineRows(m, visible[pos].Line, innerW, f.MaxWrapRows, lit(visible[pos].Line))
+		lineRows := panelLineRows(m, visible[pos].Line, innerW, f.MaxWrapRows, lit(visible[pos].Line), labels[pos])
 		if dir < 0 {
 			rows = append(lineRows, rows...)
 		} else {

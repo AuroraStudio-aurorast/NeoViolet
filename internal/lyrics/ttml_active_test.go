@@ -107,9 +107,7 @@ func TestTTML_ActiveLinesEmpty(t *testing.T) {
 		t.Fatalf("Parse() error: %v", err)
 	}
 
-	// At exactly 0, line 0 is active (it has begin=0)
-	// Use a duration before any active line
-	// Note: line 0 is NOT active at 2593ms (end is exclusive)
+	// Line 0 spans 0..2593ms and its end is exclusive, so nothing is active past it.
 	active := d.ActiveLines(2594 * time.Millisecond)
 	if len(active) != 0 {
 		t.Errorf("ActiveLines(2594ms) = %d, want 0", len(active))

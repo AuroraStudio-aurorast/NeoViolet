@@ -20,6 +20,12 @@ const maxLyricSize = 1 * 1024 * 1024
 // ErrLyricTooLarge is returned when a lyric file exceeds maxLyricSize.
 var ErrLyricTooLarge = errors.New("lyrics file too large (>1MB)")
 
+// ErrNoLyrics is returned when a lyric file parses cleanly but produces no
+// displayable lines (for example a TTML file whose <p> elements all map to
+// nothing). It lets the registry fall back to the next preferred format
+// instead of showing an empty file.
+var ErrNoLyrics = errors.New("lyrics file contains no lyric lines")
+
 // LyricParser parses lyric content from a sidecar file or reader.
 type LyricParser interface {
 	FindSidecar(audioPath string) string

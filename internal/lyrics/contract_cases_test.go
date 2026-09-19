@@ -36,7 +36,7 @@ var contractCases = map[string]contractCase{
 		parse: viaParser("lys", lysContractSample),
 		// requireEnd 保持 false：End 由末词推出，词时缺失时退化为无界属可接受降级。
 		// 样例的 End > 0 由 format_test.go 的 TestLYS_EndIsLastWordEnd 专门断言，
-		// 避免这条 false 变成永远绿灯（规格 §5.2 脚注 1）。
+		// 避免这条 false 变成永远绿灯。
 	},
 	"qrc": {
 		parse:  viaParser("qrc", qrcContractSample),
@@ -51,8 +51,8 @@ var contractCases = map[string]contractCase{
 		expect: expectation{hasParts: true},
 	},
 	"ttml": {
-		parse:   viaParser("ttml", ttmlContractSample),
-		pending: "搁置：待 AMLL 风格重构（规格 §18）",
+		parse:  viaParser("ttml", ttmlAMLLSample),
+		expect: expectation{requireEnd: true, hasParts: true, meta: true, looseTiling: true},
 	},
 	"yrc": {
 		parse:  viaParser("yrc", yrcContractSample),
@@ -91,21 +91,6 @@ const (
 		"2\n" +
 		"00:00:05,000 --> 00:00:07,000\n" +
 		"bye\n"
-
-	// AMLL 风格：<br/> + 嵌套 span（x-bg）+ x-translation。规格 §18.2 已勘定：
-	// 这条样例当前必然失败（逐字铺不满、混合内容丢失），它是重构的起点用例。
-	ttmlContractSample = `<?xml version="1.0" encoding="UTF-8"?>
-<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xml:lang="zh-CN">
- <head><metadata><ttm:agent xml:id="v1" type="person"/></metadata></head>
- <body><div>
-  <p begin="0.000" end="3.000" ttm:agent="v1">
-   <span begin="0.000" end="1.000">第一行</span><br/>
-   <span begin="1.000" end="2.000">第二行</span>
-   <span ttm:role="x-bg"><span begin="1.000">ooh</span></span>
-   <span ttm:role="x-translation" xml:lang="en">first line</span>
-  </p>
- </div></body>
-</tt>`
 )
 
 // eslrcContractSample = 元数据头 + 规范逐字样例（format_test.go:200 的 testESLRC）。
