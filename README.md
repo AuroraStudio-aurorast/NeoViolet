@@ -32,13 +32,13 @@
 | `m4a/alac` | Apple Lossless |  |
 | `opus` | Opus |  |
 | `mp2` | MPEG-1 Audio Layer II |  |
-| `ape` | Monkey's Audio | requires `apecil`, `ffmpeg` or `mac` |
+| `ape` | Monkey's Audio | requires `apecli`, `ffmpeg` or `mac` |
 | `mid`, `midi` | Musical Instrument Digital Interface | requires SoundFont |
 | `mod` | Module Music |  |
 | `xm` | Extended Module |  |
 | `it` | Impulse Tracker |  |
 | `s3m` | ScreamTracker 3 Module |  |
-| [Tracker](https://openmpt.org/features#modules) | More Tracker Module | require `libopenmpt` |
+| [Tracker](https://openmpt.org/features#modules) | More tracker modules | requires `libopenmpt` |
 
 ### Lyrics File
 
@@ -58,27 +58,29 @@
 | OS | API | Status |
 |--------|-------------|---------|
 | macOS | Now Playing | Available |
-| Linux | MPRIS | Lack tests |
-| Windows | SMTP | TODO |
+| Linux | MPRIS | Lacks tests |
+| Windows | SMTC | Planned |
 
 ## Usage
 
 ### TUI
 
 > [!TIP]
-> **Modern terminal emulators like Windows Terminal, Konsole, iTerm2 or Ghostty is recommended!**
-> Issues may occurred when using this program on outdated terminal emulators like legacy xterm.
+> **Modern terminal emulators like Windows Terminal, Konsole, iTerm2 or Ghostty are recommended!**
+> Issues may occur when using this program on outdated terminal emulators like legacy xterm.
 
-#### *nix:
+#### *nix
 
 Simply run:
+
 ~~~bash
 ./neoviolet /path/to/audiofile
 ~~~
 
-#### Windows:
+#### Windows
 
 Simply run:
+
 ~~~bash
 neoviolet.exe /path/to/audiofile
 ~~~
@@ -97,7 +99,7 @@ We provide App Bundle for macOS, you can simply drag your audio file to the app!
 
 ## Build
 
-Check out [`BUILD.md`](./docs/BUILD.md) for more infomation!
+Check out [`BUILD.md`](./docs/BUILD.md) for more information!
 
 ## License
 
