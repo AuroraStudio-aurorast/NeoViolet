@@ -177,13 +177,37 @@ func TestScanWordTimed(t *testing.T) {
 			lineStart: 500 * time.Millisecond,
 		},
 		{
-			name:   "degenerate 0,0 tuple keeps its start and the boundary",
+			name:   "degenerate 0,0 tuple carries the boundary",
 			body:   "Hello(1000,500) (0,0)world",
 			re:     qrc,
 			text:   "Hello world",
 			end:    1500 * time.Millisecond,
 			words:  []string{"Hello", " ", "world"},
-			starts: []time.Duration{1000 * time.Millisecond, 0, 1500 * time.Millisecond},
+			starts: []time.Duration{1000 * time.Millisecond, 1500 * time.Millisecond, 1500 * time.Millisecond},
+		},
+		{
+			// The platform's own shape: the space between two words is written as a
+			// degenerate tuple next to the word tuple, and carries no time of its
+			// own. Taking its 0 literally would put a fragment before the line's own
+			// first word and break both the monotonic word timeline and the panel's
+			// karaoke split.
+			name:   "qrc space filler tuple carries the boundary",
+			body:   "I(1000,200) (0,0)could(1200,300) (0,0)not(1500,300)",
+			re:     qrc,
+			text:   "I could not",
+			end:    1800 * time.Millisecond,
+			words:  []string{"I", " ", "could", " ", "not"},
+			starts: []time.Duration{1000 * time.Millisecond, 1200 * time.Millisecond, 1200 * time.Millisecond, 1500 * time.Millisecond, 1500 * time.Millisecond},
+		},
+		{
+			// Same shape with YRC's polarity: the tuple precedes its text.
+			name:   "yrc space filler tuple carries the boundary",
+			body:   "(1000,200,0)I(0,0,0) (1200,300,0)could(0,0,0) (1500,300,0)not",
+			re:     yrc,
+			text:   "I could not",
+			end:    1800 * time.Millisecond,
+			words:  []string{"I", " ", "could", " ", "not"},
+			starts: []time.Duration{1000 * time.Millisecond, 1200 * time.Millisecond, 1200 * time.Millisecond, 1500 * time.Millisecond, 1500 * time.Millisecond},
 		},
 		{
 			name:   "only degenerate tuples leave no end",
@@ -192,10 +216,13 @@ func TestScanWordTimed(t *testing.T) {
 			text:   "Hello",
 			end:    0,
 			words:  []string{"Hello"},
-			starts: []time.Duration{0},
+			starts: []time.Duration{500 * time.Millisecond},
 			// A nonzero lineStart keeps this case from passing by accident: the
 			// degenerate tuple carries no duration, so the line must stay
-			// unbounded instead of inheriting lineStart as its End.
+			// unbounded instead of inheriting lineStart as its End. The fragment
+			// itself does inherit lineStart, because the tuple gave it no time.
+			start:     500 * time.Millisecond,
+			wantStart: true,
 			lineStart: 500 * time.Millisecond,
 		},
 		{

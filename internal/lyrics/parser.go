@@ -166,6 +166,15 @@ type wordTimedScan struct {
 // known boundary. Dropping it (the previous behaviour, which also made QRC and
 // YRC disagree with each other) would leave Words unable to tile Text, and the
 // panel silently degrades to whole-line highlighting when a line does not tile.
+//
+// A (0,0) tuple is not a word at 0 ms: the platforms write it next to the space
+// between two words, where it means "no time here". Its fragment carries the
+// running boundary instead, which is the rule ESLRC already applies to its
+// [00:00.000] carry marker. Reading the zero literally puts the filler before the
+// line's own first word, so the word timeline stops being monotonic: Words then
+// tile Text as a string but not as a timeline, and the panel's karaoke split -
+// which partitions Words by time and concatenates each part - silently degrades
+// to a whole-line highlight.
 func scanWordTimed(body string, groups wordTimedRe, lineStart time.Duration) wordTimedScan {
 	var scan wordTimedScan
 
@@ -194,6 +203,11 @@ func scanWordTimed(body string, groups wordTimedRe, lineStart time.Duration) wor
 		durMs, _ := strconv.Atoi(body[loc[2*groups.duration]:loc[2*groups.duration+1]])
 
 		startAt := time.Duration(startMs) * time.Millisecond
+		// A (0,0) tuple carries no time of its own (see the doc comment), so its
+		// fragment inherits the last known boundary rather than the literal zero.
+		if startMs == 0 && durMs == 0 {
+			startAt = boundary
+		}
 		if text != "" {
 			scan.Words = append(scan.Words, WordFragment{Time: startAt, Text: text})
 			sb.WriteString(text)

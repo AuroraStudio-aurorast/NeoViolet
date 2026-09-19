@@ -210,6 +210,18 @@ func runInvariants(t *testing.T, d *Data, e expectation, skip map[string]bool) {
 			}
 		}
 
+		// C9：Words 的时刻非降序。C6 只看 Words 拼接后的文本，看不出时间轴倒挂；
+		// 而面板的逐字切分是按时间把 Words 分成 played/rest 两组再各自拼接的，
+		// 一旦倒挂，played+rest 就不再等于 Text，逐字高亮静默退化成整行高亮。
+		if !skip["C9"] {
+			for i := 1; i < len(l.Words); i++ {
+				if l.Words[i].Time < l.Words[i-1].Time {
+					t.Errorf("C9 %s: Words[%d] at %v is before Words[%d] at %v",
+						tag, i, l.Words[i].Time, i-1, l.Words[i-1].Time)
+				}
+			}
+		}
+
 		// C7：显示文本非空的行在它自己的 Time 时刻必须可达。
 		if !skip["C7"] && strings.TrimSpace(l.Part(0)) != "" {
 			saved := d.AgentFilter

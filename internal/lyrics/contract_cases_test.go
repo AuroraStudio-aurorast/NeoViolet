@@ -68,15 +68,20 @@ const (
 
 	qrcContractSample = "[ti:Contract]\n[ar:Tester]\n[offset:250]\n" +
 		"[1000,2000]Hello(1000,500) (1500,500)world\n" +
-		"[3000,2000]Bye(3000,500)\n"
+		"[3000,2000]Bye(3000,500)\n" +
+		// 平台的真实形状：词间空格写成退化的 (0,0) filler 元组，本身不带时间。
+		"[5000,2000]I(5000,200) (0,0)could(5200,300) (0,0)not(5500,300)\n"
 
 	yrcContractSample = "[ti:Contract]\n[ar:Tester]\n[offset:250]\n" +
 		"[1000,2000](1000,500,0)Hello(1500,500,0) world\n" +
-		"[3000,2000](3000,500,0)Bye\n"
+		"[3000,2000](3000,500,0)Bye\n" +
+		// 同一个 filler 形状，元组在文本之前。
+		"[5000,2000](5000,200,0)I(0,0,0) (5200,300,0)could(0,0,0) (5500,300,0)not\n"
 
 	// LYS 的行头是 [channel]，body 与 QRC 同形（文本在时间戳之前）。
 	lysContractSample = "[0]Hello(1000,500) (1500,500)world\n" +
-		"[2]Duet(3000,500)\n"
+		"[2]Duet(3000,500)\n" +
+		"[0]I(5000,200) (0,0)could(5200,300) (0,0)not(5500,300)\n"
 
 	// 一个 SYNC 下两个 <P Class=...> 是 B 类（两个 LyricLine），<br> 是 A 类（Parts）。
 	smiContractSample = "<SMI><BODY>" +
