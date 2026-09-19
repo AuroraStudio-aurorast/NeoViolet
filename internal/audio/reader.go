@@ -106,11 +106,9 @@ func (p *Player) OpenReader(name string, data []byte) error {
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
-	ctrlStreamer := resampleIfNeeded(streamer, format)
-
 	logger.Info("Audio loaded from stdin", "name", name, "format", format.SampleRate)
 
-	p.setupStreamer(streamer, format, decReader, name, ctrlStreamer)
+	p.setupStreamer(streamer, format, decReader, name)
 
 	// If no title detected from tags, use the display name
 	if p.title == "" {

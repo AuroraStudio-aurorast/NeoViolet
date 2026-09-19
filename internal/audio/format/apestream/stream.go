@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/gopxl/beep/v2"
 
@@ -23,6 +24,10 @@ type StreamInfo struct {
 }
 
 // Backend is the interface each subprocess decoder must implement.
+//
+// Implementations must tolerate Seek and Close while Read is blocked on the
+// decoder, and Read must never wait forever once the decoder has stopped
+// producing samples.
 type Backend interface {
 	// Name returns a human-readable identifier for the backend.
 	Name() string
@@ -30,7 +35,8 @@ type Backend interface {
 	// start from the beginning.
 	Open(path string, seekSamples int) (*StreamInfo, error)
 	// Read fills p with interleaved float64 samples (L/R pairs). Returns the
-	// number of frames written.
+	// number of frames written. It is called from a single goroutine and may
+	// block until the decoder produces more samples.
 	Read(p []float64) (int, error)
 	// Seek seeks to the given sample position.
 	Seek(samples int) error
@@ -41,10 +47,17 @@ type Backend interface {
 // Streamer (wraps any Backend, implements beep.StreamSeekCloser)
 
 // Streamer implements beep.StreamSeekCloser for APE-encoded audio.
+//
+// opMu serialises Stream, Seek and Close: those three touch the shared decode
+// buffer, while Position and Len read atomic counters and never block. beep
+// already serialises them for playback (speaker.Clear waits for the in-flight
+// Stream), but the streamer also owns a decoder subprocess and a reader
+// goroutine, so it does not rely on the caller for its own consistency.
 type Streamer struct {
 	streamcore.Core
 	backend Backend
 	path    string
+	opMu    sync.Mutex
 }
 
 // Decode opens an APE file and returns a beep.StreamSeekCloser. It tries each
@@ -111,7 +124,7 @@ func probeBackends() []Backend {
 
 	// 2. ffmpeg
 	if _, err := exec.LookPath("ffmpeg"); err == nil {
-		backends = append(backends, &ffmpegBackend{})
+		backends = append(backends, newFFmpegBackend())
 	}
 
 	// 3. mac (official Monkey's Audio CLI)
@@ -162,7 +175,10 @@ func findApeCLI() string {
 
 // Stream fills the output buffer with decoded APE samples.
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
-	if s.Closed {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+
+	if s.Closed.Load() {
 		return 0, false
 	}
 
@@ -208,7 +224,10 @@ func (s *Streamer) bufPool(n int) []float64 {
 
 // Seek moves the stream position to the given sample.
 func (s *Streamer) Seek(samples int) error {
-	if s.Closed {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+
+	if s.Closed.Load() {
 		return fmt.Errorf("apestream: streamer is closed")
 	}
 	if samples < 0 {
@@ -222,7 +241,7 @@ func (s *Streamer) Seek(samples int) error {
 		return fmt.Errorf("apestream seek: %w", err)
 	}
 
-	s.CurrentSample = samples
+	s.CurrentSample.Store(int64(samples))
 	s.ResetBuffer()
 	return nil
 }
@@ -231,13 +250,17 @@ func (s *Streamer) Seek(samples int) error {
 func (s *Streamer) Len() int { return s.TotalSamples }
 
 // Position returns the current sample position.
-func (s *Streamer) Position() int { return s.CurrentSample }
+func (s *Streamer) Position() int { return int(s.CurrentSample.Load()) }
 
-// Close closes the streamer and releases backend resources.
+// Close closes the streamer and releases backend resources, killing any
+// decoder subprocess and stopping its reader goroutine.
 func (s *Streamer) Close() error {
-	if s.Closed {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+
+	if s.Closed.Load() {
 		return nil
 	}
-	s.Closed = true
+	s.Closed.Store(true)
 	return s.backend.Close()
 }

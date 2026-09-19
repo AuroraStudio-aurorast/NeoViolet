@@ -1,39 +1,20 @@
 package apestream
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"os/exec"
-	"sync"
-	"time"
+	"strconv"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 // apecli pipe backend
 
+// apeCLIBackend decodes APE through the apecli helper (tools/apecli), which
+// streams APEP-framed PCM on stdout. Process lifetime is handled by pipeOwner.
 type apeCLIBackend struct {
+	pipeOwner
 	binary string
-	path   string // original .ape file path
-	cmd    *exec.Cmd
-	stdout io.ReadCloser
-	mu     sync.Mutex
-	// Decoded PCM data flows through this channel from a read goroutine.
-	chunkChan chan pcmChunk
-	// Internal buffer for unconsumed PCM between Read calls.
-	readBuf []float64
-	// Buffer conversion state.
-	bytesPerSample int
-	numChannels    int
-	// Signalled when the read goroutine exits.
-	done chan struct{}
-	// Closed to signal the readLoop to stop (e.g. during Seek).
-	cancel chan struct{}
-}
-
-type pcmChunk struct {
-	data []float64
 }
 
 // 28-byte binary header from apecli.
@@ -49,222 +30,82 @@ type apeCLIHeader struct {
 }
 
 func newApeCLIBackend(binary string) *apeCLIBackend {
-	return &apeCLIBackend{
-		binary: binary,
-	}
+	b := &apeCLIBackend{binary: binary}
+	b.start = b.startPipe
+	return b
 }
 
 func (b *apeCLIBackend) Name() string { return "apecli" }
 
 func (b *apeCLIBackend) Open(path string, seekSamples int) (*StreamInfo, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.path = path
-
-	args := []string{sanitizeFileArg(path)}
-	if seekSamples >= 0 {
-		args = append([]string{"--seek", fmt.Sprintf("%d", seekSamples)}, args...)
-	}
-
-	return b.startProcess(args)
+	return b.open(path, seekSamples)
 }
 
-func (b *apeCLIBackend) startProcess(args []string) (*StreamInfo, error) {
+func (b *apeCLIBackend) Read(p []float64) (int, error) { return b.read(p) }
+
+func (b *apeCLIBackend) Seek(samples int) error { return b.seek(samples) }
+
+func (b *apeCLIBackend) Close() error { return b.close() }
+
+// startPipe launches apecli for path, validates its APEP header and hands the
+// still unread PCM stream to the reader goroutine.
+func (b *apeCLIBackend) startPipe(path string, seekSamples int) (*pipeStream, *StreamInfo, error) {
+	args := make([]string, 0, 3)
+	if seekSamples >= 0 {
+		args = append(args, "--seek", strconv.Itoa(seekSamples))
+	}
+	args = append(args, sanitizeFileArg(path))
+
 	// #nosec G204 -- binary path is resolved from a trusted location (env var,
 	// executable dir, or PATH) and args are a sanitized file path + seek offset.
 	cmd := exec.Command(b.binary, args...)
-	stdout, err := cmd.StdoutPipe()
+	stdout, err := startPipeCmd("apecli", cmd)
 	if err != nil {
-		return nil, fmt.Errorf("apecli stdout pipe: %w", err)
+		return nil, nil, err
 	}
 
-	// Capture stderr for diagnostics.
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, fmt.Errorf("apecli stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("apecli start: %w", err)
-	}
-
-	b.cmd = cmd
-	b.stdout = stdout
-
-	// Read stderr in background for debugging.
-	go func() {
-		var buf bytes.Buffer
-		_, _ = io.Copy(&buf, stderr)
-		if buf.Len() > 0 {
-			logger.Debug("apecli stderr", "msg", buf.String())
-		}
-	}()
-
-	// Read the 28-byte header with timeout.
+	// Read the 28-byte header before the PCM reader starts, so the header is
+	// never mistaken for samples.
 	var hdr apeCLIHeader
-	if err := readWithTimeout(stdout, &hdr, 30*time.Second); err != nil {
-		b.kill()
-		return nil, fmt.Errorf("apecli read header: %w", err)
+	if err := readWithTimeout(stdout, &hdr, pipeHeaderTimeout); err != nil {
+		stopProcess(cmd, stdout)
+		return nil, nil, fmt.Errorf("apecli read header: %w", err)
 	}
 
-	if string(hdr.Magic[:]) != "APEP" {
-		b.kill()
-		return nil, fmt.Errorf("apecli: bad header magic %q", string(hdr.Magic[:]))
-	}
-	if hdr.SampleRate < 8000 || hdr.SampleRate > 384000 {
-		b.kill()
-		return nil, fmt.Errorf("apecli: invalid sample rate %d", hdr.SampleRate)
-	}
-	if hdr.Channels < 1 || hdr.Channels > 2 {
-		b.kill()
-		return nil, fmt.Errorf("apecli: unsupported channels %d", hdr.Channels)
-	}
-	switch hdr.BitsPerSample {
-	case 8, 16, 24, 32:
-	default:
-		b.kill()
-		return nil, fmt.Errorf("apecli: unsupported bits-per-sample %d", hdr.BitsPerSample)
+	if err := hdr.validate(); err != nil {
+		stopProcess(cmd, stdout)
+		return nil, nil, err
 	}
 
-	b.bytesPerSample = int(hdr.BitsPerSample) / 8
-	b.numChannels = int(hdr.Channels)
-
-	// Create fresh channels and start the read goroutine. Channels are created
-	// here (not at the top) so they only exist when a readLoop is active.
-	b.chunkChan = make(chan pcmChunk, 4)
-	b.done = make(chan struct{})
-	b.cancel = make(chan struct{})
-	go b.readLoop()
-
-	return &StreamInfo{
+	info := &StreamInfo{
 		SampleRate:    int(hdr.SampleRate),
 		Channels:      int(hdr.Channels),
 		BitsPerSample: int(hdr.BitsPerSample),
 		// #nosec G115 -- sample count fits in int for any real-world track.
 		TotalSamples: int(hdr.TotalSamples),
-	}, nil
+	}
+	s := newPipeStream(cmd, stdout, info, int(hdr.BitsPerSample)/8, int(hdr.Channels))
+
+	logger.Debug("ape: apecli stream ready", "sampleRate", info.SampleRate, "channels", info.Channels)
+	return s, info, nil
 }
 
-func (b *apeCLIBackend) readLoop() {
-	defer close(b.done)
-
-	bps := b.bytesPerSample
-	ch := b.numChannels
-	const bufFrames = 4096
-	bufSize := bufFrames * bps * ch
-	rawBuf := make([]byte, bufSize)
-
-	for {
-		n, err := io.ReadFull(b.stdout, rawBuf)
-		if n > 0 {
-			validFrames := n / (bps * ch)
-			pcmBuf := make([]float64, bufFrames*2)
-			pcmBuf = convertPCMToFloat64(rawBuf[:n], ch, bps, pcmBuf)
-			select {
-			case b.chunkChan <- pcmChunk{data: pcmBuf[:validFrames*2]}:
-			case <-b.cancel:
-				return
-			}
-		}
-		if err != nil {
-			return
-		}
+// validate rejects headers that would produce a nonsense stream. The values come
+// from a subprocess, so they are treated as untrusted input.
+func (h apeCLIHeader) validate() error {
+	if string(h.Magic[:]) != "APEP" {
+		return fmt.Errorf("apecli: bad header magic %q", string(h.Magic[:]))
 	}
-}
-
-func (b *apeCLIBackend) Read(p []float64) (int, error) {
-	total := 0
-	needed := len(p)
-
-	// 1. Consume from internal buffer first.
-	if len(b.readBuf) > 0 {
-		n := copy(p, b.readBuf)
-		b.readBuf = b.readBuf[n:]
-		total += n
+	if h.SampleRate < 8000 || h.SampleRate > 384000 {
+		return fmt.Errorf("apecli: invalid sample rate %d", h.SampleRate)
 	}
-
-	// 2. Read more chunks until p is full or EOF.
-	for total < needed {
-		chunk, ok := <-b.chunkChan
-		if !ok {
-			if total == 0 {
-				return 0, io.EOF
-			}
-			return total / 2, nil
-		}
-		n := copy(p[total:], chunk.data)
-		total += n
-		// Save unconsumed remainder for next Read call.
-		if n < len(chunk.data) {
-			excess := make([]float64, len(chunk.data)-n)
-			copy(excess, chunk.data[n:])
-			b.readBuf = excess
-		}
+	if h.Channels < 1 || h.Channels > 2 {
+		return fmt.Errorf("apecli: unsupported channels %d", h.Channels)
 	}
-	return total / 2, nil
-}
-
-func (b *apeCLIBackend) Seek(samples int) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	b.kill()
-
-	// Drain any buffered PCM and wait for the old readLoop to fully exit
-	// before starting a new one. This prevents the old goroutine from
-	// sending on or closing the new channel.
-	if b.chunkChan != nil {
-		for {
-			select {
-			case <-b.chunkChan:
-			case <-b.done:
-				goto stopped
-			}
-		}
-	}
-stopped:
-	if b.chunkChan != nil {
-		close(b.chunkChan)
-	}
-
-	_, err := b.startProcess([]string{"--seek", fmt.Sprintf("%d", samples), sanitizeFileArg(b.path)})
-	return err
-}
-
-func (b *apeCLIBackend) Close() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.kill()
-	// Wait for the readLoop to exit before closing chunkChan, so we don't
-	// race with a concurrent send on a full channel.
-	if b.chunkChan != nil {
-		for {
-			select {
-			case <-b.chunkChan:
-			case <-b.done:
-				goto closeCh
-			}
-		}
-	}
-closeCh:
-	if b.chunkChan != nil {
-		close(b.chunkChan)
+	switch h.BitsPerSample {
+	case 8, 16, 24, 32:
+	default:
+		return fmt.Errorf("apecli: unsupported bits-per-sample %d", h.BitsPerSample)
 	}
 	return nil
-}
-
-func (b *apeCLIBackend) kill() {
-	b.readBuf = nil
-	if b.cancel != nil {
-		close(b.cancel)
-	}
-	if b.cmd != nil && b.cmd.Process != nil {
-		_ = b.cmd.Process.Kill()
-		_ = b.cmd.Wait()
-	}
-	if b.stdout != nil {
-		_ = b.stdout.Close()
-	}
-	b.cmd = nil
-	b.stdout = nil
 }

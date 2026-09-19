@@ -1,17 +1,27 @@
 // Package streamcore provides shared buffer management for audio format streamers.
 package streamcore
 
+import "sync/atomic"
+
 // Core provides shared buffer management implementation for audio format
 // streamers (mp2stream, opusstream, alacstream). Embed this struct to
 // eliminate duplicated Stream inner-loop, Close, Err, and buffer-reset code.
+//
+// Concurrency: the UI goroutine reads Position and Len while the audio
+// goroutine is inside Stream, so CurrentSample and Closed are atomic — reading
+// them never blocks and never races. The decoded buffer itself (Buf,
+// BufSamples, Pos) is only touched by Stream and Seek, which the caller must
+// serialise; beep provides that by holding the speaker lock (speaker.Lock,
+// speaker.Clear) around all Stream activity, and a streamer embedding this
+// Core may add its own mutex to enforce it for direct callers.
 type Core struct {
-	Pos           int       // sample position within Buf
-	CurrentSample int       // absolute sample position within the stream
-	Buf           []float64 // current decoded buffer (interleaved stereo)
-	BufSamples    int       // number of sample frames in Buf
-	NumChannels   int       // number of audio channels
-	TotalSamples  int       // total samples in stream
-	Closed        bool
+	Pos           int          // sample position within Buf
+	CurrentSample atomic.Int64 // absolute sample position within the stream
+	Buf           []float64    // current decoded buffer (interleaved stereo)
+	BufSamples    int          // number of sample frames in Buf
+	NumChannels   int          // number of audio channels
+	TotalSamples  int          // total samples in stream
+	Closed        atomic.Bool
 }
 
 // CopyToOutput copies frames from the internal buffer to the output [][2]float64
@@ -28,7 +38,7 @@ func (sc *Core) CopyToOutput(samples [][2]float64, totalNeeded, totalFilled int)
 		}
 	}
 	sc.Pos += framesToCopy
-	sc.CurrentSample += framesToCopy
+	sc.CurrentSample.Add(int64(framesToCopy))
 	return framesToCopy
 }
 
@@ -42,14 +52,15 @@ func (sc *Core) ResetBuffer() {
 // Len returns the total number of samples in the stream.
 func (sc *Core) Len() int { return sc.TotalSamples }
 
-// Position returns the current absolute sample position.
-func (sc *Core) Position() int { return sc.CurrentSample }
+// Position returns the current absolute sample position. Safe to call from any
+// goroutine, including while Stream runs on the audio goroutine.
+func (sc *Core) Position() int { return int(sc.CurrentSample.Load()) }
 
 // Err implements beep.StreamSeekCloser.Err — always nil for these streamers.
 func (sc *Core) Err() error { return nil }
 
 // Close marks the streamer as closed. Implements io.Closer.
-func (sc *Core) Close() error { sc.Closed = true; return nil }
+func (sc *Core) Close() error { sc.Closed.Store(true); return nil }
 
 // MinInt returns the minimum of two integers.
 func MinInt(a, b int) int {

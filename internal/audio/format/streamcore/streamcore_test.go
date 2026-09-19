@@ -19,8 +19,8 @@ func TestCopyToOutput(t *testing.T) {
 	if out[0] != [2]float64{1, 2} || out[1] != [2]float64{3, 4} {
 		t.Errorf("out = %v", out[:2])
 	}
-	if sc.Pos != 2 || sc.CurrentSample != 2 {
-		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 2/2", sc.Pos, sc.CurrentSample)
+	if sc.Pos != 2 || sc.CurrentSample.Load() != 2 {
+		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 2/2", sc.Pos, sc.CurrentSample.Load())
 	}
 }
 
@@ -62,8 +62,8 @@ func TestCopyToOutputWithOffset(t *testing.T) {
 	if out[0] != [2]float64{100, 100} || out[1] != [2]float64{200, 200} {
 		t.Errorf("pre-filled prefix was overwritten: out = %v", out[:2])
 	}
-	if sc.Pos != 2 || sc.CurrentSample != 2 {
-		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 2/2", sc.Pos, sc.CurrentSample)
+	if sc.Pos != 2 || sc.CurrentSample.Load() != 2 {
+		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 2/2", sc.Pos, sc.CurrentSample.Load())
 	}
 }
 
@@ -84,13 +84,14 @@ func TestCopyToOutputTruncated(t *testing.T) {
 	if out[0] != [2]float64{1, 2} {
 		t.Errorf("out[0] = %v, want {1 2}", out[0])
 	}
-	if sc.Pos != 1 || sc.CurrentSample != 1 {
-		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 1/1", sc.Pos, sc.CurrentSample)
+	if sc.Pos != 1 || sc.CurrentSample.Load() != 1 {
+		t.Errorf("Pos = %d, CurrentSample = %d after copy, want 1/1", sc.Pos, sc.CurrentSample.Load())
 	}
 }
 
 func TestCoreLifecycle(t *testing.T) {
-	sc := &Core{TotalSamples: 100, CurrentSample: 42}
+	sc := &Core{TotalSamples: 100}
+	sc.CurrentSample.Store(42)
 	if sc.Len() != 100 {
 		t.Errorf("Len = %d, want 100", sc.Len())
 	}
@@ -102,15 +103,15 @@ func TestCoreLifecycle(t *testing.T) {
 		t.Errorf("ResetBuffer: Buf = %v, BufSamples = %d, Pos = %d, want nil/0/0",
 			sc.Buf, sc.BufSamples, sc.Pos)
 	}
-	if sc.CurrentSample != 42 {
+	if sc.CurrentSample.Load() != 42 {
 		t.Errorf("CurrentSample = %d after ResetBuffer, want 42 (ResetBuffer does not reset stream position)",
-			sc.CurrentSample)
+			sc.CurrentSample.Load())
 	}
 	if sc.Err() != nil {
 		t.Error("Err should be nil")
 	}
 	_ = sc.Close()
-	if !sc.Closed {
+	if !sc.Closed.Load() {
 		t.Error("Close should set Closed")
 	}
 }

@@ -86,7 +86,7 @@ func (p *Player) isSynthActive() bool {
 
 // setupStreamer sets the common streamer, ctrl, volume fields after opening audio.
 // Must be called with p.mu held (the caller's Open/OpenReader/openURL holds it).
-func (p *Player) setupStreamer(streamer beep.StreamSeekCloser, f beep.Format, file io.Closer, path string, ctrlStreamer beep.Streamer) {
+func (p *Player) setupStreamer(streamer beep.StreamSeekCloser, f beep.Format, file io.Closer, path string) {
 	p.streamer = streamer
 	p.format = f
 	p.file = file
@@ -95,9 +95,18 @@ func (p *Player) setupStreamer(streamer beep.StreamSeekCloser, f beep.Format, fi
 	p.path = path
 	p.synthActive = false
 
+	p.buildChain(true)
+}
+
+// buildChain builds the playback chain around p.streamer — resampled when the
+// speaker runs at another rate, then volume control — and stores it in
+// p.ctrl/p.volume. Opening a track and seeking both go through here so the two
+// paths cannot drift apart. A fresh chain is deliberate: a seek must not keep
+// the resampler's buffered samples from before the jump. Caller must hold p.mu.
+func (p *Player) buildChain(paused bool) {
 	p.ctrl = &beep.Ctrl{
-		Streamer: ctrlStreamer,
-		Paused:   true,
+		Streamer: resampleIfNeeded(p.streamer, p.format),
+		Paused:   paused,
 	}
 
 	p.volume = &effects.Volume{
@@ -152,13 +161,8 @@ func (p *Player) Open(path string) error {
 		return p.openSynthetic(path, synthExt)
 	}
 
-	if p.isPlaying {
-		speaker.Clear()
-		p.isPlaying = false
-	}
-	if p.streamer != nil && p.file != nil {
-		_ = p.file.Close()
-	}
+	// Release the previous track before opening the next one.
+	p.closeStreamer()
 
 	if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
 		_ = file.Close()
@@ -176,15 +180,10 @@ func (p *Player) Open(path string) error {
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
-	// Resample if the streamer's native sample rate differs from the
-	// speaker's hardware rate. The beep speaker is initialized once at
-	// the first song's rate and cannot be re-initialized; without
-	// resampling, a rate mismatch causes pitch/tempo distortion.
-	ctrlStreamer := resampleIfNeeded(streamer, format)
-
+	// Resampling happens inside the playback chain; see resampleIfNeeded.
 	logger.Info("Audio file opened", "path", path, "format", format.SampleRate)
 
-	p.setupStreamer(streamer, format, file, path, ctrlStreamer)
+	p.setupStreamer(streamer, format, file, path)
 
 	p.readTags(path)
 
@@ -193,15 +192,22 @@ func (p *Player) Open(path string) error {
 
 // closeStreamer stops playback and closes the file/streamer resources. Caller must hold p.mu.
 func (p *Player) closeStreamer() {
-	if p.isPlaying {
-		speaker.Clear()
-		p.isPlaying = false
+	// Clear unconditionally: it stops playback and, because beep holds the
+	// speaker lock for the duration of a Stream call, it also guarantees no
+	// decoder is being read by the time the streamer is closed.
+	speaker.Clear()
+	p.isPlaying = false
+
+	if p.streamer != nil {
+		// The streamer owns its decoder subprocess and its reader goroutine, so
+		// dropping the reference without closing it leaks both.
+		_ = p.streamer.Close()
+		p.streamer = nil
 	}
-	if p.streamer != nil && p.file != nil {
+	if p.file != nil {
 		_ = p.file.Close()
 		p.file = nil
 	}
-	p.streamer = nil
 	p.ctrl = nil
 	p.volume = nil
 }
@@ -368,16 +374,9 @@ func (p *Player) Seek(position time.Duration) error {
 		return fmt.Errorf("seek to %v: %w", position, err)
 	}
 
-	p.ctrl = &beep.Ctrl{
-		Streamer: p.streamer,
-		Paused:   !wasPlaying,
-	}
-	p.volume = &effects.Volume{
-		Streamer: p.ctrl,
-		Base:     2,
-		Silent:   false,
-	}
-	p.applyLinearVolumeLocked()
+	// Rebuild the chain so the resampler starts at the new position instead of
+	// replaying the samples it buffered before the seek.
+	p.buildChain(!wasPlaying)
 
 	if wasPlaying {
 		speaker.Lock()
@@ -438,16 +437,8 @@ func (p *Player) Close() error {
 	}
 
 	logger.Debug("Player.Close (audio)")
-	speaker.Clear()
-	if p.file != nil {
-		_ = p.file.Close()
-		p.file = nil
-	}
-	p.streamer = nil
-	p.ctrl = nil
-	p.volume = nil
+	p.closeStreamer()
 	p.isPaused = true
-	p.isPlaying = false
 
 	// Clean up any temp files created by OpenReader
 	for _, tmpPath := range p.tempFiles {

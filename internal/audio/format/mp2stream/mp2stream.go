@@ -121,7 +121,7 @@ func toFrame(s *mpeg.Samples, numChannels int) cachedFrame {
 
 // Stream fills the output buffer with decoded MP2 samples.
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
-	if s.Closed {
+	if s.Closed.Load() {
 		return 0, false
 	}
 
@@ -153,7 +153,7 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 
 // Seek moves the stream position to the given sample.
 func (s *Streamer) Seek(samples int) error {
-	if s.Closed {
+	if s.Closed.Load() {
 		return fmt.Errorf("streamer is closed")
 	}
 	if samples < 0 {
@@ -167,7 +167,7 @@ func (s *Streamer) Seek(samples int) error {
 	for i, fr := range s.frames {
 		if accum+fr.samples > samples {
 			s.frameIndex = i
-			s.CurrentSample = accum
+			s.CurrentSample.Store(int64(accum))
 			s.ResetBuffer()
 			return nil
 		}
@@ -175,7 +175,7 @@ func (s *Streamer) Seek(samples int) error {
 	}
 
 	s.frameIndex = len(s.frames)
-	s.CurrentSample = s.TotalSamples
+	s.CurrentSample.Store(int64(s.TotalSamples))
 	s.ResetBuffer()
 	return nil
 }

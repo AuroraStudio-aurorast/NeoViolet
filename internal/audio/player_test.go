@@ -113,7 +113,7 @@ func newFakePlayer(totalSamples int) (*Player, *fakeStream) {
 	p := NewPlayer()
 	f := &fakeStream{total: totalSamples, rate: beep.SampleRate(44100)}
 	fm := beep.Format{SampleRate: 44100, NumChannels: 2, Precision: 2}
-	p.setupStreamer(f, fm, nopCloser{}, "fake.wav", f)
+	p.setupStreamer(f, fm, nopCloser{}, "fake.wav")
 	return p, f
 }
 
@@ -192,5 +192,32 @@ func TestResampleIfNeeded(t *testing.T) {
 	got := resampleIfNeeded(&fakeStream{}, fm)
 	if _, ok := got.(*fakeStream); !ok {
 		t.Error("resampleIfNeeded should return original streamer when speaker not initialized")
+	}
+}
+
+func TestSeekKeepsResampler(t *testing.T) {
+	// The speaker is initialized once, at the first track's rate, so a 48kHz
+	// track on a 44.1kHz speaker only plays at the right pitch while the chain
+	// resamples. Seek rebuilds the chain and must keep it that way.
+	prev := speakerSampleRate
+	speakerSampleRate = beep.SampleRate(44100)
+	defer func() { speakerSampleRate = prev }()
+
+	p := NewPlayer()
+	f := &fakeStream{total: 48000 * 10, rate: 48000}
+	p.setupStreamer(f, beep.Format{SampleRate: 48000, NumChannels: 2, Precision: 2}, nopCloser{}, "fake.wav")
+	if _, ok := p.ctrl.Streamer.(*beep.Resampler); !ok {
+		t.Fatalf("chain after open = %T, want *beep.Resampler", p.ctrl.Streamer)
+	}
+
+	if err := p.Seek(2 * time.Second); err != nil {
+		t.Fatalf("Seek: %v", err)
+	}
+
+	if _, ok := p.ctrl.Streamer.(*beep.Resampler); !ok {
+		t.Errorf("chain after seek = %T, want *beep.Resampler", p.ctrl.Streamer)
+	}
+	if len(f.seeks) != 1 || f.seeks[0] != 96000 {
+		t.Errorf("seeks = %v, want [96000]", f.seeks)
 	}
 }

@@ -12,8 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gopxl/beep/v2/speaker"
-
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
@@ -228,15 +226,8 @@ func (p *Player) openURL(urlStr string) error {
 		return fmt.Errorf("remote playback of %s format is not supported", ext)
 	}
 
-	if p.isPlaying {
-		speaker.Clear()
-		p.isPlaying = false
-	}
-	if p.streamer != nil {
-		if p.file != nil {
-			_ = p.file.Close()
-		}
-	}
+	// Release the previous track before opening the next one.
+	p.closeStreamer()
 
 	rrs, err := newRemoteReadSeeker(resp)
 	if err != nil {
@@ -254,11 +245,9 @@ func (p *Player) openURL(urlStr string) error {
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
-	ctrlStreamer := resampleIfNeeded(streamer, format)
-
 	logger.Info("Remote audio opened", "url", urlStr, "format", format.SampleRate)
 
-	p.setupStreamer(streamer, format, rrs, urlStr, ctrlStreamer)
+	p.setupStreamer(streamer, format, rrs, urlStr)
 
 	display := urlStr
 	if u.Scheme != "" {

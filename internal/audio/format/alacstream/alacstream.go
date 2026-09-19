@@ -71,7 +71,7 @@ func DecodeM4A(reader io.ReadSeeker) (*Streamer, beep.Format, error) {
 
 // Stream reads audio samples into the provided buffer.
 func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
-	if s.Closed {
+	if s.Closed.Load() {
 		return 0, false
 	}
 
@@ -85,7 +85,7 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 		}
 
 		// #nosec G115 -- frame index is bounded by total samples per frame.
-		frameIndex := uint32(s.CurrentSample / int(s.decoder.MaxSamplesPerFrame))
+		frameIndex := uint32(int(s.CurrentSample.Load()) / int(s.decoder.MaxSamplesPerFrame))
 		if int(frameIndex) >= len(s.track.SampleSizes) {
 			if totalFilled == 0 {
 				return 0, false
@@ -164,7 +164,7 @@ func pcmToFloat64(pcm []byte, numChannels, sampleSize int) []float64 {
 
 // Seek moves the stream position to the given sample.
 func (s *Streamer) Seek(samples int) error {
-	if s.Closed {
+	if s.Closed.Load() {
 		return fmt.Errorf("streamer is closed")
 	}
 	if samples < 0 {
@@ -173,7 +173,7 @@ func (s *Streamer) Seek(samples int) error {
 	if samples > s.TotalSamples {
 		samples = s.TotalSamples
 	}
-	s.CurrentSample = samples
+	s.CurrentSample.Store(int64(samples))
 	s.ResetBuffer()
 	return nil
 }
