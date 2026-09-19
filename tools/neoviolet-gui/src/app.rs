@@ -52,7 +52,7 @@ impl TerminalApp {
             (fs, ff, args, ro, pid)
         };
 
-        let backend_tx = backend::spawn_neoviolet_terminal(
+        let backend_tx = match backend::spawn_neoviolet_terminal(
             tab_id.clone(),
             100,
             30,
@@ -60,8 +60,24 @@ impl TerminalApp {
             &launch_args,
             child_pid.clone(),
             &font_family,
-        )
-        .expect("failed to spawn neoviolet terminal");
+        ) {
+            Ok(tx) => tx,
+            Err(err) => {
+                // This GUI is only a wrapper around the TUI, so an unlaunchable
+                // neoviolet binary is a missing dependency rather than an
+                // internal fault. Report it through the same Closed event the PTY
+                // reader sends, so the ordinary exit dialog explains what happened
+                // instead of a panic aborting the process with a backtrace. The
+                // "closed:" prefix is what NeoVioletApp's exit detection matches on.
+                log::error!("[backend] could not start neoviolet: {err:#}");
+                let _ = events_tx.send(BackendEvent::Closed {
+                    tab_id: tab_id.clone(),
+                    reason: format!("closed: failed to start neoviolet: {err:#}"),
+                });
+                // Inert sender: nothing consumes it while the error dialog is up.
+                mpsc::channel::<BackendCommand>().0
+            }
+        };
 
         // Connect IPC client to the TUI's TCP endpoint (retries up to 5 s),
         // then send the font info and start a reader thread.

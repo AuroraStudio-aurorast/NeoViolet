@@ -135,7 +135,28 @@ var (
 	classAppDelegate            objc.Class
 )
 
-func init() {
+// setup prepares the ObjC runtime this file is built on: framework loading,
+// selector registration and the custom class definitions. Every public entry
+// point calls it first.
+//
+// It is deliberately not an init(): loading a framework is an environment
+// condition that can fail, and OS media integration is optional, so the failure
+// is reported to the caller instead of aborting the process. When it fails the
+// caller keeps running without media controls — see
+// cmd/neoviolet/cmd/run_darwin.go.
+var (
+	setupOnce sync.Once
+	setupErr  error
+)
+
+func setup() error {
+	setupOnce.Do(func() {
+		setupErr = registerObjCRuntime()
+	})
+	return setupErr
+}
+
+func registerObjCRuntime() error {
 	// Load frameworks.
 	for _, path := range []string{
 		"/System/Library/Frameworks/Foundation.framework/Foundation",
@@ -143,12 +164,17 @@ func init() {
 		"/System/Library/Frameworks/AppKit.framework/AppKit",
 	} {
 		if _, err := purego.Dlopen(path, purego.RTLD_GLOBAL); err != nil {
-			panic(fmt.Sprintf("mediactl: dlopen %s: %v", path, err))
+			return fmt.Errorf("mediactl: dlopen %s: %w", path, err)
 		}
 	}
 
-	// Load libobjc and register autorelease pool functions.
-	_objcLib, _ = purego.Dlopen("/usr/lib/libobjc.A.dylib", purego.RTLD_GLOBAL)
+	// Load libobjc and register autorelease pool functions. RegisterLibFunc
+	// dereferences the handle it is given, so a failed dlopen has to stop here
+	// rather than leave the pool functions pointing at a null library.
+	var err error
+	if _objcLib, err = purego.Dlopen("/usr/lib/libobjc.A.dylib", purego.RTLD_GLOBAL); err != nil {
+		return fmt.Errorf("mediactl: dlopen libobjc: %w", err)
+	}
 	purego.RegisterLibFunc(&_objcAutoreleasePoolPush, _objcLib, "objc_autoreleasePoolPush")
 	purego.RegisterLibFunc(&_objcAutoreleasePoolPop, _objcLib, "objc_autoreleasePoolPop")
 
@@ -224,7 +250,6 @@ func init() {
 	classMPMediaItemArtwork = objc.GetClass("MPMediaItemArtwork")
 
 	// custom ObjC classes
-	var err error
 
 	classMPRemoteCommandHandler, err = objc.RegisterClass(
 		"NeoVioletCommandHandler", objc.GetClass("NSObject"),
@@ -242,7 +267,7 @@ func init() {
 		},
 	)
 	if err != nil {
-		panic(fmt.Sprintf("mediactl: register handler class: %v", err))
+		return fmt.Errorf("mediactl: register handler class: %w", err)
 	}
 
 	classAppDelegate, err = objc.RegisterClass(
@@ -255,8 +280,10 @@ func init() {
 		},
 	)
 	if err != nil {
-		panic(fmt.Sprintf("mediactl: register delegate class: %v", err))
+		return fmt.Errorf("mediactl: register delegate class: %w", err)
 	}
+
+	return nil
 }
 
 // NSApplication delegate — bootstraps the app inside [NSApp run]
@@ -299,7 +326,14 @@ func appShouldTerminate(_ objc.ID, _ objc.SEL, _ objc.ID) bool { return true }
 // MacOSRun initialises NSApplication, registers a delegate, and blocks on
 // [NSApp run] until the callback fn returns (which triggers terminate:).
 // Must be called from the main thread.
-func MacOSRun(fn func()) {
+//
+// When the ObjC runtime cannot be prepared it returns that error without calling
+// fn, so the caller can carry on without OS media controls instead of aborting.
+func MacOSRun(fn func()) error {
+	if err := setup(); err != nil {
+		return err
+	}
+
 	nsApp := objc.ID(classNSApplication).Send(selSharedApplication)
 	nsApp.Send(selSetActivationPolicy, 2) // Prohibited
 	nsApp.Send(selActivateIgnoringOtherApps, true)
@@ -320,6 +354,7 @@ func MacOSRun(fn func()) {
 	// fire when [NSApp run] calls finishLaunching again internally.
 	nsApp.Send(selFinishLaunching)
 	nsApp.Send(selRun)
+	return nil
 }
 
 // darwinCtrl
@@ -336,7 +371,12 @@ type darwinCtrl struct {
 	coverArtwork objc.ID     // cached MPMediaItemArtwork
 }
 
-func newController() (Controller, error) { return &darwinCtrl{}, nil }
+func newController() (Controller, error) {
+	if err := setup(); err != nil {
+		return nil, err
+	}
+	return &darwinCtrl{}, nil
+}
 
 func (c *darwinCtrl) Start() (<-chan Command, error) {
 	c.mu.Lock()

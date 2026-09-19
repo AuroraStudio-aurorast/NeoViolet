@@ -143,7 +143,7 @@ fn main() {
             WindowBackgroundAppearance::Opaque
         };
 
-        cx.open_window(
+        let opened = cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                     point(px(0.0), px(0.0)),
@@ -195,7 +195,13 @@ fn main() {
                     .replace(root_entity.entity_id());
                 root_entity
             },
-        )
-        .unwrap();
+        );
+        if let Err(err) = opened {
+            // With no window there is nothing left to drive the run loop, so
+            // report and quit rather than unwinding through the callback with a
+            // backtrace.
+            log::error!("[gui] could not open the main window: {err}");
+            cx.quit();
+        }
     });
 }

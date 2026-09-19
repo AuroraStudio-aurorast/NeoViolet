@@ -19,6 +19,14 @@ pub struct LyricsState {
     pub dirty: bool,
 }
 
+/// Shared application state — registered as a gpui `Global`.
+///
+/// Each field is an `Arc<Mutex<…>>` locked with `.lock().unwrap()` at the point
+/// of use. That is deliberate rather than careless: the critical sections are
+/// field-sized, so the locks are effectively uncontended, and the only way
+/// `lock()` fails is a poisoned mutex — which already means a previous holder
+/// panicked and this shared state is in an undefined condition. Propagating that
+/// as an error would move the failure somewhere less informative, not avoid it.
 pub struct AppState {
     pub config: GuiConfig,
     pub launch_args: Arc<Mutex<Vec<String>>>,
