@@ -25,10 +25,10 @@ type mockPlayer struct {
 }
 
 func (m *mockPlayer) Open(_ string) error { return nil }
-func (m *mockPlayer) Play() error            { m.playing = true; m.playCalled = true; return nil }
-func (m *mockPlayer) Pause()                 { m.playing = false; m.pauseCalled = true }
-func (m *mockPlayer) Stop()                  { m.playing = false }
-func (m *mockPlayer) Toggle()                { m.playing = !m.playing }
+func (m *mockPlayer) Play() error         { m.playing = true; m.playCalled = true; return nil }
+func (m *mockPlayer) Pause()              { m.playing = false; m.pauseCalled = true }
+func (m *mockPlayer) Stop()               { m.playing = false }
+func (m *mockPlayer) Toggle()             { m.playing = !m.playing }
 func (m *mockPlayer) Seek(pos time.Duration) error {
 	m.seekCalled = true
 	m.lastSeekPos = pos

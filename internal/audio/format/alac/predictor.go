@@ -97,21 +97,21 @@ func deinterlace16(
 			right := int16(midright - ((difference * int32(interlacingLeftWeight)) >> interlacingShift))
 			left := right + int16(difference) // #nosec G115
 
-			bufferOut[2*i*numChannels] = byte(left) // #nosec G115 -- low byte of a 16-bit sample
-			bufferOut[2*i*numChannels+1] = byte(left >> 8) // #nosec G115
-			bufferOut[2*i*numChannels+2] = byte(right) // #nosec G115
+			bufferOut[2*i*numChannels] = byte(left)         // #nosec G115 -- low byte of a 16-bit sample
+			bufferOut[2*i*numChannels+1] = byte(left >> 8)  // #nosec G115
+			bufferOut[2*i*numChannels+2] = byte(right)      // #nosec G115
 			bufferOut[2*i*numChannels+3] = byte(right >> 8) // #nosec G115
 		}
 		return
 	}
 
 	for i := 0; i < numSamples; i++ {
-		left := int16(bufferA[i]) // #nosec G115
+		left := int16(bufferA[i])  // #nosec G115
 		right := int16(bufferB[i]) // #nosec G115
 
-		bufferOut[2*i*numChannels] = byte(left) // #nosec G115
-		bufferOut[2*i*numChannels+1] = byte(left >> 8) // #nosec G115
-		bufferOut[2*i*numChannels+2] = byte(right) // #nosec G115
+		bufferOut[2*i*numChannels] = byte(left)         // #nosec G115
+		bufferOut[2*i*numChannels+1] = byte(left >> 8)  // #nosec G115
+		bufferOut[2*i*numChannels+2] = byte(right)      // #nosec G115
 		bufferOut[2*i*numChannels+3] = byte(right >> 8) // #nosec G115
 	}
 }
@@ -139,7 +139,7 @@ func deinterlace24(
 				mask := uint32(^(0xFFFFFFFF << uint(uncompressedBytes*8)))
 				left <<= uint(uncompressedBytes * 8)
 				right <<= uint(uncompressedBytes * 8)
-				left |= uncompressedBytesBufferA[i] & int32(mask) // #nosec G115
+				left |= uncompressedBytesBufferA[i] & int32(mask)  // #nosec G115
 				right |= uncompressedBytesBufferB[i] & int32(mask) // #nosec G115
 			}
 
@@ -161,7 +161,7 @@ func deinterlace24(
 			mask := uint32(^(0xFFFFFFFF << uint(uncompressedBytes*8)))
 			left <<= uint(uncompressedBytes * 8)
 			right <<= uint(uncompressedBytes * 8)
-			left |= uncompressedBytesBufferA[i] & int32(mask) // #nosec G115
+			left |= uncompressedBytesBufferA[i] & int32(mask)  // #nosec G115
 			right |= uncompressedBytesBufferB[i] & int32(mask) // #nosec G115
 		}
 

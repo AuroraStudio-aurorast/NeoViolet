@@ -9,7 +9,7 @@ package alac
 // Decoder is an Apple Lossless (ALAC) decoder with configurable parameters.
 // It decodes ALAC frames into little-endian PCM samples.
 type Decoder struct {
-	inputBuffer                []byte
+	inputBuffer               []byte
 	inputBufferIndex          int
 	inputBufferBitaccumulator int
 
@@ -17,24 +17,24 @@ type Decoder struct {
 	numChannels    int
 	bytesPerSample int
 
-	predicterrorBufferA       []int32
-	predicterrorBufferB       []int32
-	outputsamplesBufferA      []int32
-	outputsamplesBufferB      []int32
+	predicterrorBufferA      []int32
+	predicterrorBufferB      []int32
+	outputsamplesBufferA     []int32
+	outputsamplesBufferB     []int32
 	uncompressedBytesBufferA []int32
 	uncompressedBytesBufferB []int32
 
 	// ALAC magic cookie parameters (from the "alac" box in MP4)
 	MaxSamplesPerFrame       uint32
-	Cookie7a                uint8
+	Cookie7a                 uint8
 	CookieSampleSize         uint8
 	CookieRiceHistoryMult    uint8
 	CookieRiceInitialHistory uint8
 	CookieRiceKModifier      uint8
-	Cookie7f                uint8
-	Cookie80                uint16
-	Cookie82                uint32
-	Cookie86                uint32
+	Cookie7f                 uint8
+	Cookie80                 uint16
+	Cookie82                 uint32
+	Cookie86                 uint32
 	CookieSampleRate         uint32
 }
 

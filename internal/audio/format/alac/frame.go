@@ -234,8 +234,8 @@ func (d *Decoder) decodeFrame(inbuffer []byte) []byte {
 					audiobitsB := d.readbits(int(d.CookieSampleSize))
 					audiobitsA = uint32(signExtended32(int32(audiobitsA), int(d.CookieSampleSize))) // #nosec G115
 					audiobitsB = uint32(signExtended32(int32(audiobitsB), int(d.CookieSampleSize))) // #nosec G115
-					d.outputsamplesBufferA[i] = int32(audiobitsA) // #nosec G115
-					d.outputsamplesBufferB[i] = int32(audiobitsB) // #nosec G115
+					d.outputsamplesBufferA[i] = int32(audiobitsA)                                   // #nosec G115
+					d.outputsamplesBufferB[i] = int32(audiobitsB)                                   // #nosec G115
 				}
 			} else {
 				for i := uint32(0); i < outputsamples; i++ {

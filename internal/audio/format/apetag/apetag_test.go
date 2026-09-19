@@ -11,7 +11,7 @@ import (
 func buildFooter(tagSize uint32, itemCount uint32, hasHeader bool) []byte {
 	f := make([]byte, 32)
 	copy(f[0:8], "APETAGEX")
-	binary.LittleEndian.PutUint32(f[8:12], 2000)  // version
+	binary.LittleEndian.PutUint32(f[8:12], 2000) // version
 	binary.LittleEndian.PutUint32(f[12:16], tagSize)
 	binary.LittleEndian.PutUint32(f[16:20], itemCount)
 	var flags uint32
@@ -57,8 +57,8 @@ func buildFileWithTags(tagItems [][]byte, hasHeader bool) []byte {
 
 	// Assemble: [MAC audio garbage] [header?] [items] [footer]
 	var buf bytes.Buffer
-	buf.Write([]byte("MAC "))       // fake APE magic
-	buf.Write(make([]byte, 200))    // fake audio data
+	buf.Write([]byte("MAC "))    // fake APE magic
+	buf.Write(make([]byte, 200)) // fake audio data
 	if hasHeader {
 		buf.Write(header)
 	}
