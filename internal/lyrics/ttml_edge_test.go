@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -486,4 +487,135 @@ func TestTTML_ZeroLengthIntervalBecomesUnbounded(t *testing.T) {
 	if rd.Lines[0].End != 0 {
 		t.Errorf("reversed End = %v, want 0 (no usable duration)", rd.Lines[0].End)
 	}
+}
+
+// ttmlEdgeHead/Tail wrap a <p> in the smallest document the parser accepts.
+const (
+	ttmlEdgeHead = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:itunes="http://music.apple.com/lyric-ttml-internal"><body><div>`
+	ttmlEdgeTail = `</div></body></tt>`
+)
+
+// TestTTML_MalformedInputIsRejected pins the loader contract for unusable input:
+// every malformed document comes back as an error, never as a panic and never as
+// a half-built Data. Only the presence of an error is pinned, not the wording of
+// it - upstream owns the messages.
+func TestTTML_MalformedInputIsRejected(t *testing.T) {
+	cases := []struct{ name, src string }{
+		{"empty", ""},
+		{"whitespace", "   \n\t "},
+		{"xmlDeclOnly", `<?xml version="1.0" encoding="UTF-8"?>`},
+		{"notXml", "<>"},
+		{"plainText", "just some words"},
+		{"wrongRoot", `<foo/>`},
+		{"unclosedRoot", `<tt xmlns="http://www.w3.org/ns/ttml"><body><div><p>x`},
+		{"nulByte", "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div><p>a\x00b</p></div></body></tt>"},
+		{"invalidUTF8", "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div><p>\xff\xfe</p></div></body></tt>"},
+		{"tooDeep", strings.Repeat(`<div xmlns="http://www.w3.org/ns/ttml">`, 300) + "<p>x</p>" + strings.Repeat("</div>", 300)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := parseTTML(tc.src)
+			if err == nil {
+				t.Fatalf("Parse() error = nil, want an error for unusable input")
+			}
+			if d != nil {
+				t.Errorf("Parse() returned data alongside the error, want nil")
+			}
+		})
+	}
+}
+
+// TestTTML_AdversarialTimeLiteralsKeepInvariants feeds time literals no real file
+// uses - values that overflow a nanosecond count, a negative begin, an end before
+// its begin, an overflowing dur - and checks what must hold whatever the library
+// decides about them: Time never negative, never going backwards, and End either
+// the unbounded sentinel or after Time. A future library may reject such a
+// literal outright, which is a fine outcome; only the invariants are ours.
+//
+// The reversed-interval case is the one this adapter owns, and it is asserted
+// exactly: keeping the declared values would leave the per-line window empty
+// forever, so the line has to come out unbounded.
+func TestTTML_AdversarialTimeLiteralsKeepInvariants(t *testing.T) {
+	cases := []struct{ name, p string }{
+		{"hugeHours", `<p begin="9223372036854h" end="9223372036855h" itunes:key="L1">x</p>`},
+		{"hugeSeconds", `<p begin="9223372036854s" end="9223372036855s" itunes:key="L1">x</p>`},
+		{"maxMillis", `<p begin="9223372036854775807ms" end="9223372036854775807ms" itunes:key="L1">x</p>`},
+		{"negativeBegin", `<p begin="-5s" end="2s" itunes:key="L1">x</p>`},
+		{"overflowingDur", `<p begin="1s" dur="9223372036854775807ms" itunes:key="L1">x</p>`},
+	}
+	parsed := 0
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := parseTTML(ttmlEdgeHead + tc.p + ttmlEdgeTail)
+			if err != nil {
+				t.Logf("the library rejects this literal, which is acceptable: %v", err)
+				return
+			}
+			parsed++
+			if len(d.Lines) == 0 {
+				t.Fatalf("no lines, want the <p> kept")
+			}
+			var prev time.Duration
+			for i, l := range d.Lines {
+				if l.Time < 0 {
+					t.Errorf("line %d Time = %v, want >= 0", i, l.Time)
+				}
+				if i > 0 && l.Time < prev {
+					t.Errorf("line %d Time = %v, want >= %v", i, l.Time, prev)
+				}
+				prev = l.Time
+				if l.End != 0 && l.End <= l.Time {
+					t.Errorf("line %d End = %v with Time = %v, want 0 or after Time", i, l.End, l.Time)
+				}
+			}
+		})
+	}
+	if parsed == 0 {
+		t.Error("every case was rejected by the library; the invariants went unchecked")
+	}
+
+	t.Run("reversedInterval", func(t *testing.T) {
+		d, err := parseTTML(ttmlEdgeHead + `<p begin="9s" end="2s" itunes:key="L1">x</p>` + ttmlEdgeTail)
+		if err != nil {
+			t.Fatalf("Parse() error = %v, want nil", err)
+		}
+		if len(d.Lines) != 1 {
+			t.Fatalf("lines = %d, want 1", len(d.Lines))
+		}
+		got := d.Lines[0]
+		if got.Time != 9*time.Second || got.End != 0 {
+			t.Errorf("Time/End = %v/%v, want 9s/0 (unbounded: the declared window is empty)",
+				got.Time, got.End)
+		}
+	})
+}
+
+// TestTTMLParseIsConcurrencySafe pins the assumption behind parsing lyrics off
+// the event loop: one call owns everything it touches, so concurrent parses
+// cannot interfere. Nothing here fails on a single-threaded run - the race
+// detector is the assertion, which is why the suite runs this package under
+// -race.
+func TestTTMLParseIsConcurrencySafe(t *testing.T) {
+	samples := []string{ttmlAMLLSample, ttmlAppleStyle, ttmlKeylessInlineTranslationSample}
+	var wg sync.WaitGroup
+	for g := 0; g < 16; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 25; i++ {
+				d, err := parseTTML(samples[(g+i)%len(samples)])
+				if err != nil {
+					t.Errorf("goroutine %d: Parse() error = %v", g, err)
+					return
+				}
+				if len(d.Lines) == 0 {
+					t.Errorf("goroutine %d: no lines", g)
+					return
+				}
+				_ = d.Lines[0].PartCount()
+				_ = d.Lines[0].Part(0)
+			}
+		}(g)
+	}
+	wg.Wait()
 }
