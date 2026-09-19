@@ -57,29 +57,39 @@ make build
 
 ## Makefile Targets
 
-| Target             | Description                                          |
-|--------------------|------------------------------------------------------|
-| `build`            | Production build with stripped debug info (builds `apecli`, `neoviolet-gui` automatically) |
-| `build/race`       | Build with Go race detector                          |
-| `build/debug`      | Build with debug symbols (compatible with `dlv`)     |
-| `build/noopenmpt`  | Build without libopenmpt support                     |
-| `build/osxappbundle` | Build all and pack into an app bundle for macOS    |
-| `apetools`         | Build `apecli` Rust helper (release mode)            |
-| `apetools/debug`   | Build `apecli` in debug mode                         |
-| `gui`              | Build `neoviolet-gui` GUI wrapper (release mode)     |
-| `gui/debug`        | Build `neoviolet-gui` in debug mode                  |
-| `run/gui ARGS=...` | Build GUI and run with optional arguments            |
-| `run ARGS=...`     | Build TUI and run with optional arguments            |
-| `test`             | Run all tests                                        |
-| `test/race`        | Run tests with race detector                         |
-| `test/verbose`     | Run tests verbosely (`-v`)                           |
-| `test/short`       | Run short tests (skips integration)                  |
-| `test/cover`       | Run tests with coverage profile and HTML report      |
-| `vet`              | Run `go vet`                                         |
-| `lint`             | Run `golangci-lint` (falls back to `go vet`)         |
-| `tidy`             | Run `go mod tidy`                                    |
-| `clean`            | Remove build artifacts                               |
-| `install`          | Install binary to `$GOPATH/bin`                      |
+| Target               | Description                                                                                |
+|----------------------|--------------------------------------------------------------------------------------------|
+| `build`              | Production build with stripped debug info (builds `apecli`, `neoviolet-gui` automatically) |
+| `build/race`         | Build with Go race detector                                                                |
+| `build/debug`        | Build with debug symbols (compatible with `dlv`)                                           |
+| `build/noopenmpt`    | Build without libopenmpt support                                                           |
+| `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
+| `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
+| `apetools/debug`     | Build `apecli` in debug mode                                                               |
+| `gui`                | Build `neoviolet-gui` GUI wrapper (release mode)                                           |
+| `gui/debug`          | Build `neoviolet-gui` in debug mode                                                        |
+| `run/gui ARGS=...`   | Build GUI and run with optional arguments                                                  |
+| `run ARGS=...`       | Build TUI and run with optional arguments                                                  |
+| `test`               | Run all tests                                                                              |
+| `test/race`          | Run tests with race detector                                                               |
+| `test/verbose`       | Run tests verbosely (`-v`)                                                                 |
+| `test/short`         | Run short tests (skips integration)                                                        |
+| `test/cover`         | Run tests with coverage profile and HTML report                                            |
+| `test/coverage`      | Run tests and enforce the `COVERAGE_MIN` gate (CI)                                         |
+| `test/rust`          | Run Rust unit tests for `apecli` and `neoviolet-gui`                                       |
+| `vet`                | Run `go vet`                                                                               |
+| `lint`               | Run `golangci-lint` (falls back to `go vet`)                                               |
+| `lint/rust`          | Run `cargo fmt --check` and clippy with `-D warnings`                                      |
+| `check`              | Aggregate gate: vet + lint + lint/rust + test + check/linelength                           |
+| `check/linelength`   | Enforce the per-file line limits (500 lines / 800 for tests)                               |
+| `tidy`               | Run `go mod tidy`                                                                          |
+| `tidy/check`         | Read-only `go mod tidy -diff` (what CI runs)                                               |
+| `clean`              | Remove build artifacts                                                                     |
+| `install`            | Install binary to `$GOPATH/bin`                                                            |
+| `install/desktop`    | Install the `.desktop` entry                                                               |
+| `install/icons`      | Print where to place the icons                                                             |
+| `install/all`        | `install` + `install/desktop`                                                              |
+| `help`               | List the available targets                                                                 |
 
 ---
 
@@ -219,6 +229,7 @@ The resulting binary is `./neoviolet`.
 
 > [!NOTE]
 > macOS may display a security warning on first launch for unsigned binaries. To bypass, run:
+>
 > ```bash
 > xattr -dr com.apple.quarantine ./neoviolet
 > ```
@@ -406,6 +417,7 @@ pkg-config: exec: "pkg-config": executable file not found in $PATH
 ```
 
 Install `pkg-config`:
+
 - **macOS**: `brew install pkg-config`
 - **Linux**: `sudo apt install pkg-config` (Debian/Ubuntu)
 - **Windows (MSYS2)**: `pacman -S mingw-w64-clang-x86_64-pkgconf`
@@ -427,6 +439,7 @@ This is **not an error**. The build succeeds without libopenmpt — only `.mptm`
 ```
 
 Install ALSA development headers:
+
 ```bash
 sudo apt install libasound2-dev   # Debian/Ubuntu
 sudo dnf install alsa-lib-devel   # Fedora
@@ -439,9 +452,11 @@ sudo dnf install alsa-lib-devel   # Fedora
 ```
 
 This is expected for locally built unsigned binaries. Either:
+
 ```bash
 xattr -dr com.apple.quarantine ./neoviolet   # Remove quarantine flag
 ```
+
 Or go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
 ### Windows DLL Issues
