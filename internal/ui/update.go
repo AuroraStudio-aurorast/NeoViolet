@@ -351,6 +351,3 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 		return loadAudio(msg.Path, m.Config.SoundfontPath, m.Config.TrackerBackend, m.loadGeneration)
 	}
 }
-
-// parseIPCMessage is no longer used — IPC message dispatch now happens
-// inline in handleTick() to support multiple message types (open, desktop_lyrics).

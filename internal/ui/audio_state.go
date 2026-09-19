@@ -152,7 +152,6 @@ func (a *AudioState) UpdateLyricIndex() {
 		return
 	}
 
-	// Use ActiveLines to get all active lyric lines at the current elapsed time
 	active := a.Lyrics.ActiveLines(a.Elapsed)
 	a.ActiveLyricLines = active
 

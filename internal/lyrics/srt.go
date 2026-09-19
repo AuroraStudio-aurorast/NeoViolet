@@ -120,8 +120,7 @@ func splitSRTEntries(content string) []string {
 // srtParts splits a cue's text into display sub-lines, one per non-empty line.
 // A single-line cue returns nil so it stays a plain line. Text is rebuilt by the
 // caller as these sub-lines joined with a space: a raw \n inside Text is a hard
-// line break for the renderers, which used to add a row to the footer and break
-// the frame height.
+// line break for the renderers, which adds a row and breaks the frame height.
 func srtParts(text string) []string {
 	raw := strings.Split(text, "\n")
 	parts := make([]string, 0, len(raw))

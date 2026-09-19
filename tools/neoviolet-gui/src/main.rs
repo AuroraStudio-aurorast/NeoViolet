@@ -108,16 +108,14 @@ fn main() {
     });
 
     app.run(move |cx: &mut App| {
-        // Renderer + theme. 0.3 splits the old combined `component::init` and
-        // `GlobalTheme::set_global`: this one call installs the global theme and
-        // registers the renderers behind every headless component.
+        // Renderer + theme: one call installs the global theme and registers the
+        // renderers behind every headless component.
         yororen_ui::renderer::themes::install_with(cx, dracula_theme::dracula_theme());
 
-        // Text-input keymap, idempotent. 0.2 initialised text input, text area
-        // and password input together here; dialogs only ever need the first.
+        // Text-input keymap, idempotent; dialogs only ever need the text input.
         yororen_ui::headless::text_input::init(cx);
 
-        // Locale. 0.2 embedded `I18n`; 0.3 ships locales as installable crates.
+        // Locale: the English catalog installs as its own crate.
         yororen_ui::locale_en::install(cx);
 
         // AppState — seed with the shared pending-urls handle so that

@@ -568,8 +568,8 @@ func panelPartsModel(t *testing.T, contextLines int, parts []string) *Model {
 	return m
 }
 
-// One event with N parts occupies N rows (F1/F2): the second language is no
-// longer truncated away at the end of the first part's wrapped rows.
+// One event with N parts occupies N rows: the second language is not truncated
+// away at the end of the first part's wrapped rows.
 func TestPanelWindow_MergedPartsEachGetARow(t *testing.T) {
 	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
 	plan := m.layoutPlan()
@@ -628,8 +628,8 @@ func TestPanelWindow_WrapCapIsPerPart(t *testing.T) {
 	panelRowWidths(t, rows, plan.PanelInnerW)
 }
 
-// context_lines counts lyric lines, not rows (F4): a two-row event above the
-// current line spends one of the two allowed context lines.
+// context_lines counts lyric lines, not rows: a two-row event above the current
+// line spends one of the two allowed context lines.
 func TestPanelWindow_PartCountsAsOneContextLine(t *testing.T) {
 	m := panelModel(t, 2)
 	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{

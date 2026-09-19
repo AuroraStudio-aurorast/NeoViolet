@@ -1,15 +1,11 @@
 //! The app's Dracula palette, expressed as overrides on the bundled dark theme.
 //!
-//! yororen-ui 0.3 dropped the typed `Theme` struct this file used to build.
-//! A theme is now a JSON document read by dot path, and any path a theme does
-//! not set falls back to the renderer's own default. That is a nicer model for
-//! us — the bundled theme already fills every colour path the renderers read —
-//! but it fails silently: `Theme::set` creates a missing path rather than
-//! rejecting it, so a misspelled key here would add an unused entry and quietly
-//! leave the base colour in place. The tests below exist for exactly that
-//! reason, and they already earned it twice while this file was written: they
-//! caught a bare `status.danger` that would have flattened the `status.danger.bg`
-//! / `.fg` object the renderers actually read.
+//! A theme is a JSON document read by dot path: any path a theme does not set
+//! falls back to the renderer's own default, and the bundled theme already fills
+//! every colour path the renderers read. The model fails silently, though —
+//! `Theme::set` creates a missing path rather than rejecting it, so a misspelled
+//! key here would add an unused entry and quietly leave the base colour in place.
+//! The tests below exist for exactly that reason.
 
 use serde_json::Value;
 use yororen_ui::renderer::themes;
@@ -18,10 +14,10 @@ use yororen_ui::theme::Theme;
 /// Dracula palette, applied over `themes::system_dark()`.
 ///
 /// The paths mirror the bundled theme's own shape. Status colours are nested
-/// (`status.success.bg` / `.fg`) because that is how the renderers build them,
-/// and the old theme's warning/info colours are kept even though today's
-/// renderers only read success/error/danger: they are part of our palette and
-/// cost nothing to carry.
+/// (`status.success.bg` / `.fg`) because that is how the renderers build them.
+/// `warning` and `info` are kept for palette completeness even though the
+/// renderers currently read only success/error/danger — carrying them costs
+/// nothing and keeps the palette whole.
 const DRACULA: &[(&str, &str)] = &[
     // Surfaces.
     ("surface.base", "#21222c"),

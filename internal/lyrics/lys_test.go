@@ -187,7 +187,7 @@ func TestLYS_OffsetShiftsLinesAfterIt(t *testing.T) {
 	}
 }
 
-// TestLYS_UnrecognizedColonHeaderFallsThrough pins the R5 fall-through: a
+// TestLYS_UnrecognizedColonHeaderFallsThrough pins the fall-through: a
 // "[key:value]" head whose key is not metadata (e.g. "[re:x]") must NOT be
 // swallowed as metadata; it falls through to channel parsing and keeps the line.
 func TestLYS_UnrecognizedColonHeaderFallsThrough(t *testing.T) {

@@ -34,7 +34,6 @@ func (p *Player) OpenReader(name string, data []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Detect format from magic bytes
 	ext, detectErr := p.decoder.DetectFormatFromBytes(data)
 	synthExt := ext
 	if detectErr != nil {

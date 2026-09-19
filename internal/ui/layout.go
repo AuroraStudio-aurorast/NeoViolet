@@ -201,8 +201,8 @@ func (m *Model) layoutPlan() layoutPlan {
 	})
 }
 
-// oneLineVisible mirrors the condition that used to decide whether the footer
-// keeps its lyric row. It matches the old renderFooter logic for all eight
+// oneLineVisible reports whether the footer draws its lyric row: a lyric set is
+// loaded and shown, or a fetch is still in flight. It covers all eight
 // combinations of (Lyrics != nil, ShowLyrics, LyricsFetching).
 func (m *Model) oneLineVisible() bool {
 	return (m.Audio.Lyrics != nil && m.Audio.ShowLyrics) || m.LyricsFetching

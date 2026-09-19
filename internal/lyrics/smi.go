@@ -226,18 +226,13 @@ func cleanSMIParts(raw string) []string {
 // cleanSMIText strips HTML tags, decodes common HTML entities, and normalizes
 // whitespace within a single display part.
 func cleanSMIText(raw string) string {
-	// Remove HTML tags
 	cleaned := htmlTagRe.ReplaceAllString(raw, "")
-	// Decode common HTML entities
 	cleaned = decodeHTMLEntities(cleaned)
-	// Normalize whitespace
 	cleaned = strings.TrimSpace(cleaned)
-	// Collapse multiple spaces/newlines into single space
 	cleaned = smiSpaceRe.ReplaceAllString(cleaned, " ")
 	return cleaned
 }
 
-// decodeHTMLEntities decodes common HTML entities in text.
 func decodeHTMLEntities(s string) string {
 	s = strings.ReplaceAll(s, "&amp;", "&")
 	s = strings.ReplaceAll(s, "&lt;", "<")

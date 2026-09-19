@@ -152,7 +152,8 @@ type wordTimedScan struct {
 	// timestamp carried a duration past lineStart.
 	End time.Duration
 	// Text is every fragment's text in order; it is always exactly the
-	// concatenation of Words, which is what the panel's karaoke needs (C6).
+	// concatenation of Words, which is what the panel's karaoke highlighting
+	// needs.
 	Text string
 	// Words keeps untimed leading/trailing text as ordinary fragments too, so
 	// that Text and Words cannot disagree.
@@ -265,7 +266,7 @@ func parseWordTimedFile(data []byte, name string, groups wordTimedRe) (*Data, er
 	// Pass 2: lyric lines. Metadata lines fall out on their own — "[ti:Title]"
 	// is not an integer, so the header parse below skips them. Each line is
 	// trimmed exactly once here, so header and body come from the same clean
-	// line: no trailing \r or whitespace can leak into Text/Words (C2).
+	// line: no trailing \r or whitespace can leak into Text/Words.
 	var out []LyricLine
 	for _, raw := range lines {
 		line := strings.TrimSpace(raw)

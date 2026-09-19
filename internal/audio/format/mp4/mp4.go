@@ -9,20 +9,20 @@ import (
 
 // SampleTable holds the parsed sample table for a single audio track.
 type SampleTable struct {
-	SampleOffsets      []uint64 // byte offset of each sample in the file
-	SampleSizes        []uint32 // size of each sample
-	SampleCount        uint32
-	DurationPerSample  uint32 // in time-scale units (from stts)
-	TimeScale          uint32 // timescale from mdhd box
-	SampleRate         uint32
+	SampleOffsets     []uint64 // byte offset of each sample in the file
+	SampleSizes       []uint32 // size of each sample
+	SampleCount       uint32
+	DurationPerSample uint32 // in time-scale units (from stts)
+	TimeScale         uint32 // timescale from mdhd box
+	SampleRate        uint32
 }
 
 // ALACTrack contains all info needed to decode an ALAC stream.
 type ALACTrack struct {
 	SampleTable
-	MagicCookie   []byte // the ALAC magic cookie (from stsd)
-	Channels      uint16
-	SampleSize    uint16 // bits
+	MagicCookie []byte // the ALAC magic cookie (from stsd)
+	Channels    uint16
+	SampleSize  uint16 // bits
 }
 
 // Demuxer parses an MP4 file to extract ALAC audio tracks.
@@ -37,19 +37,16 @@ func NewDemuxer(r io.ReadSeeker) *Demuxer {
 
 // FindALACTrack parses the MP4 file and returns ALAC track info.
 func (d *Demuxer) FindALACTrack() (*ALACTrack, error) {
-	// Find moov box
 	moovOffset, err := findBoxAny(d.r, 0, "moov")
 	if err != nil {
 		return nil, fmt.Errorf("moov not found: %w", err)
 	}
 
-	// Find the stsd box inside moov to get the ALAC magic cookie
 	cookie, channels, sampleSize, err := d.findALACInStsd(moovOffset)
 	if err != nil {
 		return nil, fmt.Errorf("ALAC stsd not found: %w", err)
 	}
 
-	// Parse sample table
 	stbl, err := d.parseSampleTable(moovOffset)
 	if err != nil {
 		return nil, fmt.Errorf("sample table: %w", err)
