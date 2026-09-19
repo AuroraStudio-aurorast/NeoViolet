@@ -20,16 +20,12 @@ func (p *ttmlParser) FindSidecar(audioPath string) string {
 	return findSidecarWithExt(audioPath, ".ttml", ".xml")
 }
 
-// Parse reads TTML through go-amll-ttml-parser and maps the result onto Data.
-// The hand-written XML structs, clock-time parsing and CJK spacing heuristics
-// that used to live here are all gone: the library owns each of those concerns
-// now, so this is a thin shell around ParseReader.
+// Parse reads TTML through go-amll-ttml-parser and maps it onto Data. The library
+// owns XML parsing, time resolution and text derivation; the size limit and the
+// sentinel errors below belong to this package.
 func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
-	// readAllWithLimit is the 1 MB ceiling (ErrLyricTooLarge): it reads one byte
-	// past maxLyricSize and rejects the result, so nothing larger ever reaches the
-	// library. WithMaxBytes below repeats the same limit on the library side, where
-	// it cannot fire while this gate is in front of it; it stays as a backstop in
-	// case this ceiling ever moves.
+	// This is the 1 MB ceiling (ErrLyricTooLarge) and it runs first, so the
+	// library's WithMaxBytes below is a backstop that cannot fire today.
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, err
@@ -37,24 +33,22 @@ func (p *ttmlParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 	doc, err := amllttml.ParseReader(bytes.NewReader(data),
 		amllttml.WithMaxBytes(maxLyricSize),
-		// A <p> without itunes:key is still a lyric line: most
-		// non-AMLL TTML has no key, and dropping those lines would empty files.
+		// A <p> without itunes:key is still a lyric line: most non-AMLL TTML has
+		// no key, and dropping those lines would empty whole files.
 		amllttml.WithMissingLineKey(amllttml.MissingKeyKeep),
 	)
 	if err != nil {
 		return nil, ttmlParseError(err)
 	}
 
-	// Diagnostics never change success: the library guarantees Parse
-	// fails only on XML-level problems, and an Error-severity finding is still
-	// just a finding. We log them for debugging and keep reading the file.
+	// Diagnostics never change the outcome: Parse fails only on XML-level
+	// problems. Log them and keep reading the file.
 	logTTMLDiagnostics(doc)
 
-	// A cleanly parsed document that maps to zero displayable lines is "no
-	// lyrics", not an empty song: FindAndParsePreferred would otherwise let an
-	// empty song.ttml shadow a real song.lrc sitting next to it (the registry
-	// accepts any err == nil result). The count is taken AFTER the adapter
-	// dropped every <p> that maps to nothing, not on the raw <p> count.
+	// Zero displayable lines is "no lyrics", not an empty song: the registry
+	// accepts any non-error result, so an empty song.ttml would otherwise shadow a
+	// real song.lrc next to it. The count is taken after the adapter dropped every
+	// <p> that maps to nothing.
 	d := ttmlToData(doc, sourcePath)
 	if len(d.Lines) == 0 {
 		return nil, ErrNoLyrics
@@ -74,15 +68,13 @@ func ttmlParseError(err error) error {
 	return err
 }
 
-// logTTMLDiagnostics records the library's findings without affecting the
-// result. It reads the public Diagnostics() surface on purpose: parse-time
-// findings live in doc.Diags, but validation-layer findings (notably
-// bad-time-syntax for an unsupported clock frame) are only visible there and
-// never in Diags.
+// logTTMLDiagnostics records the library's findings without affecting the result.
+// It reads the public Diagnostics() surface on purpose: parse-time findings also
+// live in doc.Diags, but validation-layer ones (notably bad-time-syntax for an
+// unsupported clock frame) are visible only there.
 //
-// Error-severity diagnostics are NOT a parse failure - the library keeps that
-// guarantee - so they are logged at Warn and the file is still read; everything
-// else is logged at Debug.
+// An Error-severity diagnostic is not a parse failure, so it is logged at Warn
+// and the file is still read; everything else is logged at Debug.
 func logTTMLDiagnostics(doc *amllttml.Document) {
 	for _, diag := range doc.Diagnostics() {
 		keyvals := []any{
