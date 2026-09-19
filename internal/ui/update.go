@@ -48,6 +48,11 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+// lyricPushInterval caps how often progress reaches the desktop lyrics overlay.
+// A changed line is still pushed the moment it changes; this only bounds the
+// word-highlight refresh, so 33ms is 30 Hz at the default tick rate.
+const lyricPushInterval = 33 * time.Millisecond
+
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
 	m.Error.Tick()
@@ -102,13 +107,23 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 		m.MediaCtl.Update(m.buildPlayState())
 	}
 
-	// Stream lyrics to GUI for desktop lyrics overlay (change-based push).
-	// Sends even when lyrics are nil so the GUI can clear stale display.
+	// Stream lyrics to GUI for desktop lyrics overlay. A changed signature goes
+	// out at once; progress goes out on its own cadence, because the overlay
+	// highlights each word from elapsed without the line changing. Sends even
+	// when lyrics are nil so the GUI can clear stale display.
 	if m.DesktopLyricsEnabled && m.ipcServer != nil {
 		lines := buildLyricLinesJSON(m.Audio.Lyrics, m.Audio.Elapsed)
-		sig := lyricSig(lines, m.Audio.Elapsed, m.Audio.LyricNextIndex)
-		if sig != m.Audio.LastSentLyricSig {
+		sig := lyricSig(lines, m.Audio.LyricNextIndex)
+		now := time.Now()
+		changed := sig != m.Audio.LastSentLyricSig
+		// Only a frame that actually moved is worth sending, so a paused player
+		// stays quiet instead of repeating an identical payload.
+		moved := m.Audio.Elapsed != m.Audio.LastSentLyricElapsed
+		due := now.Sub(m.Audio.LastLyricPush) >= lyricPushInterval
+		if changed || (moved && due) {
 			m.Audio.LastSentLyricSig = sig
+			m.Audio.LastSentLyricElapsed = m.Audio.Elapsed
+			m.Audio.LastLyricPush = now
 			lyricMsg := ipc.Message{
 				Type:    "lyrics",
 				Lines:   lines,

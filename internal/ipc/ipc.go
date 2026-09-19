@@ -18,6 +18,11 @@
 //	{"type": "quit", "dialog": true}     — :q/:quit, show confirmation dialog
 //	{"type": "quit", "dialog": false}    — :wq, quit immediately
 //	{"type": "lyrics", "lines": [...], "elapsed": 12.3, "title": "...", "artist": "..."}
+//
+// The lyrics payload describes each line as Prefix followed by its display
+// sub-lines (Parts when it has any, otherwise Text). Words carries the timings
+// of the first sub-line when the format has them, so the overlay can highlight
+// each fragment as it is sung instead of re-deriving the split.
 package ipc
 
 import (
@@ -52,13 +57,27 @@ type Message struct {
 }
 
 // LyricLineJSON is a single lyric line serialized for IPC.
+//
+// A line renders as Prefix followed by its display sub-lines: Parts when it has
+// any, otherwise Text alone.
 type LyricLineJSON struct {
-	Time      float64  `json:"time"`            // seconds
-	End       float64  `json:"end"`             // seconds; 0 = unbounded (valid until the next line)
-	Text      string   `json:"text"`            // display text (with agent prefix if applicable)
-	Parts     []string `json:"parts,omitempty"` // display sub-lines of a merged event; nil = plain line
-	Agent     string   `json:"agent"`           // agent ID, "" for no agent
-	AgentName string   `json:"agent_name"`      // display name for agent, "" if n/a
+	Time      float64    `json:"time"`             // seconds
+	End       float64    `json:"end"`              // seconds; 0 = unbounded (valid until the next line)
+	Text      string     `json:"text"`             // the line's own text, without the agent label
+	Parts     []string   `json:"parts,omitempty"`  // display sub-lines of a merged event; nil = plain line
+	Words     []WordJSON `json:"words,omitempty"`  // word timings tiling the first sub-line; nil = none
+	Prefix    string     `json:"prefix,omitempty"` // agent label ahead of the first sub-line; "" = none due
+	Agent     string     `json:"agent"`            // agent ID, "" for no agent
+	AgentName string     `json:"agent_name"`       // display name for agent, "" if n/a
+}
+
+// WordJSON is one timed fragment of a line's first display sub-line. The
+// fragments concatenate back to that sub-line exactly, so a karaoke renderer can
+// split it at any elapsed value without losing or reordering characters: a
+// fragment is sung once its Time is not after elapsed.
+type WordJSON struct {
+	Time float64 `json:"time"` // seconds
+	Text string  `json:"text"`
 }
 
 const secretLen = 32 // bytes for the random token

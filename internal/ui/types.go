@@ -172,6 +172,12 @@ type AudioState struct {
 	// to the GUI via IPC. Used to avoid redundant sends (change-based push).
 	LastSentLyricSig string
 
+	// LastSentLyricElapsed and LastLyricPush bound the progress stream that keeps
+	// the overlay's word highlight moving: the elapsed value and wall-clock time
+	// of the last send.
+	LastSentLyricElapsed time.Duration
+	LastLyricPush        time.Time
+
 	// LyricNextIndex is the index of the upcoming lyric line when no active lines exist.
 	// -1 means no upcoming lyric (past end or no lyrics loaded).
 	// >=0 indicates a gap — the view shows countdown dots until this line begins.

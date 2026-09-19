@@ -10,6 +10,11 @@
 //!             {"type":"play_pause"}
 //! TUI → GUI:  {"type":"quit","dialog":true|false}
 //!             {"type":"lyrics","lines":[...],"elapsed":12.3,"title":"...","artist":"..."}
+//!
+//! A line in the lyrics payload renders as its `prefix` followed by its display
+//! sub-lines (`parts` when present, otherwise `text`). `words` holds the timings
+//! of the first sub-line so the overlay can highlight it as it is sung, and is
+//! absent for a format without word timings.
 
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
@@ -17,19 +22,44 @@ use std::net::TcpStream;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+/// One timed fragment of a line's first display sub-line. The fragments
+/// concatenate back to that sub-line exactly, so a karaoke renderer can split it
+/// at any elapsed value without losing or reordering characters: a fragment is
+/// sung once its `time` is not after `elapsed`.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+pub struct WordData {
+    pub time: f64,
+    pub text: String,
+}
+
 /// A single lyric line received from the TUI via IPC.
+///
+/// A line renders as `prefix` followed by its display sub-lines: `parts` when it
+/// has any, otherwise `text` alone.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LyricLineData {
     pub time: f64,
     /// End time in seconds; 0.0 = unbounded (legacy LRC/QRC/YRC/ESLRC).
     #[serde(default)]
     pub end: f64,
+    /// The line's own text. The agent label is not part of it; the TUI sends that
+    /// separately as `prefix`.
     pub text: String,
     /// Display sub-lines of an event that carries several lines of text (LRC
     /// merges same-timestamp entries, a SRT cue can have several lines). Empty
     /// for a plain line and for payloads from a TUI older than this field.
     #[serde(default)]
     pub parts: Vec<String>,
+    /// Word timings of the first display sub-line, the only sub-line they cover.
+    /// Empty for a format without word timings and for payloads from a TUI older
+    /// than this field, in which case the line highlights as a whole.
+    #[serde(default)]
+    pub words: Vec<WordData>,
+    /// Agent label to draw ahead of the first display sub-line, already resolved
+    /// by the TUI for the show-it-where-the-singer-changes rule. None means no
+    /// label is due on this line.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -231,6 +261,41 @@ fn port_file_path(pid: u32) -> String {
 mod tests {
     use super::*;
 
+    /// The wire shape the TUI emits: the label travels in `prefix` and the line
+    /// text carries none, while `words` tiles the text exactly. A renamed field
+    /// would fall back to the serde default and silently drop the karaoke data, so
+    /// this is pinned against a payload captured from the TUI.
+    #[test]
+    fn parses_a_tui_lyrics_payload() {
+        let raw = r#"{"time":39.345,"end":43.071,
+            "text":"I could never find the right way to tell you",
+            "words":[{"time":39.345,"text":"I"},{"time":39.548,"text":" "},
+                     {"time":39.548,"text":"could"}],
+            "prefix":"Taylor Swift: ","agent":"v1","agent_name":"Taylor Swift"}"#;
+        let line: LyricLineData = serde_json::from_str(raw).expect("parse line");
+        assert_eq!(line.text, "I could never find the right way to tell you");
+        assert_eq!(line.prefix.as_deref(), Some("Taylor Swift: "));
+        assert_eq!(line.agent.as_deref(), Some("v1"));
+        assert_eq!(line.words.len(), 3);
+        assert_eq!(line.words[1].time, 39.548);
+        assert_eq!(line.words[1].text, " ");
+        // The fragments reconstruct the text, which is what lets the overlay cut
+        // it into a sung prefix and the rest.
+        let rebuilt: String = line.words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(rebuilt, "I could");
+    }
+
+    /// A payload from a TUI older than the karaoke fields still parses and simply
+    /// carries no word timings and no label.
+    #[test]
+    fn parses_a_payload_from_an_older_tui() {
+        let raw = r#"{"time":1.0,"end":2.0,"text":"hello","agent":"v1"}"#;
+        let line: LyricLineData = serde_json::from_str(raw).expect("parse line");
+        assert!(line.words.is_empty());
+        assert!(line.prefix.is_none());
+        assert_eq!(line.text, "hello");
+    }
+
     #[test]
     fn message_serde_roundtrip() {
         let m = IpcMessage::open("/tmp/a.flac");
@@ -269,6 +334,8 @@ mod tests {
             end: 0.0,
             text: "hello | 你好".to_string(),
             parts: vec!["hello".to_string(), "你好".to_string()],
+            words: Vec::new(),
+            prefix: None,
             agent: None,
             agent_name: None,
         };

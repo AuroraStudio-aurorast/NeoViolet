@@ -474,13 +474,15 @@ func TestDispatcherUnknownMsg(t *testing.T) {
 }
 
 func TestLyricSig(t *testing.T) {
-	if got := lyricSig(nil, 2*time.Second, 3); got != "0|next=3" {
+	if got := lyricSig(nil, 3); got != "0|next=3" {
 		t.Errorf("lyricSig(nil) = %q, want %q", got, "0|next=3")
 	}
 
+	// Progress is deliberately absent: elapsed moves the overlay's word
+	// highlight while the line holds still, so it is pushed on its own cadence.
 	lines := []ipc.LyricLineJSON{{Text: "a"}, {Text: "b"}}
-	if got := lyricSig(lines, 1500*time.Millisecond, 3); got != "2|a|b|next=3|elapsed=1.5" {
-		t.Errorf("lyricSig(lines) = %q, want %q", got, "2|a|b|next=3|elapsed=1.5")
+	if got := lyricSig(lines, 3); got != "2|a|b|next=3" {
+		t.Errorf("lyricSig(lines) = %q, want %q", got, "2|a|b|next=3")
 	}
 }
 
@@ -533,6 +535,78 @@ func TestBuildLyricLinesJSON_CarriesParts(t *testing.T) {
 	}
 	if want := `"parts":["hello","你好"]`; !strings.Contains(string(merged), want) {
 		t.Errorf("merged line JSON = %s, want it to contain %s", merged, want)
+	}
+}
+
+// The overlay highlights each word from elapsed, so the payload carries the word
+// timings of the line's first display sub-line - the only sub-line they cover -
+// and nothing at all when the format has no timings.
+func TestBuildLyricLinesJSON_CarriesWords(t *testing.T) {
+	data := &lyrics.Data{Lines: []lyrics.LyricLine{
+		{Time: 0, Text: "Stop and stare", Words: []lyrics.WordFragment{
+			{Time: 0, Text: "Stop "},
+			{Time: time.Second, Text: "and "},
+			{Time: 2 * time.Second, Text: "stare"},
+		}},
+		{Time: 5 * time.Second, Text: "plain"},
+	}}
+	got := buildLyricLinesJSON(data, 0)
+	if len(got) != 2 {
+		t.Fatalf("buildLyricLinesJSON = %+v, want 2 lines", got)
+	}
+	if len(got[0].Words) != 3 {
+		t.Fatalf("Words = %+v, want 3 fragments", got[0].Words)
+	}
+	if got[0].Words[1].Time != 1.0 || got[0].Words[1].Text != "and " {
+		t.Errorf("Words[1] = %+v, want 1s %q", got[0].Words[1], "and ")
+	}
+
+	// The fragments must reconstruct the text the overlay draws, or its karaoke
+	// split cannot be a prefix of that text.
+	var sb strings.Builder
+	for _, w := range got[0].Words {
+		sb.WriteString(w.Text)
+	}
+	if sb.String() != got[0].Text {
+		t.Errorf("Words reconstruct %q, want the line text %q", sb.String(), got[0].Text)
+	}
+	if got[1].Words != nil {
+		t.Errorf("timing-free line Words = %+v, want nil", got[1].Words)
+	}
+
+	encoded, err := json.Marshal(got[1])
+	if err != nil {
+		t.Fatalf("marshal timing-free line: %v", err)
+	}
+	if strings.Contains(string(encoded), "words") {
+		t.Errorf("timing-free line JSON = %s, want no words key", encoded)
+	}
+}
+
+// The agent label travels beside the line text rather than inside it, and only on
+// the line where the singer changes: the overlay draws one line at a time, so a
+// label on every line would just repeat the same name.
+func TestBuildLyricLinesJSON_CarriesAgentLabelSeparately(t *testing.T) {
+	data := &lyrics.Data{
+		Agents: map[string]string{"v1": "Taylor Swift", "v2": "Brendon Urie"},
+		Lines: []lyrics.LyricLine{
+			{Time: 0, Text: "first", Agent: "v1"},
+			{Time: time.Second, Text: "still v1", Agent: "v1"},
+			{Time: 2 * time.Second, Text: "now v2", Agent: "v2"},
+		},
+	}
+	got := buildLyricLinesJSON(data, 0)
+	if len(got) != 3 {
+		t.Fatalf("buildLyricLinesJSON = %+v, want 3 lines", got)
+	}
+	if got[0].Text != "first" {
+		t.Errorf("Text = %q, want the line's own text without the label", got[0].Text)
+	}
+	wantPrefix := []string{"Taylor Swift: ", "", "Brendon Urie: "}
+	for i, want := range wantPrefix {
+		if got[i].Prefix != want {
+			t.Errorf("line %d Prefix = %q, want %q", i, got[i].Prefix, want)
+		}
 	}
 }
 

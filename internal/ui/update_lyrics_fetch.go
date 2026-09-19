@@ -128,21 +128,26 @@ func effectiveBaseURL(cfgBase string) string {
 
 // lyricSig builds a compact signature for change detection across lyric pushes.
 // When lines are empty/nil the signature is stable (no elapsed) to avoid spam.
-func lyricSig(lines []ipc.LyricLineJSON, elapsed time.Duration, nextIdx int) string {
+// lyricSig builds a compact signature for change detection across lyric pushes.
+// Progress is deliberately not part of it: elapsed moves the overlay's word
+// highlight without changing the line, so it is pushed on its own cadence.
+func lyricSig(lines []ipc.LyricLineJSON, nextIdx int) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "%d|", len(lines))
 	for _, l := range lines {
 		fmt.Fprintf(&sb, "%s|", l.Text)
 	}
 	fmt.Fprintf(&sb, "next=%d", nextIdx)
-	if len(lines) > 0 {
-		fmt.Fprintf(&sb, "|elapsed=%.1f", elapsed.Seconds())
-	}
 	return sb.String()
 }
 
 // Includes all agents (AgentFilter temporarily cleared), plus up to 2 previous
 // and 2 next lines for context (so the GUI can show surrounding lyrics).
+//
+// Words carries the word timings of each line's first display sub-line, which is
+// the only sub-line they cover, and Prefix carries the agent label the overlay
+// should draw ahead of it. Text itself stays the line's own text, so the overlay
+// never has to guess where the label ends.
 func buildLyricLinesJSON(data *lyrics.Data, elapsed time.Duration) []ipc.LyricLineJSON {
 	if data == nil || len(data.Lines) == 0 {
 		return nil
@@ -222,24 +227,60 @@ func buildLyricLinesJSON(data *lyrics.Data, elapsed time.Duration) []ipc.LyricLi
 		keepSet[times[i]] = true
 	}
 
+	// The overlay draws one line at a time, so a label belongs to the line where
+	// the singer changes: judge that over every line of the file, not over the
+	// payload window, which would relabel the first line of each window.
+	labels := labelDueLines(data)
+
 	// Build output: all lines whose Time is in keepSet.
 	out := make([]ipc.LyricLineJSON, 0)
-	for _, line := range data.Lines {
-		if keepSet[line.Time] {
-			displayText := data.LineDisplayText(line)
-			agentName := ""
-			if line.Agent != "" && data.Agents != nil {
-				agentName = data.Agents[line.Agent]
-			}
-			out = append(out, ipc.LyricLineJSON{
-				Time:      line.Time.Seconds(),
-				End:       line.End.Seconds(),
-				Text:      displayText,
-				Parts:     line.Parts,
-				Agent:     line.Agent,
-				AgentName: agentName,
-			})
+	for i, line := range data.Lines {
+		if !keepSet[line.Time] {
+			continue
 		}
+		prefix := ""
+		if labels[i] {
+			prefix = agentPrefix(data, line)
+		}
+		agentName := ""
+		if line.Agent != "" && data.Agents != nil {
+			agentName = data.Agents[line.Agent]
+		}
+		out = append(out, ipc.LyricLineJSON{
+			Time:      line.Time.Seconds(),
+			End:       line.End.Seconds(),
+			Text:      line.Text,
+			Parts:     line.Parts,
+			Words:     wordFragmentsJSON(line.Words),
+			Prefix:    prefix,
+			Agent:     line.Agent,
+			AgentName: agentName,
+		})
+	}
+	return out
+}
+
+// labelDueLines marks the lines whose agent label the overlay draws: the panel's
+// rule (panelAgentLabels), evaluated over every line of the file because the
+// overlay shows one line at a time.
+func labelDueLines(data *lyrics.Data) []bool {
+	visible := make([]lyrics.VisibleLine, len(data.Lines))
+	for i, line := range data.Lines {
+		visible[i] = lyrics.VisibleLine{Index: i, Line: line}
+	}
+	return panelAgentLabels(visible)
+}
+
+// wordFragmentsJSON converts a line's word timings for IPC. A format without word
+// timings yields nil, which omits the field entirely, and the fragments still
+// concatenate back to the line's first display sub-line exactly.
+func wordFragmentsJSON(words []lyrics.WordFragment) []ipc.WordJSON {
+	if len(words) == 0 {
+		return nil
+	}
+	out := make([]ipc.WordJSON, 0, len(words))
+	for _, w := range words {
+		out = append(out, ipc.WordJSON{Time: w.Time.Seconds(), Text: w.Text})
 	}
 	return out
 }
