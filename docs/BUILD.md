@@ -78,7 +78,7 @@ make build
 | `test/coverage`      | Run tests and enforce the `COVERAGE_MIN` gate (CI)                                         |
 | `test/rust`          | Run Rust unit tests for `apecli` and `neoviolet-gui`                                       |
 | `vet`                | Run `go vet`                                                                               |
-| `lint`               | Run `golangci-lint` (falls back to `go vet`)                                               |
+| `lint`               | Run `golangci-lint` (falls back to `go vet` + `gofmt`)                                     |
 | `lint/rust`          | Run `cargo fmt --check` and clippy with `-D warnings`                                      |
 | `check`              | Aggregate gate: vet + lint + lint/rust + test + check/linelength                           |
 | `check/linelength`   | Enforce the per-file line limits (500 lines / 800 for tests)                               |

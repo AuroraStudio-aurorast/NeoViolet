@@ -139,8 +139,14 @@ lint:
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./...; \
 	else \
-		echo "WARNING: golangci-lint not found, falling back to go vet"; \
-		$(GO) vet ./...; \
+		echo "WARNING: golangci-lint not found, falling back to go vet + gofmt"; \
+		$(GO) vet ./... || exit 1; \
+		unformatted="$$(find . -type f -name '*.go' -exec gofmt -l {} +)"; \
+		if [ -n "$$unformatted" ]; then \
+			echo "gofmt: these files are not formatted:"; \
+			echo "$$unformatted"; \
+			exit 1; \
+		fi; \
 	fi
 
 # Aggregate quality gate used by CI and local dev.
