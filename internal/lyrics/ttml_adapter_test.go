@@ -10,8 +10,7 @@ import (
 	amllttml "github.com/WhatDamon/go-amll-ttml-parser"
 )
 
-// ttmlAMLLSample is the AMLL-flavoured TTML fixture of the TTML renovation.
-// It is shaped like a real AMLL file on purpose:
+// ttmlAMLLSample is the AMLL-flavoured fixture the adapter tests share:
 //
 //   - the root declares every namespace it uses (no undeclared prefixes);
 //   - <head> carries two ttm:agent declarations plus amll:meta
@@ -20,11 +19,9 @@ import (
 //     author login;
 //   - line 1 is keyed (itunes:key) with word-level spans and real inter-word
 //     spaces;
-//   - line 2 is keyed and adds an x-bg background span; the x-bg element itself
-//     carries begin and end, which is what decides whether the library derives a
-//     timed word for it (it does here: Background.Words == 1, a library detail
-//     this adapter does not assert), plus an inline ttm:role="x-translation"
-//     span next to the original text;
+//   - line 2 is keyed and adds an x-bg background span (timed, so the library
+//     derives a word for it) plus an inline ttm:role="x-translation" span next to
+//     the original text;
 //   - line 3 has no itunes:key at all, so the sample also covers the keyless
 //     path (upstream MissingKeyKeep).
 //
@@ -66,9 +63,7 @@ const ttmlBrSample = `<tt xmlns="http://www.w3.org/ns/ttml">
   </body>
 </tt>`
 
-// ttmlSampleDoc parses ttmlAMLLSample the way the adapter's caller will:
-// keyless <p> elements are kept, because the hand-written parser
-// accepted them too and most non-AMLL TTML has no itunes:key.
+// ttmlSampleDoc parses ttmlAMLLSample the way the adapter's caller will.
 func ttmlSampleDoc(t *testing.T) *amllttml.Document {
 	t.Helper()
 	return ttmlParseDoc(t, ttmlAMLLSample)
@@ -86,7 +81,6 @@ func ttmlParseDoc(t *testing.T, sample string) *amllttml.Document {
 	return doc
 }
 
-// joinWordText concatenates the word fragments of a line.
 func joinWordText(words []WordFragment) string {
 	var b strings.Builder
 	for _, w := range words {
@@ -120,9 +114,8 @@ func TestTTML_AdapterMapsSample(t *testing.T) {
 		t.Fatalf("lines = %d, want 3 (the keyless <p> is kept)", len(data.Lines))
 	}
 
-	// Line 1 is keyed and plain: no x-bg (so Line.Background is nil - reading
-	// .Text without a nil check would panic here) and no translation, hence no
-	// second segment and Parts stays nil.
+	// Line 1 is keyed and plain: no x-bg (Line.Background stays nil) and no
+	// translation, hence no second segment and Parts stays nil.
 	first := data.Lines[0]
 	if first.Parts != nil {
 		t.Errorf("line 1 Parts = %q, want nil", first.Parts)
@@ -162,15 +155,13 @@ func TestTTML_AdapterMapsSample(t *testing.T) {
 	if len(second.Words) != 4 {
 		t.Fatalf("line 2 words = %d, want 4 (original segment only)", len(second.Words))
 	}
-	// The words tile Parts[0]: the background vocal "ooh" and the translation
-	// are display text without word timing.
+	// The words tile Parts[0]: the background vocal "ooh" and the translation are
+	// display text without word timing.
 	//
-	// This fixture only contains timed spans, so the tiling is strict here. Real
-	// corpus files are not always that tidy: 5 of 717085 lines expose the words
-	// as a PREFIX of the display text (a bare text node next to a span, the shape
-	// the upstream spec calls INV-9). The contract assertion is consequently
-	// written in the looser prefix form for the registered parser; the strict form
-	// here is what the sample is built to satisfy, not a contradiction.
+	// This fixture has only timed spans, so the tiling is strict here. Corpus files
+	// are not always that tidy - 5 of 717085 lines expose the words as a PREFIX of
+	// the display text (a bare text node next to a span, upstream's INV-9) - which
+	// is why the contract uses the looser prefix form for registered parsers.
 	if got := joinWordText(second.Words); got != second.Parts[0] {
 		t.Errorf("line 2 words join = %q, want Parts[0] %q", got, second.Parts[0])
 	}
@@ -393,14 +384,13 @@ func TestTTML_AdapterEmptyParagraphIsDropped(t *testing.T) {
 	}
 }
 
-// TestTTML_AdapterAgentNameBeatsArtistsMeta pins the newly added first step of
-// the agent naming: a <ttm:name> child wins over the positional
-// amll:meta key="artists" value. The hand-written parser read no <ttm:name> at
-// all (its ttmlAgent struct carried only ID and Type), so whenever a file names
-// its agents explicitly the displayed name changes with this renovation.
+// TestTTML_AdapterAgentNameBeatsArtistsMeta pins the first step of the agent
+// naming: an explicit <ttm:name> wins over the positional amll:meta
+// key="artists" value. The hand-written parser read no <ttm:name>, so a file that
+// names its agents explicitly displays them differently from now on.
 //
-// Its own fixture on purpose: ttmlAMLLSample is the contract sample of tasks 3
-// and 4, so its agents must keep exercising the artists-meta path.
+// Its own fixture on purpose: ttmlAMLLSample's agents must keep exercising the
+// artists-meta path.
 func TestTTML_AdapterAgentNameBeatsArtistsMeta(t *testing.T) {
 	const sample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:amll="http://www.example.com/ns/amll">
   <head>
@@ -454,8 +444,7 @@ func TestTTML_AdapterHeadlessDocumentDefaults(t *testing.T) {
 	if data.Title != "" || data.Artist != "" || data.Album != "" || data.Creator != "" {
 		t.Errorf("metadata = [%q %q %q %q], want all empty", data.Title, data.Artist, data.Album, data.Creator)
 	}
-	// Non-nil empty maps, like the hand-written and SMI parsers produce: callers
-	// may look up a key without a nil check.
+	// Non-nil empty maps: callers may look up a key without a nil check.
 	if data.Properties == nil || len(data.Properties) != 0 {
 		t.Errorf("Properties = %v, want non-nil and empty", data.Properties)
 	}
@@ -543,10 +532,8 @@ func TestTTML_AdapterLoneDisplaySegmentIsKept(t *testing.T) {
 }
 
 // TestTTML_AdapterDuplicateBackgroundSegmentCollapses pins the dedup rule: a
-// segment is appended only when it differs from the ones
-// already collected. A chorus echo whose background text equals the original
-// therefore collapses into the original segment, and Parts stays nil instead of
-// rendering the same text twice.
+// segment is appended only when it differs from the ones already collected, so a
+// chorus echo equal to the original collapses into it and Parts stays nil.
 func TestTTML_AdapterDuplicateBackgroundSegmentCollapses(t *testing.T) {
 	const sample = `<tt xmlns="http://www.w3.org/ns/ttml" xmlns:ttm="http://www.w3.org/ns/ttml#metadata" xmlns:itunes="http://music.apple.com/lyric-ttml-internal">
   <body>
@@ -577,11 +564,10 @@ func TestTTML_AdapterDuplicateBackgroundSegmentCollapses(t *testing.T) {
 	}
 }
 
-// TestTTML_BrIsNonGoal pins that inline <br/> stays a non-goal:
-// the parser drops the element and the derived text glues its neighbours, but
-// the line survives and nothing panics. The hand-written parser behaved the
-// same way, so this is a behaviour we are intentionally keeping rather than
-// fixing.
+// TestTTML_BrIsNonGoal pins that inline <br/> stays a non-goal: the parser drops
+// the element and the derived text glues its neighbours, but the line survives
+// and nothing panics. The hand-written parser behaved the same way, so this is a
+// behaviour we keep on purpose rather than fix.
 func TestTTML_BrIsNonGoal(t *testing.T) {
 	// Anchor guard: the fixture really carries an inline <br/> between the two
 	// neighbours. Without this, swapping <br/> for another unknown element (say

@@ -148,11 +148,9 @@ func TestTTML_NoSpaceIsNotInvented(t *testing.T) {
 		t.Fatalf("expected 1 line, got %d", len(d.Lines))
 	}
 
-	// The library must never invent inter-word spaces: spans with no
-	// real whitespace between them stay glued together. Each timed span keeps
-	// its own word fragment, and concatenating the fragments reproduces the
-	// glued Text with no invented spaces - the exact opposite of the CJK/space
-	// heuristics the old hand-written parser applied.
+	// The library must never invent inter-word spaces: spans with no real
+	// whitespace between them stay glued, and each timed span keeps its own word
+	// fragment, so the fragments reproduce the glued text exactly.
 	if d.Lines[0].Text != "wordlevelsync" {
 		t.Errorf("Text = %q, want %q (spaces are never invented)", d.Lines[0].Text, "wordlevelsync")
 	}
@@ -365,9 +363,7 @@ func TestTTML_WordSyncWithTranslation(t *testing.T) {
 }
 
 // TestTTML_CJKNoInventedSpace pins the no-invented-space guarantee for CJK text:
-// the library never invents inter-word spaces. The old hand-written parser's
-// isCJKLang / isCJKContent heuristics were deleted; this name now points at the
-// fidelity guarantee those heuristics used to approximate.
+// spans that carry timing but no whitespace stay glued.
 func TestTTML_CJKNoInventedSpace(t *testing.T) {
 	cjk := `<tt xmlns="http://www.w3.org/ns/ttml"
     xmlns:ttm="http://www.w3.org/ns/ttml#metadata"
@@ -399,9 +395,9 @@ func TestTTML_CJKNoInventedSpace(t *testing.T) {
 	}
 }
 
-// TestTTML_CJKWithoutLang pins the same no-invented-space fidelity for a CJK
-// file that carries no xml:lang hint: the glueing is the library's default, not
-// a language-detection heuristic (isCJKContent no longer exists).
+// TestTTML_CJKWithoutLang pins the same fidelity for a CJK file that carries no
+// xml:lang hint: the glueing is the library's default, not a language-detection
+// heuristic.
 func TestTTML_CJKWithoutLang(t *testing.T) {
 	cjkNoLang := `<tt xmlns="http://www.w3.org/ns/ttml">
   <body><div>

@@ -5,33 +5,27 @@ import (
 	"testing"
 )
 
-// TestTTML_RegressionTable pins the new (go-amll-ttml-parser) readings of the
-// six existing fixtures against the old hand-written parser's readings. The old
-// readings were measured by running the old parser at commit ace5995 (the last
-// commit where "ttml" still registered it), twice: once on today's fixture text
-// and once on the pre-rewrite text, so a fixture edit cannot masquerade as a
-// parser change.
+// TestTTML_RegressionTable pins the new (go-amll-ttml-parser) readings of the six
+// existing fixtures against the old hand-written parser's. The old readings come
+// from running the old parser at ace5995 twice - on today's fixture text and on the
+// pre-rewrite text - so a fixture edit cannot masquerade as a parser change.
 //
-// Every difference from the old parser is annotated "旧值 → 新值" and classified
-// as either a fixture change (three fixtures were deliberately rewritten: added
-// xmlns:ttm/xmlns:ttp, real inter-word spaces, span end attributes, and the
-// non-default frameRate=60 sentinel), a declared parser change, or both.
+// Every difference is annotated "旧值 → 新值" and classified as a fixture change
+// (three fixtures were rewritten: xmlns:ttm/xmlns:ttp, real inter-word spaces, span
+// end attributes, the non-default frameRate=60 sentinel), a declared parser change,
+// or both.
 //
-// The bare-text difference (a <p> with no timed <span> now maps to ONE word
-// fragment - the whole line text at the line's begin - instead of zero
-// fragments) is a deliberate change of this renovation. It follows directly
-// from mapping Words straight to the library's Line.Words: the library
-// synthesises one word per untimed text run, which is what makes C6 ("Words
-// must tile the main text") hold for bare-text lines.
+// One of them is the bare-text rule: a <p> with no timed <span> maps to ONE word
+// fragment (the whole line at the line's begin) instead of zero. That follows from
+// taking Words straight from the library, which synthesises one word per untimed
+// text run - and it is what makes C6, "Words tile the main text", hold for bare
+// text.
 
-// regWord is one expected word fragment reading, in milliseconds.
 type regWord struct {
 	timeMs int64
 	text   string
 }
 
-// regLine is the expected reading of one line: Time/End (ms), Text, and the
-// word fragments.
 type regLine struct {
 	timeMs int64
 	endMs  int64
@@ -39,7 +33,6 @@ type regLine struct {
 	words  []regWord
 }
 
-// assertRegLines checks len(d.Lines) and each line's exact readings.
 func assertRegLines(t *testing.T, d *Data, want []regLine) {
 	t.Helper()
 	if len(d.Lines) != len(want) {
@@ -208,32 +201,26 @@ func TestTTML_RegressionTable(t *testing.T) {
 // ttmlSpaceBareSample is the bare-text half of the whitespace-normalisation
 // fixture pair: a <p> with no timed <span>, whose text carries a U+3000
 // ideographic space and a run of two ASCII spaces (spelled \u3000 and "  " so the
-// escapes stay visible in source). Old parser: strings.TrimSpace(para.Text),
-// which trims the ends only, so it read "A\u3000B  C" (at ace5995). New parser:
-// "A B C" - the library folds every whitespace run to one half-width space.
+// escapes stay visible in source). The old parser trimmed the ends only, so it
+// read the text verbatim; the library folds every whitespace run to one half-width
+// space, so this reads "A B C".
 const ttmlSpaceBareSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>" +
 	"<p begin=\"0s\">A\u3000B  C</p>" +
 	"</div></body></tt>"
 
-// ttmlSpaceSpanSample is the timed-span half of the same pair: the whitespace
-// sits inside one <span>, so the line also has Words and the normalisation has
-// to reach them as well (old parser: "A\u3000B  C" in both Text and Words[0];
-// new parser: "A B C" in both).
+// ttmlSpaceSpanSample is the timed-span half of the same pair: the whitespace sits
+// inside one <span>, so the line also has Words, which the folding has to reach as
+// well.
 const ttmlSpaceSpanSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>" +
 	"<p begin=\"0s\" end=\"1s\"><span begin=\"0s\" end=\"1s\">A\u3000B  C</span></p>" +
 	"</div></body></tt>"
 
-// TestTTML_RegressionTable_TitleSource supplements the regression table above by
-// pinning the one metadata difference it does not cover: where Data.Title comes
-// from. The hand-written parser only ever set Title from an amll:meta musicName
-// property - its ttmlMetadata struct held nothing but Agents and AMLLs - so it
-// never read <ttm:title>. The library reads the first non-empty <ttm:title>
-// (a new Title source this renovation added) and
-// exposes it as a musicName prop, the adapter takes Metadata.Titles[0], and
-// testTTML therefore gains a title. Nothing else in the repo asserts this: the
-// only <ttm:title> in a fixture is testTTML's (ttml_test.go), and the other title
-// assertions (ttml_test.go, ttml_meta_test.go, ttml_adapter_test.go) all read
-// data that came from amll:meta musicName.
+// TestTTML_RegressionTable_TitleSource pins the one metadata difference the table
+// above does not cover: where Data.Title comes from. The hand-written parser only
+// ever set Title from an amll:meta musicName property and never read <ttm:title>;
+// the library reads the first non-empty <ttm:title>, exposes it as a musicName prop
+// and the adapter takes Metadata.Titles[0], so testTTML gains a title. The only
+// <ttm:title> in a fixture is testTTML's.
 //
 // Old value -> new value per fixture, from the old parser's readings:
 //
@@ -244,14 +231,13 @@ const ttmlSpaceSpanSample = "<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><div>
 //	testTTMLFrames  Title ""      -> ""           head has only ttp:* attributes
 //	apple           Title ""      -> ""           xmlns:ttm declared, no <ttm:title>
 //
-// Artist/Album are asserted alongside where the fixture declares them (only
-// testTTMLAgents); Creator is "" in both parsers for every fixture here, so it is
-// not repeated. Pinning the empty expectations too is what makes this test fail
-// if the library ever starts deriving a title from another source.
+// Artist/Album are asserted where the fixture declares them (only testTTMLAgents);
+// Creator is "" in both parsers for every fixture here. Pinning the empty
+// expectations too is what makes this fail if the library ever starts deriving a
+// title from another source.
 //
-// Mutation evidence for this test is recorded in task-6.5-report.md: blanking the
-// adapter's `data.Title = ttmlFirst(md.Titles)` line turns the testTTML case red
-// and leaves the other five green.
+// Blanking the adapter's `data.Title = ttmlFirst(md.Titles)` line turns the testTTML
+// case red and leaves the other five green.
 func TestTTML_RegressionTable_TitleSource(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -286,25 +272,18 @@ func TestTTML_RegressionTable_TitleSource(t *testing.T) {
 	}
 }
 
-// TestTTML_RegressionTable_SpaceNormalization supplements the regression table
-// with the second metadata-free difference it does not cover: the whitespace
-// FORM of Text is normalised by the library, where the
-// hand-written parser preserved inner whitespace verbatim (its bare-text branch
-// used strings.TrimSpace(para.Text), which strips the ends only). A file written
-// with an ideographic space or doubled spaces therefore displays them verbatim
-// before this renovation and as a single half-width space after it.
+// TestTTML_RegressionTable_SpaceNormalization pins the second metadata-free
+// difference: the whitespace FORM of Text. The hand-written parser trimmed the ends
+// only, so an ideographic space or doubled spaces displayed verbatim; the library
+// folds every run to one half-width space. Both mapping paths are pinned because
+// they are separate library code paths (bare text node vs. timed span).
 //
-// Both mapping paths are pinned because they are separate library code paths
-// (bare text node vs. timed span) and Text is normalised on each.
+// The span case additionally probes C6 - Words tile the display text - because the
+// dangerous failure mode is not "Text keeps the U+3000" but "Text is folded while
+// Words keeps \u3000", which would silently misalign word highlighting.
 //
-// The span case additionally probes C6 - Words tile the display text - on this
-// input, because the dangerous failure mode is not "Text keeps the U+3000" but
-// "Text is folded while Words keeps \u3000": that would silently misalign word
-// highlighting. A fold that reaches Text but not Words fails this test.
-//
-// This behaviour lives inside the library, so there is no adapter-level mutation
-// that can turn it red (unlike the title-source test above); the corpus path is
-// the assertion itself.
+// This behaviour lives inside the library, so no adapter-level mutation can turn it
+// red (unlike the title-source test above); the corpus path is the assertion.
 func TestTTML_RegressionTable_SpaceNormalization(t *testing.T) {
 	t.Run("bare-text", func(t *testing.T) {
 		assertSpaceFoldFixture(t, ttmlSpaceBareSample)

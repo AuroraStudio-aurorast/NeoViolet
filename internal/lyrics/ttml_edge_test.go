@@ -328,10 +328,10 @@ func TestFindAndParsePreferred_EmptyTTMLFallsBackToLRC(t *testing.T) {
 }
 
 func TestTTML_InlineTranslationBeatsHeadTranslation(t *testing.T) {
-	// ttmlKeyedDoubleSourceTranslationSample supplies the same keyed line a
-	// translation from both an inline x-translation span (行内) and a head-side
-	// <text for="L1"> (头部). The library's TranslationsFor returns inline
-	// first, so the adapter's tr[0] is the inline one; Parts[1] must be it.
+	// ttmlKeyedDoubleSourceTranslationSample gives the same keyed line a translation
+	// from both an inline x-translation span and a head-side <text for="L1">. The
+	// library's TranslationsFor returns inline first, so the adapter's tr[0] is the
+	// inline one; Parts[1] must be it.
 	d, err := parseTTML(ttmlKeyedDoubleSourceTranslationSample)
 	if err != nil {
 		t.Fatalf("Parse() error: %v", err)
