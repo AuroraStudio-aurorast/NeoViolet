@@ -99,3 +99,22 @@ func TestLrcSubcommandTable(t *testing.T) {
 		}
 	}
 }
+
+// parseInvocation.Rest must share strings.Fields' notion of whitespace
+// (unicode.IsSpace, not just " \t"), otherwise a leading NBSP or newline
+// misaligns the slice and Rest keeps the whitespace.
+func TestParseInvocationRestUsesFieldsWhitespace(t *testing.T) {
+	inv, ok := parseInvocation("open\u00a0/a  b.mp3")
+	if !ok {
+		t.Fatal("parseInvocation returned ok = false")
+	}
+	if inv.Rest != "/a  b.mp3" {
+		t.Errorf("Rest = %q, want %q", inv.Rest, "/a  b.mp3")
+	}
+	if inv, _ := parseInvocation("open  /a.mp3"); inv.Rest != "/a.mp3" {
+		t.Errorf("Rest = %q, want %q", inv.Rest, "/a.mp3")
+	}
+	if inv, _ := parseInvocation("open"); inv.Rest != "" {
+		t.Errorf("Rest = %q, want empty", inv.Rest)
+	}
+}

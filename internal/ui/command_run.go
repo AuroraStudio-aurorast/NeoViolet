@@ -135,17 +135,16 @@ func runLrc(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 }
 
 // runOpen implements ":open <path>" / ":load" / ":e".
-//
-// T1 keeps the old argument handling (strings.Join after Fields) so this task
-// is a pure refactor; T3 switches it to the raw remainder plus "~" expansion.
 func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
-	if len(inv.Parts) < 2 {
+	if inv.Rest == "" {
 		m.Error.Set("Usage: open <path>", m.Config.Error.Duration)
 		return m, nil
 	}
-	path := strings.Join(inv.Parts[1:], " ")
+	// Rest (not strings.Join(Parts[1:], " ")) so a file name with two adjacent
+	// spaces survives; expandTilde so a path completed as "~/x.mp3" also opens.
+	path := expandTilde(inv.Rest)
 	if !isValidAudioPath(path) {
-		m.Error.Set("Invalid or unsupported audio file: "+path, m.Config.Error.Duration)
+		m.Error.Set("Invalid or unsupported audio file: "+inv.Rest, m.Config.Error.Duration)
 		return m, nil
 	}
 	return handleLoadTrack(m, LoadTrackMsg{Path: path})

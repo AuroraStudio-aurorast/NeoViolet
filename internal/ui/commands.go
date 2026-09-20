@@ -2,6 +2,7 @@ package ui
 
 import (
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -25,10 +26,13 @@ func parseInvocation(cmdText string) (inv invocation, ok bool) {
 	if len(parts) == 0 {
 		return invocation{}, false
 	}
-	trimmed := strings.TrimLeft(cmdText, " \t")
+	// Rest is everything after the first token. Trim with the same whitespace
+	// set strings.Fields splits on, so a leading NBSP or newline cannot
+	// misalign the slice.
+	trimmed := strings.TrimLeftFunc(cmdText, unicode.IsSpace)
 	rest := ""
-	if len(trimmed) > len(parts[0]) {
-		rest = strings.TrimLeft(trimmed[len(parts[0]):], " \t")
+	if i := strings.IndexFunc(trimmed, unicode.IsSpace); i >= 0 {
+		rest = strings.TrimLeftFunc(trimmed[i:], unicode.IsSpace)
 	}
 	return invocation{Text: cmdText, Name: parts[0], Parts: parts, Rest: rest}, true
 }
