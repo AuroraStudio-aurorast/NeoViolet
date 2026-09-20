@@ -387,6 +387,10 @@ func TestPasteClearsAStaleNoticeWhenTheFirstPathIsRefused(t *testing.T) {
 
 func TestAcceptCompletionRefusedAtTheLimitShowsTheNotice(t *testing.T) {
 	m := commandModeModel(t, "open ")
+	// The name says "at the limit", but the fixture deliberately stops one rune
+	// short of CharLimit: this case pins the refusal notice, and once the line
+	// reaches the limit the derived count outranks it, so a line really at the
+	// limit shows "256/256" and never "too long".
 	m.Components.CommandInput.SetValue("open " + strings.Repeat("a", m.Components.CommandInput.CharLimit-6))
 	m.Components.CommandInput.SetCursor(len([]rune(m.Components.CommandInput.Value())))
 	syncCompletion(m)

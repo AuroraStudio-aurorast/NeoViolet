@@ -100,6 +100,10 @@ func renderCommandLine(m *Model) string {
 		// The leading space is the separator the budget reserved a cell for.
 		row += commandNoticeStyle.Render(" " + notice)
 	}
+	// The clamp has to stay outside the style render: it is the last width
+	// insurance on the assembled row, and inside the style it would measure the
+	// row before inputStyle's own padding and border were added. That works only
+	// while inputStyle stays free of both.
 	return inputStyle.Render(clampRowWidth(row, m.UI.Width))
 }
 
