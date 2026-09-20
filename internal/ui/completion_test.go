@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestSegmentAt(t *testing.T) {
@@ -176,4 +178,149 @@ func value(t *testing.T, cands []candidate) []string {
 		out = append(out, c.Value)
 	}
 	return out
+}
+
+func commandModeModel(t *testing.T, value string) *Model {
+	t.Helper()
+	m := setupModel()
+	m.UI.Mode = ModeCommand
+	m.Components.CommandInput.Focus()
+	m.Components.CommandInput.SetValue(value)
+	m.Components.CommandInput.CursorEnd()
+	syncCompletion(m)
+	return m
+}
+
+func TestTabCyclesAndWritesTheCandidate(t *testing.T) {
+	m := commandModeModel(t, "lrc s")
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc switch" {
+		t.Fatalf("value = %q, want \"lrc switch\"", got)
+	}
+	if m.completionIndex < 0 {
+		t.Error("completionIndex = -1 after tab, want a selection")
+	}
+	if got := m.Components.CommandInput.Position(); got != len("lrc switch") {
+		t.Errorf("cursor = %d, want %d", got, len("lrc switch"))
+	}
+}
+
+func TestCtrlNAndCtrlPCycle(t *testing.T) {
+	m := commandModeModel(t, "lrc ")
+	// Seven candidates starting at -1: ctrl+n selects 0 (on), ctrl+n again moves to
+	// off, ctrl+p goes back to on.
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc on" {
+		t.Fatalf("after ctrl+n: value = %q, want \"lrc on\"", got)
+	}
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc off" {
+		t.Fatalf("after second ctrl+n: value = %q, want \"lrc off\"", got)
+	}
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc on" {
+		t.Fatalf("after ctrl+p: value = %q, want \"lrc on\"", got)
+	}
+}
+
+// Cycling must wrap and must not grow the value.
+func TestTabWrapsWithoutGrowingTheValue(t *testing.T) {
+	m := commandModeModel(t, "lrc panel ")
+	seen := map[string]bool{}
+	for i := 0; i < 4; i++ {
+		updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+		m = updated.(*Model)
+		value := m.Components.CommandInput.Value()
+		if len(value) > len("lrc panel auto") {
+			t.Fatalf("value grew to %q", value)
+		}
+		seen[value] = true
+	}
+	if len(seen) != 3 {
+		t.Errorf("cycled through %d distinct values, want 3 (%v)", len(seen), seen)
+	}
+}
+
+// up/down still recall history: completion never touches them.
+func TestHistoryKeysStillWorkInCommandMode(t *testing.T) {
+	m := commandModeModel(t, "")
+	m.CommandHistory = []string{"lrc on", "vol 0.5"}
+	m.historyIndex = len(m.CommandHistory)
+
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyUp})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "vol 0.5" {
+		t.Errorf("after up: value = %q, want the previous history entry", got)
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("completionIndex = %d after history recall, want -1", m.completionIndex)
+	}
+}
+
+// A user keystroke resets the selection (otherwise enter would run a stale
+// choice).
+func TestTypingResetsSelection(t *testing.T) {
+	m := commandModeModel(t, "lrc s")
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(*Model)
+	if m.completionIndex < 0 {
+		t.Fatal("expected a selection after tab")
+	}
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: 'w', Text: "w"})
+	m = updated.(*Model)
+	if m.completionIndex != -1 {
+		t.Errorf("completionIndex = %d after typing, want -1", m.completionIndex)
+	}
+}
+
+// Completing a directory writes it and keeps the round: the listing must not
+// swap under the user, so a further tab walks that round's siblings.
+func TestAcceptDirectoryKeepsTheRound(t *testing.T) {
+	root := mkTree(t)
+	m := commandModeModel(t, "open "+root+"/A")
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "open "+root+"/Album/" {
+		t.Fatalf("value = %q, want the Album directory", got)
+	}
+	if m.completionIndex != 0 {
+		t.Errorf("completionIndex = %d after completing a directory, want 0", m.completionIndex)
+	}
+	// The round is still the parent's listing: completing the directory did not
+	// swap the candidates for the (empty) directory's own contents.
+	if len(m.completionCandidates) != 1 {
+		t.Errorf("candidates = %d, want the round's 1 match", len(m.completionCandidates))
+	}
+
+	// A keystroke starts a new round against what is on the line now.
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: 'x', Text: "x"})
+	m = updated.(*Model)
+	if m.completionIndex != -1 {
+		t.Errorf("completionIndex = %d after typing, want -1", m.completionIndex)
+	}
+}
+
+// A second tab replaces the previous candidate instead of appending to it: the
+// round's segment end follows the text that was written.
+func TestTabCyclesPathCandidatesWithoutGrowingTheValue(t *testing.T) {
+	root := mkTree(t)
+	m := commandModeModel(t, "open "+root+"/")
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(*Model)
+	if got, want := m.Components.CommandInput.Value(), "open "+root+"/Album/"; got != want {
+		t.Fatalf("first tab: value = %q, want %q", got, want)
+	}
+
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(*Model)
+	if got, want := m.Components.CommandInput.Value(), "open "+root+"/a.flac"; got != want {
+		t.Fatalf("second tab: value = %q, want %q", got, want)
+	}
+	if m.completionIndex != 1 {
+		t.Errorf("completionIndex = %d after the second tab, want 1", m.completionIndex)
+	}
 }

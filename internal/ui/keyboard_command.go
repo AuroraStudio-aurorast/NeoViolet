@@ -33,6 +33,15 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 	default:
 		keyStr := msg.String()
 		switch keyStr {
+		case "tab":
+			cycleCompletion(m, 1)
+			return m, nil
+		case "ctrl+n":
+			cycleCompletion(m, 1)
+			return m, nil
+		case "ctrl+p":
+			cycleCompletion(m, -1)
+			return m, nil
 		case "enter":
 			return executeCommand(m)
 		case "up":

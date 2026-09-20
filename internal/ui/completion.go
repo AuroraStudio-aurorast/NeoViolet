@@ -241,3 +241,57 @@ func syncCompletion(m *Model) {
 	m.completionCandidates = candidatesFor(ctx)
 	m.completionIndex = -1
 }
+
+// acceptCompletion writes the selected candidate into the input line: the text
+// between the segment start and the cursor is replaced, so anything after the
+// cursor survives.
+//
+// The candidate list and the segment stay as they are. One tab starts a round
+// against what the user typed, and further tabs walk that round's candidates,
+// each press replacing the text the previous one wrote: completing a directory
+// must not swap the listing under the user's fingers. Only a keystroke that
+// reaches the textinput (syncCompletion) recomputes everything.
+func acceptCompletion(m *Model, index int) {
+	if index < 0 || index >= len(m.completionCandidates) {
+		return
+	}
+	value := m.completionCandidates[index].Value
+	ti := &m.Components.CommandInput
+	runes := []rune(ti.Value())
+	seg := m.completionSeg
+	if seg.Start < 0 || seg.End > len(runes) || seg.Start > seg.End {
+		return
+	}
+
+	updated := string(runes[:seg.Start]) + value + string(runes[seg.End:])
+	if len([]rune(updated)) > ti.CharLimit {
+		return // never truncate silently: leave the input untouched
+	}
+	ti.SetValue(updated)
+	end := seg.Start + len([]rune(value))
+	ti.SetCursor(end)
+
+	// The written value is the segment's text now: the next cycle replaces it.
+	m.completionSeg = segment{Index: seg.Index, Prefix: value, Start: seg.Start, End: end}
+	m.completionIndex = index
+	syncGhostSuggestions(m)
+}
+
+// cycleCompletion moves the selection and writes it into the input line. delta
+// is +1 for tab/ctrl+n and -1 for ctrl+p.
+func cycleCompletion(m *Model, delta int) {
+	total := len(m.completionCandidates)
+	if total == 0 {
+		return
+	}
+	index := m.completionIndex
+	switch {
+	case index < 0 && delta < 0:
+		index = total - 1
+	case index < 0:
+		index = 0
+	default:
+		index = (index + delta + total) % total
+	}
+	acceptCompletion(m, index)
+}
