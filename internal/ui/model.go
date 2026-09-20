@@ -275,7 +275,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 
 	logger.Info("Model created", "iconTheme", cfg.IconTheme, "tickRate", cfg.TickRate)
 
-	ti.SetWidth(m.UI.Width - 1)
+	syncCommandInputWidth(m)
 
 	return m
 }

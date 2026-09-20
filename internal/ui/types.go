@@ -196,9 +196,12 @@ type State struct {
 	Mode       Mode
 	Focus      Focus
 	SavedFocus Focus
-	Width      int
-	Height     int
-	tabWidth   int
+
+	CommandNotice string
+
+	Width    int
+	Height   int
+	tabWidth int
 }
 
 // ComponentState holds the Bubble Tea component models used by the view.
