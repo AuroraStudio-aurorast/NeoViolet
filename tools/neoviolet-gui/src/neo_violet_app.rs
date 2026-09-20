@@ -122,22 +122,6 @@ impl NeoVioletApp {
         *cx.global::<AppState>().process_start.lock().unwrap() = None;
         cx.notify();
     }
-
-    /// Restart terminal with the given file paths as launch arguments.
-    /// Used by drag-and-drop and Dock-icon open-file flows.
-    fn restart_with_files(&mut self, paths: Vec<String>, cx: &mut Context<Self>) {
-        if paths.is_empty() {
-            return;
-        }
-        log::info!("[neoviolet-app] restarting with {} file(s)", paths.len());
-        // Set launch args so TerminalApp::new() picks them up
-        {
-            let state = cx.global::<AppState>();
-            *state.launch_args.lock().unwrap() = paths;
-        }
-        // Restart terminal (this clears the old process and spawns a new one)
-        self.restart_terminal(cx);
-    }
 }
 
 impl Render for NeoVioletApp {
@@ -189,17 +173,24 @@ impl Render for NeoVioletApp {
         }
 
         // ── Pending file paths from Dock-icon drop / open-file event ──
-        // When macOS delivers files via on_open_urls (or the drag-drop
-        // handler above), they land in pending_file_paths. Restart the
-        // terminal with those files as arguments.
-        {
+        // macOS delivers these through `on_open_urls`, which can fire long
+        // after the cold start has consumed its share. There is no PTY to
+        // spawn them into, so they are pasted in like a window drop — the
+        // process is never restarted for a file.
+        let late_paths: Vec<String> = {
             let pending = cx.global::<AppState>().pending_file_paths.clone();
             if let Ok(mut guard) = pending.lock() {
-                let paths: Vec<String> = guard.drain(..).collect();
-                if !paths.is_empty() {
-                    self.restart_with_files(paths, cx);
-                }
+                guard.drain(..).collect()
+            } else {
+                Vec::new()
             }
+        };
+        if !late_paths.is_empty() {
+            log::info!(
+                "[drag-drop] submit {} file(s) from an open-file event",
+                late_paths.len()
+            );
+            drop_paste::send_paths(cx, &self.terminal_child, &late_paths);
         }
 
         // ── IPC messages from TUI ──

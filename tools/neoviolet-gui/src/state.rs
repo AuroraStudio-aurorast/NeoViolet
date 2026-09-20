@@ -53,8 +53,9 @@ pub struct AppState {
     pub cli_version: Arc<Mutex<String>>,
 
     // ── Pending file paths from Dock/Finder open-file events ──
-    /// File paths waiting to be forwarded to the PTY process as launch args.
-    /// Set by `on_open_urls` only, consumed by `NeoVioletApp::render()`.
+    /// File paths waiting for a PTY to open them.
+    /// Set by `on_open_urls` only: `main.rs` drains them into argv before the
+    /// first spawn, `NeoVioletApp::render()` pastes any that arrive later.
     pub pending_file_paths: Arc<Mutex<Vec<String>>>,
 
     // ── Child PID (for IPC control file path) ──

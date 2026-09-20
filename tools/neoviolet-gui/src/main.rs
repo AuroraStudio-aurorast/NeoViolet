@@ -180,6 +180,25 @@ fn main() {
                     false
                 });
 
+                // ── Cold-start hand-off ──
+                // Files opened before this window existed have no PTY to be
+                // pasted into yet, so they go to the spawn as arguments
+                // instead. Appended, not assigned: `launch_args` also holds
+                // this process's own CLI args, which the TUI still needs. Both
+                // locks are released before `cx.new` runs.
+                {
+                    let state = cx.global::<AppState>();
+                    let paths: Vec<String> =
+                        state.pending_file_paths.lock().unwrap().drain(..).collect();
+                    if !paths.is_empty() {
+                        state
+                            .launch_args
+                            .lock()
+                            .unwrap()
+                            .extend(drop_paste::launch_args_for(&paths));
+                    }
+                }
+
                 let terminal_child = cx.new(TerminalApp::new);
                 cx.global::<AppState>()
                     .terminal_child

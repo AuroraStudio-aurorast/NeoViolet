@@ -103,6 +103,21 @@ pub fn should_paste(
     status == PTY_RUNNING_STATUS && !show_exit_error && !show_close && !show_about
 }
 
+/// The arguments a cold start appends to the GUI's own CLI args for `paths`.
+///
+/// Shape: `--` then the first path. `--` keeps a path that looks like a flag
+/// from being read as one, which is why the option terminator is part of the
+/// shape rather than the caller's business. Only the first path is used: the
+/// TUI treats the argv files as "the file to open", so a second one would make
+/// the first run end in a usage error. Later files reach the process through a
+/// paste instead. No paths means nothing to append.
+pub fn launch_args_for(paths: &[String]) -> Vec<String> {
+    let Some(first) = paths.first() else {
+        return Vec::new();
+    };
+    vec!["--".to_string(), first.clone()]
+}
+
 /// Hand `paths` to the running PTY as one bracketed paste, if it may be written
 /// to. Silent on refusal: nothing to paste into means nothing to report.
 pub(crate) fn send_paths(cx: &mut App, child: &Entity<TerminalApp>, paths: &[String]) {
@@ -232,6 +247,36 @@ mod tests {
             !body.contains(&0x1b),
             "bare ESC left in the paste body: {:?}",
             String::from_utf8_lossy(body)
+        );
+    }
+
+    #[test]
+    fn launch_args_of_no_paths_are_empty() {
+        assert_eq!(launch_args_for(&[]), Vec::<String>::new());
+    }
+
+    #[test]
+    fn launch_args_of_one_path_terminate_options_then_name_it() {
+        assert_eq!(
+            launch_args_for(&["/music/song.mp3".to_string()]),
+            vec!["--".to_string(), "/music/song.mp3".to_string()]
+        );
+    }
+
+    #[test]
+    fn launch_args_of_many_paths_keep_only_the_first() {
+        assert_eq!(
+            launch_args_for(&["/music/a.mp3".to_string(), "/music/b.mp3".to_string(),]),
+            vec!["--".to_string(), "/music/a.mp3".to_string()]
+        );
+    }
+
+    #[test]
+    fn launch_args_of_a_path_that_looks_like_a_flag_are_still_terminated() {
+        // Without `--` the TUI's flag parser would read this as an option.
+        assert_eq!(
+            launch_args_for(&["-h.mp3".to_string()]),
+            vec!["--".to_string(), "-h.mp3".to_string()]
         );
     }
 
