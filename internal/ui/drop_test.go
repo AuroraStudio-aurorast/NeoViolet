@@ -36,6 +36,14 @@ func TestNormalizeDrop(t *testing.T) {
 		t.Fatal(err)
 	}
 	escapedQuote := escapeDropped(strings.Replace(quotedQuote, `"`, `\"`, 1))
+	// A name with spaces and a shell special character: a macOS terminal escapes
+	// both the spaces and the "!" (history expansion), while the comma travels as
+	// it is, exactly as it does for a real drop.
+	special := filepath.Join(dir, "Taylor Swift,Brendon Urie - ME!.mp3")
+	if err := os.WriteFile(special, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	escapedSpecial := escapeDropped(strings.ReplaceAll(special, "!", `\!`))
 
 	for _, tc := range []struct {
 		name  string
@@ -57,6 +65,7 @@ func TestNormalizeDrop(t *testing.T) {
 		{"escaped space then second file", escaped + " " + filepath.Join(dir, "b.mp3"), []string{spaced, filepath.Join(dir, "b.mp3")}},
 		{"escaped CJK space, file exists", escapedCJK, []string{cjk}},
 		{"escaped double quote, file exists", escapedQuote, []string{quotedQuote}},
+		{"escaped shell special, file exists", escapedSpecial, []string{special}},
 		{"multiple files", "/tmp/a.mp3\n/tmp/b.mp3", []string{"/tmp/a.mp3", "/tmp/b.mp3"}},
 		{"multiple with spaces", "/tmp/a.mp3   /tmp/b.mp3", []string{"/tmp/a.mp3", "/tmp/b.mp3"}},
 		{"empty payload", "   ", nil},
@@ -102,12 +111,57 @@ func TestUnescapeBackslashes(t *testing.T) {
 		{`/a/My\ File.mp3`, "/a/My File.mp3"},
 		{`/a/back\\slash.mp3`, `/a/back\slash.mp3`},
 		{`/a/it\'s.mp3`, "/a/it's.mp3"},
+		{`/a/a\"b.mp3`, `/a/a"b.mp3`},
 		{`/a/no\escape.mp3`, `/a/no\escape.mp3`},
 		{`/plain.mp3`, "/plain.mp3"},
 	} {
 		if got := unescapeBackslashes(tc[0]); got != tc[1] {
 			t.Errorf("unescapeBackslashes(%q) = %q, want %q", tc[0], got, tc[1])
 		}
+	}
+}
+
+// A backslash that really belongs to a file name must win over the stripped
+// reading of it: both forms exist on disk here, and the payload as delivered
+// names the one that carries the backslash.
+func TestNormalizeDropPrefersTheBackslashThatExists(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "xb.mp3")
+	if err := os.WriteFile(plain, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	withSlash := filepath.Join(dir, `x\b.mp3`)
+	if err := os.WriteFile(withSlash, []byte("x"), 0o600); err != nil {
+		t.Skipf("cannot create %q: %v", withSlash, err)
+	}
+
+	got := normalizeDrop(withSlash)
+	if len(got) != 1 || got[0] != withSlash {
+		t.Errorf("normalizeDrop(%q) = %v, want the name that carries the backslash", withSlash, got)
+	}
+}
+
+// When only the stripped reading is on disk the drop still has to land: the
+// escape a terminal added for a shell special character may hide the real name,
+// so the form that exists on disk wins.
+func TestNormalizeDropStripsEscapesToReachTheFile(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "xb.mp3")
+	if err := os.WriteFile(plain, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Not on disk: only the stripped reading exists.
+	if got := normalizeDrop(filepath.Join(dir, `x\b.mp3`)); len(got) != 1 || got[0] != plain {
+		t.Errorf("normalizeDrop(x\\b.mp3) = %v, want %q", got, plain)
+	}
+
+	special := filepath.Join(dir, "me!.mp3")
+	if err := os.WriteFile(special, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := normalizeDrop(filepath.Join(dir, `me\!.mp3`)); len(got) != 1 || got[0] != special {
+		t.Errorf("normalizeDrop(me\\!.mp3) = %v, want %q", got, special)
 	}
 }
 

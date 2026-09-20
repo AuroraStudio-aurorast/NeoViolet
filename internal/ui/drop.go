@@ -13,11 +13,11 @@ import (
 // normalizeDrop turns one paste payload into the paths it carries.
 //
 // Terminals disagree about how a dropped file is presented (macOS Terminal.app
-// and iTerm2 backslash-escape spaces, WezTerm can quote or escape and appends a
-// trailing space, some sources send a file:// URI), so the rules below
-// normalise defensively and then let the filesystem decide: the form that
-// exists on disk wins over a transformed one. That keeps a file name that
-// really contains a backslash intact.
+// and iTerm2 backslash-escape spaces and shell special characters, WezTerm can
+// quote or escape and appends a trailing space, some sources send a file://
+// URI), so the rules below normalise defensively and then let the filesystem
+// decide: the form that exists on disk wins over a transformed one. That keeps a
+// file name that really contains a backslash intact.
 func normalizeDrop(content string) []string {
 	fields := splitDropFields(content)
 	out := make([]string, 0, len(fields))
@@ -32,11 +32,14 @@ func normalizeDrop(content string) []string {
 			}
 		}
 		unescaped := unescapeBackslashes(path)
-		if unescaped == path {
+		stripped := stripAnyEscape(path)
+		// A payload without a backslash either transform can act on has a single
+		// form, so there is nothing to look up.
+		if unescaped == path && stripped == path {
 			out = append(out, path)
 			continue
 		}
-		out = append(out, pickExisting(path, unescaped))
+		out = append(out, pickExisting(path, unescaped, stripped))
 	}
 	return out
 }
@@ -148,6 +151,33 @@ func unescapeBackslashes(s string) string {
 			}
 		}
 		b.WriteByte(s[i])
+	}
+	return b.String()
+}
+
+// stripAnyEscape drops the backslash of every escape a terminal may have added
+// for a shell special character such as "!", leaving doubled backslashes alone
+// because unescapeBackslashes resolves those. It is only a candidate form: the
+// caller adopts it when that exact name exists on disk, so a file name that
+// really contains a backslash still wins.
+func stripAnyEscape(s string) string {
+	if !strings.Contains(s, `\`) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		if s[i] == '\\' && i+1 < len(s) {
+			if s[i+1] == '\\' {
+				b.WriteByte(s[i])
+				b.WriteByte(s[i+1])
+				i += 2
+				continue
+			}
+			i++ // drop the escape backslash itself
+		}
+		b.WriteByte(s[i])
+		i++
 	}
 	return b.String()
 }
