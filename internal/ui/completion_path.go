@@ -32,17 +32,20 @@ func scanFor(prefix string) pathScan {
 	case strings.HasSuffix(prefix, "/"):
 		return pathScan{dir: full, typedDir: prefix}
 	default:
-		// A typed "." is the fragment for dotfile completion, not a request to
-		// descend into the current directory: os.Stat resolves it to the
-		// directory itself, which would swallow the fragment.
-		if filepath.Base(full) != "." {
+		// The fragment and the directory to scan both come from the literal
+		// prefix: expanding "~" can produce a path longer than what the user
+		// typed, which would index past the start of the prefix. A typed "."
+		// is the fragment for dotfile completion, not a request to descend
+		// into the current directory, because os.Stat resolves "." to the
+		// directory itself and would swallow the fragment.
+		base := filepath.Base(prefix)
+		if base != "." {
 			if info, err := os.Stat(full); err == nil && info.IsDir() {
 				return pathScan{dir: full, typedDir: prefix + "/"}
 			}
 		}
-		base := filepath.Base(full)
 		return pathScan{
-			dir:      filepath.Dir(full),
+			dir:      expandTilde(filepath.Dir(prefix)),
 			fragment: base,
 			typedDir: prefix[:len(prefix)-len(base)],
 		}

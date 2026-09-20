@@ -64,6 +64,9 @@ func TestPathCandidatesDotfilesShownWhenTyped(t *testing.T) {
 func TestPathCandidatesEachIsAPath(t *testing.T) {
 	root := mkTree(t)
 	cands := candidatesFor(completionContextAt("open "+root+"/", len("open "+root+"/")))
+	if len(cands) == 0 {
+		t.Fatal("no candidates: the assertions below would hold vacuously")
+	}
 	for _, c := range cands {
 		if !c.Path {
 			t.Errorf("candidate %q is not marked as a path", c.Value)
@@ -75,7 +78,8 @@ func TestPathCandidatesEachIsAPath(t *testing.T) {
 }
 
 func TestPathCandidatesReadDirFailureIsSilent(t *testing.T) {
-	got := candidatesFor(completionContextAt("open /nope/nope/", len("open /nope/nope/")))
+	missing := filepath.Join(t.TempDir(), "nope") + "/"
+	got := candidatesFor(completionContextAt("open "+missing, len("open "+missing)))
 	if len(got) != 0 {
 		t.Errorf("candidates = %v, want none", got)
 	}
@@ -90,6 +94,29 @@ func TestPathCandidatesKeepTildeShape(t *testing.T) {
 	got := value(t, candidatesFor(completionContextAt("open ~/", len("open ~/"))))
 	if len(got) != 1 || got[0] != "~/song.mp3" {
 		t.Errorf("candidates = %v, want [~/song.mp3]", got)
+	}
+}
+
+func TestPathCandidatesTildeDotListsHidden(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, name := range []string{".hidden.mp3", "plain.mp3"} {
+		if err := os.WriteFile(filepath.Join(home, name), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := value(t, candidatesFor(completionContextAt("open ~/.", len("open ~/."))))
+	if strings.Join(got, ",") != "~/.hidden.mp3" {
+		t.Errorf("candidates = %v, want [~/.hidden.mp3]", got)
+	}
+}
+
+func TestScanForMissingHomeDoesNotPanic(t *testing.T) {
+	// "~" whose expansion is longer than the literal prefix used to index
+	// past the start of the prefix.
+	t.Setenv("HOME", filepath.Join(t.TempDir(), "missing"))
+	if got := value(t, candidatesFor(completionContextAt("open ~", len("open ~")))); len(got) != 0 {
+		t.Errorf("candidates = %v, want none", got)
 	}
 }
 
