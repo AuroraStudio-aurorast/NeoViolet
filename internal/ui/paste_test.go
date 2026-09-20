@@ -8,6 +8,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// The payload below holds a bare space, so splitDropFields resolves it to two
+// fields that reassemble; TestPasteInCommandModeInsertsEveryPath is the clear case.
 func TestPasteInCommandModeInsertsPath(t *testing.T) {
 	m := setupModel()
 	m.UI.Mode = ModeCommand
@@ -70,8 +72,8 @@ func TestPasteInCommandModeUnescapesExistingSpacePath(t *testing.T) {
 	}
 }
 
-// A paste can carry several paths, and the scan must skip one that does not
-// exist instead of giving up: a valid file later in the payload still loads.
+// A paste can carry several paths, and the scan must not give up on the whole
+// payload when the first path is unusable: a valid file later in it still loads.
 func TestPasteInNormalModeScansPastAnInvalidPath(t *testing.T) {
 	m := setupModel()
 	dir := t.TempDir()
@@ -90,6 +92,24 @@ func TestPasteInNormalModeScansPastAnInvalidPath(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Error("expected a load command")
+	}
+}
+
+// A single unusable path must be ignored outright: nothing loads, no command is
+// returned and no error is written.
+func TestPasteInNormalModeIgnoresMissingAudioPath(t *testing.T) {
+	m := setupModel()
+	// The extension is playable but the file is not there, so only the
+	// existence check can reject this payload.
+	missing := filepath.Join(t.TempDir(), "missing.mp3")
+
+	updated, cmd := updateDispatcher(m, tea.PasteMsg{Content: missing})
+	m = updated.(*Model)
+	if m.Loading || m.switchingTrack || cmd != nil {
+		t.Errorf("Loading = %v, switchingTrack = %v, cmd = %v; want no reaction", m.Loading, m.switchingTrack, cmd)
+	}
+	if m.Error.Message != "" {
+		t.Errorf("error = %q, want none", m.Error.Message)
 	}
 }
 
