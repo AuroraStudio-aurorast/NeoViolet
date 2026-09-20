@@ -234,6 +234,11 @@ func filterCandidates(cands []candidate, prefix string) []candidate {
 func syncCompletion(m *Model) {
 	syncGhostSuggestions(m)
 
+	// The row budget depends on the notice and on the current suggestion, and
+	// the clearing paths below (leaving command mode, an empty line) must still
+	// restore the unsplit width, so this runs before the early return.
+	syncCommandInputWidth(m)
+
 	ti := &m.Components.CommandInput
 	if m.UI.Mode != ModeCommand || strings.TrimSpace(ti.Value()) == "" {
 		m.completionCandidates = nil

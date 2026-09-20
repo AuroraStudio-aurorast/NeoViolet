@@ -13,6 +13,10 @@ import (
 )
 
 func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// A refusal notice only lives until the next key: it describes the attempt
+	// that was just made, not the line the user is still editing.
+	setCommandNotice(m, "")
+
 	switch {
 	case normMatch(msg, keys.Quit):
 		if m.isGUI() {

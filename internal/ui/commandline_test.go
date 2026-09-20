@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -137,8 +138,17 @@ func TestRenderCommandLineDropsTheNoticeWhenItCannotFit(t *testing.T) {
 	m := commandModeModel(t, "abc")
 	m.UI.Width = 8
 	setCommandNotice(m, "256/256")
-	if row := renderCommandLine(m); strings.Contains(row, "256") {
+	row := renderCommandLine(m)
+	if strings.Contains(row, "256") {
 		t.Fatalf("command row %q still shows a notice that cannot fit", row)
+	}
+	// Contrast against the same row built without a notice at all: a negative
+	// assertion alone cannot tell the budget dropping it from the clamp eating it.
+	without := commandModeModel(t, "abc")
+	without.UI.Width = 8
+	syncCommandInputWidth(without)
+	if got, want := row, renderCommandLine(without); got != want {
+		t.Fatalf("a dropped notice still changed the row:\n got: %q\nwant: %q", got, want)
 	}
 }
 
@@ -169,5 +179,117 @@ func TestRenderHelpDelegatesToRenderCommandLine(t *testing.T) {
 	setCommandNotice(m, "too long")
 	if got, want := renderHelp(m), renderCommandLine(m); got != want {
 		t.Fatalf("renderHelp = %q, want the command row %q", got, want)
+	}
+}
+
+func TestLimitCountAppearsAndDisappears(t *testing.T) {
+	m := commandModeModel(t, "")
+	key := tea.KeyPressMsg{Code: 'x', Text: "x"}
+	for i := 0; i < m.Components.CommandInput.CharLimit; i++ {
+		nm, _ := updateDispatcher(m, key)
+		m = nm.(*Model)
+	}
+	if got := m.Components.CommandInput.Value(); len([]rune(got)) != m.Components.CommandInput.CharLimit {
+		t.Fatalf("value length = %d, want %d", len([]rune(got)), m.Components.CommandInput.CharLimit)
+	}
+	row := renderCommandLine(m)
+	count := fmt.Sprintf("%d/%d", m.Components.CommandInput.CharLimit, m.Components.CommandInput.CharLimit)
+	// A suffix assertion, not a substring one: the notice sits at the end of the
+	// row, so it is the first thing a too-narrow row loses. Contains would still
+	// pass if only half of it survived.
+	if !strings.HasSuffix(stripANSI(row), count) {
+		t.Fatalf("command row %q does not end with %s", row, count)
+	}
+	if got := lipgloss.Width(row); got != m.UI.Width {
+		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
+	}
+
+	nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	m = nm.(*Model)
+	if row := renderCommandLine(m); strings.Contains(row, count) {
+		t.Fatalf("command row %q still shows %s after backspace", row, count)
+	}
+}
+
+func TestCommandInputWidthFollowsTheCurrentLine(t *testing.T) {
+	// The input width is derived from the value, the suggestion, the caret and
+	// the notice. If any of them changes without a re-sync the input keeps the
+	// old width and the assembled row overflows, so the clamp then eats whatever
+	// sits at the end of the row: the notice or the caret.
+	check := func(t *testing.T, m *Model) {
+		t.Helper()
+		ti := &m.Components.CommandInput
+		want, _, _ := commandLineLayout(ti.Value(), ti.CurrentSuggestion(),
+			ti.Position() >= len([]rune(ti.Value())), commandNotice(m), m.UI.Width-1)
+		if got := ti.Width(); got != want {
+			t.Fatalf("CommandInput.Width() = %d, want %d for a value of %d runes",
+				got, want, len([]rune(ti.Value())))
+		}
+	}
+
+	m := commandModeModel(t, "")
+	limit := m.Components.CommandInput.CharLimit
+	for i := 0; i < limit; i++ {
+		nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: 'x', Text: "x"})
+		m = nm.(*Model)
+	}
+	check(t, m)
+
+	nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyBackspace})
+	m = nm.(*Model)
+	check(t, m)
+}
+
+func TestCommandModeKeyClearsTheRefusalNotice(t *testing.T) {
+	m := commandModeModel(t, "abc")
+	setCommandNotice(m, "too long")
+	nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: 'd', Text: "d"})
+	m = nm.(*Model)
+	if m.UI.CommandNotice != "" {
+		t.Fatalf("CommandNotice = %q, want empty after a keypress", m.UI.CommandNotice)
+	}
+	if row := renderCommandLine(m); strings.Contains(row, "too long") {
+		t.Fatalf("command row %q still shows the notice", row)
+	}
+}
+
+func TestSyncCompletionResyncsTheWidthWhenTheLineEmpties(t *testing.T) {
+	m := commandModeModel(t, "abc")
+	setCommandNotice(m, "too long")
+	if got := lipgloss.Width(renderCommandLine(m)); got != m.UI.Width {
+		t.Fatalf("row width with a notice = %d, want %d", got, m.UI.Width)
+	}
+	// Leaving command mode clears the notice through syncCompletion's early
+	// return path, which must still restore the unsplit width.
+	nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = nm.(*Model)
+	if m.UI.CommandNotice != "" {
+		t.Fatalf("CommandNotice = %q, want empty after leaving command mode", m.UI.CommandNotice)
+	}
+	if got, want := m.Components.CommandInput.Width(), m.UI.Width-2; got != want {
+		t.Fatalf("CommandInput.Width() = %d, want %d", got, want)
+	}
+}
+
+func TestNoticeLeavesEveryOtherRowUntouched(t *testing.T) {
+	plain := commandModeModel(t, "abc")
+	withNotice := commandModeModel(t, "abc")
+	setCommandNotice(withNotice, "too long")
+
+	plainRows := strings.Split(renderMainView(plain).Content, "\n")
+	noticeRows := strings.Split(renderMainView(withNotice).Content, "\n")
+	if len(plainRows) != len(noticeRows) {
+		t.Fatalf("frame heights differ: %d vs %d", len(plainRows), len(noticeRows))
+	}
+	for i := range plainRows {
+		if i == len(plainRows)-1 {
+			continue // the command row itself is the one row allowed to differ
+		}
+		if plainRows[i] != noticeRows[i] {
+			t.Fatalf("row %d differs:\n plain: %q\nnotice: %q", i, plainRows[i], noticeRows[i])
+		}
+	}
+	if plainRows[len(plainRows)-1] == noticeRows[len(noticeRows)-1] {
+		t.Fatal("the command row is identical with and without a notice")
 	}
 }
