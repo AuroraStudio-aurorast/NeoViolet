@@ -228,6 +228,144 @@ func truncateLine(s string, maxWidth int) string {
 	return s
 }
 
+// maxCompletionRows caps the candidate overlay height.
+const maxCompletionRows = 5
+
+// overlayInset is the content box chrome the overlay leaves free on each side:
+// rounded border (1) plus padding (2).
+const overlayInset = 3
+
+// minCompactWidth is the narrowest row that still gets a middle ellipsis.
+const minCompactWidth = 12
+
+// markerWidth is the width of the selection marker ("  " or "▸ "): every row
+// carries one, so the value and the description share the remaining cells.
+const markerWidth = 2
+
+// completionRows is the number of overlay rows this frame: candidates capped by
+// maxCompletionRows and by the content height.
+func completionRows(m *Model, plan layoutPlan) int {
+	if m.UI.Mode != ModeCommand {
+		return 0
+	}
+	rows := len(m.completionCandidates)
+	if rows > maxCompletionRows {
+		rows = maxCompletionRows
+	}
+	if rows > plan.ContentHeight {
+		rows = plan.ContentHeight
+	}
+	return rows
+}
+
+// completionWindowStart is the first visible candidate: the window centres on
+// the selection and clamps to the list.
+func completionWindowStart(m *Model, rows int) int {
+	total := len(m.completionCandidates)
+	if rows <= 0 || total <= rows {
+		return 0
+	}
+	if m.completionIndex < 0 {
+		return 0
+	}
+	start := m.completionIndex - rows/2
+	if start < 0 {
+		start = 0
+	}
+	if limit := total - rows; start > limit {
+		start = limit
+	}
+	return start
+}
+
+// renderCompletion renders the candidate block: one row per candidate, up to
+// completionRows rows, each exactly avail cells wide.
+func renderCompletion(m *Model, plan layoutPlan) string {
+	rows := completionRows(m, plan)
+	if rows == 0 {
+		return ""
+	}
+	avail := plan.ContentWidth - 2*overlayInset
+	start := completionWindowStart(m, rows)
+
+	lines := make([]string, 0, rows)
+	for i := 0; i < rows; i++ {
+		index := start + i
+		lines = append(lines, completionRow(m.completionCandidates[index], index == m.completionIndex, avail))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// completionRow renders one row, padded to avail. Three tiers:
+// value plus description, value only, then a compacted value. The marker is
+// part of the row, so a wider value or description is cut by the canvas when
+// the tier check does not budget for it.
+func completionRow(cand candidate, selected bool, avail int) string {
+	value, desc := cand.Value, cand.Desc
+	budget := avail - markerWidth
+	if w := lipgloss.Width(value); w > budget {
+		value = compactValue(cand, budget)
+		desc = ""
+	} else if desc != "" && w+2+lipgloss.Width(desc) > budget {
+		desc = ""
+	}
+
+	marker := "  "
+	rowStyle, descStyle := completionRowStyle, completionDescStyle
+	if selected {
+		marker = "▸ "
+		rowStyle, descStyle = completionSelectedStyle, completionSelectedDescStyle
+	}
+
+	head := marker + value
+	if desc == "" {
+		pad := avail - lipgloss.Width(head)
+		return rowStyle.Render(head + strings.Repeat(" ", max(pad, 0)))
+	}
+	// The description only survives tier 1, so head+2+desc fits and pad >= 0.
+	pad := avail - lipgloss.Width(head) - lipgloss.Width(desc) - 2
+	return rowStyle.Render(head+"  ") + descStyle.Render(desc+strings.Repeat(" ", max(pad, 0)))
+}
+
+// compactValue shortens an over-wide candidate: paths lose their left-hand
+// directories (the file name is what tells them apart), everything else is
+// truncated the way the rest of the UI truncates.
+func compactValue(cand candidate, avail int) string {
+	if !cand.Path {
+		return truncateLine(cand.Value, avail)
+	}
+	return compactPath(cand.Value, avail)
+}
+
+// compactPath keeps the file name and as many trailing directories as fit,
+// replacing the head with an ellipsis: "…/VeryLong/name.mp3".
+func compactPath(path string, avail int) string {
+	if lipgloss.Width(path) <= avail {
+		return path
+	}
+	if avail < minCompactWidth {
+		return truncateLine(path, avail)
+	}
+	segs := strings.Split(path, "/")
+	if len(segs) > 0 && segs[0] == "" {
+		segs = segs[1:] // absolute path: drop the leading empty segment
+	}
+	base := segs[len(segs)-1]
+	if lipgloss.Width(base)+1 > avail {
+		return truncateLine(path, avail) // pathological file name
+	}
+
+	best := "…/" + base
+	for k := 2; k <= len(segs); k++ {
+		cand := "…/" + strings.Join(segs[len(segs)-k:], "/")
+		if lipgloss.Width(cand) > avail {
+			break
+		}
+		best = cand
+	}
+	return best
+}
+
 func renderHelp(m *Model) string {
 	if m.UI.Mode == ModeCommand {
 		return inputStyle.Render(m.Icons.Command + m.Components.CommandInput.View())
