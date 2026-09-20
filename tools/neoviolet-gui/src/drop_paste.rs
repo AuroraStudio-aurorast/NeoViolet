@@ -109,8 +109,10 @@ pub fn should_paste(
 /// from being read as one, which is why the option terminator is part of the
 /// shape rather than the caller's business. Only the first path is used: the
 /// TUI treats the argv files as "the file to open", so a second one would make
-/// the first run end in a usage error. Later files reach the process through a
-/// paste instead. No paths means nothing to append.
+/// the first run end in a usage error. Any further paths from the same
+/// cold-start event are dropped: the TUI takes a single positional file, and
+/// only paths that arrive after the spawn reach it through a paste. No paths
+/// means nothing to append.
 pub fn launch_args_for(paths: &[String]) -> Vec<String> {
     let Some(first) = paths.first() else {
         return Vec::new();

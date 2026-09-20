@@ -85,8 +85,9 @@ fn main() {
 
     // ── Shared pending-file-paths store ──
     // On macOS, `on_open_urls` fires before/during `run()` and feeds file
-    // paths here. On other platforms this stays empty — files arrive via
-    // CLI args (`launch_args`) instead.
+    // paths here. On other platforms it stays empty: in-window drops arrive
+    // through `FileDropEvent` and are pasted in, and startup files come from
+    // this process's own CLI args.
     let pending_urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
     // ── macOS: handle files dropped onto Dock icon / opened via Finder ──

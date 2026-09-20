@@ -174,9 +174,9 @@ impl Render for NeoVioletApp {
 
         // ── Pending file paths from Dock-icon drop / open-file event ──
         // macOS delivers these through `on_open_urls`, which can fire long
-        // after the cold start has consumed its share. There is no PTY to
-        // spawn them into, so they are pasted in like a window drop — the
-        // process is never restarted for a file.
+        // after the cold start has consumed its share. There is no new spawn
+        // to hand them to, so they are pasted into the running PTY like a
+        // window drop — the process is never restarted for a file.
         let late_paths: Vec<String> = {
             let pending = cx.global::<AppState>().pending_file_paths.clone();
             if let Ok(mut guard) = pending.lock() {
@@ -186,8 +186,8 @@ impl Render for NeoVioletApp {
             }
         };
         if !late_paths.is_empty() {
-            log::info!(
-                "[drag-drop] submit {} file(s) from an open-file event",
+            log::debug!(
+                "[drag-drop] handing {} file(s) from an open-file event to the PTY",
                 late_paths.len()
             );
             drop_paste::send_paths(cx, &self.terminal_child, &late_paths);
