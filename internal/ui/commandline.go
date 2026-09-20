@@ -69,6 +69,45 @@ func commandNotice(m *Model) string {
 	return m.UI.CommandNotice
 }
 
+// setCommandNotice records the notice text and re-syncs the input width: the
+// notice is part of the row budget, so a notice that appears without a value
+// change still has to resize the input.
+func setCommandNotice(m *Model, text string) {
+	m.UI.CommandNotice = text
+	syncCommandInputWidth(m)
+}
+
+// renderCommandLine assembles the whole command row: the prompt, an optional
+// left-edge ellipsis, the input itself, and the right-hand notice.
+func renderCommandLine(m *Model) string {
+	ti := &m.Components.CommandInput
+	value := ti.Value()
+	cursorAtEnd := ti.Position() >= len([]rune(value))
+	notice := commandNotice(m)
+	_, showEllipsis, showNotice := commandLineLayout(
+		value, ti.CurrentSuggestion(), cursorAtEnd, notice, m.UI.Width-1)
+
+	row := m.Icons.Command
+	if showEllipsis {
+		// A width proxy: this can show even when nothing was cut on the left.
+		row += "…"
+	}
+	row += ti.View()
+	if showNotice {
+		// The leading space is the separator the budget reserved a cell for.
+		row += commandNoticeStyle.Render(" " + notice)
+	}
+	return inputStyle.Render(clampRowWidth(row, m.UI.Width))
+}
+
+// clampRowWidth trims an over-wide row down to width cells. It is the safety net
+// under the budget: the budget predicts what the textinput will render, and this
+// trims what it actually rendered. Trimming only ever shortens the tail, so a
+// row that already fits comes back unchanged.
+func clampRowWidth(row string, width int) string {
+	return lipgloss.NewStyle().MaxWidth(width).Render(row)
+}
+
 // syncCommandInputWidth recomputes the input width from the current value,
 // suggestion, cursor and notice, and pushes it into the textinput.
 //

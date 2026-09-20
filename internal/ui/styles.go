@@ -100,4 +100,10 @@ var (
 	completionSelectedDescStyle = lipgloss.NewStyle().
 					Background(lipgloss.Color("57")).
 					Foreground(lipgloss.Color("153"))
+
+	// Command line notice: used for the line-limit count and for a refused
+	// insertion, both of which render inside the command row itself.
+	commandNoticeStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("214")).
+				Bold(true)
 )
