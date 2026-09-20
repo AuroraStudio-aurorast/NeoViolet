@@ -23,10 +23,12 @@ func ghostSuggestions() []string {
 // syncGhostSuggestions keeps textinput's own suggestion list in step with the
 // input line.
 //
-// A blank line gets no suggestions on purpose: textinput keeps matched
-// suggestions across Reset/SetValue and only recomputes them from the list it
-// already holds, so a stale entry would make <tab> on an empty command line
-// complete a command the user never typed.
+// This list feeds the inline ghost text, not the selection: in command mode
+// <tab> is intercepted and cycles our own candidates. A blank line gets no
+// suggestions on purpose: textinput filters the list it already holds instead of
+// rebuilding it from the value, and an empty value is a prefix of every entry,
+// so a stale list would show ghost text for a command the user has not started
+// typing.
 func syncGhostSuggestions(m *Model) {
 	ti := &m.Components.CommandInput
 	if strings.TrimSpace(ti.Value()) == "" {
