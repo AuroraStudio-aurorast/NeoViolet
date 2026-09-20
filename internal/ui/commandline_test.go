@@ -57,11 +57,19 @@ func TestCommandLineLayoutNarrow(t *testing.T) {
 	}
 }
 
-func TestCommandLineLayoutDisplayWidth(t *testing.T) {
-	// Three CJK runes take six cells; the layout must work in cells, not runes.
+func TestCommandLineLayoutCountsCellsNotRunes(t *testing.T) {
+	// Three CJK runes are six cells, inside the budget under either metric: this
+	// literal only pins that a fitting wide value is not mistaken for an
+	// overflow. On its own it cannot tell the two metrics apart.
 	width, ellipsis, _ := commandLineLayout("歌曲名", "", true, "", layoutFullWidth)
 	if width != 78 || ellipsis {
 		t.Fatalf("cjk value: inputWidth = %d ellipsis = %v, want 78 false", width, ellipsis)
+	}
+
+	// 45 CJK runes are 90 cells, so a display-width implementation must notice the
+	// overflow while a rune-counting one cannot. The ellipsis costs a cell too.
+	if got, ellipsis, _ := commandLineLayout(strings.Repeat("歌", 45), "", true, "", layoutFullWidth); got != 77 || !ellipsis {
+		t.Fatalf("commandLineLayout(45 CJK runes, 79) = (%d, %v), want (77, true)", got, ellipsis)
 	}
 }
 
@@ -191,6 +199,17 @@ func TestLimitCountAppearsAndDisappears(t *testing.T) {
 	}
 	if got := m.Components.CommandInput.Value(); len([]rune(got)) != m.Components.CommandInput.CharLimit {
 		t.Fatalf("value length = %d, want %d", len([]rune(got)), m.Components.CommandInput.CharLimit)
+	}
+	// The framework drops keys past the limit; this guards our own routing from
+	// ever writing past it on the side. bubbles clamps every write path it
+	// exposes (Update and SetValue alike), so the assertion pins the invariant:
+	// only a write that defeats that clamp can move the line from here.
+	for i := 0; i < 5; i++ {
+		nm, _ := updateDispatcher(m, key)
+		m = nm.(*Model)
+	}
+	if got := len([]rune(m.Components.CommandInput.Value())); got != m.Components.CommandInput.CharLimit {
+		t.Fatalf("value length after extra keys = %d, want %d", got, m.Components.CommandInput.CharLimit)
 	}
 	row := renderCommandLine(m)
 	count := fmt.Sprintf("%d/%d", m.Components.CommandInput.CharLimit, m.Components.CommandInput.CharLimit)
@@ -480,6 +499,58 @@ func TestEmojiValueKeepsTheFrameHeight(t *testing.T) {
 	row := renderCommandLine(m)
 	if got := lipgloss.Width(row); got > m.UI.Width {
 		t.Fatalf("command row width = %d, want <= %d", got, m.UI.Width)
+	}
+}
+
+// A notice is a row-level detail of the help line, so it must not reach the
+// lyrics panel beside the content block: same panel rows, byte for byte.
+func TestNoticeLeavesTheLyricsPanelUntouched(t *testing.T) {
+	m := panelModel(t, 2)
+	m.UI.Mode = ModeCommand
+	m.Components.CommandInput.Focus()
+	before := m.layoutPlan()
+	if !before.PanelShown {
+		t.Fatal("the lyrics panel is not shown: the test would compare nothing")
+	}
+	withoutNotice := renderMainView(m).Content
+
+	// Filling the line to the limit derives the count notice.
+	ti := &m.Components.CommandInput
+	ti.SetValue(strings.Repeat("x", ti.CharLimit))
+	ti.CursorEnd()
+	syncCompletion(m)
+	if commandNotice(m) == "" {
+		t.Fatal("no notice on the row: the two frames would be the same state")
+	}
+	withNotice := renderMainView(m).Content
+
+	// The plan drives the panel box and the content box alike, so a row a notice
+	// costs the block shows up here even where lipgloss's minimum height pads the
+	// rendered box back to its old rows.
+	if after := m.layoutPlan(); after != before {
+		t.Fatalf("layout plan changed with a notice:\n got: %+v\nwant: %+v", after, before)
+	}
+
+	beforeLines := strings.Split(withoutNotice, "\n")
+	afterLines := strings.Split(withNotice, "\n")
+	// The panel is the right-hand block under the tab bar, and both frames come
+	// from the same model, so its rows are the same on either side: a notice only
+	// ever shows up on the help row below them.
+	if len(beforeLines) < tabsHeight+before.ContentHeight || len(afterLines) < tabsHeight+before.ContentHeight {
+		t.Fatalf("frame rows = %d and %d, want at least %d", len(beforeLines), len(afterLines), tabsHeight+before.ContentHeight)
+	}
+	panel := make([]string, 0, before.ContentHeight)
+	for row := tabsHeight; row < tabsHeight+before.ContentHeight; row++ {
+		want := tailCells(beforeLines[row], before.ContentWidth)
+		if got := tailCells(afterLines[row], before.ContentWidth); got != want {
+			t.Errorf("panel row %d changed with a notice:\n got %q\nwant %q", row, got, want)
+		}
+		panel = append(panel, want)
+	}
+	// The region has to carry the panel, otherwise two blank tails would compare
+	// equal and the loop above would prove nothing.
+	if rendered := strings.Join(panel, "\n"); !strings.Contains(rendered, "可是我没有听见你的声音") {
+		t.Fatal("the panel region holds no lyric line: the comparison proves nothing")
 	}
 }
 
