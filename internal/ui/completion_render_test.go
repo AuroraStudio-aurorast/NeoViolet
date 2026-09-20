@@ -277,23 +277,33 @@ func TestOverlayKeepsFrameSizeAndOtherRegions(t *testing.T) {
 	if !strings.Contains(after, "Load an audio file") {
 		t.Error("the overlay is missing from the frame")
 	}
+	// The overlay is drawn on top of the content, not instead of it: the block's
+	// own text is on content row 2 (below the top border and its padding row),
+	// far above the candidate band on the block's last rows, so it has to still
+	// be there.
+	if !strings.Contains(after, "[ Home ]") {
+		t.Errorf("the content block's own text is gone from the overlaid frame: %q", after)
+	}
 	if before == after {
 		t.Error("the frame did not change when candidates appeared")
 	}
+	// The overlay consumes no rows, so the frame keeps its line count.
+	beforeLines := strings.Split(before, "\n")
+	afterLines := strings.Split(after, "\n")
+	if len(beforeLines) != len(afterLines) {
+		t.Fatalf("frame line count changed: %d -> %d", len(beforeLines), len(afterLines))
+	}
 	// Everything outside the content block (header above it, footer and command
-	// line below it) must come through the overlay untouched: the overlay consumes
-	// no rows, so those lines keep their position and their text. Compare plain
-	// text, because the frame is re-encoded when the layout style pads it.
-	beforeLines := strings.Split(stripANSI(before), "\n")
-	afterLines := strings.Split(stripANSI(after), "\n")
+	// line below it) comes through byte for byte: the overlay only ever draws on
+	// the content block, so nothing else may change, not even its styling. Both
+	// frames go through the same layout pass at the same width, so comparing them
+	// as they are is exact.
 	for row := range afterLines {
 		if row >= tabsHeight && row < tabsHeight+plan.ContentHeight {
 			continue // the content block is what the overlay draws on
 		}
-		got := strings.TrimRight(afterLines[row], " ")
-		want := strings.TrimRight(beforeLines[row], " ")
-		if got != want {
-			t.Errorf("row %d outside the content block changed: %q, want %q", row, got, want)
+		if afterLines[row] != beforeLines[row] {
+			t.Errorf("row %d outside the content block changed:\n got %q\nwant %q", row, afterLines[row], beforeLines[row])
 		}
 	}
 }
@@ -341,5 +351,65 @@ func TestOverlayKeepsContentBoxBorder(t *testing.T) {
 				t.Fatalf("side border broken on row %d: %q", row, plain)
 			}
 		}
+	}
+}
+
+// The minimum legal terminal still shows the whole candidate list: the frame
+// keeps its size, the content height does not squeeze the list, and the band
+// stays inside the content box (62 of the 68 columns).
+func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
+	m := completionModel(t, 68, 17)
+	plan := m.layoutPlan()
+	if plan.ContentWidth != 68 || plan.ContentHeight != 8 {
+		t.Fatalf("content block = %dx%d, want 68x8", plan.ContentWidth, plan.ContentHeight)
+	}
+
+	before := renderMainView(m).Content
+	m.completionCandidates = []candidate{
+		{Value: "load", Desc: "<path>  Load an audio file"},
+		{Value: "lrc", Desc: "<sub>  Lyrics control"},
+		{Value: "save", Desc: "Save the queue and quit"},
+		{Value: "seek", Desc: "<time>  Seek in the track"},
+		{Value: "vol", Desc: "<0.0-1.0>  Set the volume"},
+	}
+	after := renderMainView(m).Content
+
+	if got := lipgloss.Height(after); got != 17 {
+		t.Errorf("frame height = %d, want 17", got)
+	}
+	if got := lipgloss.Width(after); got != 68 {
+		t.Errorf("frame width = %d, want 68", got)
+	}
+	rows := completionRows(m, plan)
+	if rows != 5 {
+		t.Fatalf("completionRows = %d, want 5: the content height must not squeeze the list", rows)
+	}
+	avail := plan.ContentWidth - 2*overlayInset
+	for _, line := range strings.Split(renderCompletion(m, plan), "\n") {
+		if w := lipgloss.Width(line); w > avail {
+			t.Errorf("overlay row width = %d, want at most %d", w, avail)
+		}
+	}
+
+	// The overlay consumes no rows and sits on the block's last rows, above the
+	// bottom border: pin both ends of the band.
+	beforeLines := strings.Split(before, "\n")
+	afterLines := strings.Split(after, "\n")
+	if len(beforeLines) != len(afterLines) {
+		t.Fatalf("frame line count changed: %d -> %d", len(beforeLines), len(afterLines))
+	}
+	rowWith := func(needle string) int {
+		for row := tabsHeight; row < tabsHeight+plan.ContentHeight; row++ {
+			if strings.Contains(stripANSI(afterLines[row]), needle) {
+				return row
+			}
+		}
+		return -1
+	}
+	if got, want := rowWith("Load an audio file"), tabsHeight+plan.ContentHeight-rows-1; got != want {
+		t.Errorf("first candidate row = %d, want %d", got, want)
+	}
+	if got, want := rowWith("Set the volume"), tabsHeight+plan.ContentHeight-2; got != want {
+		t.Errorf("last candidate row = %d, want %d", got, want)
 	}
 }
