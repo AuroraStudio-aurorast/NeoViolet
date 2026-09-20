@@ -3,6 +3,7 @@ package ui
 import (
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
@@ -35,8 +36,9 @@ func syncGhostSuggestions(m *Model) {
 	ti.SetSuggestions(ghostSuggestions())
 }
 
-// segment describes the whitespace-delimited word the cursor is in: the text
-// before the cursor inside it, and the [Start,End) interval it replaces.
+// segment describes the stretch of the command line the cursor is completing:
+// the text before the cursor inside the current word, and the [Start,End)
+// interval a candidate replaces (empty when the cursor rests between words).
 type segment struct {
 	Index  int
 	Prefix string
@@ -55,12 +57,14 @@ type completionContext struct {
 type candidate struct {
 	Value string // the segment's full replacement value (never an increment)
 	Desc  string // right-hand hint; empty for path candidates
-	Path  bool   // true for filesystem paths (three-tier rendering, spec §7.3)
+	Path  bool   // true for filesystem paths, which render with the three-tier rules
 }
 
-// completionContextAt splits value on whitespace while tracking offsets, then
-// reports the segment the cursor sits in. Offsets are rune indexes, matching
-// textinput's Position()/SetCursor().
+// completionContextAt splits value on the whitespace parseInvocation uses
+// (unicode.IsSpace) while tracking offsets, then reports the segment the cursor
+// sits in: the word it is inside, or the empty interval at the cursor when it
+// rests between words. Offsets are rune indexes, matching textinput's
+// Position()/SetCursor().
 func completionContextAt(value string, pos int) completionContext {
 	runes := []rune(value)
 	if pos < 0 {
@@ -76,12 +80,12 @@ func completionContextAt(value string, pos int) completionContext {
 	}
 	var fields []field
 	for i := 0; i < len(runes); {
-		if runes[i] == ' ' || runes[i] == '\t' {
+		if unicode.IsSpace(runes[i]) {
 			i++
 			continue
 		}
 		start := i
-		for i < len(runes) && runes[i] != ' ' && runes[i] != '\t' {
+		for i < len(runes) && !unicode.IsSpace(runes[i]) {
 			i++
 		}
 		fields = append(fields, field{text: string(runes[start:i]), start: start, end: i})
@@ -98,19 +102,25 @@ func completionContextAt(value string, pos int) completionContext {
 				Before: before,
 			}
 		}
+		// The cursor rests in the gap after this word (and before the next
+		// one, if any): the completed segment is empty and starts at the cursor.
+		if pos > f.end && (i+1 == len(fields) || pos < fields[i+1].start) {
+			before := make([]string, 0, i+1)
+			for _, prev := range fields[:i+1] {
+				before = append(before, prev.text)
+			}
+			return completionContext{
+				Seg:    segment{Index: i + 1, Prefix: "", Start: pos, End: pos},
+				Before: before,
+			}
+		}
 	}
 
-	before := make([]string, 0, len(fields))
-	for _, f := range fields {
-		before = append(before, f.text)
-	}
-	return completionContext{
-		Seg:    segment{Index: len(fields), Prefix: "", Start: pos, End: pos},
-		Before: before,
-	}
+	// The cursor sits before the first word: nothing precedes it.
+	return completionContext{Seg: segment{Index: 0, Start: pos, End: pos}}
 }
 
-// candidatesFor resolves the segment to its candidate source (spec §7.2).
+// candidatesFor resolves the segment to its candidate source.
 // Previous segments are matched exactly: ":lrc sw " lists nothing rather than
 // guessing what "sw" meant.
 func candidatesFor(ctx completionContext) []candidate {
@@ -209,7 +219,7 @@ func filterCandidates(cands []candidate, prefix string) []candidate {
 
 // syncCompletion refreshes the completion state after the input line changed.
 // The selection always resets to -1: a passively shown list must not hijack
-// <enter> (spec §7.4 / D-note L4).
+// <enter>, which keeps executing exactly what was typed.
 func syncCompletion(m *Model) {
 	syncGhostSuggestions(m)
 
@@ -217,6 +227,7 @@ func syncCompletion(m *Model) {
 	if m.UI.Mode != ModeCommand || strings.TrimSpace(ti.Value()) == "" {
 		m.completionCandidates = nil
 		m.completionIndex = -1
+		m.completionSeg = segment{}
 		return
 	}
 	ctx := completionContextAt(ti.Value(), ti.Position())

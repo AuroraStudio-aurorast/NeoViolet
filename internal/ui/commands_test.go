@@ -83,8 +83,9 @@ func TestParseInvocationKeepsRawRest(t *testing.T) {
 
 // lrcSubcommands must cover dispatch completely: every entry is complete and
 // uniquely named, the full subcommand set is present, and an unknown name is
-// rejected. Reaching the handler is covered end to end by the
-// TestExecuteCommandLrc* cases below, which execute real subcommands.
+// rejected. Reaching the handler is covered end to end by
+// TestExecuteCommand_lrc_* in update_keyboard_test.go (on, off, switch, panel)
+// and by the TestExecuteCommandLrc* cases below (agent, desktop, refresh).
 func TestLrcSubcommandTable(t *testing.T) {
 	if len(lrcSubcommands) != 7 {
 		t.Fatalf("lrcSubcommands has %d entries, want 7", len(lrcSubcommands))

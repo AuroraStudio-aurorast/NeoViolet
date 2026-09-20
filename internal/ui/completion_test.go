@@ -123,11 +123,49 @@ func TestSyncCompletionResetsSelection(t *testing.T) {
 		t.Errorf("completionSeg = %+v", m.completionSeg)
 	}
 
-	// Clearing the input must clear the candidates.
+	// Clearing the input must clear the candidates and the cached segment.
 	ti.SetValue("")
 	syncCompletion(m)
-	if len(m.completionCandidates) != 0 || m.completionIndex != -1 {
-		t.Errorf("after clearing input: candidates = %d, index = %d", len(m.completionCandidates), m.completionIndex)
+	if len(m.completionCandidates) != 0 || m.completionIndex != -1 || m.completionSeg != (segment{}) {
+		t.Errorf("after clearing input: candidates = %d, index = %d, seg = %+v",
+			len(m.completionCandidates), m.completionIndex, m.completionSeg)
+	}
+}
+
+// The cursor can rest in the whitespace between two words, or before the first
+// one. The segment is then the empty interval at the cursor, and no word after
+// the cursor may count as a previous segment.
+func TestCompletionContextInWhitespace(t *testing.T) {
+	ctx := completionContextAt("lrc  switch", 4)
+	if ctx.Seg != (segment{Index: 1, Prefix: "", Start: 4, End: 4}) {
+		t.Errorf("segment = %+v, want the empty segment after \"lrc\"", ctx.Seg)
+	}
+	if len(ctx.Before) != 1 || ctx.Before[0] != "lrc" {
+		t.Errorf("Before = %v, want [lrc]", ctx.Before)
+	}
+	cands := value(t, candidatesFor(ctx))
+	if len(cands) != 7 || cands[0] != "on" {
+		t.Errorf("candidates = %v, want the 7 subcommands", cands)
+	}
+
+	ctx = completionContextAt(" lrc", 0)
+	if ctx.Seg.Index != 0 || ctx.Seg.Start != 0 || ctx.Seg.End != 0 {
+		t.Errorf("segment before the first word = %+v, want index 0 at the cursor", ctx.Seg)
+	}
+	if len(ctx.Before) != 0 {
+		t.Errorf("Before = %v, want none: no word precedes the cursor", ctx.Before)
+	}
+}
+
+// Completion must split on the same whitespace parseInvocation does
+// (unicode.IsSpace), so an NBSP-separated line completes like a plain space.
+func TestCompletionSplitsOnUnicodeSpace(t *testing.T) {
+	ctx := completionContextAt("lrc\u00a0s", 5)
+	if ctx.Seg != (segment{Index: 1, Prefix: "s", Start: 4, End: 5}) {
+		t.Errorf("segment = %+v", ctx.Seg)
+	}
+	if got := strings.Join(value(t, candidatesFor(ctx)), ","); got != "switch" {
+		t.Errorf("candidates = %q, want \"switch\"", got)
 	}
 }
 

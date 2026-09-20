@@ -188,7 +188,7 @@ func runLrcDesktop(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// runLrcPanel implements ":lrc panel [on|off|auto]". Per design D3 the change is
+// runLrcPanel implements ":lrc panel [on|off|auto]". The change is
 // session-scoped: the config file only supplies the default mode.
 func runLrcPanel(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	if len(inv.Parts) >= 3 {
