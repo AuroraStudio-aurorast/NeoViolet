@@ -3,8 +3,11 @@ package ui
 import (
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // normalizeDrop turns one paste payload into the paths it carries.
@@ -174,4 +177,34 @@ func insertPathAtCursor(m *Model, p string) {
 	ti.SetValue(updated)
 	ti.SetCursor(pos + len(inserted))
 	syncCompletion(m)
+}
+
+// handlePaste routes one bracketed-paste payload (a dropped file arrives here
+// too). In command mode the paths go into the line at the cursor; in normal
+// mode an audio file starts playing and anything else is ignored in silence.
+func handlePaste(m *Model, content string) (tea.Model, tea.Cmd) {
+	paths := normalizeDrop(content)
+	if len(paths) == 0 {
+		return m, nil
+	}
+
+	if m.UI.Mode == ModeCommand {
+		for _, p := range paths {
+			// Inserting a path refreshes the candidate state itself, so the
+			// overlay cannot keep showing what the pre-paste line completed to.
+			insertPathAtCursor(m, p)
+		}
+		return m, nil
+	}
+
+	for _, p := range paths {
+		if !isValidAudioPath(p) {
+			continue
+		}
+		if !playableExt(filepath.Ext(p)) {
+			continue
+		}
+		return handleLoadTrack(m, LoadTrackMsg{Path: p})
+	}
+	return m, nil
 }
