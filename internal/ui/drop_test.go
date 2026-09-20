@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestNormalizeDrop(t *testing.T) {
@@ -260,5 +262,44 @@ func TestInsertPathAtCursorCountsTheWholeLine(t *testing.T) {
 	}
 	if got := ti.Position(); got != 0 {
 		t.Errorf("cursor = %d, want 0", got)
+	}
+}
+
+// A file name with two consecutive spaces has to survive the escape round trip:
+// the escapes belong to the name, so nothing may fold the doubled space into a
+// separator or collapse it, and the path handed back has to be the one that is
+// really on disk.
+func TestNormalizeDropKeepsDoubledSpacesInTheName(t *testing.T) {
+	dir := t.TempDir()
+	doubled := filepath.Join(dir, "My  File.mp3") // two spaces, one file name
+	if err := os.WriteFile(doubled, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Each space escaped, the way a terminal hands a dropped path over.
+	escaped := strings.ReplaceAll(doubled, " ", `\ `)
+
+	for _, tc := range []struct{ name, input string }{
+		{"escaped", escaped},
+		{"quoted", `"` + doubled + `"`},
+		{"escaped and quoted", `"` + escaped + `"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := normalizeDrop(tc.input)
+			if len(got) != 1 {
+				t.Fatalf("normalizeDrop(%q) = %q, want exactly one path", tc.input, got)
+			}
+			if got[0] != doubled {
+				t.Errorf("path = %q, want %q: both spaces belong to the name", got[0], doubled)
+			}
+		})
+	}
+
+	// The same payload dropped into normal mode loads the file.
+	m := setupModel()
+	updated, cmd := updateDispatcher(m, tea.PasteMsg{Content: escaped})
+	m = updated.(*Model)
+	if !m.Loading || !m.switchingTrack || cmd == nil {
+		t.Errorf("Loading = %v, switchingTrack = %v, cmd = %v; want the doubled-space file to load",
+			m.Loading, m.switchingTrack, cmd)
 	}
 }

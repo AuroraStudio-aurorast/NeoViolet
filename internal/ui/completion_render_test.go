@@ -436,3 +436,88 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 		t.Errorf("last candidate row = %d, want %d", got, want)
 	}
 }
+
+// tailCells returns the part of a rendered line that starts at the given cell
+// offset. Slicing the raw string would cut escape sequences and mis-count wide
+// characters, so this walks the runes and measures them with lipgloss, dropping
+// every rune that still lies before the offset.
+func tailCells(line string, cells int) string {
+	var (
+		out   []rune
+		width int
+	)
+	for _, r := range stripANSI(line) {
+		if width >= cells {
+			out = append(out, r)
+			continue
+		}
+		width += lipgloss.Width(string(r))
+	}
+	return string(out)
+}
+
+// Candidates live inside the content block, so the lyrics panel beside it must
+// come through untouched: the 100x24 frame keeps its size and the panel's
+// region is byte-for-byte identical with and without a list. The comparison is
+// per row because a squeezed or overpainted panel shows up as one changed row.
+func TestOverlayLeavesTheLyricsPanelUntouched(t *testing.T) {
+	m := panelModel(t, 2)
+	beforePlan := m.layoutPlan()
+	if !beforePlan.PanelShown {
+		t.Fatal("the lyrics panel is not shown: the test would compare nothing")
+	}
+	if m.UI.Width != 100 || m.UI.Height != 24 {
+		t.Fatalf("model size = %dx%d, want 100x24", m.UI.Width, m.UI.Height)
+	}
+	// Command mode on both sides, so the only difference is the candidate list.
+	m.UI.Mode = ModeCommand
+	if rows := completionRows(m, beforePlan); rows != 0 {
+		t.Fatalf("completionRows = %d before typing, want 0", rows)
+	}
+	before := renderMainView(m).Content
+
+	setCommand(m, "lrc ")
+	syncCompletion(m)
+	afterPlan := m.layoutPlan()
+	after := renderMainView(m).Content
+
+	if rows := completionRows(m, afterPlan); rows == 0 {
+		t.Fatal("no candidates: the overlay is missing from the frame")
+	}
+	anchor := m.completionCandidates[0].Desc
+	if !strings.Contains(stripANSI(after), anchor) {
+		t.Fatalf("the candidate text %q is not in the frame", anchor)
+	}
+
+	if got := lipgloss.Height(after); got != 24 {
+		t.Errorf("frame height = %d, want 24", got)
+	}
+	if got := lipgloss.Width(after); got != 100 {
+		t.Errorf("frame width = %d, want 100", got)
+	}
+	if got, want := afterPlan.ContentHeight, beforePlan.ContentHeight; got != want {
+		t.Errorf("content height = %d, want %d: a list must not take rows from the block", got, want)
+	}
+	if got, want := afterPlan.PanelInnerH, beforePlan.PanelInnerH; got != want {
+		t.Errorf("panel inner height = %d, want %d", got, want)
+	}
+
+	beforeLines := strings.Split(before, "\n")
+	afterLines := strings.Split(after, "\n")
+	if len(beforeLines) != len(afterLines) {
+		t.Fatalf("frame line count changed: %d -> %d", len(beforeLines), len(afterLines))
+	}
+	panel := make([]string, 0, beforePlan.ContentHeight)
+	for row := tabsHeight; row < tabsHeight+beforePlan.ContentHeight; row++ {
+		want := tailCells(beforeLines[row], beforePlan.ContentWidth)
+		if got := tailCells(afterLines[row], beforePlan.ContentWidth); got != want {
+			t.Errorf("panel row %d changed with candidates:\n got %q\nwant %q", row, got, want)
+		}
+		panel = append(panel, want)
+	}
+	// The region has to carry the panel, otherwise both sides could be blank and
+	// the row comparison above would pass without comparing anything.
+	if rendered := strings.Join(panel, "\n"); !strings.Contains(rendered, "可是我没有听见你的声音") {
+		t.Fatal("the panel region holds no lyric line: the comparison proves nothing")
+	}
+}

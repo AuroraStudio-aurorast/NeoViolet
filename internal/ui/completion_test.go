@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
 func TestSegmentAt(t *testing.T) {
@@ -438,5 +440,60 @@ func TestAcceptCompletionKeepsMultiByteTextIntact(t *testing.T) {
 	}
 	if got := m.Components.CommandInput.Position(); got != len([]rune(want)) {
 		t.Errorf("cursor = %d, want %d", got, len([]rune(want)))
+	}
+}
+
+// The list is an offer, never a selection: with a passively shown list (nothing
+// has been tabbed to, so the index is still -1) enter has to run the literal
+// text on the line. The line here asks for an unknown panel mode, so the error
+// can only come from that literal text: had enter applied the first candidate,
+// the command would have succeeded silently and the panel mode would have
+// changed under the user.
+func TestEnterWithAPassiveListRunsTheLiteralText(t *testing.T) {
+	m := commandModeModel(t, "lrc panel o")
+	if m.completionIndex != -1 {
+		t.Fatalf("completionIndex = %d, want -1: nobody picked from the list", m.completionIndex)
+	}
+	if len(m.completionCandidates) == 0 {
+		t.Fatal("no candidates: there is no list that could steal the key")
+	}
+	first := m.completionCandidates[0].Value
+
+	updated, _ := updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(*Model)
+
+	if m.Error.Message == "" {
+		t.Fatal("no error after enter: the literal text is not what ran")
+	}
+	if !strings.Contains(m.Error.Message, "Unknown panel mode") {
+		t.Errorf("error = %q, want the unknown-panel-mode error of the literal text", m.Error.Message)
+	}
+	if m.panelMode == first {
+		t.Errorf("panelMode = %q, want it untouched: enter must not apply a candidate", m.panelMode)
+	}
+	if got := m.CommandHistory[len(m.CommandHistory)-1]; len(m.CommandHistory) == 0 || got != "lrc panel o" {
+		t.Errorf("history = %q, want the literal text as the last entry", m.CommandHistory)
+	}
+}
+
+// The other half of the same promise: after tab the line already *is* the
+// candidate, so enter runs it and there is nothing left for the list to steal.
+func TestEnterAfterTabRunsTheAcceptedCandidate(t *testing.T) {
+	m := commandModeModel(t, "lrc panel o")
+
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc panel on" {
+		t.Fatalf("after tab: value = %q, want %q", got, "lrc panel on")
+	}
+
+	updated, _ = updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(*Model)
+
+	if m.Error.Message != "" {
+		t.Errorf("error = %q, want none: the line held a valid command", m.Error.Message)
+	}
+	if m.panelMode != config.PanelModeOn {
+		t.Errorf("panelMode = %q, want %q", m.panelMode, config.PanelModeOn)
 	}
 }
