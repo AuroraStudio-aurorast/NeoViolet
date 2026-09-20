@@ -61,14 +61,15 @@ func TestSkipCommandsAdvertiseTheirInterval(t *testing.T) {
 	selDoubleValue := objc.RegisterName("doubleValue")
 
 	// registerCommands is what sets preferredIntervals, so it has to run on a real
-	// controller. handler is deliberately never released: addTarget:action: does
-	// not retain the target, so freeing it would leave the singleton messaging a
-	// dead object.
+	// controller. Close detaches the handler from the shared singleton before
+	// releasing it, so this test leaves the process-wide command center as it found
+	// it instead of parking a dangling target on it for the rest of the binary.
 	c := &darwinCtrl{remoteCmd: objc.ID(classMPRemoteCommandCenter).Send(selSharedCommandCenter)}
 	autoPool(func() {
 		c.handler = objc.ID(classMPRemoteCommandHandler).Send(selNew)
 		c.registerCommands()
 	})
+	defer func() { _ = c.Close() }()
 
 	for name, sel := range map[string]objc.SEL{
 		"skipForwardCommand":  _cmdSels.skipForward,

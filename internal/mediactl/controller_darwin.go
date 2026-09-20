@@ -91,6 +91,7 @@ var (
 	selSetPlaybackState      objc.SEL
 	selSharedCommandCenter   objc.SEL
 	selAddTargetAction       objc.SEL
+	selRemoveTarget          objc.SEL
 	selSetPreferredIntervals objc.SEL
 	selInterval              objc.SEL
 
@@ -208,6 +209,7 @@ func registerObjCRuntime() error {
 	selSetPlaybackState = objc.RegisterName("setPlaybackState:")
 	selSharedCommandCenter = objc.RegisterName("sharedCommandCenter")
 	selAddTargetAction = objc.RegisterName("addTarget:action:")
+	selRemoveTarget = objc.RegisterName("removeTarget:")
 	selSetPreferredIntervals = objc.RegisterName("setPreferredIntervals:")
 	selInterval = objc.RegisterName("interval")
 
@@ -433,6 +435,14 @@ func (c *darwinCtrl) Close() error {
 		close(c.cmdChan)
 	}
 	if c.handler != 0 {
+		// Detach before releasing. addTarget:action: does not retain the target,
+		// so a handler freed while the shared command center still lists it leaves
+		// the next media key messaging a dead object.
+		if c.remoteCmd != 0 {
+			for _, p := range remoteCommandHandlers() {
+				c.remoteCmd.Send(p.cmd).Send(selRemoveTarget, c.handler)
+			}
+		}
 		c.handler.Send(selRelease)
 	}
 	if c.coverArtwork != 0 {
