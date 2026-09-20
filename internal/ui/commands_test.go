@@ -72,3 +72,30 @@ func TestParseInvocationKeepsRawRest(t *testing.T) {
 		t.Error("blank input should not parse")
 	}
 }
+
+// lrcSubcommands must cover dispatch completely: every entry resolves through
+// lrcSubcommandLookup and the full subcommand set is present, so a candidate can
+// never describe a subcommand the dispatcher would reject.
+func TestLrcSubcommandTable(t *testing.T) {
+	if len(lrcSubcommands) != 7 {
+		t.Fatalf("lrcSubcommands has %d entries, want 7", len(lrcSubcommands))
+	}
+	seen := map[string]bool{}
+	for _, sub := range lrcSubcommands {
+		if sub.Name == "" || sub.Desc == "" || sub.Run == nil {
+			t.Errorf("incomplete sub spec: %+v", sub)
+		}
+		if seen[sub.Name] {
+			t.Errorf("duplicate subcommand %q", sub.Name)
+		}
+		seen[sub.Name] = true
+		if _, ok := lrcSubcommandLookup(sub.Name); !ok {
+			t.Errorf("lrcSubcommandLookup(%q) not found", sub.Name)
+		}
+	}
+	for _, want := range []string{"on", "off", "switch", "refresh", "agent", "desktop", "panel"} {
+		if !seen[want] {
+			t.Errorf("subcommand %q missing from the table", want)
+		}
+	}
+}
