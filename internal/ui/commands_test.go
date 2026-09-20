@@ -189,3 +189,26 @@ func TestGhostTextAcceptsSuggestion(t *testing.T) {
 		t.Errorf("value = %q, want \"vol\"", got)
 	}
 }
+
+// The typing path must refill the suggestion list on every keystroke: textinput
+// only narrows the list it already holds, and entering command mode cleared it
+// (the line was empty), so without a sync after Update no ghost text appears.
+func TestGhostTextAppearsWhileTyping(t *testing.T) {
+	m := setupModel()
+	m.UI.Mode = ModeCommand
+	m.Components.CommandInput.Focus()
+	syncCompletion(m) // what entering command mode does: an empty line
+
+	for _, r := range "vo" {
+		updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: r, Text: string(r)})
+		m = updated.(*Model)
+	}
+	if got := len(m.Components.CommandInput.MatchedSuggestions()); got == 0 {
+		t.Fatal("no suggestion matched after typing \"vo\"")
+	}
+
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := updated.(*Model).Components.CommandInput.Value(); got != "vol" {
+		t.Errorf("value after tab = %q, want \"vol\"", got)
+	}
+}

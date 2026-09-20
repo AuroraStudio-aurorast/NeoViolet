@@ -62,6 +62,7 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 			m.historyIndex = len(m.CommandHistory)
 			var cmd tea.Cmd
 			m.Components.CommandInput, cmd = m.Components.CommandInput.Update(msg)
+			syncCompletion(m)
 			return m, cmd
 		}
 	}

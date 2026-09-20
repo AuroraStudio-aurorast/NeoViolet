@@ -16,9 +16,10 @@ func ghostSuggestions() []string {
 // syncGhostSuggestions keeps textinput's own suggestion list in step with the
 // input line.
 //
-// A blank line gets no suggestions on purpose: textinput's prefix match accepts
-// every candidate for "", so leaving the full list in place would make <tab> on
-// an empty command line complete the first command.
+// A blank line gets no suggestions on purpose: textinput keeps matched
+// suggestions across Reset/SetValue and only recomputes them from the list it
+// already holds, so a stale entry would make <tab> on an empty command line
+// complete a command the user never typed.
 func syncGhostSuggestions(m *Model) {
 	ti := &m.Components.CommandInput
 	if strings.TrimSpace(ti.Value()) == "" {
@@ -28,9 +29,8 @@ func syncGhostSuggestions(m *Model) {
 	ti.SetSuggestions(ghostSuggestions())
 }
 
-// syncCompletion refreshes every piece of completion state after the input line
-// changed. Phase 1 only feeds the ghost text; the candidate list is layered on
-// top of it.
+// syncCompletion refreshes every piece of completion state that depends on the
+// input line.
 func syncCompletion(m *Model) {
 	syncGhostSuggestions(m)
 }
