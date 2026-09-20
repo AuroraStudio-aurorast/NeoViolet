@@ -351,7 +351,7 @@ func compactPath(path string, avail int) string {
 		segs = segs[1:] // absolute path: drop the leading empty segment
 	}
 	base := segs[len(segs)-1]
-	if lipgloss.Width(base)+1 > avail {
+	if lipgloss.Width(base)+2 > avail {
 		return truncateLine(path, avail) // pathological file name
 	}
 
