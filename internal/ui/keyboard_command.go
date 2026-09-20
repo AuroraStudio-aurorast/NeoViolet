@@ -27,6 +27,7 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 		m.Components.CommandInput.Reset()
 		m.Components.CommandInput.Blur()
 		m.historyIndex = len(m.CommandHistory)
+		syncCompletion(m)
 		return m, nil
 
 	default:
@@ -43,16 +44,19 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 			}
 			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
 			m.Components.CommandInput.CursorEnd()
+			syncCompletion(m)
 			return m, nil
 		case "down":
 			if m.historyIndex >= len(m.CommandHistory)-1 {
 				m.historyIndex = len(m.CommandHistory)
 				m.Components.CommandInput.Reset()
+				syncCompletion(m)
 				return m, nil
 			}
 			m.historyIndex++
 			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
 			m.Components.CommandInput.CursorEnd()
+			syncCompletion(m)
 			return m, nil
 		default:
 			m.historyIndex = len(m.CommandHistory)
@@ -68,6 +72,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	m.Components.CommandInput.Reset()
 	m.UI.Mode = ModeNormal
 	m.UI.Focus = m.UI.SavedFocus
+	syncCompletion(m)
 
 	logger.Info("Command executed", "cmd", cmdText)
 

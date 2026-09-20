@@ -27,10 +27,9 @@ func TestExpandTilde(t *testing.T) {
 
 func TestRunOpenKeepsConsecutiveSpaces(t *testing.T) {
 	m := setupModel()
-	// A relative path keeps the typed command short: the command input has a
-	// bounded line length and a t.TempDir() absolute path is long enough on macOS
-	// to be truncated, which would make this test fail for a reason unrelated to
-	// whitespace handling.
+	// A relative path keeps the typed command short: the command input truncates
+	// past ti.CharLimit, so a long absolute path would be cut and this test would
+	// fail for an unrelated reason.
 	t.Chdir(t.TempDir())
 	name := "My  File.mp3"
 	if err := os.WriteFile(name, []byte("x"), 0o600); err != nil {

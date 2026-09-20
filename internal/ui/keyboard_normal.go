@@ -38,6 +38,7 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		m.UI.SavedFocus = m.UI.Focus
 		m.UI.Mode = ModeCommand
 		cmd := m.Components.CommandInput.Focus()
+		syncCompletion(m)
 		return m, cmd
 
 	case normMatch(msg, keys.CycleFocus):

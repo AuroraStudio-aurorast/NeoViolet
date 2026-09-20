@@ -1,8 +1,13 @@
 package ui
 
-import "testing"
+import (
+	"testing"
 
-// 每个命令名与别名都能查到，且都带 Run：这是"候选与分发同源"的守门测试。
+	tea "charm.land/bubbletea/v2"
+)
+
+// Every command name and alias resolves and carries a Run: this guards that
+// candidates and dispatch stay in sync.
 func TestCommandTableIsResolvable(t *testing.T) {
 	if len(commands) == 0 {
 		t.Fatal("commands table is empty")
@@ -24,7 +29,8 @@ func TestCommandTableIsResolvable(t *testing.T) {
 	}
 }
 
-// 未知命令只写错误，绝不调用任何 Run（否则一个拼错的 ":w" 会写盘、":q" 会退出）。
+// An unknown command only sets an error and never calls a Run (a typo like
+// ":w" would write config, ":q" would quit).
 func TestUnknownCommandDoesNotRun(t *testing.T) {
 	m := setupModel()
 	setCommand(m, "nope")
@@ -34,7 +40,8 @@ func TestUnknownCommandDoesNotRun(t *testing.T) {
 	}
 }
 
-// hint 是候选行右侧的说明：参数提示在前，一句话说明在后。
+// hint is the right-hand text of a candidate row: the argument hint first, a
+// one-line description after it.
 func TestCommandHint(t *testing.T) {
 	if got := commandLookup0(t, "p").hint(); got != "Toggle play/pause" {
 		t.Errorf("p hint = %q", got)
@@ -53,7 +60,8 @@ func commandLookup0(t *testing.T, name string) commandSpec {
 	return spec
 }
 
-// parseInvocation 必须保留第一个 token 之后的原文（内部连续空格不能被折叠）。
+// parseInvocation must keep the text after the first token verbatim (runs of
+// spaces inside it must survive).
 func TestParseInvocationKeepsRawRest(t *testing.T) {
 	inv, ok := parseInvocation("open /a/b  c.mp3")
 	if !ok {
@@ -116,5 +124,68 @@ func TestParseInvocationRestUsesFieldsWhitespace(t *testing.T) {
 	}
 	if inv, _ := parseInvocation("open"); inv.Rest != "" {
 		t.Errorf("Rest = %q, want empty", inv.Rest)
+	}
+}
+
+func TestCommandInputSuggestionWiring(t *testing.T) {
+	m := setupModel()
+	ti := m.Components.CommandInput
+	if !ti.ShowSuggestions {
+		t.Error("ShowSuggestions = false, want true")
+	}
+	if ti.CharLimit != 256 {
+		t.Errorf("CharLimit = %d, want 256", ti.CharLimit)
+	}
+	if got := ti.KeyMap.AcceptSuggestion.Keys(); len(got) != 1 || got[0] != "tab" {
+		t.Errorf("AcceptSuggestion keys = %v, want [tab]", got)
+	}
+	if got := ti.KeyMap.NextSuggestion.Keys(); len(got) != 1 || got[0] != "ctrl+n" {
+		t.Errorf("NextSuggestion keys = %v, want [ctrl+n]", got)
+	}
+	if got := ti.KeyMap.PrevSuggestion.Keys(); len(got) != 1 || got[0] != "ctrl+p" {
+		t.Errorf("PrevSuggestion keys = %v, want [ctrl+p]", got)
+	}
+}
+
+// An empty input must not leave a match-everything suggestion list:
+// textinput's prefix match is true for the empty string.
+func TestSyncCompletionClearsEmptyInput(t *testing.T) {
+	m := setupModel()
+	ti := &m.Components.CommandInput
+
+	ti.SetValue("vo")
+	syncCompletion(m)
+	if got := len(ti.MatchedSuggestions()); got == 0 {
+		t.Error("matched suggestions = 0 for \"vo\", want the command names")
+	}
+
+	ti.SetValue("")
+	syncCompletion(m)
+	if got := ti.MatchedSuggestions(); len(got) != 0 {
+		t.Errorf("empty input matched %v, want none", got)
+	}
+
+	// Guards existing behaviour: tab on an empty input must not complete
+	// anything. The input is focused because entering command mode focuses it,
+	// and textinput ignores every key while it is blurred.
+	m.UI.Mode = ModeCommand
+	m.Components.CommandInput.Focus()
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := updated.(*Model).Components.CommandInput.Value(); got != "" {
+		t.Errorf("value after tab on an empty line = %q, want empty", got)
+	}
+}
+
+// Ghost text: tab completes "vo" to "vol".
+func TestGhostTextAcceptsSuggestion(t *testing.T) {
+	m := setupModel()
+	m.UI.Mode = ModeCommand
+	m.Components.CommandInput.Focus()
+	m.Components.CommandInput.SetValue("vo")
+	syncCompletion(m)
+
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := updated.(*Model).Components.CommandInput.Value(); got != "vol" {
+		t.Errorf("value = %q, want \"vol\"", got)
 	}
 }
