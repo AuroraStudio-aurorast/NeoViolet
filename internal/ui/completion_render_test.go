@@ -91,8 +91,11 @@ func TestCompletionRowThreeTiers(t *testing.T) {
 		if strings.TrimRight(got, " ") != tc.want {
 			t.Errorf("%s: row = %q, want %q", tc.name, strings.TrimRight(got, " "), tc.want)
 		}
-		// Every row fills exactly avail cells. A wider row is cut by the canvas,
-		// which loses text without an ellipsis, so the width is the real contract.
+		// Every row fills exactly avail cells, because the tier checks pad it to
+		// avail. The width is therefore the real contract: an over-wide row would
+		// widen the composited block (the compositor sizes its canvas from the
+		// union of the layer bounds) instead of being clipped, which is worse than
+		// losing text with an ellipsis.
 		if w := lipgloss.Width(got); w != tc.avail {
 			t.Errorf("%s: row width = %d, want %d", tc.name, w, tc.avail)
 		}
@@ -138,8 +141,10 @@ func TestCompactPath(t *testing.T) {
 	}
 }
 
-// The canvas clips anything wider than the row, so a pathological single file
-// name must still come back as exactly avail cells.
+// A pathological single file name must still come back as exactly avail cells:
+// nothing downstream clips an over-wide row (the compositor widens its canvas
+// instead), so compactPath and truncateLine have to land inside the budget on
+// their own.
 func TestCompletionRowWidthIsExactlyAvail(t *testing.T) {
 	m := completionModel(t, 80, 24)
 	plan := m.layoutPlan()
@@ -365,12 +370,15 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 	}
 
 	before := renderMainView(m).Content
-	m.completionCandidates = []candidate{
-		{Value: "load", Desc: "<path>  Load an audio file"},
-		{Value: "lrc", Desc: "<sub>  Lyrics control"},
-		{Value: "save", Desc: "Save the queue and quit"},
-		{Value: "seek", Desc: "<time>  Seek in the track"},
-		{Value: "vol", Desc: "<0.0-1.0>  Set the volume"},
+
+	// A passive list: the user has typed the subcommand name and has not moved
+	// the selection yet, so the candidates come from the command table instead of
+	// from a list written out here. setCommand leaves the cursor at the end of a
+	// fresh input, which is the position the list is computed from.
+	setCommand(m, "lrc ")
+	syncCompletion(m)
+	if m.completionIndex != -1 {
+		t.Fatalf("completionIndex = %d, want -1: a list nobody selected from must not pre-select", m.completionIndex)
 	}
 	after := renderMainView(m).Content
 
@@ -384,6 +392,11 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 	if rows != 5 {
 		t.Fatalf("completionRows = %d, want 5: the content height must not squeeze the list", rows)
 	}
+	if start := completionWindowStart(m, rows); start != 0 {
+		t.Fatalf("completion window starts at %d, want 0: nothing is selected, so the list shows its head", start)
+	}
+	first := m.completionCandidates[0].Desc
+	last := m.completionCandidates[rows-1].Desc
 	avail := plan.ContentWidth - 2*overlayInset
 	for _, line := range strings.Split(renderCompletion(m, plan), "\n") {
 		if w := lipgloss.Width(line); w > avail {
@@ -398,18 +411,28 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 	if len(beforeLines) != len(afterLines) {
 		t.Fatalf("frame line count changed: %d -> %d", len(beforeLines), len(afterLines))
 	}
+	// The anchors come from the candidates themselves, so the test cannot go
+	// stale when a description changes, and each must identify exactly one row:
+	// a duplicate would make the row-number assertions meaningless.
 	rowWith := func(needle string) int {
+		found := -1
 		for row := tabsHeight; row < tabsHeight+plan.ContentHeight; row++ {
 			if strings.Contains(stripANSI(afterLines[row]), needle) {
-				return row
+				if found >= 0 {
+					t.Fatalf("the candidate text %q appears in more than one row", needle)
+				}
+				found = row
 			}
 		}
-		return -1
+		if found < 0 {
+			t.Fatalf("the candidate text %q is not in the band", needle)
+		}
+		return found
 	}
-	if got, want := rowWith("Load an audio file"), tabsHeight+plan.ContentHeight-rows-1; got != want {
+	if got, want := rowWith(first), tabsHeight+plan.ContentHeight-rows-1; got != want {
 		t.Errorf("first candidate row = %d, want %d", got, want)
 	}
-	if got, want := rowWith("Set the volume"), tabsHeight+plan.ContentHeight-2; got != want {
+	if got, want := rowWith(last), tabsHeight+plan.ContentHeight-2; got != want {
 		t.Errorf("last candidate row = %d, want %d", got, want)
 	}
 }
