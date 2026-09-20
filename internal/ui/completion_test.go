@@ -230,7 +230,7 @@ func TestCtrlNAndCtrlPCycle(t *testing.T) {
 // Cycling must wrap and must not grow the value.
 func TestTabWrapsWithoutGrowingTheValue(t *testing.T) {
 	m := commandModeModel(t, "lrc panel ")
-	seen := map[string]bool{}
+	var values []string
 	for i := 0; i < 4; i++ {
 		updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
 		m = updated.(*Model)
@@ -238,10 +238,50 @@ func TestTabWrapsWithoutGrowingTheValue(t *testing.T) {
 		if len(value) > len("lrc panel auto") {
 			t.Fatalf("value grew to %q", value)
 		}
+		values = append(values, value)
+	}
+	// The fourth press has to land back on the first candidate: a list that
+	// stops at its last entry instead would leave the value on "auto".
+	want := []string{"lrc panel on", "lrc panel off", "lrc panel auto", "lrc panel on"}
+	if strings.Join(values, ",") != strings.Join(want, ",") {
+		t.Errorf("cycled values = %v, want %v", values, want)
+	}
+	seen := map[string]bool{}
+	for _, value := range values {
 		seen[value] = true
 	}
 	if len(seen) != 3 {
 		t.Errorf("cycled through %d distinct values, want 3 (%v)", len(seen), seen)
+	}
+}
+
+// Wrapping has to work in both directions and against a passive list, where
+// nothing is selected yet: ctrl+p then starts from the last candidate, and
+// ctrl+p on the first one steps back to the last.
+func TestCtrlPWrapsBackwards(t *testing.T) {
+	m := commandModeModel(t, "lrc panel ")
+	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc panel auto" {
+		t.Fatalf("ctrl+p on a passive list: value = %q, want the last candidate", got)
+	}
+	if m.completionIndex != 2 {
+		t.Errorf("completionIndex = %d, want 2", m.completionIndex)
+	}
+
+	m = commandModeModel(t, "lrc panel ")
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc panel on" {
+		t.Fatalf("tab: value = %q, want the first candidate", got)
+	}
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc panel auto" {
+		t.Errorf("ctrl+p on the first candidate: value = %q, want the last", got)
+	}
+	if m.completionIndex != 2 {
+		t.Errorf("completionIndex = %d, want 2", m.completionIndex)
 	}
 }
 
@@ -258,6 +298,33 @@ func TestHistoryKeysStillWorkInCommandMode(t *testing.T) {
 	}
 	if m.completionIndex != -1 {
 		t.Errorf("completionIndex = %d after history recall, want -1", m.completionIndex)
+	}
+
+	// A second up reaches the older entry, and down walks back towards the line
+	// that was being typed.
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyUp})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "lrc on" {
+		t.Errorf("after second up: value = %q, want the oldest history entry", got)
+	}
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "vol 0.5" {
+		t.Errorf("after down: value = %q, want the newer history entry", got)
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("completionIndex = %d after down, want -1", m.completionIndex)
+	}
+
+	// One more down steps past the newest entry: the line goes back to empty
+	// rather than wrapping around in the history.
+	updated, _ = handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m = updated.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "" {
+		t.Errorf("after down past the end: value = %q, want an empty line", got)
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("completionIndex = %d after down past the end, want -1", m.completionIndex)
 	}
 }
 
@@ -322,5 +389,43 @@ func TestTabCyclesPathCandidatesWithoutGrowingTheValue(t *testing.T) {
 	}
 	if m.completionIndex != 1 {
 		t.Errorf("completionIndex = %d after the second tab, want 1", m.completionIndex)
+	}
+}
+
+// A candidate that would push the line past the input's character limit is not
+// written at all. textinput truncates SetValue silently, so writing it would
+// leave the user with a line they never asked for.
+func TestAcceptCompletionRefusesToOverflowTheLine(t *testing.T) {
+	m := commandModeModel(t, "open ")
+	before := m.Components.CommandInput.Value()
+	m.completionCandidates = []candidate{{Value: strings.Repeat("a", m.Components.CommandInput.CharLimit+4)}}
+	m.completionSeg = segment{Index: 1, Prefix: "", Start: len([]rune(before)), End: len([]rune(before))}
+
+	acceptCompletion(m, 0)
+
+	if got := m.Components.CommandInput.Value(); got != before {
+		t.Errorf("value = %q, want the untouched %q", got, before)
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("completionIndex = %d, want -1: nothing was accepted", m.completionIndex)
+	}
+}
+
+// The offsets acceptCompletion slices on are rune offsets, so a line carrying
+// multi-byte text before the cursor has to come through byte for byte.
+func TestAcceptCompletionKeepsMultiByteTextIntact(t *testing.T) {
+	const line = "open 专辑/"
+	const want = "open 专辑/song.mp3"
+	m := commandModeModel(t, line)
+	m.completionCandidates = []candidate{{Value: "song.mp3"}}
+	m.completionSeg = segment{Index: 1, Prefix: "", Start: len([]rune(line)), End: len([]rune(line))}
+
+	acceptCompletion(m, 0)
+
+	if got := m.Components.CommandInput.Value(); got != want {
+		t.Errorf("value = %q, want %q", got, want)
+	}
+	if got := m.Components.CommandInput.Position(); got != len([]rune(want)) {
+		t.Errorf("cursor = %d, want %d", got, len([]rune(want)))
 	}
 }
