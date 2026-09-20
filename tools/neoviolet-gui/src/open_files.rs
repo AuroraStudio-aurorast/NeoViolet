@@ -1,16 +1,13 @@
-//! Handles macOS "open files" events and in-window drag-and-drop.
+//! Handles macOS app-level "open files" events (Dock icon drop / Finder "Open With").
 //!
-//! Two paths for receiving files:
-//! 1. **App-level open events** (Dock icon drop / Finder "Open With"):
-//!    GPUI translates these into `Application::on_open_urls()` callbacks.
-//! 2. **In-window drag-and-drop**: GPUI dispatches `FileDropEvent` variants
-//!    through the window event system.
+//! App-level open events arrive as URLs through `Application::on_open_urls()`, which
+//! GPUI dispatches on macOS. In-window drag-and-drop does **not** go through this
+//! module: GPUI delivers `FileDropEvent` straight to `NeoVioletApp`, which pastes the
+//! paths into the running PTY.
 //!
-//! This module extracts paths from app-level open-event URLs. They are queued in
+//! This module extracts paths from those URLs. They are queued in
 //! `AppState::pending_file_paths`: the cold start consumes the queue as its argv
-//! file, and anything arriving later is pasted into the running PTY. In-window
-//! drops do not use this module — they go straight to the paste path in
-//! `NeoVioletApp`.
+//! file, and anything arriving later is pasted into the running PTY.
 
 use std::path::PathBuf;
 
@@ -57,6 +54,7 @@ fn url_to_file_path(raw: &str) -> Option<String> {
 }
 
 /// Decode percent-encoded characters (e.g. `%20` → ` `).
+/// Percent escapes that do not form valid UTF-8 are replaced lossily.
 fn percent_decode(input: &str) -> String {
     let mut bytes: Vec<u8> = Vec::with_capacity(input.len());
     let mut chars = input.chars();
@@ -118,6 +116,14 @@ mod tests {
     fn test_url_to_path_cjk_is_decoded_as_utf8() {
         assert_eq!(
             url_to_file_path("file:///Users/test/%E6%AD%8C.mp3"),
+            Some("/Users/test/歌.mp3".into())
+        );
+    }
+
+    #[test]
+    fn test_url_to_path_literal_non_ascii_stays_intact() {
+        assert_eq!(
+            url_to_file_path("file:///Users/test/歌.mp3"),
             Some("/Users/test/歌.mp3".into())
         );
     }
