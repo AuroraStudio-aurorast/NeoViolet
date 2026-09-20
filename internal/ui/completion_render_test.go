@@ -218,6 +218,15 @@ func TestCompletionRowBudgetsTheGapAndMarker(t *testing.T) {
 		t.Errorf("boundary row = %q, want it to keep the description", got)
 	}
 
+	// The description keeps its own style: with pad == 0 its span is exactly
+	// completionDescStyle.Render(<desc>), so this fails if the row style is used
+	// for it instead. This render is deliberately left un-stripped of its SGR
+	// sequences, unlike the one above.
+	styled := completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail)
+	if !strings.Contains(styled, completionDescStyle.Render("desc")) {
+		t.Errorf("boundary row = %q, want the description in its own style", styled)
+	}
+
 	// Two cells too wide once the marker and the gap count: the description has
 	// to go so that the row stays inside avail.
 	const narrow = 10
