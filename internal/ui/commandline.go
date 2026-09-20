@@ -6,14 +6,26 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// commandLineLayout splits the command row between the input and the right-hand
-// notice, and reports whether the input's left edge needs an ellipsis and
-// whether the notice still fits at all.
+// commandLineLayout splits the command row between the input, the two edge
+// ellipses and the right-hand notice, and reports which of them still fit.
 //
 // Everything arrives as a value: this function reads no Model and no current
 // input width, which is what keeps its result from oscillating.
-func commandLineLayout(value, suggestion string, cursorAtEnd bool, notice string,
-	fullWidth int) (inputWidth int, showEllipsis, showNotice bool) {
+//
+// cursor is a rune index into value. The right edge is reported when the text
+// from the cursor onwards is wider than the window the textinput can show,
+// because that widget anchors its window on the cursor and grows it to the
+// right.
+func commandLineLayout(value, suggestion string, cursor int, notice string,
+	fullWidth int) (inputWidth int, showLeft, showRight, showNotice bool) {
+	runes := []rune(value)
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor > len(runes) {
+		cursor = len(runes)
+	}
+	cursorAtEnd := cursor >= len(runes)
 	pad := commandLinePad(value, suggestion, cursorAtEnd)
 	showNotice = notice != ""
 	wa := 0
@@ -29,13 +41,21 @@ func commandLineLayout(value, suggestion string, cursorAtEnd bool, notice string
 
 	inputWidth = fullWidth - wa - pad
 	if inputWidth < 1 || lipgloss.Width(value) > inputWidth {
-		showEllipsis = true
+		// A width proxy: this can show even when nothing was cut on the left.
+		showLeft = true
 		inputWidth = fullWidth - wa - pad - 1
+	}
+	// The comparison uses the width left after the left-hand cell was reserved;
+	// the deduction happens after it. The window shows inputWidth+1 cells from
+	// the cursor, so the right edge is cut only once the tail is wider than that.
+	if !cursorAtEnd && lipgloss.Width(string(runes[cursor:])) > inputWidth+1 {
+		showRight = true
+		inputWidth--
 	}
 	if inputWidth < 1 {
 		inputWidth = 1
 	}
-	return inputWidth, showEllipsis, showNotice
+	return inputWidth, showLeft, showRight, showNotice
 }
 
 // commandLinePad reports how many cells the textinput adds on top of its width:
@@ -80,30 +100,29 @@ func setCommandNotice(m *Model, text string) {
 	syncCommandInputWidth(m)
 }
 
-// renderCommandLine assembles the whole command row: the prompt, an optional
-// left-edge ellipsis, the input itself, and the right-hand notice.
+// renderCommandLine assembles the whole command row: the prompt, the two
+// optional edge ellipses, the input itself, and the right-hand notice.
 func renderCommandLine(m *Model) string {
 	ti := &m.Components.CommandInput
 	value := ti.Value()
-	cursorAtEnd := ti.Position() >= len([]rune(value))
 	notice := commandNotice(m)
-	_, showEllipsis, showNotice := commandLineLayout(
-		value, ti.CurrentSuggestion(), cursorAtEnd, notice, m.UI.Width-1)
+	_, showLeft, showRight, showNotice := commandLineLayout(
+		value, ti.CurrentSuggestion(), ti.Position(), notice, m.UI.Width-1)
 
 	row := m.Icons.Command
-	if showEllipsis {
+	if showLeft {
 		// A width proxy: this can show even when nothing was cut on the left.
 		row += "…"
 	}
 	row += ti.View()
+	if showRight {
+		// A width proxy as well: it reports the tail the window cannot hold.
+		row += "…"
+	}
 	if showNotice {
 		// The leading space is the separator the budget reserved a cell for.
 		row += commandNoticeStyle.Render(" " + notice)
 	}
-	// The clamp has to stay outside the style render: it is the last width
-	// insurance on the assembled row, and inside the style it would measure the
-	// row before inputStyle's own padding and border were added. That works only
-	// while inputStyle stays free of both.
 	return inputStyle.Render(clampRowWidth(row, m.UI.Width))
 }
 
@@ -124,10 +143,10 @@ func clampRowWidth(row string, width int) string {
 func syncCommandInputWidth(m *Model) {
 	ti := &m.Components.CommandInput
 	value := ti.Value()
-	cursorAtEnd := ti.Position() >= len([]rune(value))
-	width, _, _ := commandLineLayout(value, ti.CurrentSuggestion(), cursorAtEnd, commandNotice(m), m.UI.Width-1)
-
 	pos := ti.Position()
+	width, _, _, _ := commandLineLayout(
+		value, ti.CurrentSuggestion(), pos, commandNotice(m), m.UI.Width-1)
+
 	ti.SetWidth(width)
 	ti.CursorEnd()
 	ti.SetCursor(pos)

@@ -14,32 +14,36 @@ const layoutFullWidth = 79 // m.UI.Width - 1 at the 80 column default
 func TestCommandLineLayoutTable(t *testing.T) {
 	long := strings.Repeat("x", 90)
 	cases := []struct {
-		name         string
-		value        string
-		suggestion   string
-		cursorAtEnd  bool
-		notice       string
-		wantWidth    int
-		wantEllipsis bool
+		name       string
+		value      string
+		suggestion string
+		cursor     int
+		notice     string
+		wantWidth  int
+		wantLeft   bool
+		wantRight  bool
 	}{
-		{"no notice short value", "abc", "", true, "", 78, false},
-		{"no notice over wide", long, "", true, "", 77, true},
-		{"ghost at end", "o", "open", true, "", 76, false},
-		{"ghost mid line", "o", "open", false, "", 75, false},
-		{"at limit over wide", long, "", true, "256/256", 69, true},
-		{"refusal short value", "abc", "", true, "too long", 69, false},
-		{"refusal with ghost at end", "o", "open", true, "too long", 67, false},
-		{"refusal with ghost mid line", "o", "open", false, "too long", 66, false},
+		{"no notice short value", "abc", "", 3, "", 78, false, false},
+		{"no notice over wide", long, "", 90, "", 77, true, false},
+		{"ghost at end", "o", "open", 1, "", 76, false, false},
+		{"ghost mid line", "o", "open", 0, "", 75, false, false},
+		{"at limit over wide", long, "", 90, "256/256", 69, true, false},
+		{"refusal short value", "abc", "", 3, "too long", 69, false, false},
+		{"refusal with ghost at end", "o", "open", 1, "too long", 67, false, false},
+		{"refusal with ghost mid line", "o", "open", 0, "too long", 66, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotWidth, gotEllipsis, gotNotice := commandLineLayout(
-				tc.value, tc.suggestion, tc.cursorAtEnd, tc.notice, layoutFullWidth)
+			gotWidth, gotLeft, gotRight, gotNotice := commandLineLayout(
+				tc.value, tc.suggestion, tc.cursor, tc.notice, layoutFullWidth)
 			if gotWidth != tc.wantWidth {
 				t.Fatalf("inputWidth = %d, want %d", gotWidth, tc.wantWidth)
 			}
-			if gotEllipsis != tc.wantEllipsis {
-				t.Fatalf("showEllipsis = %v, want %v", gotEllipsis, tc.wantEllipsis)
+			if gotLeft != tc.wantLeft {
+				t.Fatalf("showLeft = %v, want %v", gotLeft, tc.wantLeft)
+			}
+			if gotRight != tc.wantRight {
+				t.Fatalf("showRight = %v, want %v", gotRight, tc.wantRight)
 			}
 			if gotNotice != (tc.notice != "") {
 				t.Fatalf("showNotice = %v, want %v", gotNotice, tc.notice != "")
@@ -48,9 +52,41 @@ func TestCommandLineLayoutTable(t *testing.T) {
 	}
 }
 
+func TestCommandLineLayoutRightEllipsisFollowsTheCursor(t *testing.T) {
+	// The textinput anchors its window on the cursor and grows it to the right,
+	// so the right edge is cut only once the text from the cursor onwards is
+	// wider than the window. The widths below were measured against the widget:
+	// a tail of 78 cells still fits, a tail of 79 does not.
+	var b strings.Builder
+	for i := 0; i <= 30; i++ {
+		fmt.Fprintf(&b, "%03d", i)
+	}
+	value := b.String() // 93 runes, 93 cells
+	cases := []struct {
+		cursor    int
+		wantWidth int
+		wantLeft  bool
+		wantRight bool
+	}{
+		{0, 76, true, true},
+		{10, 76, true, true},
+		{46, 77, true, false},
+		{90, 77, true, false},
+		{len([]rune(value)), 77, true, false},
+	}
+	for _, tc := range cases {
+		gotWidth, gotLeft, gotRight, _ := commandLineLayout(
+			value, "", tc.cursor, "", layoutFullWidth)
+		if gotWidth != tc.wantWidth || gotLeft != tc.wantLeft || gotRight != tc.wantRight {
+			t.Fatalf("cursor %d: got (%d, %v, %v), want (%d, %v, %v)",
+				tc.cursor, gotWidth, gotLeft, gotRight, tc.wantWidth, tc.wantLeft, tc.wantRight)
+		}
+	}
+}
+
 func TestCommandLineLayoutNarrow(t *testing.T) {
 	for _, fullWidth := range []int{1, 2, 3} {
-		width, _, _ := commandLineLayout("abc", "", true, "", fullWidth)
+		width, _, _, _ := commandLineLayout("abc", "", 3, "", fullWidth)
 		if width < 1 {
 			t.Fatalf("fullWidth %d: inputWidth = %d, want >= 1", fullWidth, width)
 		}
@@ -61,24 +97,24 @@ func TestCommandLineLayoutCountsCellsNotRunes(t *testing.T) {
 	// Three CJK runes are six cells, inside the budget under either metric: this
 	// literal only pins that a fitting wide value is not mistaken for an
 	// overflow. On its own it cannot tell the two metrics apart.
-	width, ellipsis, _ := commandLineLayout("歌曲名", "", true, "", layoutFullWidth)
+	width, ellipsis, _, _ := commandLineLayout("歌曲名", "", 3, "", layoutFullWidth)
 	if width != 78 || ellipsis {
 		t.Fatalf("cjk value: inputWidth = %d ellipsis = %v, want 78 false", width, ellipsis)
 	}
 
 	// 45 CJK runes are 90 cells, so a display-width implementation must notice the
 	// overflow while a rune-counting one cannot. The ellipsis costs a cell too.
-	if got, ellipsis, _ := commandLineLayout(strings.Repeat("歌", 45), "", true, "", layoutFullWidth); got != 77 || !ellipsis {
+	if got, ellipsis, _, _ := commandLineLayout(strings.Repeat("歌", 45), "", 45, "", layoutFullWidth); got != 77 || !ellipsis {
 		t.Fatalf("commandLineLayout(45 CJK runes, 79) = (%d, %v), want (77, true)", got, ellipsis)
 	}
 }
 
 func TestCommandLineLayoutDropsUnfittingNotice(t *testing.T) {
-	width, _, showNotice := commandLineLayout("abc", "", true, "256/256", 8)
+	width, _, _, showNotice := commandLineLayout("abc", "", 3, "256/256", 8)
 	if showNotice {
 		t.Fatal("showNotice = true, want false when the notice cannot fit")
 	}
-	plain, _, _ := commandLineLayout("abc", "", true, "", 8)
+	plain, _, _, _ := commandLineLayout("abc", "", 3, "", 8)
 	if width != plain {
 		t.Fatalf("inputWidth = %d, want %d (the no-notice width)", width, plain)
 	}
@@ -238,8 +274,8 @@ func TestCommandInputWidthFollowsTheCurrentLine(t *testing.T) {
 	check := func(t *testing.T, m *Model) {
 		t.Helper()
 		ti := &m.Components.CommandInput
-		want, _, _ := commandLineLayout(ti.Value(), ti.CurrentSuggestion(),
-			ti.Position() >= len([]rune(ti.Value())), commandNotice(m), m.UI.Width-1)
+		want, _, _, _ := commandLineLayout(ti.Value(), ti.CurrentSuggestion(),
+			ti.Position(), commandNotice(m), m.UI.Width-1)
 		if got := ti.Width(); got != want {
 			t.Fatalf("CommandInput.Width() = %d, want %d for a value of %d runes",
 				got, want, len([]rune(ti.Value())))
@@ -605,8 +641,8 @@ func TestAcceptingACandidateResyncsTheWidth(t *testing.T) {
 	if before == ti.Width() {
 		t.Fatalf("fixture cannot discriminate, or the acceptance did not resync: width stayed %d across acceptance", before)
 	}
-	want, _, _ := commandLineLayout(ti.Value(), ti.CurrentSuggestion(),
-		ti.Position() >= len([]rune(ti.Value())), commandNotice(m), m.UI.Width-1)
+	want, _, _, _ := commandLineLayout(ti.Value(), ti.CurrentSuggestion(),
+		ti.Position(), commandNotice(m), m.UI.Width-1)
 	if got := ti.Width(); got != want {
 		t.Fatalf("width = %d, want %d after accepting a candidate", got, want)
 	}
