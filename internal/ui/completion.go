@@ -24,11 +24,13 @@ func ghostSuggestions() []string {
 // input line.
 //
 // This list feeds the inline ghost text, not the selection: in command mode
-// <tab> is intercepted and cycles our own candidates. A blank line gets no
-// suggestions on purpose: textinput filters the list it already holds instead of
-// rebuilding it from the value, and an empty value is a prefix of every entry,
-// so a stale list would show ghost text for a command the user has not started
-// typing.
+// <tab> is intercepted and cycles our own candidates.
+//
+// The list is set here rather than derived by textinput, which only re-filters
+// the list it already holds: a programmatic value change (Reset, SetValue)
+// leaves both the list and its matches as they were, and an empty value matches
+// nothing. Clearing on a blank line therefore drops the previous line's list
+// instead of leaving it for the next keystroke.
 func syncGhostSuggestions(m *Model) {
 	ti := &m.Components.CommandInput
 	if strings.TrimSpace(ti.Value()) == "" {
@@ -210,7 +212,8 @@ func agentCandidates() []candidate {
 }
 
 // filterCandidates keeps the candidates whose value starts with prefix,
-// case-insensitively, mirroring textinput's own matching rule.
+// case-insensitively, mirroring textinput's own prefix rule for a non-empty
+// value: an empty prefix keeps everything, where textinput matches nothing.
 func filterCandidates(cands []candidate, prefix string) []candidate {
 	if prefix == "" {
 		return cands
@@ -251,8 +254,10 @@ func syncCompletion(m *Model) {
 // The candidate list and the segment stay as they are. One tab starts a round
 // against what the user typed, and further tabs walk that round's candidates,
 // each press replacing the text the previous one wrote: completing a directory
-// must not swap the listing under the user's fingers. Only a keystroke that
-// reaches the textinput (syncCompletion) recomputes everything.
+// must not swap the listing under the user's fingers. Only syncCompletion
+// recomputes everything, and it runs after every input change: for the keys
+// command mode handles itself (esc, up/down history, enter) as well as for
+// keystrokes that reach textinput.
 func acceptCompletion(m *Model, index int) {
 	if index < 0 || index >= len(m.completionCandidates) {
 		return
