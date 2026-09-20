@@ -240,3 +240,25 @@ func TestInsertPathAtCursorRefusesToOverflowTheLine(t *testing.T) {
 		t.Errorf("cursor = %d, want %d", got, ti.CharLimit-6)
 	}
 }
+
+// The guard counts the whole line, not just the part before the cursor: a line
+// six runes short of the limit still refuses the insert when the cursor sits at
+// its start, where only the inserted runes themselves fit under the limit.
+func TestInsertPathAtCursorCountsTheWholeLine(t *testing.T) {
+	m := setupModel()
+	m.UI.Mode = ModeCommand
+	ti := &m.Components.CommandInput
+	full := strings.Repeat("a", ti.CharLimit-6)
+	ti.SetValue(full)
+	ti.SetCursor(0)
+
+	insertPathAtCursor(m, strings.Repeat("b", 10))
+
+	if got := ti.Value(); got != full {
+		t.Fatalf("value has %d runes, want %d runes: the line was overfilled and truncated",
+			len([]rune(got)), len([]rune(full)))
+	}
+	if got := ti.Position(); got != 0 {
+		t.Errorf("cursor = %d, want 0", got)
+	}
+}

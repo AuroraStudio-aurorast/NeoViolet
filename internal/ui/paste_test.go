@@ -70,6 +70,53 @@ func TestPasteInCommandModeUnescapesExistingSpacePath(t *testing.T) {
 	}
 }
 
+// A paste can carry several paths, and the scan must skip one that does not
+// exist instead of giving up: a valid file later in the payload still loads.
+func TestPasteInNormalModeScansPastAnInvalidPath(t *testing.T) {
+	m := setupModel()
+	dir := t.TempDir()
+	// The extension is playable but the file is not there, so only the
+	// existence check can reject it.
+	missing := filepath.Join(dir, "missing.mp3")
+	path := filepath.Join(dir, "song.mp3")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, cmd := updateDispatcher(m, tea.PasteMsg{Content: missing + " " + path})
+	m = updated.(*Model)
+	if !m.Loading || !m.switchingTrack {
+		t.Errorf("Loading = %v, switchingTrack = %v; want the second path to load", m.Loading, m.switchingTrack)
+	}
+	if cmd == nil {
+		t.Error("expected a load command")
+	}
+}
+
+// Dropping two files at once puts both of them on the line, not just the first.
+func TestPasteInCommandModeInsertsEveryPath(t *testing.T) {
+	dir := t.TempDir()
+	first := filepath.Join(dir, "one.mp3")
+	second := filepath.Join(dir, "two.mp3")
+	for _, p := range []string{first, second} {
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := setupModel()
+	m.UI.Mode = ModeCommand
+	m.Components.CommandInput.Focus()
+	m.Components.CommandInput.SetValue("open ")
+	m.Components.CommandInput.CursorEnd()
+
+	updated, _ := updateDispatcher(m, tea.PasteMsg{Content: first + " " + second})
+	m = updated.(*Model)
+	if got, want := m.Components.CommandInput.Value(), "open "+first+" "+second; got != want {
+		t.Errorf("value = %q, want %q", got, want)
+	}
+}
+
 func TestPasteInNormalModeLoadsAudio(t *testing.T) {
 	m := setupModel()
 	dir := t.TempDir()
