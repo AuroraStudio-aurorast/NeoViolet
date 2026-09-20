@@ -253,3 +253,93 @@ func stripANSI(s string) string {
 	}
 	return b.String()
 }
+
+// The overlay only touches the content block: the frame size is unchanged and
+// the header, footer and command line keep their text and their rows.
+func TestOverlayKeepsFrameSizeAndOtherRegions(t *testing.T) {
+	m := completionModel(t, 80, 24)
+	plan := m.layoutPlan()
+
+	before := renderMainView(m).Content
+
+	m.completionCandidates = []candidate{
+		{Value: "load", Desc: "<path>  Load an audio file"},
+		{Value: "lrc", Desc: "<sub>  Lyrics control"},
+	}
+	after := renderMainView(m).Content
+
+	if got := lipgloss.Height(after); got != m.UI.Height {
+		t.Errorf("frame height = %d, want %d", got, m.UI.Height)
+	}
+	if got := lipgloss.Width(after); got != m.UI.Width {
+		t.Errorf("frame width = %d, want %d", got, m.UI.Width)
+	}
+	if !strings.Contains(after, "Load an audio file") {
+		t.Error("the overlay is missing from the frame")
+	}
+	if before == after {
+		t.Error("the frame did not change when candidates appeared")
+	}
+	// Everything outside the content block (header above it, footer and command
+	// line below it) must come through the overlay untouched: the overlay consumes
+	// no rows, so those lines keep their position and their text. Compare plain
+	// text, because the frame is re-encoded when the layout style pads it.
+	beforeLines := strings.Split(stripANSI(before), "\n")
+	afterLines := strings.Split(stripANSI(after), "\n")
+	for row := range afterLines {
+		if row >= tabsHeight && row < tabsHeight+plan.ContentHeight {
+			continue // the content block is what the overlay draws on
+		}
+		got := strings.TrimRight(afterLines[row], " ")
+		want := strings.TrimRight(beforeLines[row], " ")
+		if got != want {
+			t.Errorf("row %d outside the content block changed: %q, want %q", row, got, want)
+		}
+	}
+}
+
+// The overlay is inset 3 columns, sits on the last row inside the box and never
+// touches the bottom border: all four corners and both side borders survive.
+func TestOverlayKeepsContentBoxBorder(t *testing.T) {
+	m := completionModel(t, 80, 24)
+	plan := m.layoutPlan()
+	m.completionCandidates = []candidate{{Value: "lrc", Desc: "<sub>  Lyrics control"}}
+
+	frame := renderMainView(m).Content
+	lines := strings.Split(frame, "\n")
+
+	// The corners sit outside the overlay's inset, so a border-only check cannot
+	// see the overlay landing one row too low. Pin the row it is drawn on, and
+	// that a single candidate draws a single row.
+	overlayRow := -1
+	for row := tabsHeight; row < tabsHeight+plan.ContentHeight; row++ {
+		if strings.Contains(stripANSI(lines[row]), "Lyrics control") {
+			if overlayRow >= 0 {
+				t.Fatalf("the overlay spans more than one row: %d and %d", overlayRow, row)
+			}
+			overlayRow = row
+		}
+	}
+	if want := tabsHeight + plan.ContentHeight - 2; overlayRow != want {
+		t.Fatalf("overlay row = %d, want %d", overlayRow, want)
+	}
+
+	for row := tabsHeight; row < tabsHeight+plan.ContentHeight; row++ {
+		plain := strings.TrimRight(stripANSI(lines[row]), " ")
+		first, last := strings.HasPrefix, strings.HasSuffix
+		switch row - tabsHeight {
+		case 0:
+			if !first(plain, "╭") || !last(plain, "╮") {
+				t.Fatalf("top border broken on row %d: %q", row, plain)
+			}
+		case plan.ContentHeight - 1:
+			if !first(plain, "╰") || !last(plain, "╯") {
+				t.Fatalf("bottom border overwritten on row %d: %q", row, plain)
+			}
+		default:
+			if !first(plain, "│") || !last(plain, "│") {
+				t.Fatalf("side border broken on row %d: %q", row, plain)
+			}
+		}
+	}
+}

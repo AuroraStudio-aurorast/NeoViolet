@@ -32,6 +32,9 @@ func renderMainView(m *Model) tea.View {
 
 	header := renderTabs(m)
 	content := renderContent(m, plan)
+	if rows := completionRows(m, plan); rows > 0 {
+		content = overlayCompletion(m, plan, content, rows)
+	}
 	if plan.PanelShown {
 		content = lipgloss.JoinHorizontal(lipgloss.Top, content, renderLyricsPanel(m, plan))
 	}
@@ -294,6 +297,29 @@ func renderCompletion(m *Model, plan layoutPlan) string {
 		lines = append(lines, completionRow(m.completionCandidates[index], index == m.completionIndex, avail))
 	}
 	return strings.Join(lines, "\n")
+}
+
+// overlayCompletion draws the candidate list inside the content box, on top of
+// the already rendered content block.
+//
+// The stack is sized to the content block, so the frame keeps its size and the
+// overlay consumes no rows: the lyrics panel keeps its height and the layout is
+// untouched. The higher layer is opaque (it clears its own cells before
+// printing), so it covers the row underneath it while the border and padding
+// columns outside its band stay visible.
+//
+// The layers go through a compositor rather than a plain canvas: a layer's
+// Draw paints at the area it is handed, so only the compositor applies the
+// offsets set with Y and X.
+func overlayCompletion(m *Model, plan layoutPlan, content string, rows int) string {
+	stack := lipgloss.NewCompositor(
+		lipgloss.NewLayer(content),
+		lipgloss.NewLayer(renderCompletion(m, plan)).
+			Y(plan.ContentHeight-rows-1).
+			X(overlayInset).
+			Z(1),
+	)
+	return stack.Render()
 }
 
 // completionRow renders one row, padded to avail. Three tiers:
