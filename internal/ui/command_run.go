@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -141,8 +142,9 @@ func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	// Rest (not strings.Join(Parts[1:], " ")) so a file name with two adjacent
-	// spaces survives; expandTilde so a path completed as "~/x.mp3" also opens.
-	path := expandTilde(inv.Rest)
+	// spaces survives; trailing whitespace is dropped because a dragged file
+	// arrives as "path "; expandTilde so a completed "~/x.mp3" also opens.
+	path := expandTilde(strings.TrimRightFunc(inv.Rest, unicode.IsSpace))
 	if !isValidAudioPath(path) {
 		m.Error.Set("Invalid or unsupported audio file: "+inv.Rest, m.Config.Error.Duration)
 		return m, nil

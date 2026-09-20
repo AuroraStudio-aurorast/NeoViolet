@@ -28,9 +28,9 @@ func TestExpandTilde(t *testing.T) {
 func TestRunOpenKeepsConsecutiveSpaces(t *testing.T) {
 	m := setupModel()
 	// A relative path keeps the typed command short: the command input has a
-	// CharLimit (100 runes until the T4 wiring raises it to 256) and t.TempDir()
-	// alone is already long enough on macOS to truncate the line, which would
-	// make this test fail for a reason unrelated to whitespace handling.
+	// bounded line length and a t.TempDir() absolute path is long enough on macOS
+	// to be truncated, which would make this test fail for a reason unrelated to
+	// whitespace handling.
 	t.Chdir(t.TempDir())
 	name := "My  File.mp3"
 	if err := os.WriteFile(name, []byte("x"), 0o600); err != nil {
@@ -65,5 +65,41 @@ func TestRunOpenExpandsTilde(t *testing.T) {
 	}
 	if !m.Loading || !m.switchingTrack {
 		t.Errorf("Loading = %v, switchingTrack = %v; want both true", m.Loading, m.switchingTrack)
+	}
+}
+
+// A dragged file arrives as a path followed by a trailing space, so :open must
+// not hand the whitespace to the filesystem.
+func TestRunOpenDropsTrailingSpace(t *testing.T) {
+	m := setupModel()
+	t.Chdir(t.TempDir())
+	name := "trail.mp3"
+	if err := os.WriteFile(name, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	setCommand(m, "open "+name+" ")
+	executeCommand(m)
+	if m.Error.Message != "" {
+		t.Fatalf("error = %q, want none", m.Error.Message)
+	}
+	if !m.Loading || !m.switchingTrack {
+		t.Errorf("Loading = %v, switchingTrack = %v; want both true", m.Loading, m.switchingTrack)
+	}
+}
+
+func TestRunOpenWithoutArgumentPrintsUsage(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "open")
+	executeCommand(m)
+	if got := m.Error.Message; got != "Usage: open <path>" {
+		t.Errorf("Error = %q, want %q", got, "Usage: open <path>")
+	}
+}
+
+func TestExpandTildeFallsBackWhenHomeUnset(t *testing.T) {
+	t.Setenv("HOME", "")
+	if got := expandTilde("~/x.mp3"); got != "~/x.mp3" {
+		t.Errorf("expandTilde(~/x.mp3) = %q, want the input unchanged", got)
 	}
 }
