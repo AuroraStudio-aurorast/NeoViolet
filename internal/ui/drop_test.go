@@ -163,6 +163,24 @@ func TestNormalizeDropStripsEscapesToReachTheFile(t *testing.T) {
 	if got := normalizeDrop(filepath.Join(dir, `me\!.mp3`)); len(got) != 1 || got[0] != special {
 		t.Errorf("normalizeDrop(me\\!.mp3) = %v, want %q", got, special)
 	}
+
+	// A name that really contains a backslash arrives doubled, so the pair has to
+	// be turned back into one backslash to reach the file: keeping the doubled form
+	// as it is and merely stripping escapes both miss. This needs its own temporary
+	// directory, because the first case here requires the single-backslash name not
+	// to exist on disk.
+	doubledDir := t.TempDir()
+	doubledFile := filepath.Join(doubledDir, `x\b.mp3`)
+	if err := os.WriteFile(doubledFile, []byte("x"), 0o600); err != nil {
+		t.Skipf("cannot create %q: %v", doubledFile, err)
+	}
+	// Drops arrive with every space escaped, the way the table fixtures above are
+	// built, so a temporary directory containing a space stays one field.
+	escapeDropped := func(p string) string { return strings.ReplaceAll(p, " ", `\ `) }
+	doubled := escapeDropped(strings.ReplaceAll(doubledFile, `\`, `\\`))
+	if got := normalizeDrop(doubled); len(got) != 1 || got[0] != doubledFile {
+		t.Errorf("normalizeDrop(%q) = %v, want %q", doubled, got, doubledFile)
+	}
 }
 
 func TestInsertPathAtCursor(t *testing.T) {
