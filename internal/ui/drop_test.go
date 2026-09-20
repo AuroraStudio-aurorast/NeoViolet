@@ -9,20 +9,24 @@ import (
 
 func TestNormalizeDrop(t *testing.T) {
 	dir := t.TempDir()
+	// A dropped path arrives with every space escaped, the way a terminal hands one
+	// over: escaping the whole path here keeps these fixtures honest on machines
+	// whose temporary directory contains a space.
+	escapeDropped := func(p string) string { return strings.ReplaceAll(p, " ", `\ `) }
 	spaced := filepath.Join(dir, "My File.mp3")
 	if err := os.WriteFile(spaced, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// The same name with the space backslash-escaped (the usual terminal form): it
-	// does not exist on disk.
-	escaped := filepath.Join(dir, `My\ File.mp3`)
-	// The same idea with wide characters, so the splitting has to walk runes and
-	// the unescaping has to copy bytes without cutting a rune in half.
+	// The same name with every space backslash-escaped (the usual terminal form):
+	// this form does not exist on disk.
+	escaped := escapeDropped(spaced)
+	// The same idea with wide characters: escaping and unescaping have to round-trip
+	// a multi-byte name without losing bytes.
 	cjk := filepath.Join(dir, "歌 曲.mp3")
 	if err := os.WriteFile(cjk, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	escapedCJK := filepath.Join(dir, `歌\ 曲.mp3`)
+	escapedCJK := escapeDropped(cjk)
 
 	for _, tc := range []struct {
 		name  string
@@ -39,6 +43,7 @@ func TestNormalizeDrop(t *testing.T) {
 		{"quoted path with space", `"` + spaced + `"`, []string{spaced}},
 		{"single quoted path with space", "'" + spaced + "'", []string{spaced}},
 		{"curly quoted path with space", "“" + spaced + "”", []string{spaced}},
+		{"single curly quoted path with space", "‘" + spaced + "’", []string{spaced}},
 		// An escaped space belongs to the name, a bare one separates two paths.
 		{"escaped space then second file", escaped + " " + filepath.Join(dir, "b.mp3"), []string{spaced, filepath.Join(dir, "b.mp3")}},
 		{"escaped CJK space, file exists", escapedCJK, []string{cjk}},
@@ -147,8 +152,8 @@ func TestInsertPathAtCursorKeepsTextAfterTheCursor(t *testing.T) {
 	if got := ti.Value(); got != "open /x.mp3 tail" {
 		t.Errorf("value = %q, want %q", got, "open /x.mp3 tail")
 	}
-	if got := ti.Position(); got != len("open /x.mp3") {
-		t.Errorf("cursor = %d, want %d", got, len("open /x.mp3"))
+	if got := ti.Position(); got != len([]rune("open /x.mp3")) {
+		t.Errorf("cursor = %d, want %d", got, len([]rune("open /x.mp3")))
 	}
 }
 
@@ -166,7 +171,29 @@ func TestInsertPathAtCursorCountsRunesNotBytes(t *testing.T) {
 
 	want := "open " + wide
 	if got := ti.Value(); got != want {
-		t.Fatalf("value has %d runes, want %d", len([]rune(got)), len([]rune(want)))
+		t.Fatalf("value has %d runes (%d bytes), want %d runes (%d bytes)",
+			len([]rune(got)), len(got), len([]rune(want)), len(want))
+	}
+	if got := ti.Position(); got != len([]rune(want)) {
+		t.Errorf("cursor = %d, want %d runes", got, len([]rune(want)))
+	}
+}
+
+// The text already on the line counts in runes too: a wide prefix that fits by
+// rune count must not be rejected just because its UTF-8 form is longer.
+func TestInsertPathAtCursorCountsWidePrefixInRunes(t *testing.T) {
+	m := setupModel()
+	m.UI.Mode = ModeCommand
+	ti := &m.Components.CommandInput
+	ti.SetValue(strings.Repeat("歌", 200))
+	ti.CursorEnd()
+
+	insertPathAtCursor(m, strings.Repeat("x", 50))
+
+	want := strings.Repeat("歌", 200) + " " + strings.Repeat("x", 50)
+	if got := ti.Value(); got != want {
+		t.Fatalf("value has %d runes (%d bytes), want %d runes (%d bytes)",
+			len([]rune(got)), len(got), len([]rune(want)), len(want))
 	}
 	if got := ti.Position(); got != len([]rune(want)) {
 		t.Errorf("cursor = %d, want %d runes", got, len([]rune(want)))
