@@ -4,6 +4,7 @@ mod components;
 mod config;
 mod desktop_lyrics;
 mod dracula_theme;
+mod drop_paste;
 mod ipc;
 mod menus;
 mod neo_violet_app;

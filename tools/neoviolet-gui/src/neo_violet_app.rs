@@ -12,6 +12,7 @@ use yororen_ui::headless::modal::ModalState;
 
 use crate::app::TerminalApp;
 use crate::components;
+use crate::drop_paste;
 use crate::ipc::IpcMessage;
 use crate::state::AppState;
 
@@ -152,8 +153,7 @@ impl Render for NeoVioletApp {
         // and forwarded to the PTY at Submit.
         {
             let drop_cache = self.drop_paths_cache.clone();
-            let pending = cx.global::<AppState>().pending_file_paths.clone();
-            let root_eid = cx.entity_id();
+            let child = self.terminal_child.clone();
             window.on_mouse_event(
                 move |event: &FileDropEvent, _phase, _window, cx| match event {
                     FileDropEvent::Entered { paths, .. } => {
@@ -168,15 +168,14 @@ impl Render for NeoVioletApp {
                         }
                     }
                     FileDropEvent::Submit { .. } => {
-                        if let Ok(mut guard) = drop_cache.lock() {
-                            let paths: Vec<String> = guard.drain(..).collect();
-                            if !paths.is_empty() {
-                                log::info!("[drag-drop] submit {} file(s)", paths.len());
-                                if let Ok(mut p) = pending.lock() {
-                                    *p = paths;
-                                }
-                                cx.notify(root_eid);
-                            }
+                        let dropped: Vec<String> = if let Ok(mut guard) = drop_cache.lock() {
+                            guard.drain(..).collect()
+                        } else {
+                            Vec::new()
+                        };
+                        if !dropped.is_empty() {
+                            log::info!("[drag-drop] submit {} file(s)", dropped.len());
+                            drop_paste::send_paths(cx, &child, &dropped);
                         }
                     }
                     FileDropEvent::Exited => {
