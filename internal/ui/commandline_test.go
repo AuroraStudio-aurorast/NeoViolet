@@ -447,10 +447,13 @@ func TestCJKValueKeepsTheRowWidth(t *testing.T) {
 	m.Components.CommandInput.SetValue(strings.Repeat("歌", 60))
 	m.Components.CommandInput.SetCursor(60)
 	syncCompletion(m)
-	// Equality assertions like this one cannot see a row that is too wide: the
-	// clamp only trims (x/ansi returns a fitting string unchanged), so an
-	// over-wide row is normalised back to UI.Width. Pinning that needs a
-	// non-width metric, such as the "content survived" row-tail assertion above.
+	// This equality assertion cannot tell an over-wide row from a fitting one:
+	// the clamp trims to at most UI.Width and never pads, so the measured width
+	// stays within the budget. It is exactly UI.Width unless the trim lands on a
+	// wide cluster, which drops that whole cluster and leaves the cell unused --
+	// which is why the assertion above still has teeth on wide-character input.
+	// Pinning an over-wide row needs a non-width metric, such as the "content
+	// survived" row-tail assertion in TestLimitWinsOverRefusal.
 	if got := lipgloss.Width(renderCommandLine(m)); got != m.UI.Width {
 		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
 	}
