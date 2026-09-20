@@ -394,20 +394,31 @@ func TestTabCyclesPathCandidatesWithoutGrowingTheValue(t *testing.T) {
 
 // A candidate that would push the line past the input's character limit is not
 // written at all. textinput truncates SetValue silently, so writing it would
-// leave the user with a line they never asked for.
+// leave the user with a line they never asked for, and the line that was
+// already accepted stays selected.
 func TestAcceptCompletionRefusesToOverflowTheLine(t *testing.T) {
-	m := commandModeModel(t, "open ")
-	before := m.Components.CommandInput.Value()
+	m := commandModeModel(t, "lrc ")
+	acceptCompletion(m, 0)
+
+	accepted := m.Components.CommandInput.Value()
+	if accepted != "lrc on" {
+		t.Fatalf("accepted value = %q, want %q", accepted, "lrc on")
+	}
+	if m.completionIndex != 0 {
+		t.Fatalf("completionIndex = %d after accepting, want 0", m.completionIndex)
+	}
+
+	// The segment is the one the accepted write left behind, so this second call
+	// runs against the same round the user would still be looking at.
 	m.completionCandidates = []candidate{{Value: strings.Repeat("a", m.Components.CommandInput.CharLimit+4)}}
-	m.completionSeg = segment{Index: 1, Prefix: "", Start: len([]rune(before)), End: len([]rune(before))}
 
 	acceptCompletion(m, 0)
 
-	if got := m.Components.CommandInput.Value(); got != before {
-		t.Errorf("value = %q, want the untouched %q", got, before)
+	if got := m.Components.CommandInput.Value(); got != accepted {
+		t.Errorf("value = %q, want the untouched %q", got, accepted)
 	}
-	if m.completionIndex != -1 {
-		t.Errorf("completionIndex = %d, want -1: nothing was accepted", m.completionIndex)
+	if m.completionIndex != 0 {
+		t.Errorf("completionIndex = %d, want 0: the refused write changed nothing", m.completionIndex)
 	}
 }
 
