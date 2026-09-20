@@ -70,7 +70,8 @@ var extLookup = make(map[string]*formatHandler)
 
 // IsSupportedExt reports whether ext (lower-case, with the dot, e.g. ".flac")
 // has a registered decoder. It reads the same registry registerFormat fills, so
-// it cannot drift from the formats the player can actually open.
+// it cannot drift from the handler registry. Formats recognised by content
+// rather than by extension (MIDI, tracker modules) are not reported here.
 func IsSupportedExt(ext string) bool {
 	_, ok := extLookup[ext]
 	return ok
