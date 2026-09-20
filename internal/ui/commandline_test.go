@@ -273,10 +273,10 @@ func TestSyncCompletionResyncsTheWidthWhenTheLineEmpties(t *testing.T) {
 }
 
 func TestLineEmptiedByHistoryRestoresTheUnsplitWidth(t *testing.T) {
-	// "down" past the last history entry resets the line and writes no notice, so
-	// only the width sync sitting before syncCompletion's early return can restore
-	// the unsplit width: moving that sync below the early return leaves every
-	// other width test green.
+	// With no earlier history entry to recall, "down" empties the line and writes
+	// no notice, so only the width sync sitting before syncCompletion's early
+	// return can restore the unsplit width: moving that sync below the early
+	// return leaves every other width test green.
 	m := commandModeModel(t, strings.Repeat("x", 120))
 	if got := m.Components.CommandInput.Width(); got == m.UI.Width-2 {
 		t.Fatalf("setup: width is already unsplit (%d), so the case cannot discriminate", got)
@@ -345,8 +345,9 @@ func TestRefusedInsertionShowsTheNotice(t *testing.T) {
 func TestInsertionClearsTheNotice(t *testing.T) {
 	m := commandModeModel(t, "")
 	setCommandNotice(m, "too long")
-	nm, _ := updateDispatcher(m, tea.PasteMsg{Content: "/tmp/short.mp3"})
-	m = nm.(*Model)
+	// Driven directly: handlePaste clears the notice at its own entry, so going
+	// through the paste path would hide the clear the success branch performs.
+	insertPathAtCursor(m, "/tmp/short.mp3")
 	if m.UI.CommandNotice != "" {
 		t.Fatalf("CommandNotice = %q, want empty after a successful insertion", m.UI.CommandNotice)
 	}
@@ -384,5 +385,145 @@ func TestAcceptCompletionRefusedAtTheLimitShowsTheNotice(t *testing.T) {
 	}
 	if row := renderCommandLine(m); !strings.Contains(row, "too long") {
 		t.Fatalf("command row %q does not show the refusal notice", row)
+	}
+}
+
+func TestRowWidthWithGhostAndMidLineCaret(t *testing.T) {
+	// A ghost suggestion plus a caret inside the window is the combination the
+	// budget used to miss: bubbles then draws the suggestion and adds a cell.
+	m := commandModeModel(t, "o")
+	// A fresh model still carries NewModel's default tab width, which wraps the
+	// tab row and makes the frame taller than UI.Height. Resize once so the
+	// frame-height assertion below measures the geometry a real terminal gives.
+	sized, _ := updateDispatcher(m, tea.WindowSizeMsg{Width: m.UI.Width, Height: m.UI.Height})
+	m = sized.(*Model)
+	m.Components.CommandInput.SetCursor(0)
+	syncCompletion(m)
+	if got := m.Components.CommandInput.CurrentSuggestion(); got == "" {
+		t.Fatal("fixture has no ghost suggestion")
+	}
+	setCommandNotice(m, "too long")
+	row := renderCommandLine(m)
+	if got := lipgloss.Width(row); got != m.UI.Width {
+		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
+	}
+	if !strings.Contains(row, "too long") {
+		t.Fatalf("command row %q lost the notice to the clamp", row)
+	}
+	if got := lipgloss.Height(renderMainView(m).Content); got != m.UI.Height {
+		t.Fatalf("frame height = %d, want %d", got, m.UI.Height)
+	}
+}
+
+func TestLimitWinsOverRefusal(t *testing.T) {
+	// Both notices apply at once; the derived count describes the line itself,
+	// and the width must be computed from the notice that is actually rendered.
+	m := commandModeModel(t, "")
+	limit := m.Components.CommandInput.CharLimit
+	m.Components.CommandInput.SetValue(strings.Repeat("x", limit))
+	m.Components.CommandInput.SetCursor(limit)
+	syncCompletion(m)
+	nm, _ := updateDispatcher(m, tea.PasteMsg{Content: "/" + strings.Repeat("y", 50)})
+	m = nm.(*Model)
+
+	count := fmt.Sprintf("%d/%d", limit, limit)
+	row := renderCommandLine(m)
+	// Suffix, not substring: the count sits at the end of the row, so a row that
+	// is too narrow loses it to the clamp first and a substring test would still
+	// pass with only half of it left.
+	if !strings.HasSuffix(stripANSI(row), count) {
+		t.Fatalf("command row %q does not end with %s", row, count)
+	}
+	if strings.Contains(row, "too long") {
+		t.Fatalf("command row %q shows the refusal instead of the count", row)
+	}
+	if got := lipgloss.Width(row); got != m.UI.Width {
+		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
+	}
+}
+
+func TestCJKValueKeepsTheRowWidth(t *testing.T) {
+	m := commandModeModel(t, "")
+	m.Components.CommandInput.SetValue(strings.Repeat("歌", 60))
+	m.Components.CommandInput.SetCursor(60)
+	syncCompletion(m)
+	if got := lipgloss.Width(renderCommandLine(m)); got != m.UI.Width {
+		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
+	}
+}
+
+func TestEmojiValueKeepsTheFrameHeight(t *testing.T) {
+	// Variant selectors make the rune width and the cluster width disagree, so
+	// the budget cannot be exact here. The row is allowed to be trimmed, but the
+	// frame must not grow: that is what the clamp is for.
+	m := commandModeModel(t, "")
+	// A fresh model still carries NewModel's default tab width, which wraps the
+	// tab row and makes the frame taller than UI.Height. Resize once so the
+	// frame-height assertion below measures the geometry a real terminal gives.
+	sized, _ := updateDispatcher(m, tea.WindowSizeMsg{Width: m.UI.Width, Height: m.UI.Height})
+	m = sized.(*Model)
+	m.Components.CommandInput.SetValue(strings.Repeat("❤️", 45))
+	m.Components.CommandInput.SetCursor(len([]rune(m.Components.CommandInput.Value())))
+	syncCompletion(m)
+	row := renderCommandLine(m)
+	if got := lipgloss.Width(row); got > m.UI.Width {
+		t.Fatalf("command row width = %d, want <= %d", got, m.UI.Width)
+	}
+	if got := lipgloss.Height(renderMainView(m).Content); got != m.UI.Height {
+		t.Fatalf("frame height = %d, want %d", got, m.UI.Height)
+	}
+}
+
+func TestCommandLinePadClampsANegativeExtra(t *testing.T) {
+	// The command table never yields a suggestion shorter than the value, but the
+	// padding must still fall back to the single cursor cell.
+	if got := commandLinePad("abcdef", "ab", true); got != 1 {
+		t.Fatalf("commandLinePad = %d, want 1", got)
+	}
+}
+
+func TestWidthSyncKeepsTheCursorWhenTheLineNarrows(t *testing.T) {
+	// The width sync exists for exactly this state: the caret sits inside the
+	// textinput's window, so nothing short of the end-then-restore trick makes it
+	// re-window for the narrower budget.
+	m := commandModeModel(t, strings.Repeat("x", 200))
+	m.Components.CommandInput.SetCursor(100)
+	before := m.Components.CommandInput.Position()
+
+	setCommandNotice(m, "256/256") // narrows the input by nine cells
+
+	if got := m.Components.CommandInput.Position(); got != before {
+		t.Fatalf("Position() = %d, want %d (the caret must not move)", got, before)
+	}
+	if got := lipgloss.Width(renderCommandLine(m)); got != m.UI.Width {
+		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
+	}
+	// Suffix, not substring: the clamp trims the row's tail, so an input that kept
+	// its old window shows up as a notice that is no longer at the end of the row
+	// (the row width itself stays correct because the clamp pads or trims it).
+	if !strings.HasSuffix(stripANSI(renderCommandLine(m)), "256/256") {
+		t.Fatalf("command row %q lost the notice: the input kept its old window", renderCommandLine(m))
+	}
+}
+
+func TestAcceptingACandidateResyncsTheWidth(t *testing.T) {
+	// Accepting a candidate rewrites the line, so the row budget has to follow it.
+	// The fixture value must be one whose budget actually changes on acceptance:
+	// "l" draws the "lrc" ghost, two cells wider than the value, so the input is
+	// 77 wide while the ghost is up, and 78 once tab has written "load", whose own
+	// ghost is no wider than the value it pads.
+	m := commandModeModel(t, "l")
+	before := m.Components.CommandInput.Width()
+
+	nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m = nm.(*Model)
+	ti := &m.Components.CommandInput
+	if before == ti.Width() {
+		t.Fatalf("fixture cannot discriminate: width stayed %d across acceptance", before)
+	}
+	want, _, _ := commandLineLayout(ti.Value(), ti.CurrentSuggestion(),
+		ti.Position() >= len([]rune(ti.Value())), commandNotice(m), m.UI.Width-1)
+	if got := ti.Width(); got != want {
+		t.Fatalf("width = %d, want %d after accepting a candidate", got, want)
 	}
 }

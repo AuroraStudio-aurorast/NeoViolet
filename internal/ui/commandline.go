@@ -59,7 +59,9 @@ func commandLinePad(value, suggestion string, cursorAtEnd bool) int {
 
 // commandNotice derives the notice text. The count of a line that reached the
 // limit wins over a refusal recorded earlier, because it describes the line
-// itself rather than the last insertion attempt.
+// itself rather than the last insertion attempt. A refusal is therefore
+// overwritten by that derived count once the line sits at the limit; the
+// priority is deliberate.
 func commandNotice(m *Model) string {
 	ti := &m.Components.CommandInput
 	used := len([]rune(ti.Value()))

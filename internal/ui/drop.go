@@ -245,7 +245,8 @@ func stripAnyEscape(s string) string {
 // separating space when it would otherwise glue onto the previous word.
 //
 // A path that would exceed the input limit leaves the line untouched rather
-// than silently truncating it into something that does not exist.
+// than silently truncating it into something that does not exist; the refusal
+// is reported in the command row.
 func insertPathAtCursor(m *Model, p string) {
 	ti := &m.Components.CommandInput
 	runes := []rune(ti.Value())
@@ -283,8 +284,9 @@ func handlePaste(m *Model, content string) (tea.Model, tea.Cmd) {
 	}
 
 	if m.UI.Mode == ModeCommand {
-		// A paste is not a keystroke, so a refusal notice from the previous
-		// attempt would otherwise survive it.
+		// A paste is not a keystroke, so this path clears any refusal notice
+		// itself to keep "the notice describes the attempt just made" true
+		// locally.
 		setCommandNotice(m, "")
 		for _, p := range paths {
 			// Inserting a path refreshes the candidate state itself, so the

@@ -289,8 +289,10 @@ func acceptCompletion(m *Model, index int) {
 	m.completionSeg = segment{Index: seg.Index, Prefix: value, Start: seg.Start, End: end}
 	m.completionIndex = index
 	syncGhostSuggestions(m)
-	// The accepted value changes the ghost suggestion, so the row budget has to
-	// follow it. This is deliberately not syncCompletion: that would recompute
+	// The written value changes the row budget by itself, not only through the
+	// ghost suggestion the budget reads off it, and the candidate it reads is the
+	// one syncGhostSuggestions just computed: hence the call has to sit here,
+	// after that sync. It is deliberately not syncCompletion: that would recompute
 	// the candidate list and end the round the user is cycling through.
 	syncCommandInputWidth(m)
 }
