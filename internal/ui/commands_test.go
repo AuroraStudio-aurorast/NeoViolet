@@ -81,9 +81,10 @@ func TestParseInvocationKeepsRawRest(t *testing.T) {
 	}
 }
 
-// lrcSubcommands must cover dispatch completely: every entry resolves through
-// lrcSubcommandLookup and the full subcommand set is present, so a candidate can
-// never describe a subcommand the dispatcher would reject.
+// lrcSubcommands must cover dispatch completely: every entry is complete and
+// uniquely named, the full subcommand set is present, and an unknown name is
+// rejected. Reaching the handler is covered end to end by the
+// TestExecuteCommandLrc* cases below, which execute real subcommands.
 func TestLrcSubcommandTable(t *testing.T) {
 	if len(lrcSubcommands) != 7 {
 		t.Fatalf("lrcSubcommands has %d entries, want 7", len(lrcSubcommands))
@@ -97,14 +98,14 @@ func TestLrcSubcommandTable(t *testing.T) {
 			t.Errorf("duplicate subcommand %q", sub.Name)
 		}
 		seen[sub.Name] = true
-		if _, ok := lrcSubcommandLookup(sub.Name); !ok {
-			t.Errorf("lrcSubcommandLookup(%q) not found", sub.Name)
-		}
 	}
 	for _, want := range []string{"on", "off", "switch", "refresh", "agent", "desktop", "panel"} {
 		if !seen[want] {
 			t.Errorf("subcommand %q missing from the table", want)
 		}
+	}
+	if _, ok := lrcSubcommandLookup("nope"); ok {
+		t.Error("lrcSubcommandLookup(nope) = ok, want false")
 	}
 }
 
@@ -147,8 +148,10 @@ func TestCommandInputSuggestionWiring(t *testing.T) {
 	}
 }
 
-// An empty input must not leave a match-everything suggestion list:
-// textinput's prefix match is true for the empty string.
+// An empty input must not leave stale matches behind: textinput keeps
+// matchedSuggestions across Reset/SetValue and only recomputes them from the
+// list it already holds, so a leftover entry would make <tab> complete a
+// command the user never typed.
 func TestSyncCompletionClearsEmptyInput(t *testing.T) {
 	m := setupModel()
 	ti := &m.Components.CommandInput
@@ -210,5 +213,53 @@ func TestGhostTextAppearsWhileTyping(t *testing.T) {
 	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
 	if got := updated.(*Model).Components.CommandInput.Value(); got != "vol" {
 		t.Errorf("value after tab = %q, want \"vol\"", got)
+	}
+}
+
+func TestExecuteCommandLrcAgentReportsFilter(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc agent")
+	executeCommand(m)
+	if got := m.Info.Message; got != "Lyrics agent filter: all" {
+		t.Errorf("Info = %q, want %q", got, "Lyrics agent filter: all")
+	}
+}
+
+func TestExecuteCommandLrcAgentWithoutLyrics(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc agent someagent")
+	executeCommand(m)
+	if got := m.Error.Message; got != "No lyrics loaded" {
+		t.Errorf("Error = %q, want %q", got, "No lyrics loaded")
+	}
+}
+
+func TestExecuteCommandLrcDesktopToggles(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc desktop")
+	executeCommand(m)
+	if !m.DesktopLyricsEnabled {
+		t.Error("DesktopLyricsEnabled = false, want true")
+	}
+	if got := m.Info.Message; got != "Desktop lyrics: enabled" {
+		t.Errorf("Info = %q, want %q", got, "Desktop lyrics: enabled")
+	}
+
+	setCommand(m, "lrc desktop")
+	executeCommand(m)
+	if m.DesktopLyricsEnabled {
+		t.Error("DesktopLyricsEnabled = true, want false")
+	}
+	if got := m.Info.Message; got != "Desktop lyrics: disabled" {
+		t.Errorf("Info = %q, want %q", got, "Desktop lyrics: disabled")
+	}
+}
+
+func TestExecuteCommandLrcRefreshWithoutAudio(t *testing.T) {
+	m := setupModel()
+	setCommand(m, "lrc refresh")
+	executeCommand(m)
+	if got := m.Error.Message; got != "No audio loaded" {
+		t.Errorf("Error = %q, want %q", got, "No audio loaded")
 	}
 }
