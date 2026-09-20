@@ -17,9 +17,10 @@ func handleToggle(_ objc.ID, _ objc.SEL, _ objc.ID) int32 { return sendCmd(CmdPl
 func handleNext(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdNext) }
 func handlePrev(_ objc.ID, _ objc.SEL, _ objc.ID) int32   { return sendCmd(CmdPrev) }
 
-// skipIntervalSeconds is both the interval advertised on the skip buttons — which
-// the system draws as goforward.10 / gobackward.10 — and the distance used when a
-// skip event arrives without one.
+// skipIntervalSeconds is both the interval advertised on the skip buttons and the
+// distance used when a skip event arrives without one. The app cannot name a
+// symbol: the system picks the glyph and derives the badge it draws from this
+// number, so the two must not be changed independently.
 const skipIntervalSeconds = 10.0
 
 func handleSkipForward(_ objc.ID, _ objc.SEL, event objc.ID) int32  { return sendSkip(event, 1) }
