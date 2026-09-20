@@ -447,6 +447,10 @@ func TestCJKValueKeepsTheRowWidth(t *testing.T) {
 	m.Components.CommandInput.SetValue(strings.Repeat("歌", 60))
 	m.Components.CommandInput.SetCursor(60)
 	syncCompletion(m)
+	// Equality assertions like this one cannot see a row that is too wide: the
+	// clamp only trims (x/ansi returns a fitting string unchanged), so an
+	// over-wide row is normalised back to UI.Width. Pinning that needs a
+	// non-width metric, such as the "content survived" row-tail assertion above.
 	if got := lipgloss.Width(renderCommandLine(m)); got != m.UI.Width {
 		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
 	}
@@ -465,12 +469,14 @@ func TestEmojiValueKeepsTheFrameHeight(t *testing.T) {
 	m.Components.CommandInput.SetValue(strings.Repeat("❤️", 45))
 	m.Components.CommandInput.SetCursor(len([]rune(m.Components.CommandInput.Value())))
 	syncCompletion(m)
+	// Frame height first: the case is named for it, and the width assertion below
+	// would otherwise return before the frame was ever measured.
+	if got := lipgloss.Height(renderMainView(m).Content); got != m.UI.Height {
+		t.Fatalf("frame height = %d, want %d", got, m.UI.Height)
+	}
 	row := renderCommandLine(m)
 	if got := lipgloss.Width(row); got > m.UI.Width {
 		t.Fatalf("command row width = %d, want <= %d", got, m.UI.Width)
-	}
-	if got := lipgloss.Height(renderMainView(m).Content); got != m.UI.Height {
-		t.Fatalf("frame height = %d, want %d", got, m.UI.Height)
 	}
 }
 
@@ -500,7 +506,7 @@ func TestWidthSyncKeepsTheCursorWhenTheLineNarrows(t *testing.T) {
 	}
 	// Suffix, not substring: the clamp trims the row's tail, so an input that kept
 	// its old window shows up as a notice that is no longer at the end of the row
-	// (the row width itself stays correct because the clamp pads or trims it).
+	// (the row width itself stays correct because the clamp trims the tail).
 	if !strings.HasSuffix(stripANSI(renderCommandLine(m)), "256/256") {
 		t.Fatalf("command row %q lost the notice: the input kept its old window", renderCommandLine(m))
 	}
@@ -519,7 +525,7 @@ func TestAcceptingACandidateResyncsTheWidth(t *testing.T) {
 	m = nm.(*Model)
 	ti := &m.Components.CommandInput
 	if before == ti.Width() {
-		t.Fatalf("fixture cannot discriminate: width stayed %d across acceptance", before)
+		t.Fatalf("fixture cannot discriminate, or the acceptance did not resync: width stayed %d across acceptance", before)
 	}
 	want, _, _ := commandLineLayout(ti.Value(), ti.CurrentSuggestion(),
 		ti.Position() >= len([]rune(ti.Value())), commandNotice(m), m.UI.Width-1)
