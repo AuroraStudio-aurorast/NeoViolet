@@ -133,8 +133,8 @@ func pathFromFileURI(uri string) (string, bool) {
 }
 
 // unescapeBackslashes turns the escapes shells and terminals add for spaces,
-// backslashes and quotes into their literal characters. Any other backslash
-// sequence is left alone so ordinary file names survive.
+// backslashes and single or double quotes into their literal characters. Any
+// other backslash sequence is left alone so ordinary file names survive.
 func unescapeBackslashes(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s
@@ -143,7 +143,7 @@ func unescapeBackslashes(s string) string {
 	b.Grow(len(s))
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\\' && i+1 < len(s) {
-			if c := s[i+1]; c == ' ' || c == '\\' || c == '\'' {
+			if c := s[i+1]; c == ' ' || c == '\\' || c == '\'' || c == '"' {
 				i++
 			}
 		}

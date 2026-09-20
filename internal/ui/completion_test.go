@@ -471,7 +471,10 @@ func TestEnterWithAPassiveListRunsTheLiteralText(t *testing.T) {
 	if m.panelMode == first {
 		t.Errorf("panelMode = %q, want it untouched: enter must not apply a candidate", m.panelMode)
 	}
-	if got := m.CommandHistory[len(m.CommandHistory)-1]; len(m.CommandHistory) == 0 || got != "lrc panel o" {
+	if len(m.CommandHistory) == 0 {
+		t.Fatal("no command history: the literal text was never recorded")
+	}
+	if got := m.CommandHistory[len(m.CommandHistory)-1]; got != "lrc panel o" {
 		t.Errorf("history = %q, want the literal text as the last entry", m.CommandHistory)
 	}
 }

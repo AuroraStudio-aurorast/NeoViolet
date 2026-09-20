@@ -29,6 +29,13 @@ func TestNormalizeDrop(t *testing.T) {
 		t.Fatal(err)
 	}
 	escapedCJK := escapeDropped(cjk)
+	// A name containing a double quote: the payload escapes it as \", so the
+	// escape has to come off again to reach the file that is on disk.
+	quotedQuote := filepath.Join(dir, `a"b.mp3`)
+	if err := os.WriteFile(quotedQuote, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	escapedQuote := escapeDropped(strings.Replace(quotedQuote, `"`, `\"`, 1))
 
 	for _, tc := range []struct {
 		name  string
@@ -49,6 +56,7 @@ func TestNormalizeDrop(t *testing.T) {
 		// An escaped space belongs to the name, a bare one separates two paths.
 		{"escaped space then second file", escaped + " " + filepath.Join(dir, "b.mp3"), []string{spaced, filepath.Join(dir, "b.mp3")}},
 		{"escaped CJK space, file exists", escapedCJK, []string{cjk}},
+		{"escaped double quote, file exists", escapedQuote, []string{quotedQuote}},
 		{"multiple files", "/tmp/a.mp3\n/tmp/b.mp3", []string{"/tmp/a.mp3", "/tmp/b.mp3"}},
 		{"multiple with spaces", "/tmp/a.mp3   /tmp/b.mp3", []string{"/tmp/a.mp3", "/tmp/b.mp3"}},
 		{"empty payload", "   ", nil},
