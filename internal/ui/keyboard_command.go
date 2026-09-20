@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -91,145 +90,16 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	}
 	m.historyIndex = len(m.CommandHistory)
 
-	parts := strings.Fields(cmdText)
-	if len(parts) == 0 {
+	inv, ok := parseInvocation(cmdText)
+	if !ok {
 		return m, nil
 	}
-
-	cmd := parts[0]
-	var arg string
-	if len(parts) > 1 {
-		arg = parts[1]
-	}
-
-	switch cmd {
-	case "w", "save":
-		m.Config.DefaultVolume = m.Audio.Volume
-		if err := m.Config.Save(); err != nil {
-			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
-		}
-		return m, nil
-
-	case "wq":
-		// Save config then quit gracefully.
-		// In GUI mode, signal the wrapper to quit immediately (no dialog).
-		m.Config.DefaultVolume = m.Audio.Volume
-		if err := m.Config.Save(); err != nil {
-			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
-		}
-		if m.isGUI() {
-			f := false
-			_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
-		}
-		m.cleanup()
-		return m, tea.Quit
-
-	case "quit", "q":
-		// In GUI mode, request confirmation via the wrapper's close dialog
-		// instead of quitting immediately. The wrapper may deny the quit
-		// and keep the TUI running.
-		if m.isGUI() {
-			t := true
-			_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &t})
-			return m, nil
-		}
-		// Graceful quit with cleanup
-		m.cleanup()
-		return m, tea.Quit
-
-	case "quit!", "q!", "wq!":
-		// Force quit: no cleanup, exit with error code 1
-		m.ExitCode = 1
-		return m, tea.Quit
-
-	case "p":
-		m.togglePlayback()
-		return m, nil
-
-	case "vol":
-		if arg == "" {
-			m.Error.Set("Usage: vol <0.0-1.0>", m.Config.Error.Duration)
-			return m, nil
-		}
-		vol, err := strconv.ParseFloat(arg, 64)
-		if err != nil || vol < 0 || vol > 1.0 {
-			m.Error.Set("Volume must be 0.0-1.0", m.Config.Error.Duration)
-			return m, nil
-		}
-		vol = math.Round(vol*100) / 100
-		m.Audio.Volume = vol
-		if m.Audio.Player != nil {
-			m.Audio.Player.SetVolume(vol)
-		}
-		m.Components.VolumeBar.SetPercent(vol)
-		m.saveVolumeConfig()
-		return m, nil
-
-	case "seek":
-		if m.Audio.Player == nil {
-			m.Error.Set("No audio loaded", m.Config.Error.Duration)
-			return m, nil
-		}
-		if arg == "" {
-			m.Error.Set("Usage: seek <seconds>, seek <mm:ss>, seek <hh:mm:ss>, seek +<offset>, seek -<offset>", m.Config.Error.Duration)
-			return m, nil
-		}
-
-		switch {
-		case strings.HasPrefix(arg, "+") || strings.HasPrefix(arg, "-"):
-			rel, err := strconv.ParseFloat(arg, 64)
-			if err != nil {
-				m.Error.Set("Invalid seek offset", m.Config.Error.Duration)
-				return m, nil
-			}
-			m.Audio.SeekRelative(time.Duration(rel * float64(time.Second)))
-		case strings.Contains(arg, ":"):
-			pos, err := parseClockTime(arg)
-			if err != nil {
-				m.Error.Set(err.Error(), m.Config.Error.Duration)
-				return m, nil
-			}
-			if m.Audio.Duration > 0 && pos > m.Audio.Duration {
-				pos = m.Audio.Duration
-			}
-			_ = m.Audio.SeekPlayer(pos)
-		default:
-			seconds, err := strconv.ParseFloat(arg, 64)
-			if err != nil {
-				m.Error.Set("Invalid seek position", m.Config.Error.Duration)
-				return m, nil
-			}
-			newPos := time.Duration(seconds * float64(time.Second))
-			if newPos < 0 {
-				newPos = 0
-			}
-			if m.Audio.Duration > 0 && newPos > m.Audio.Duration {
-				newPos = m.Audio.Duration
-			}
-			_ = m.Audio.SeekPlayer(newPos)
-		}
-		return m, nil
-
-	case "lrc", "lyric", "lyrics":
-		return executeLrcCommand(m, parts)
-
-	case "open", "load", "e":
-		if len(parts) < 2 {
-			m.Error.Set("Usage: open <path>", m.Config.Error.Duration)
-			return m, nil
-		}
-		// Join remaining parts to support paths with spaces
-		path := strings.Join(parts[1:], " ")
-		if !isValidAudioPath(path) {
-			m.Error.Set("Invalid or unsupported audio file: "+path, m.Config.Error.Duration)
-			return m, nil
-		}
-		return handleLoadTrack(m, LoadTrackMsg{Path: path})
-
-	default:
+	spec, ok := commandLookup(inv.Name)
+	if !ok {
 		m.Error.Set(fmt.Sprintf("Unknown command: %s", cmdText), m.Config.Error.Duration)
 		return m, nil
 	}
+	return spec.Run(m, inv)
 }
 
 // parseClockTime parses a "mm:ss" or "hh:mm:ss" clock string into a duration.
