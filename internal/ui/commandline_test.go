@@ -178,6 +178,29 @@ func TestRenderCommandLineShowsEllipsisWhenTheValueDoesNotFit(t *testing.T) {
 	}
 }
 
+func TestCommandRowRendersBothEllipsesInTheDefaultColour(t *testing.T) {
+	// Both ellipses belong to the terminal's default colour, so neither may sit
+	// inside a styled span. The probe fixture is 93 cells wide with the cursor at
+	// the start: that makes both edges cut, which is what puts the two ellipses
+	// on screen at the same time.
+	var b strings.Builder
+	for i := 0; i <= 30; i++ {
+		fmt.Fprintf(&b, "%03d", i)
+	}
+	m := commandModeModel(t, b.String())
+	ti := &m.Components.CommandInput
+	ti.SetCursor(0)
+	syncCommandInputWidth(m)
+
+	row := renderCommandLine(m)
+	if !strings.Contains(row, inputStyle.Render(m.Icons.Command)+"…") {
+		t.Fatalf("the left ellipsis is inside the command style: %q", row)
+	}
+	if !strings.HasSuffix(row, inputStyle.Render(ti.View())+"…") {
+		t.Fatalf("the right ellipsis is inside the input style: %q", row)
+	}
+}
+
 func TestRenderCommandLineDropsTheNoticeWhenItCannotFit(t *testing.T) {
 	m := commandModeModel(t, "abc")
 	m.UI.Width = 8

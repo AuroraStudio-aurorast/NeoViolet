@@ -102,6 +102,9 @@ func setCommandNotice(m *Model, text string) {
 
 // renderCommandLine assembles the whole command row: the prompt, the two
 // optional edge ellipses, the input itself, and the right-hand notice.
+//
+// Only the prompt and the input carry the command style. The ellipses stay
+// outside it, so they render in the terminal's default colour.
 func renderCommandLine(m *Model) string {
 	ti := &m.Components.CommandInput
 	value := ti.Value()
@@ -109,12 +112,12 @@ func renderCommandLine(m *Model) string {
 	_, showLeft, showRight, showNotice := commandLineLayout(
 		value, ti.CurrentSuggestion(), ti.Position(), notice, m.UI.Width-1)
 
-	row := m.Icons.Command
+	row := inputStyle.Render(m.Icons.Command)
 	if showLeft {
 		// A width proxy: this can show even when nothing was cut on the left.
 		row += "…"
 	}
-	row += ti.View()
+	row += inputStyle.Render(ti.View())
 	if showRight {
 		// A width proxy as well: it reports the tail the window cannot hold.
 		row += "…"
@@ -123,7 +126,9 @@ func renderCommandLine(m *Model) string {
 		// The leading space is the separator the budget reserved a cell for.
 		row += commandNoticeStyle.Render(" " + notice)
 	}
-	return inputStyle.Render(clampRowWidth(row, m.UI.Width))
+	// The clamp is the last step, once every span is closed: it only trims the
+	// tail, and trimming keeps the escape sequences that follow the cut.
+	return clampRowWidth(row, m.UI.Width)
 }
 
 // clampRowWidth trims an over-wide row down to width cells. It is the safety net
@@ -135,7 +140,8 @@ func clampRowWidth(row string, width int) string {
 }
 
 // syncCommandInputWidth recomputes the input width from the current value,
-// suggestion, cursor and notice, and pushes it into the textinput.
+// suggestion, cursor and notice, and pushes it into the textinput. The layout and
+// the render must both see the same cursor, so the position is read once here.
 //
 // bubbles does not recompute its window when only the width changes, so the
 // cursor is pushed to the end (which always takes the recompute branch) and
