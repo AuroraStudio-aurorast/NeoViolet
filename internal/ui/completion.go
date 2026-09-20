@@ -129,10 +129,16 @@ func candidatesFor(ctx completionContext) []candidate {
 		return filterCandidates(commandCandidates(), ctx.Seg.Prefix)
 	case 1:
 		spec, ok := commandLookup(ctx.Before[0])
-		if !ok || spec.Name != "lrc" {
+		if !ok {
 			return nil
 		}
-		return filterCandidates(lrcSubcommandCandidates(), ctx.Seg.Prefix)
+		switch spec.Name {
+		case "lrc":
+			return filterCandidates(lrcSubcommandCandidates(), ctx.Seg.Prefix)
+		case "open":
+			return pathCandidates(ctx.Seg.Prefix)
+		}
+		return nil
 	case 2:
 		spec, ok := commandLookup(ctx.Before[0])
 		if !ok || spec.Name != "lrc" {
