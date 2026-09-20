@@ -112,7 +112,7 @@ func TestInsertPathAtCursor(t *testing.T) {
 	if got := ti.Value(); got != "open /a/My File.mp3" {
 		t.Fatalf("value = %q", got)
 	}
-	if got := ti.Position(); got != len("open /a/My File.mp3") {
+	if got := ti.Position(); got != len([]rune("open /a/My File.mp3")) {
 		t.Errorf("cursor = %d, want the end of the inserted path", got)
 	}
 }
@@ -212,5 +212,31 @@ func TestInsertPathAtCursorRespectsCharLimit(t *testing.T) {
 	insertPathAtCursor(m, long)
 	if got := ti.Value(); got != "open /a.mp3" {
 		t.Errorf("value changed to %q, want it untouched", got)
+	}
+}
+
+// A line that is nearly full must not be overfilled either: the guard counts the
+// text already on the line, so the insert is refused outright rather than letting
+// bubbles truncate the path to the limit and leave a name that does not exist.
+// The path on its own stays far below the limit, which is what makes this case
+// different from the over-long path above.
+func TestInsertPathAtCursorRefusesToOverflowTheLine(t *testing.T) {
+	m := setupModel()
+	m.UI.Mode = ModeCommand
+	ti := &m.Components.CommandInput
+	// Six runes short of the limit; the separating space and the ten runes of path
+	// pushed in below take the result past it.
+	full := strings.Repeat("a", ti.CharLimit-6)
+	ti.SetValue(full)
+	ti.CursorEnd()
+
+	insertPathAtCursor(m, strings.Repeat("b", 10))
+
+	if got := ti.Value(); got != full {
+		t.Fatalf("value has %d runes, want %d runes: the line was overfilled and truncated",
+			len([]rune(got)), len([]rune(full)))
+	}
+	if got := ti.Position(); got != ti.CharLimit-6 {
+		t.Errorf("cursor = %d, want %d", got, ti.CharLimit-6)
 	}
 }
