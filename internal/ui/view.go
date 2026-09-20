@@ -324,8 +324,9 @@ func overlayCompletion(m *Model, plan layoutPlan, content string, rows int) stri
 
 // completionRow renders one row, padded to avail. Three tiers:
 // value plus description, value only, then a compacted value. The marker is
-// part of the row, so a wider value or description is cut by the canvas when
-// the tier check does not budget for it.
+// part of the row, so the tier checks budget for it: every row comes out
+// exactly avail wide, which is what keeps the composited block the same size as
+// the content block underneath it.
 func completionRow(cand candidate, selected bool, avail int) string {
 	value, desc := cand.Value, cand.Desc
 	budget := avail - markerWidth
