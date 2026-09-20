@@ -91,7 +91,9 @@ var (
 	selSetPlaybackState      objc.SEL
 	selSharedCommandCenter   objc.SEL
 	selAddTargetAction       objc.SEL
+	selRemoveTarget          objc.SEL
 	selSetPreferredIntervals objc.SEL
+	selInterval              objc.SEL
 
 	selDataWithBytes objc.SEL
 	selInitWithData  objc.SEL
@@ -108,6 +110,7 @@ var (
 	_handlerSels = struct {
 		play, pause, stop, toggle objc.SEL
 		next, prev, changePos     objc.SEL
+		skipBackward, skipForward objc.SEL
 		sleep, wake               objc.SEL
 	}{}
 
@@ -206,7 +209,9 @@ func registerObjCRuntime() error {
 	selSetPlaybackState = objc.RegisterName("setPlaybackState:")
 	selSharedCommandCenter = objc.RegisterName("sharedCommandCenter")
 	selAddTargetAction = objc.RegisterName("addTarget:action:")
+	selRemoveTarget = objc.RegisterName("removeTarget:")
 	selSetPreferredIntervals = objc.RegisterName("setPreferredIntervals:")
+	selInterval = objc.RegisterName("interval")
 
 	selDataWithBytes = objc.RegisterName("dataWithBytes:length:")
 	selInitWithData = objc.RegisterName("initWithData:")
@@ -229,6 +234,8 @@ func registerObjCRuntime() error {
 	_handlerSels.next = objc.RegisterName("handleNextTrackCommand:")
 	_handlerSels.prev = objc.RegisterName("handlePreviousTrackCommand:")
 	_handlerSels.changePos = objc.RegisterName("handleChangePlaybackPositionCommand:")
+	_handlerSels.skipBackward = objc.RegisterName("handleSkipBackwardCommand:")
+	_handlerSels.skipForward = objc.RegisterName("handleSkipForwardCommand:")
 	_handlerSels.sleep = objc.RegisterName("handleWillSleepOrPowerOff:")
 	_handlerSels.wake = objc.RegisterName("handleDidWake:")
 
@@ -262,6 +269,8 @@ func registerObjCRuntime() error {
 			{Cmd: _handlerSels.next, Fn: handleNext},
 			{Cmd: _handlerSels.prev, Fn: handlePrev},
 			{Cmd: _handlerSels.changePos, Fn: handleChangePos},
+			{Cmd: _handlerSels.skipBackward, Fn: handleSkipBackward},
+			{Cmd: _handlerSels.skipForward, Fn: handleSkipForward},
 			{Cmd: _handlerSels.sleep, Fn: handleSleep},
 			{Cmd: _handlerSels.wake, Fn: handleWake},
 		},
@@ -426,6 +435,14 @@ func (c *darwinCtrl) Close() error {
 		close(c.cmdChan)
 	}
 	if c.handler != 0 {
+		// Detach before releasing. addTarget:action: does not retain the target,
+		// so a handler freed while the shared command center still lists it leaves
+		// the next media key messaging a dead object.
+		if c.remoteCmd != 0 {
+			for _, p := range remoteCommandHandlers() {
+				c.remoteCmd.Send(p.cmd).Send(selRemoveTarget, c.handler)
+			}
+		}
 		c.handler.Send(selRelease)
 	}
 	if c.coverArtwork != 0 {

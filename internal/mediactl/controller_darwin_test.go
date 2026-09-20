@@ -51,3 +51,54 @@ func TestSetup(t *testing.T) {
 		t.Fatalf("second setup() error: %v", err)
 	}
 }
+
+// TestCloseDetachesCommandTargets guards the dangling-target crash. The command
+// center holds targets without retaining them, so a handler freed while the shared
+// center still lists it leaves the next media key messaging freed memory.
+//
+// The count comes from the command's own handler table, which is private: the
+// framework offers no way to ask what it holds. It is read the same way the
+// framework reads it, and the test skips rather than fails if a later macOS moves
+// the ivar, so a rename surfaces as a skip instead of a false alarm.
+func TestCloseDetachesCommandTargets(t *testing.T) {
+	if err := setup(); err != nil {
+		t.Fatalf("setup() error: %v", err)
+	}
+
+	center := objc.ID(classMPRemoteCommandCenter).Send(selSharedCommandCenter)
+	play := center.Send(_cmdSels.play)
+	handlers := play.Class().InstanceVariable("_handlers")
+	if handlers == 0 {
+		t.Skip("MPRemoteCommand has no _handlers ivar to read on this macOS")
+	}
+
+	selCount := objc.RegisterName("count")
+	listed := func() uintptr { return uintptr(play.GetIvar(handlers).Send(selCount)) }
+
+	before := listed()
+
+	c := &darwinCtrl{remoteCmd: center}
+	autoPool(func() {
+		c.handler = objc.ID(classMPRemoteCommandHandler).Send(selNew)
+		c.registerCommands()
+	})
+	if got := listed(); got != before+1 {
+		t.Fatalf("registerCommands added %d handler(s), want 1", got-before)
+	}
+
+	if err := c.Close(); err != nil {
+		t.Fatalf("Close() error: %v", err)
+	}
+	if got := listed(); got != before {
+		t.Errorf("the command still lists %d handler(s) after Close, want %d — the released handler is left dangling", got, before)
+	}
+
+	// Close is documented as idempotent, and the second call must not detach or
+	// release anything a second time.
+	if err := c.Close(); err != nil {
+		t.Errorf("second Close() error: %v", err)
+	}
+	if got := listed(); got != before {
+		t.Errorf("second Close left %d handler(s), want %d", got, before)
+	}
+}
