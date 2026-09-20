@@ -260,9 +260,10 @@ func syncCompletion(m *Model) {
 // against what the user typed, and further tabs walk that round's candidates,
 // each press replacing the text the previous one wrote: completing a directory
 // must not swap the listing under the user's fingers. Only syncCompletion
-// recomputes everything, and it runs after every input change: for the keys
-// command mode handles itself (esc, up/down history, enter) as well as for
-// keystrokes that reach textinput.
+// recomputes everything; it runs for the keys command mode handles itself (esc,
+// up/down history, enter) and for every keystroke that reaches textinput. The
+// completion keys (tab, ctrl+n, ctrl+p) deliberately bypass it to keep the round
+// open, so they re-sync the command input width here instead.
 func acceptCompletion(m *Model, index int) {
 	if index < 0 || index >= len(m.completionCandidates) {
 		return
@@ -277,6 +278,7 @@ func acceptCompletion(m *Model, index int) {
 
 	updated := string(runes[:seg.Start]) + value + string(runes[seg.End:])
 	if len([]rune(updated)) > ti.CharLimit {
+		setCommandNotice(m, "too long")
 		return // never truncate silently: leave the input untouched
 	}
 	ti.SetValue(updated)
@@ -287,6 +289,10 @@ func acceptCompletion(m *Model, index int) {
 	m.completionSeg = segment{Index: seg.Index, Prefix: value, Start: seg.Start, End: end}
 	m.completionIndex = index
 	syncGhostSuggestions(m)
+	// The accepted value changes the ghost suggestion, so the row budget has to
+	// follow it. This is deliberately not syncCompletion: that would recompute
+	// the candidate list and end the round the user is cycling through.
+	syncCommandInputWidth(m)
 }
 
 // cycleCompletion moves the selection and writes it into the input line. delta

@@ -259,8 +259,9 @@ func TestSyncCompletionResyncsTheWidthWhenTheLineEmpties(t *testing.T) {
 	if got := lipgloss.Width(renderCommandLine(m)); got != m.UI.Width {
 		t.Fatalf("row width with a notice = %d, want %d", got, m.UI.Width)
 	}
-	// Leaving command mode clears the notice through syncCompletion's early
-	// return path, which must still restore the unsplit width.
+	// Leaving command mode drops the notice through setCommandNotice, which syncs
+	// the width itself, so on its own this case cannot show that the sync before
+	// syncCompletion's early return is load-bearing. The history case below does.
 	nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = nm.(*Model)
 	if m.UI.CommandNotice != "" {
@@ -268,6 +269,26 @@ func TestSyncCompletionResyncsTheWidthWhenTheLineEmpties(t *testing.T) {
 	}
 	if got, want := m.Components.CommandInput.Width(), m.UI.Width-2; got != want {
 		t.Fatalf("CommandInput.Width() = %d, want %d", got, want)
+	}
+}
+
+func TestLineEmptiedByHistoryRestoresTheUnsplitWidth(t *testing.T) {
+	// "down" past the last history entry resets the line and writes no notice, so
+	// only the width sync sitting before syncCompletion's early return can restore
+	// the unsplit width: moving that sync below the early return leaves every
+	// other width test green.
+	m := commandModeModel(t, strings.Repeat("x", 120))
+	if got := m.Components.CommandInput.Width(); got == m.UI.Width-2 {
+		t.Fatalf("setup: width is already unsplit (%d), so the case cannot discriminate", got)
+	}
+
+	nm, _ := updateDispatcher(m, tea.KeyPressMsg{Code: tea.KeyDown})
+	m = nm.(*Model)
+	if got := m.Components.CommandInput.Value(); got != "" {
+		t.Fatalf("the line was not emptied: %q", got)
+	}
+	if got, want := m.Components.CommandInput.Width(), m.UI.Width-2; got != want {
+		t.Fatalf("CommandInput.Width() = %d, want %d after the line emptied", got, want)
 	}
 }
 
@@ -291,5 +312,77 @@ func TestNoticeLeavesEveryOtherRowUntouched(t *testing.T) {
 	}
 	if plainRows[len(plainRows)-1] == noticeRows[len(noticeRows)-1] {
 		t.Fatal("the command row is identical with and without a notice")
+	}
+}
+
+func TestRefusedInsertionShowsTheNotice(t *testing.T) {
+	m := commandModeModel(t, "o") // a command-name prefix, so ghost text is on screen
+	// A fresh model still carries NewModel's default tab width, which wraps the
+	// tab row and makes the frame taller than UI.Height. Resize once so the
+	// frame-height assertion below measures the geometry a real terminal gives.
+	sized, _ := updateDispatcher(m, tea.WindowSizeMsg{Width: m.UI.Width, Height: m.UI.Height})
+	m = sized.(*Model)
+	m.Components.CommandInput.SetCursor(0)
+	syncCompletion(m)
+	before := m.Components.CommandInput.Value()
+	nm, _ := updateDispatcher(m, tea.PasteMsg{Content: "/" + strings.Repeat("x", 300)})
+	m = nm.(*Model)
+	if got := m.Components.CommandInput.Value(); got != before {
+		t.Fatalf("value = %q, want it unchanged (%q)", got, before)
+	}
+	row := renderCommandLine(m)
+	if !strings.Contains(row, "too long") {
+		t.Fatalf("command row %q does not show the refusal notice", row)
+	}
+	if got := lipgloss.Width(row); got != m.UI.Width {
+		t.Fatalf("command row width = %d, want %d", got, m.UI.Width)
+	}
+	if got := lipgloss.Height(renderMainView(m).Content); got != m.UI.Height {
+		t.Fatalf("frame height = %d, want %d", got, m.UI.Height)
+	}
+}
+
+func TestInsertionClearsTheNotice(t *testing.T) {
+	m := commandModeModel(t, "")
+	setCommandNotice(m, "too long")
+	nm, _ := updateDispatcher(m, tea.PasteMsg{Content: "/tmp/short.mp3"})
+	m = nm.(*Model)
+	if m.UI.CommandNotice != "" {
+		t.Fatalf("CommandNotice = %q, want empty after a successful insertion", m.UI.CommandNotice)
+	}
+}
+
+// The clear this case really pins is the one on a successful insertion, not
+// handlePaste's own entry clear: the refusal writes the very same notice text,
+// so the entry clear is unobservable with the current writers.
+func TestPasteClearsAStaleNoticeWhenTheFirstPathIsRefused(t *testing.T) {
+	m := commandModeModel(t, "")
+	long := "/" + strings.Repeat("x", 300)
+	nm, _ := updateDispatcher(m, tea.PasteMsg{Content: long + " /tmp/short.mp3"})
+	m = nm.(*Model)
+	if m.UI.CommandNotice != "" {
+		t.Fatalf("CommandNotice = %q, want empty: a later path was inserted", m.UI.CommandNotice)
+	}
+}
+
+func TestAcceptCompletionRefusedAtTheLimitShowsTheNotice(t *testing.T) {
+	m := commandModeModel(t, "open ")
+	m.Components.CommandInput.SetValue("open " + strings.Repeat("a", m.Components.CommandInput.CharLimit-6))
+	m.Components.CommandInput.SetCursor(len([]rune(m.Components.CommandInput.Value())))
+	syncCompletion(m)
+	before := m.Components.CommandInput.Value()
+	// A candidate long enough to overflow the line: no real directory entry can
+	// reach the limit from this fixture, and without one the refusal branch below
+	// is unreachable. The same injection the acceptCompletion overflow test uses.
+	m.completionCandidates = []candidate{{Value: strings.Repeat("a", m.Components.CommandInput.CharLimit+4), Path: true}}
+	acceptCompletion(m, 0)
+	if got := m.Components.CommandInput.Value(); got != before {
+		t.Fatalf("value = %q, want it unchanged", got)
+	}
+	if m.UI.CommandNotice != "too long" {
+		t.Fatalf("CommandNotice = %q, want %q", m.UI.CommandNotice, "too long")
+	}
+	if row := renderCommandLine(m); !strings.Contains(row, "too long") {
+		t.Fatalf("command row %q does not show the refusal notice", row)
 	}
 }
