@@ -2,8 +2,8 @@
 //!
 //! App-level open events arrive as URLs through `Application::on_open_urls()`, which
 //! GPUI dispatches on macOS. In-window drag-and-drop does **not** go through this
-//! module: GPUI delivers `FileDropEvent` straight to `NeoVioletApp`, which pastes the
-//! paths into the running PTY.
+//! module: GPUI delivers it to the root element's `on_drop` handler, which pastes
+//! the paths into the running PTY.
 //!
 //! This module extracts paths from those URLs. They are queued in
 //! `AppState::pending_file_paths`: the cold start consumes the queue as its argv

@@ -137,7 +137,7 @@ pub(crate) fn send_paths(cx: &mut App, child: &Entity<TerminalApp>, paths: &[Str
         )
     };
     if !should_paste(&status, show_exit_error, show_close, show_about) {
-        log::info!(
+        log::warn!(
             "[drag-drop] dropping {} file(s): no PTY to paste into (status: {status:?}, dialogs: exit_error={show_exit_error} close={show_close} about={show_about})",
             paths.len()
         );
