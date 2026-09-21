@@ -121,7 +121,7 @@ pub fn launch_args_for(paths: &[String]) -> Vec<String> {
 }
 
 /// Hand `paths` to the running PTY as one bracketed paste, if it may be written
-/// to. Silent on refusal: nothing to paste into means nothing to report.
+/// to. A refusal (nothing to paste into) is logged as a warning.
 pub(crate) fn send_paths(cx: &mut App, child: &Entity<TerminalApp>, paths: &[String]) {
     if paths.is_empty() {
         return;
