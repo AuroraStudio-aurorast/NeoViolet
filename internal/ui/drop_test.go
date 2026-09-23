@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -381,5 +382,63 @@ func TestNormalizeDropKeepsDoubledSpacesInTheName(t *testing.T) {
 	if !m.Loading || !m.switchingTrack || cmd == nil {
 		t.Errorf("Loading = %v, switchingTrack = %v, cmd = %v; want the doubled-space file to load",
 			m.Loading, m.switchingTrack, cmd)
+	}
+}
+
+// escapeForDrop mirrors the GUI's escape_for_drop (tools/neoviolet-gui/src/
+// drop_paste.rs). It is kept here, not imported, because the TUI must not
+// depend on the GUI — but the copy is covered by the same review that keeps
+// README's lyrics table in step: the contract test below fails when the two
+// programs' escape sets drift apart.
+func escapeForDrop(path string) string {
+	var b strings.Builder
+	for _, r := range path {
+		if strings.ContainsRune(" \\'\"\u201c\u201d\u2018\u2019", r) || unicode.IsSpace(r) {
+			b.WriteRune('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// A GUI-escaped payload must round-trip to the original name even when the
+// file no longer exists on disk (delete-just-before-drop, or the payload
+// replayed later). unescapeBackslashes is the exact inverse of escapeForDrop,
+// so the de-escaped candidate has to win without any disk tie-break.
+func TestNormalizeDropRoundTripsGUIEscapes(t *testing.T) {
+	for _, name := range []string{
+		"my song.mp3",
+		`a\b.mp3`,
+		"it's.mp3",
+		`a"b.mp3`,
+		"quoth\u201c.mp3",
+		"quoth\u201d.mp3",
+		"left\u2018right.mp3",
+		"left\u2019right.mp3",
+		"left\u00a0right.mp3", // NBSP — a splitter separator if unescaped
+		"left\u3000right.mp3", // ideographic space
+		"left\u000bright.mp3", // vertical tab
+	} {
+		payload := escapeForDrop(name)
+		got := normalizeDrop(payload)
+		if len(got) != 1 || got[0] != name {
+			t.Errorf("normalizeDrop(%q) = %q, want %q", payload, got, name)
+		}
+	}
+}
+
+// A quote that opens but never closes is a broken path, not the start of a
+// monster field: the rest of the payload keeps standing on its own, quoted
+// reads happen literally, and normalizeDrop's Trim strips the stray quotes of
+// the first field.
+func TestSplitDropFieldsBreaksAnUnclosedQuote(t *testing.T) {
+	payload := `"a'b.mp3 b.mp3 c.mp3`
+	fields := splitDropFields(payload)
+	if len(fields) != 3 || fields[0] != `"a'b.mp3` || fields[1] != "b.mp3" || fields[2] != "c.mp3" {
+		t.Fatalf("splitDropFields(%q) = %q", payload, fields)
+	}
+	paths := normalizeDrop(payload)
+	if len(paths) != 3 || paths[0] != `a'b.mp3` || paths[1] != "b.mp3" || paths[2] != "c.mp3" {
+		t.Errorf("normalizeDrop(%q) = %q", payload, paths)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -39,7 +40,12 @@ func normalizeDrop(content string) []string {
 			out = append(out, path)
 			continue
 		}
-		out = append(out, pickExisting(path, unescaped, stripped))
+		// The de-escaped form first: it is the exact inverse of the escaping
+		// dropping terminals add, so an unmatched round trip still ends at the
+		// right name. The disk then decides among these three; when nothing
+		// exists, pickExisting falls back to the first candidate — which is
+		// why the de-escaped form, not the raw one, must come first.
+		out = append(out, pickExisting(unescaped, stripped, path))
 	}
 	return out
 }
@@ -49,11 +55,30 @@ func normalizeDrop(content string) []string {
 // except when a backslash escapes it: macOS terminals escape the spaces of a
 // dropped path, so those spaces belong to the file name rather than to the
 // separator between two paths.
+//
+// A quote that opens but never closes is a broken path, not a monster field:
+// a file name may hold one literal quote (a candidate the Trim in
+// normalizeDrop strips), and an unbalanced quote must not glue every remaining
+// field onto its tail. The pass that reports an unclosed span is therefore
+// re-run with quote handling off, so each whitespace-separated run stands on
+// its own.
 func splitDropFields(s string) []string {
-	var fields []string
+	fields, closed := splitDropFieldsRaw(s, true)
+	if closed {
+		return fields
+	}
+	fields, _ = splitDropFieldsRaw(s, false) // quotes read literally: re-scan
+	return fields
+}
+
+// splitDropFieldsRaw is splitDropFields's scan pass. honorQuotes only decides
+// whether dropQuote may open a span: quotes are literal characters when it is
+// false. closed reports that every opened quote was closed.
+func splitDropFieldsRaw(s string, honorQuotes bool) (fields []string, closed bool) {
 	var b strings.Builder
 	var quote rune
 	escaped := false
+	closed = true
 	for _, r := range s {
 		if escaped {
 			b.WriteRune(r)
@@ -69,13 +94,17 @@ func splitDropFields(s string) []string {
 			b.WriteRune(r)
 			if r == quote {
 				quote = 0
+				closed = true
 			}
 			continue
 		}
-		if closing, ok := dropQuote(r); ok {
-			b.WriteRune(r)
-			quote = closing
-			continue
+		if honorQuotes {
+			if closing, ok := dropQuote(r); ok {
+				b.WriteRune(r)
+				quote = closing
+				closed = false
+				continue
+			}
 		}
 		if unicode.IsSpace(r) {
 			if b.Len() > 0 {
@@ -89,7 +118,10 @@ func splitDropFields(s string) []string {
 	if b.Len() > 0 {
 		fields = append(fields, b.String())
 	}
-	return fields
+	if quote != 0 {
+		closed = false
+	}
+	return fields, closed
 }
 
 // dropQuote reports whether r opens a quoted span and, if so, the rune that
@@ -135,24 +167,51 @@ func pathFromFileURI(uri string) (string, bool) {
 	return parsed.Path, true
 }
 
-// unescapeBackslashes turns the escapes shells and terminals add for spaces,
-// backslashes and single or double quotes into their literal characters. Any
-// other backslash sequence is left alone so ordinary file names survive.
+// unescapeBackslashes drops the backslash of every escape the payload may
+// carry: ASCII and Unicode whitespace alike (the same set as
+// `unicode.IsSpace`), backslashes, and the six quote characters
+// `splitDropFields` treats as syntax. This is exactly the set the GUI escapes
+// in `drop_paste.rs` (escapeForDrop), so a GUI-escaped payload round-trips to
+// the original path even when neither form exists on disk; the round trip is
+// pinned by TestNormalizeDropRoundTripsGUIEscapes. Any other backslash
+// sequence is left alone so ordinary file names survive.
 func unescapeBackslashes(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s
 	}
 	var b strings.Builder
 	b.Grow(len(s))
-	for i := 0; i < len(s); i++ {
+	for i := 0; i < len(s); {
 		if s[i] == '\\' && i+1 < len(s) {
-			if c := s[i+1]; c == ' ' || c == '\\' || c == '\'' || c == '"' {
-				i++
+			c := rune(s[i+1])
+			if dropEscapes(c) {
+				i++ // leave the escape behind; the loop writes c
+			} else if r, size := utf8.DecodeRuneInString(s[i+1:]); size > 0 && dropEscapes(r) {
+				b.WriteRune(r)
+				i += 1 + size
+				continue
 			}
 		}
 		b.WriteByte(s[i])
+		i++
 	}
 	return b.String()
+}
+
+// dropEscapes reports whether r is a character a dropping source backslash-
+// escapes: any whitespace (ASCII and Unicode alike) plus backslash and the six
+// quote characters the splitter treats as syntax. Unescaped restorations below
+// rely on the exact same set as the GUI's escape_for_drop, so the two must be
+// kept in step; the contract test ties them together.
+func dropEscapes(r rune) bool {
+	if unicode.IsSpace(r) {
+		return true
+	}
+	switch r {
+	case '\\', '\'', '"', '\u201c', '\u201d', '\u2018', '\u2019':
+		return true
+	}
+	return false
 }
 
 // stripAnyEscape drops the backslash of every escape a terminal may have added
