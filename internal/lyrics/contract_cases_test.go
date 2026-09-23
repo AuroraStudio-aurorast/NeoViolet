@@ -33,7 +33,7 @@ var contractCases = map[string]contractCase{
 	},
 	"lrc": {
 		parse:  viaParser("lrc", lrcContractSample),
-		expect: expectation{hasParts: true, meta: true},
+		expect: expectation{hasParts: true, translations: true, meta: true},
 	},
 	"lys": {
 		parse: viaParser("lys", lysContractSample),
@@ -57,7 +57,7 @@ var contractCases = map[string]contractCase{
 	},
 	"ttml": {
 		parse:  viaParser("ttml", ttmlAMLLSample),
-		expect: expectation{requireEnd: true, hasParts: true, meta: true, looseTiling: true},
+		expect: expectation{requireEnd: true, hasParts: true, translations: true, meta: true, looseTiling: true},
 	},
 	"yrc": {
 		parse:  viaParser("yrc", yrcContractSample),

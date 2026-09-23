@@ -584,11 +584,13 @@ func TestRenderLyricsPanel_ExtremeSizes(t *testing.T) {
 }
 
 // panelPartsModel is panelModel with a single event that carries several
-// display parts — what a bilingual LRC line or a multi-line SRT cue produces.
+// display parts. It declares no translated parts, which is the shape an author's
+// line break makes (a multi-line SRT cue, SMI <br>, a multi-line SYLT entry): the
+// parts belong to one sentence, so nothing may demote the later rows.
 func panelPartsModel(t *testing.T, contextLines int, parts []string) *Model {
 	t.Helper()
 	m := panelModel(t, contextLines)
-	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
+	m.Audio.Lyrics = &lyrics.Data{Format: "srt", Lines: []lyrics.LyricLine{{
 		Time:  0,
 		Text:  strings.Join(parts, " | "),
 		Parts: parts,
@@ -617,10 +619,11 @@ func TestPanelWindow_MergedPartsEachGetARow(t *testing.T) {
 	panelRowWidths(t, rows, plan.PanelInnerW)
 }
 
-// Every part of one event is the same current line: a bilingual event must
-// not render its first row highlighted and its second row grey.
-func TestPanelWindow_AllPartsShareCurrentStyle(t *testing.T) {
-	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
+// Parts of an event that declares no translations all stay on the current style:
+// an author's line break is still the same sung line, so demoting the second row
+// would render one sentence in two weights. Covers srt, smi and embedded SYLT.
+func TestPanelWindow_PartsShareCurrentStyleWithoutTranslations(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"I hear the rain fall", "on the green green grass"})
 	plan := m.layoutPlan()
 	rows := panelWindow(m, plan)
 	current := panelCurrentStyle(m).Render("x")

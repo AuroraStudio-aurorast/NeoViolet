@@ -82,6 +82,13 @@ type Data struct {
 	Path    string
 	Format  string // parser name that produced this data ("lrc", "ttml", etc.)
 
+	// TranslationsInParts declares that the display parts after the first are
+	// translations of the first, so that a bilingual event can be told apart from
+	// one whose author broke a sentence across lines. Only LRC (a same-timestamp
+	// merge) and TTML (ordered [original, background vocal, translation]) set it;
+	// SRT, SMI and embedded SYLT parts are line breaks and leave it false.
+	TranslationsInParts bool
+
 	// Agents maps agent ID to display name (e.g. "v1" -> "Taylor Swift").
 	// Populated by the TTML parser from <ttm:agent> + <amll:meta key="artists">,
 	// and by the SMI parser from <P Class=...>.

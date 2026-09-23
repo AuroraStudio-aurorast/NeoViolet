@@ -170,8 +170,11 @@ func panelLineIsCurrent(m *Model, line lyrics.LyricLine, currentTime time.Durati
 // for the line as a whole, so only its first part carries the label.
 func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlight, showAgent bool) []panelRow {
 	if line.PartCount() == 1 {
-		return wrapLineRows(panelLineSpans(m, line, highlight, showAgent), innerW, maxRows)
+		return wrapLineRows(panelLineSpans(m, line, highlight, showAgent, false), innerW, maxRows)
 	}
+	// An event whose parts are translations demotes every part after the first:
+	// those rows translate the line being sung rather than being it.
+	translated := m.Audio.Lyrics.TranslationsInParts
 	rows := make([]panelRow, 0, line.PartCount())
 	for i := 0; i < line.PartCount(); i++ {
 		if strings.TrimSpace(line.Part(i)) == "" {
@@ -179,7 +182,7 @@ func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlig
 		}
 		// The label belongs to the line, not to each of its parts: the
 		// translation row of a bilingual line must not repeat "NAME: ".
-		rows = append(rows, wrapLineRows(panelLineSpans(m, partLine(line, i), highlight, i == 0 && showAgent), innerW, maxRows)...)
+		rows = append(rows, wrapLineRows(panelLineSpans(m, partLine(line, i), highlight, i == 0 && showAgent, translated && i > 0), innerW, maxRows)...)
 	}
 	return rows
 }
@@ -207,12 +210,21 @@ func partLine(line lyrics.LyricLine, i int) lyrics.LyricLine {
 // panelLineSpans styles a lyric line. The highlighted line is split into
 // played/unplayed spans when the format carries word timings that tile the text.
 // showAgent adds the "NAME: " label; the panel shows it only where the singer
-// changes, so when it is due it stays out of the karaoke split.
-func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent bool) []styledSpan {
-	current := panelCurrentStyle(m)
+// changes, so when it is due it stays out of the karaoke split. translated marks a
+// part that renders the line being sung in another language, which is styled as a
+// whole subordinate row rather than karaoked (see below).
+func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent, translated bool) []styledSpan {
 	if !highlight {
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: panelContextStyle}}
 	}
+	if translated {
+		// A translated part carries the original line's word timings rather than its
+		// own, so sweeping it rune by rune would track the wrong text. The row is
+		// styled whole and one step quieter than the line it translates.
+		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: lyricTranslationStyle(m)}}
+	}
+
+	current := panelCurrentStyle(m)
 	if len(line.Words) == 0 {
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}

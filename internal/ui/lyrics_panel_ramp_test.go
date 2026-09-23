@@ -7,6 +7,7 @@ import (
 
 	"github.com/lucasb-eyer/go-colorful"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
@@ -29,6 +30,44 @@ func mustColorful(t *testing.T, hex string) colorful.Color {
 		t.Fatalf("colorful.Hex(%q): %v", hex, err)
 	}
 	return c
+}
+
+// A translated row takes the emphasis colour halfway toward the grey the unplayed
+// text uses, which is lyricShade read at translationShade. The hex values are
+// pinned as literals rather than recomputed from the same expression, so changing
+// the blend space, moving an endpoint or retuning the constant cannot pass
+// unnoticed.
+func TestLyricTranslationColour_IsTheMidpointTowardGrey(t *testing.T) {
+	// No cover: lyricMain falls back to ANSI 141 (#af87ff).
+	if got, want := lyricTranslationColour(nil).Hex(), "#9f89c4"; got != want {
+		t.Errorf("cover-less translation colour = %q, want %q", got, want)
+	}
+	// With a cover the step follows the extracted accent instead.
+	acc := &accent.Accent{Main: mustColorful(t, "#8a2be2")}
+	if got, want := lyricTranslationColour(acc).Hex(), "#9163b7"; got != want {
+		t.Errorf("accented translation colour = %q, want %q", got, want)
+	}
+
+	// The point of the blend is to lose saturation, not to fade out or to drift to
+	// another colour: the hue stays and the chroma drops below the accent's. Blending
+	// toward a neutral grey in CIELAB halves (a,b), so the hue is preserved exactly.
+	main := mustColorful(t, "#af87ff")
+	mid := lyricTranslationColour(nil)
+	mainH, mainC, mainL := main.Hcl()
+	midH, midC, midL := mid.Hcl()
+
+	if diff := math.Abs(mainH - midH); diff > 1 {
+		t.Errorf("hue moved %.1f degrees (%.1f -> %.1f), want the accent's hue kept", diff, mainH, midH)
+	}
+	if midC >= mainC {
+		t.Errorf("chroma %.3f is not below the accent's %.3f: the row did not step back", midC, mainC)
+	}
+	if midL > mainL {
+		t.Errorf("lightness rose %.3f -> %.3f, want the step to come from chroma, not a lift", mainL, midL)
+	}
+	if mid == lyricGrey {
+		t.Error("translation colour equals the unplayed grey: the row would read as unsung")
+	}
 }
 
 func closeEnough(got, want float64) bool {

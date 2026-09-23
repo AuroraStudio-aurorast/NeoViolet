@@ -42,6 +42,12 @@ type expectation struct {
 	// line); otherwise the assertion is that it does **not** (every line has
 	// Parts == nil).
 	hasParts bool
+	// translations declares that this format's Parts after the first are
+	// translations of the first, which is what lets the panel style them as
+	// subordinate rows. It is a claim about the format's part semantics, so a
+	// format whose parts are author line breaks must leave it false: tinting those
+	// would render one sentence in two weights.
+	translations bool
 	// meta declares that this sample's [ti:]/[ar:] header must be parsed into
 	// Data (exact values are asserted by the per-format unit tests).
 	meta bool
@@ -315,6 +321,16 @@ func runExpectations(t *testing.T, d *Data, e expectation, skip map[string]bool)
 					t.Errorf("no Parts expected, but line %d has %v", i, l.Parts)
 				}
 			}
+		}
+	}
+
+	if !skip["translations"] {
+		if e.translations {
+			if !d.TranslationsInParts {
+				t.Error("translations: this format's parts are translations, but Data does not declare it")
+			}
+		} else if d.TranslationsInParts {
+			t.Error("translations: Data declares translated parts, but this format's parts are line breaks")
 		}
 	}
 

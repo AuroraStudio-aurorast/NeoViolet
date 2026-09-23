@@ -155,6 +155,30 @@ func lyricShade(main colorful.Color, t float64) colorful.Color {
 	}
 }
 
+// translationShade is how far a translated row's emphasis colour steps toward the
+// grey the unplayed text uses. The midpoint puts the row a visible step below the
+// line being sung while keeping the accent's hue; because the blend runs in
+// CIELAB it gets there by dropping chroma rather than by dimming, so the row stays
+// readable instead of fading into the background.
+const translationShade = 0.5
+
+// lyricTranslationColour returns the emphasis colour of a translated row: the
+// main emphasis colour stepped halfway toward lyricGrey. It is lyricShade -- the
+// same curve the word sweep shades with -- read at its middle, so a translation
+// and an unsung rune at the same point of that curve cannot disagree.
+func lyricTranslationColour(a *accent.Accent) colorful.Color {
+	return lyricShade(lyricMain(a), translationShade)
+}
+
+// lyricTranslationStyle styles a whole translated row. Bold is deliberately
+// absent: weight would pull the row back up toward the emphasis it is meant to sit
+// below, and most terminals render SGR 1 as a brightening that would partly undo
+// the step down.
+func lyricTranslationStyle(m *Model) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color(lyricTranslationColour(m.Accent).Hex()))
+}
+
 func clampUnit(v float64) float64 {
 	switch {
 	case v < 0:

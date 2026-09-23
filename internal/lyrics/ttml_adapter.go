@@ -11,11 +11,16 @@ import (
 // and no time arithmetic, since the library has already resolved every interval.
 //
 // Data.Format is deliberately absent: registry.go is its only writer.
+//
+// TranslationsInParts is always true: ttmlSegments orders a line's segments
+// [original, background vocal, translation], so every part after the first is a
+// translation rather than a line break inside one sentence.
 func ttmlToData(doc *amllttml.Document, sourcePath string) *Data {
 	data := &Data{
-		Path:       sourcePath,
-		Properties: ttmlProperties(doc),
-		Agents:     ttmlAgents(doc),
+		Path:                sourcePath,
+		Properties:          ttmlProperties(doc),
+		Agents:              ttmlAgents(doc),
+		TranslationsInParts: true,
 	}
 	// The guard is live, not dead code: Parse never returns nil Metadata, but a
 	// hand-built zero-value Document reaches it.

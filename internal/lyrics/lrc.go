@@ -32,7 +32,9 @@ func (p *lrcParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 		return nil, fmt.Errorf("read lyrics: %w", err)
 	}
 
-	lyrics := &Data{Path: sourcePath}
+	// mergeSameTimestamp below collapses same-timestamp lines into Parts, and that
+	// shape is the bilingual convention: the parts after the first are translations.
+	lyrics := &Data{Path: sourcePath, TranslationsInParts: true}
 	var lines []LyricLine
 
 	for _, line := range strings.Split(string(data), "\n") {
