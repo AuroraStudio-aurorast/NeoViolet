@@ -54,24 +54,40 @@ type lyricRune struct {
 // lyricRunes splits text into display runes, tracking the cell offset each one
 // starts at. Offsets use lipgloss.Width, the same measure wrapSpans uses, so the
 // two always agree about where a rune sits.
+//
+// Every returned rune has width >= 1: a zero width would divide the intensity by
+// zero. Zero-width runes (combining marks, joiners) therefore never become a rune
+// of their own -- they ride along with a base rune, the one before them when there
+// is one and otherwise the one after. They must never be dropped: that would make
+// the rendered text differ from the lyric text.
 func lyricRunes(text string) []lyricRune {
 	runes := make([]lyricRune, 0, len(text))
+	var pending string // zero-width runes with no base rune to ride on yet
 	x := 0
 	for _, r := range text {
 		s := string(r)
-		w := lipgloss.Width(s)
-		if w == 0 {
-			// Zero-width runes (combining marks, joiners) occupy no cell: they ride
-			// along with the rune before them instead of becoming their own span.
-			// They must never become a rune of their own: a zero width would divide
-			// the intensity by zero.
-			if n := len(runes); n > 0 {
-				runes[n-1].text += s
+		if lipgloss.Width(s) == 0 {
+			if len(runes) == 0 {
+				pending += s
+			} else {
+				runes[len(runes)-1].text += s
 			}
 			continue
 		}
+		// Prepending cannot change the width: every pending rune is zero-width.
+		s = pending + s
+		pending = ""
+		w := lipgloss.Width(s)
 		runes = append(runes, lyricRune{text: s, x: x, width: w})
 		x += w
+	}
+	if pending != "" {
+		if len(runes) == 0 {
+			// Text made only of zero-width runes. Keep it as one rune and claim a
+			// single cell, so it is neither dropped nor divided by zero.
+			return []lyricRune{{text: pending, width: 1}}
+		}
+		runes[len(runes)-1].text += pending
 	}
 	return runes
 }

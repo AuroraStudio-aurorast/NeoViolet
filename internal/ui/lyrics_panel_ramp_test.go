@@ -63,18 +63,65 @@ func TestLyricRamp_BoldTracksTheEmphasisRegion(t *testing.T) {
 // Whatever the front is doing, the spans must cover the line exactly once: a
 // rune merged away by mistake would silently drop text from the panel.
 func TestLyricRamp_SpansCoverTheLine(t *testing.T) {
-	line := lyrics.LyricLine{
-		Text: "aa bb",
-		Words: []lyrics.WordFragment{
-			{Time: 0, End: 500 * time.Millisecond, Text: "aa "},
-			{Time: 500 * time.Millisecond, End: 1 * time.Second, Text: "bb"},
+	for _, line := range []lyrics.LyricLine{
+		{
+			Text: "aa bb",
+			Words: []lyrics.WordFragment{
+				{Time: 0, End: 500 * time.Millisecond, Text: "aa "},
+				{Time: 500 * time.Millisecond, End: 1 * time.Second, Text: "bb"},
+			},
 		},
-	}
-	ramp := rampForTest(t)
-	for _, at := range []time.Duration{0, 250 * time.Millisecond, 750 * time.Millisecond, time.Second} {
-		if got := spansText(ramp.spans(line, at)); got != line.Text {
-			t.Errorf("at %v spans cover %q, want %q", at, got, line.Text)
+		{
+			// A zero-width rune opening the line has no base rune before it. It must
+			// still reach the panel, so this pins the invariant at the span layer
+			// rather than only inside lyricRunes.
+			Text:  "\u200bhi",
+			Words: []lyrics.WordFragment{{Time: 0, End: time.Second, Text: "\u200bhi"}},
+		},
+	} {
+		ramp := rampForTest(t)
+		for _, at := range []time.Duration{0, 250 * time.Millisecond, 750 * time.Millisecond, time.Second} {
+			if got := spansText(ramp.spans(line, at)); got != line.Text {
+				t.Errorf("%q at %v spans cover %q, want %q", line.Text, at, got, line.Text)
+			}
 		}
+	}
+}
+
+// A zero-width rune must never be dropped: the panel would then render text the
+// lyric data does not contain. It rides the rune before it, or the rune after it
+// when it opens the line.
+func TestLyricRamp_ZeroWidthRuneIsNotDropped(t *testing.T) {
+	for _, text := range []string{"\u200bhi", "hi\u200b", "h\u200bi", "\u200b"} {
+		var joined string
+		for _, rn := range lyricRunes(text) {
+			joined += rn.text
+			if rn.width < 1 {
+				t.Errorf("%q: rune %q has width %d, want at least 1", text, rn.text, rn.width)
+			}
+		}
+		if joined != text {
+			t.Errorf("lyricRunes(%q) covers %q, want the original text", text, joined)
+		}
+	}
+}
+
+// Text made only of zero-width runes leaves no base rune to ride. It must still
+// produce one rune that claims a cell, so it is neither dropped nor divided by
+// zero.
+func TestLyricRamp_AllZeroWidthTextKeepsOneRune(t *testing.T) {
+	runes := lyricRunes("\u200b")
+	if len(runes) != 1 {
+		t.Fatalf("got %d runes, want 1", len(runes))
+	}
+	if runes[0].x != 0 {
+		t.Errorf("x = %d, want 0", runes[0].x)
+	}
+	if runes[0].width != 1 {
+		t.Errorf("width = %d, want 1", runes[0].width)
+	}
+	if runes[0].text != "\u200b" {
+		t.Errorf("text = %q, want %q", runes[0].text, "\u200b")
 	}
 }
 
