@@ -1,14 +1,13 @@
-//! Handles macOS "open files" events and in-window drag-and-drop.
+//! Handles macOS app-level "open files" events (Dock icon drop / Finder "Open With").
 //!
-//! Two paths for receiving files:
-//! 1. **App-level open events** (Dock icon drop / Finder "Open With"):
-//!    GPUI translates these into `Application::on_open_urls()` callbacks.
-//! 2. **In-window drag-and-drop**: GPUI dispatches `FileDropEvent` variants
-//!    through the window event system.
+//! App-level open events arrive as URLs through `Application::on_open_urls()`, which
+//! GPUI dispatches on macOS. In-window drag-and-drop does **not** go through this
+//! module: GPUI delivers it to the root element's `on_drop` handler, which pastes
+//! the paths into the running PTY.
 //!
-//! Both paths converge here: URLs/paths are extracted and stored as pending
-//! file arguments, which `NeoVioletApp::render()` picks up and feeds to a
-//! restarted PTY process.
+//! This module extracts paths from those URLs. They are queued in
+//! `AppState::pending_file_paths`: the cold start consumes the queue as its argv
+//! file, and anything arriving later is pasted into the running PTY.
 
 use std::path::PathBuf;
 
@@ -55,8 +54,9 @@ fn url_to_file_path(raw: &str) -> Option<String> {
 }
 
 /// Decode percent-encoded characters (e.g. `%20` → ` `).
+/// Percent escapes that do not form valid UTF-8 are replaced lossily.
 fn percent_decode(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
+    let mut bytes: Vec<u8> = Vec::with_capacity(input.len());
     let mut chars = input.chars();
     while let Some(c) = chars.next() {
         if c == '%' {
@@ -64,17 +64,24 @@ fn percent_decode(input: &str) -> String {
             if hex.len() == 2
                 && let Ok(byte) = u8::from_str_radix(&hex, 16)
             {
-                result.push(byte as char);
+                bytes.push(byte);
                 continue;
             }
             // Invalid escape — keep literal
-            result.push('%');
-            result.push_str(&hex);
+            bytes.push(b'%');
+            bytes.extend_from_slice(hex.as_bytes());
         } else {
-            result.push(c);
+            let mut buf = [0u8; 4];
+            bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
         }
     }
-    result
+    match String::from_utf8(bytes) {
+        Ok(decoded) => decoded,
+        Err(err) => {
+            log::warn!("[open-files] decoded path is not valid UTF-8: {err}");
+            String::from_utf8_lossy(err.as_bytes()).into_owned()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -102,6 +109,38 @@ mod tests {
         assert_eq!(
             url_to_file_path("file:///Users/test/My%20Music/song.mp3"),
             Some("/Users/test/My Music/song.mp3".into())
+        );
+    }
+
+    #[test]
+    fn test_url_to_path_cjk_is_decoded_as_utf8() {
+        assert_eq!(
+            url_to_file_path("file:///Users/test/%E6%AD%8C.mp3"),
+            Some("/Users/test/歌.mp3".into())
+        );
+    }
+
+    #[test]
+    fn test_url_to_path_literal_non_ascii_stays_intact() {
+        assert_eq!(
+            url_to_file_path("file:///Users/test/歌.mp3"),
+            Some("/Users/test/歌.mp3".into())
+        );
+    }
+
+    #[test]
+    fn test_url_to_path_invalid_utf8_is_lossy() {
+        assert_eq!(
+            url_to_file_path("file:///Users/test/%FF.mp3"),
+            Some("/Users/test/\u{FFFD}.mp3".into())
+        );
+    }
+
+    #[test]
+    fn test_url_to_path_invalid_escape_stays_literal() {
+        assert_eq!(
+            url_to_file_path("file:///Users/test/%zz.mp3"),
+            Some("/Users/test/%zz.mp3".into())
         );
     }
 

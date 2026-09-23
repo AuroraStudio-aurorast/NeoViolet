@@ -13,6 +13,11 @@ use portable_pty::{CommandBuilder, PtySize, native_pty_system};
 use crate::platform;
 use crate::terminal::{BackendCommand, BackendEvent};
 
+/// The status text the backend writes once the PTY has been spawned and has
+/// not been closed. It lives here where it is set; `drop_paste` gates on the
+/// same constant, so the two cannot drift apart.
+pub const PTY_READY_STATUS: &str = "neoviolet ready";
+
 pub fn spawn_neoviolet_terminal(
     tab_id: String,
     cols: u16,
@@ -147,7 +152,7 @@ pub fn spawn_neoviolet_terminal(
 
     let _ = events.send(BackendEvent::Status {
         tab_id,
-        text: "neoviolet ready".into(),
+        text: PTY_READY_STATUS.into(),
     });
 
     Ok(cmd_tx)

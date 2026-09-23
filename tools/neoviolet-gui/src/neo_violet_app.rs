@@ -7,11 +7,11 @@
 
 use gpui::prelude::*;
 use gpui::*;
-use std::sync::{Arc, Mutex};
 use yororen_ui::headless::modal::ModalState;
 
 use crate::app::TerminalApp;
 use crate::components;
+use crate::drop_paste;
 use crate::ipc::IpcMessage;
 use crate::state::AppState;
 
@@ -28,8 +28,6 @@ pub struct NeoVioletApp {
     pub exit_output: String,
     /// Window opacity (0.0–1.0), applied to the root element.
     pub opacity: f32,
-    /// Caches file paths between FileDropEvent::Entered and ::Submit.
-    drop_paths_cache: Arc<Mutex<Vec<String>>>,
     /// Dialog state entities. yororen-ui 0.3's modal renderer draws nothing
     /// until its `ModalState` is open, and the flags that decide this are set
     /// from threads that cannot touch a gpui entity (the IPC path raises the
@@ -59,7 +57,6 @@ impl NeoVioletApp {
             exit_is_bad_args: false,
             exit_output: String::new(),
             opacity,
-            drop_paths_cache: Arc::new(Mutex::new(Vec::new())),
             about_modal: ModalState::new(cx),
             close_modal: ModalState::new(cx),
             error_modal: ModalState::new(cx),
@@ -121,22 +118,6 @@ impl NeoVioletApp {
         *cx.global::<AppState>().process_start.lock().unwrap() = None;
         cx.notify();
     }
-
-    /// Restart terminal with the given file paths as launch arguments.
-    /// Used by drag-and-drop and Dock-icon open-file flows.
-    fn restart_with_files(&mut self, paths: Vec<String>, cx: &mut Context<Self>) {
-        if paths.is_empty() {
-            return;
-        }
-        log::info!("[neoviolet-app] restarting with {} file(s)", paths.len());
-        // Set launch args so TerminalApp::new() picks them up
-        {
-            let state = cx.global::<AppState>();
-            *state.launch_args.lock().unwrap() = paths;
-        }
-        // Restart terminal (this clears the old process and spawns a new one)
-        self.restart_terminal(cx);
-    }
 }
 
 impl Render for NeoVioletApp {
@@ -146,61 +127,26 @@ impl Render for NeoVioletApp {
             return div().into_any_element();
         }
 
-        // ── In-window drag-and-drop handler (per-frame registration) ──
-        // GPUI's on_mouse_event registers for the next frame only, so we
-        // re-register here on every render. Paths are cached from Entered
-        // and forwarded to the PTY at Submit.
-        {
-            let drop_cache = self.drop_paths_cache.clone();
-            let pending = cx.global::<AppState>().pending_file_paths.clone();
-            let root_eid = cx.entity_id();
-            window.on_mouse_event(
-                move |event: &FileDropEvent, _phase, _window, cx| match event {
-                    FileDropEvent::Entered { paths, .. } => {
-                        let file_paths: Vec<String> = paths
-                            .paths()
-                            .iter()
-                            .map(|p| p.to_string_lossy().to_string())
-                            .collect();
-                        log::info!("[drag-drop] entered with {} file(s)", file_paths.len());
-                        if let Ok(mut guard) = drop_cache.lock() {
-                            *guard = file_paths;
-                        }
-                    }
-                    FileDropEvent::Submit { .. } => {
-                        if let Ok(mut guard) = drop_cache.lock() {
-                            let paths: Vec<String> = guard.drain(..).collect();
-                            if !paths.is_empty() {
-                                log::info!("[drag-drop] submit {} file(s)", paths.len());
-                                if let Ok(mut p) = pending.lock() {
-                                    *p = paths;
-                                }
-                                cx.notify(root_eid);
-                            }
-                        }
-                    }
-                    FileDropEvent::Exited => {
-                        if let Ok(mut guard) = drop_cache.lock() {
-                            guard.clear();
-                        }
-                    }
-                    _ => {}
-                },
-            );
-        }
-
         // ── Pending file paths from Dock-icon drop / open-file event ──
-        // When macOS delivers files via on_open_urls (or the drag-drop
-        // handler above), they land in pending_file_paths. Restart the
-        // terminal with those files as arguments.
-        {
+        // macOS delivers these through `on_open_urls`, which can fire long
+        // after the cold start has consumed its share. There is no new spawn
+        // to hand them to, so they are pasted into the running PTY like a
+        // window drop — the process is never restarted for a file.
+        let late_paths: Vec<String> = {
             let pending = cx.global::<AppState>().pending_file_paths.clone();
             if let Ok(mut guard) = pending.lock() {
-                let paths: Vec<String> = guard.drain(..).collect();
-                if !paths.is_empty() {
-                    self.restart_with_files(paths, cx);
-                }
+                guard.drain(..).collect()
+            } else {
+                Vec::new()
             }
+        };
+        if !late_paths.is_empty() {
+            log::debug!(
+                "[drag-drop] handing {} file(s) from an open-file event to the PTY",
+                late_paths.len()
+            );
+            let outcome = drop_paste::send_paths(cx, &self.terminal_child, &late_paths);
+            drop_paste::defer_pending_paths(cx, outcome, late_paths);
         }
 
         // ── IPC messages from TUI ──
@@ -427,6 +373,15 @@ impl Render for NeoVioletApp {
         };
 
         // ── Build UI ──
+        // ── In-window drag-and-drop intake ──
+        // GPUI does not deliver `FileDropEvent::Entered`/`Submit` to app
+        // listeners: the platform layer turns them into a MouseMove and a
+        // MouseUp, carrying the dropped paths in `active_drag`. Only `Exited`
+        // is dispatched as a FileDropEvent. The paths are therefore picked up
+        // by an element-level `on_drop`, which GPUI fires on the MouseUp of a
+        // drop for the element under the cursor — hence on this root element,
+        // which covers the whole window.
+        let drop_child = self.terminal_child.clone();
         let base = div()
             .id("aria:app:neoviolet-gui")
             .size_full()
@@ -435,6 +390,19 @@ impl Render for NeoVioletApp {
             .opacity(self.opacity)
             .track_focus(&self.focus_handle)
             .on_key_down(on_key_down)
+            .on_drop(move |paths: &ExternalPaths, _window, cx| {
+                let dropped: Vec<String> = paths
+                    .paths()
+                    .iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                if dropped.is_empty() {
+                    return;
+                }
+                log::info!("[drag-drop] dropped {} file(s)", dropped.len());
+                let outcome = drop_paste::send_paths(cx, &drop_child, &dropped);
+                drop_paste::defer_pending_paths(cx, outcome, dropped);
+            })
             .when(
                 !window.is_fullscreen() && cfg!(target_os = "macos"),
                 |base| {

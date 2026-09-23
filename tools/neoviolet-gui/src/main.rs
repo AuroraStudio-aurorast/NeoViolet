@@ -4,6 +4,7 @@ mod components;
 mod config;
 mod desktop_lyrics;
 mod dracula_theme;
+mod drop_paste;
 mod ipc;
 mod menus;
 mod neo_violet_app;
@@ -84,8 +85,9 @@ fn main() {
 
     // ── Shared pending-file-paths store ──
     // On macOS, `on_open_urls` fires before/during `run()` and feeds file
-    // paths here. On other platforms this stays empty — files arrive via
-    // CLI args (`launch_args`) instead.
+    // paths here. On other platforms it stays empty: in-window drops are
+    // handled by the root element's `on_drop` and are pasted in, and startup
+    // files come from this process's own CLI args.
     let pending_urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
 
     // ── macOS: handle files dropped onto Dock icon / opened via Finder ──
@@ -178,6 +180,25 @@ fn main() {
                     w.refresh();
                     false
                 });
+
+                // ── Cold-start hand-off ──
+                // Files opened before this window existed have no PTY to be
+                // pasted into yet, so they go to the spawn as arguments
+                // instead. Appended, not assigned: `launch_args` also holds
+                // this process's own CLI args, which the TUI still needs. Both
+                // locks are released before `cx.new` runs.
+                {
+                    let state = cx.global::<AppState>();
+                    let paths: Vec<String> =
+                        state.pending_file_paths.lock().unwrap().drain(..).collect();
+                    if !paths.is_empty() {
+                        state
+                            .launch_args
+                            .lock()
+                            .unwrap()
+                            .extend(drop_paste::launch_args_for(&paths));
+                    }
+                }
 
                 let terminal_child = cx.new(TerminalApp::new);
                 cx.global::<AppState>()
