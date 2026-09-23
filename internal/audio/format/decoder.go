@@ -68,6 +68,15 @@ type formatHandler struct {
 // extLookup maps a file extension (lower-case with dot) to its formatHandler.
 var extLookup = make(map[string]*formatHandler)
 
+// IsSupportedExt reports whether ext (lower-case, with the dot, e.g. ".flac")
+// has a registered decoder. It reads the same registry registerFormat fills, so
+// it cannot drift from the handler registry. Formats recognised by content
+// rather than by extension (MIDI, tracker modules) are not reported here.
+func IsSupportedExt(ext string) bool {
+	_, ok := extLookup[ext]
+	return ok
+}
+
 func init() {
 	// Register built-in (beep) formats.
 	// Custom decoder formats (ALAC, Opus, MP2) are registered via init() in their own files.

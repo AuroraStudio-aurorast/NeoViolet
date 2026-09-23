@@ -42,9 +42,15 @@ func renderMainView(m *Model) tea.View {
 		Width(m.UI.Width).
 		Height(m.UI.Height)
 
-	view := tea.NewView(layout.Render(
-		header + "\n" + content + "\n" + footer + "\n" + help,
-	))
+	frame := layout.Render(header + "\n" + content + "\n" + footer + "\n" + help)
+	// The list overlays the finished frame, because its row is measured from the
+	// top of the frame rather than from the top of the content block.
+	if rows := completionRows(m, plan); rows > 0 {
+		frame = overlayCompletion(m, plan, frame, rows)
+	}
+
+	view := tea.NewView(frame)
+	view.AltScreen = true
 	view.AltScreen = true
 
 	if m.Audio.CurrentSong != "" {
@@ -226,6 +232,188 @@ func truncateLine(s string, maxWidth int) string {
 		width += cw
 	}
 	return s
+}
+
+// maxCompletionRows caps the candidate overlay height. It stays at or below
+// footerBaseRows on purpose: the list replaces the footer band, so it never
+// asks for a row the frame does not have.
+const maxCompletionRows = 5
+
+// minCompactWidth is the narrowest row that still gets a middle ellipsis.
+const minCompactWidth = 12
+
+// markerWidth is the width of the selection marker ("  " or "▸ "): every row
+// carries one, so the value and the description share the remaining cells.
+const markerWidth = 2
+
+// completionRows is the number of overlay rows this frame: candidates capped by
+// maxCompletionRows and by the footer band the list is drawn in.
+func completionRows(m *Model, plan layoutPlan) int {
+	if m.UI.Mode != ModeCommand {
+		return 0
+	}
+	rows := len(m.completionCandidates)
+	if rows > maxCompletionRows {
+		rows = maxCompletionRows
+	}
+	if rows > plan.FooterRows {
+		rows = plan.FooterRows
+	}
+	return rows
+}
+
+// completionTop is the frame row the candidate list starts on: the bottom rows
+// of the footer band, directly above the command line.
+//
+// The rows are what make the position safe. maxCompletionRows <= footerBaseRows
+// keeps the list inside the footer band on every terminal, so the content box
+// and the lyrics panel are never covered — only the footer is, and only while a
+// list is up. The list spans the frame's columns: appLayoutStyle adds neither
+// border nor padding, so every column is usable and the offsets are absolute.
+func completionTop(plan layoutPlan, rows int) int {
+	return plan.Height - helpHeight - rows
+}
+
+// completionWindowStart is the first visible candidate: the window centres on
+// the selection and clamps to the list.
+func completionWindowStart(m *Model, rows int) int {
+	total := len(m.completionCandidates)
+	if rows <= 0 || total <= rows {
+		return 0
+	}
+	if m.completionIndex < 0 {
+		return 0
+	}
+	start := m.completionIndex - rows/2
+	if start < 0 {
+		start = 0
+	}
+	if limit := total - rows; start > limit {
+		start = limit
+	}
+	return start
+}
+
+// renderCompletion renders the candidate block: one row per candidate, up to
+// completionRows rows, each exactly width cells wide.
+func renderCompletion(m *Model, plan layoutPlan) string {
+	rows := completionRows(m, plan)
+	if rows == 0 {
+		return ""
+	}
+	width := plan.Width // the list spans the frame
+	start := completionWindowStart(m, rows)
+
+	lines := make([]string, 0, rows)
+	for i := 0; i < rows; i++ {
+		index := start + i
+		lines = append(lines, completionRow(m.completionCandidates[index], index == m.completionIndex, width))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// overlayCompletion draws the candidate list over the footer band, at the row
+// completionTop returns.
+//
+// Only the footer rows go through the compositor: compositing re-renders a line
+// and re-encodes its SGR sequences, and the header, the content box, the lyrics
+// panel and the command line all have to come through byte for byte what they
+// were. The list never leaves the footer band, so nothing outside it has to be
+// touched. The stack is sized to the band and the list sits inside it, so the
+// frame keeps its size and the overlay consumes no rows.
+//
+// The layers go through a compositor rather than a plain canvas: a layer's Draw
+// paints at the area it is handed, so only the compositor applies the offsets
+// set with Y and X.
+func overlayCompletion(m *Model, plan layoutPlan, frame string, rows int) string {
+	top := completionTop(plan, rows)
+
+	bandTop := plan.Height - helpHeight - plan.FooterRows
+	lines := strings.Split(frame, "\n")
+	band := strings.Join(lines[bandTop:bandTop+plan.FooterRows], "\n")
+
+	stack := lipgloss.NewCompositor(
+		lipgloss.NewLayer(band),
+		lipgloss.NewLayer(renderCompletion(m, plan)).
+			Y(top-bandTop).
+			Z(1),
+	)
+	// The band is replaced in place: the rows above it (header, content, panel)
+	// and below it (the command line) never reach the compositor.
+	composited := strings.Split(stack.Render(), "\n")
+	tail := lines[bandTop+plan.FooterRows:]
+	return strings.Join(append(append(lines[:bandTop:bandTop], composited...), tail...), "\n")
+}
+
+// completionRow renders one row, padded to avail. Three tiers:
+// value plus description, value only, then a compacted value. The marker is
+// part of the row, so the tier checks budget for it: every row comes out
+// exactly avail wide, which is what keeps the composited list the same size as
+// the frame underneath it.
+func completionRow(cand candidate, selected bool, avail int) string {
+	value, desc := cand.Value, cand.Desc
+	budget := avail - markerWidth
+	if w := lipgloss.Width(value); w > budget {
+		value = compactValue(cand, budget)
+		desc = ""
+	} else if desc != "" && w+2+lipgloss.Width(desc) > budget {
+		desc = ""
+	}
+
+	marker := "  "
+	rowStyle, descStyle := completionRowStyle, completionDescStyle
+	if selected {
+		marker = "▸ "
+		rowStyle, descStyle = completionSelectedStyle, completionSelectedDescStyle
+	}
+
+	head := marker + value
+	if desc == "" {
+		pad := avail - lipgloss.Width(head)
+		return rowStyle.Render(head + strings.Repeat(" ", max(pad, 0)))
+	}
+	// The description only survives tier 1, so head+2+desc fits and pad >= 0.
+	pad := avail - lipgloss.Width(head) - lipgloss.Width(desc) - 2
+	return rowStyle.Render(head+"  ") + descStyle.Render(desc+strings.Repeat(" ", max(pad, 0)))
+}
+
+// compactValue shortens an over-wide candidate: paths lose their left-hand
+// directories (the file name is what tells them apart), everything else is
+// truncated the way the rest of the UI truncates.
+func compactValue(cand candidate, avail int) string {
+	if !cand.Path {
+		return truncateLine(cand.Value, avail)
+	}
+	return compactPath(cand.Value, avail)
+}
+
+// compactPath keeps the file name and as many trailing directories as fit,
+// replacing the head with an ellipsis: "…/VeryLong/name.mp3".
+func compactPath(path string, avail int) string {
+	if lipgloss.Width(path) <= avail {
+		return path
+	}
+	if avail < minCompactWidth {
+		return truncateLine(path, avail)
+	}
+	segs := strings.Split(path, "/")
+	if len(segs) > 0 && segs[0] == "" {
+		segs = segs[1:] // absolute path: drop the leading empty segment
+	}
+	base := segs[len(segs)-1]
+	if lipgloss.Width(base)+2 > avail {
+		return truncateLine(path, avail) // pathological file name
+	}
+
+	best := "…/" + base
+	for k := 2; k <= len(segs); k++ {
+		cand := "…/" + strings.Join(segs[len(segs)-k:], "/")
+		if lipgloss.Width(cand) > avail {
+			break
+		}
+		best = cand
+	}
+	return best
 }
 
 func renderHelp(m *Model) string {

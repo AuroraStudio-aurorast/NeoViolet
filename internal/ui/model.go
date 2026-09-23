@@ -197,7 +197,14 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	ti.Prompt = ""
 	ti.Placeholder = ""
 	ti.EchoMode = textinput.EchoNormal
-	ti.CharLimit = 100
+	ti.CharLimit = 256
+	ti.ShowSuggestions = true
+	// Free up/down for command history: textinput's defaults bind the
+	// suggestion cursor to down/ctrl+n and up/ctrl+p, and "up"/"down" are
+	// intercepted in command mode before they ever reach the input.
+	ti.KeyMap.NextSuggestion = key.NewBinding(key.WithKeys("ctrl+n"))
+	ti.KeyMap.PrevSuggestion = key.NewBinding(key.WithKeys("ctrl+p"))
+	ti.SetSuggestions(nil)
 
 	initialFocus := FocusTabBar
 	if filePath != "" {

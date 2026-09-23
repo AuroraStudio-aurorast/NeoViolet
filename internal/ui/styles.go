@@ -80,4 +80,24 @@ var (
 	// panelContextStyle styles the lines surrounding the current one.
 	panelContextStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("245"))
+
+	// Completion overlay rows. Every span carries the background so the overlay
+	// stays opaque where it covers the content box: a nested style
+	// without a background would reset it and let the content show through.
+	completionRowStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("236")).
+				Foreground(lipgloss.Color("245"))
+
+	completionDescStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("236")).
+				Foreground(lipgloss.Color("243"))
+
+	completionSelectedStyle = lipgloss.NewStyle().
+				Background(lipgloss.Color("57")).
+				Foreground(lipgloss.Color("231")).
+				Bold(true)
+
+	completionSelectedDescStyle = lipgloss.NewStyle().
+					Background(lipgloss.Color("57")).
+					Foreground(lipgloss.Color("153"))
 )

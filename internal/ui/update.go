@@ -23,6 +23,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleResize(m, msg)
 	case tea.KeyPressMsg:
 		return handleKeyPress(m, msg)
+	case tea.PasteMsg:
+		return handlePaste(m, msg.Content)
 	case progress.FrameMsg:
 		return handleProgressFrame(m, msg)
 	case VolumeMsg:

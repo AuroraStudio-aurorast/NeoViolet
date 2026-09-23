@@ -2,17 +2,13 @@ package ui
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 )
 
@@ -31,11 +27,21 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 		m.Components.CommandInput.Reset()
 		m.Components.CommandInput.Blur()
 		m.historyIndex = len(m.CommandHistory)
+		syncCompletion(m)
 		return m, nil
 
 	default:
 		keyStr := msg.String()
 		switch keyStr {
+		case "tab":
+			cycleCompletion(m, 1)
+			return m, nil
+		case "ctrl+n":
+			cycleCompletion(m, 1)
+			return m, nil
+		case "ctrl+p":
+			cycleCompletion(m, -1)
+			return m, nil
 		case "enter":
 			return executeCommand(m)
 		case "up":
@@ -47,21 +53,25 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 			}
 			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
 			m.Components.CommandInput.CursorEnd()
+			syncCompletion(m)
 			return m, nil
 		case "down":
 			if m.historyIndex >= len(m.CommandHistory)-1 {
 				m.historyIndex = len(m.CommandHistory)
 				m.Components.CommandInput.Reset()
+				syncCompletion(m)
 				return m, nil
 			}
 			m.historyIndex++
 			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
 			m.Components.CommandInput.CursorEnd()
+			syncCompletion(m)
 			return m, nil
 		default:
 			m.historyIndex = len(m.CommandHistory)
 			var cmd tea.Cmd
 			m.Components.CommandInput, cmd = m.Components.CommandInput.Update(msg)
+			syncCompletion(m)
 			return m, cmd
 		}
 	}
@@ -72,6 +82,7 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	m.Components.CommandInput.Reset()
 	m.UI.Mode = ModeNormal
 	m.UI.Focus = m.UI.SavedFocus
+	syncCompletion(m)
 
 	logger.Info("Command executed", "cmd", cmdText)
 
@@ -91,145 +102,16 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	}
 	m.historyIndex = len(m.CommandHistory)
 
-	parts := strings.Fields(cmdText)
-	if len(parts) == 0 {
+	inv, ok := parseInvocation(cmdText)
+	if !ok {
 		return m, nil
 	}
-
-	cmd := parts[0]
-	var arg string
-	if len(parts) > 1 {
-		arg = parts[1]
-	}
-
-	switch cmd {
-	case "w", "save":
-		m.Config.DefaultVolume = m.Audio.Volume
-		if err := m.Config.Save(); err != nil {
-			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
-		}
-		return m, nil
-
-	case "wq":
-		// Save config then quit gracefully.
-		// In GUI mode, signal the wrapper to quit immediately (no dialog).
-		m.Config.DefaultVolume = m.Audio.Volume
-		if err := m.Config.Save(); err != nil {
-			m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
-		}
-		if m.isGUI() {
-			f := false
-			_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
-		}
-		m.cleanup()
-		return m, tea.Quit
-
-	case "quit", "q":
-		// In GUI mode, request confirmation via the wrapper's close dialog
-		// instead of quitting immediately. The wrapper may deny the quit
-		// and keep the TUI running.
-		if m.isGUI() {
-			t := true
-			_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &t})
-			return m, nil
-		}
-		// Graceful quit with cleanup
-		m.cleanup()
-		return m, tea.Quit
-
-	case "quit!", "q!", "wq!":
-		// Force quit: no cleanup, exit with error code 1
-		m.ExitCode = 1
-		return m, tea.Quit
-
-	case "p":
-		m.togglePlayback()
-		return m, nil
-
-	case "vol":
-		if arg == "" {
-			m.Error.Set("Usage: vol <0.0-1.0>", m.Config.Error.Duration)
-			return m, nil
-		}
-		vol, err := strconv.ParseFloat(arg, 64)
-		if err != nil || vol < 0 || vol > 1.0 {
-			m.Error.Set("Volume must be 0.0-1.0", m.Config.Error.Duration)
-			return m, nil
-		}
-		vol = math.Round(vol*100) / 100
-		m.Audio.Volume = vol
-		if m.Audio.Player != nil {
-			m.Audio.Player.SetVolume(vol)
-		}
-		m.Components.VolumeBar.SetPercent(vol)
-		m.saveVolumeConfig()
-		return m, nil
-
-	case "seek":
-		if m.Audio.Player == nil {
-			m.Error.Set("No audio loaded", m.Config.Error.Duration)
-			return m, nil
-		}
-		if arg == "" {
-			m.Error.Set("Usage: seek <seconds>, seek <mm:ss>, seek <hh:mm:ss>, seek +<offset>, seek -<offset>", m.Config.Error.Duration)
-			return m, nil
-		}
-
-		switch {
-		case strings.HasPrefix(arg, "+") || strings.HasPrefix(arg, "-"):
-			rel, err := strconv.ParseFloat(arg, 64)
-			if err != nil {
-				m.Error.Set("Invalid seek offset", m.Config.Error.Duration)
-				return m, nil
-			}
-			m.Audio.SeekRelative(time.Duration(rel * float64(time.Second)))
-		case strings.Contains(arg, ":"):
-			pos, err := parseClockTime(arg)
-			if err != nil {
-				m.Error.Set(err.Error(), m.Config.Error.Duration)
-				return m, nil
-			}
-			if m.Audio.Duration > 0 && pos > m.Audio.Duration {
-				pos = m.Audio.Duration
-			}
-			_ = m.Audio.SeekPlayer(pos)
-		default:
-			seconds, err := strconv.ParseFloat(arg, 64)
-			if err != nil {
-				m.Error.Set("Invalid seek position", m.Config.Error.Duration)
-				return m, nil
-			}
-			newPos := time.Duration(seconds * float64(time.Second))
-			if newPos < 0 {
-				newPos = 0
-			}
-			if m.Audio.Duration > 0 && newPos > m.Audio.Duration {
-				newPos = m.Audio.Duration
-			}
-			_ = m.Audio.SeekPlayer(newPos)
-		}
-		return m, nil
-
-	case "lrc", "lyric", "lyrics":
-		return executeLrcCommand(m, parts)
-
-	case "open", "load", "e":
-		if len(parts) < 2 {
-			m.Error.Set("Usage: open <path>", m.Config.Error.Duration)
-			return m, nil
-		}
-		// Join remaining parts to support paths with spaces
-		path := strings.Join(parts[1:], " ")
-		if !isValidAudioPath(path) {
-			m.Error.Set("Invalid or unsupported audio file: "+path, m.Config.Error.Duration)
-			return m, nil
-		}
-		return handleLoadTrack(m, LoadTrackMsg{Path: path})
-
-	default:
+	spec, ok := commandLookup(inv.Name)
+	if !ok {
 		m.Error.Set(fmt.Sprintf("Unknown command: %s", cmdText), m.Config.Error.Duration)
 		return m, nil
 	}
+	return spec.Run(m, inv)
 }
 
 // parseClockTime parses a "mm:ss" or "hh:mm:ss" clock string into a duration.
@@ -262,193 +144,6 @@ func parseClockTime(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("invalid time format, use <mm>:<ss> or <hh>:<mm>:<ss>")
 	}
 	return time.Duration(totalSeconds) * time.Second, nil
-}
-
-func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
-	if len(parts) < 2 {
-		if m.Audio.Lyrics != nil && m.Audio.ShowLyrics {
-			m.Info.Set("Lyrics: enabled", m.Config.Error.Duration)
-		} else {
-			m.Info.Set("Lyrics: disabled", m.Config.Error.Duration)
-		}
-		return m, nil
-	}
-
-	subcmd := parts[1]
-
-	switch subcmd {
-	case "on":
-		if m.Audio.Lyrics != nil {
-			m.Audio.ShowLyrics = true
-			return m, nil
-		}
-		if m.Audio.Player == nil {
-			m.Error.Set("No audio loaded", m.Config.Error.Duration)
-			return m, nil
-		}
-		data, err := lyrics.FindAndParse(m.Audio.Player.Path(), m.Config.Lyrics.FormatPriority)
-		if err != nil {
-			m.Error.Set(fmt.Sprintf("Failed to load lyrics: %v", err), m.Config.Error.Duration)
-			return m, nil
-		}
-		if data == nil {
-			m.Error.Set("No lyrics found for current track", m.Config.Error.Duration)
-			return m, nil
-		}
-		m.Audio.Lyrics = data
-		m.Audio.LyricIndex = -1
-		m.Audio.ShowLyrics = true
-		return m, nil
-
-	case "off":
-		m.Audio.ShowLyrics = false
-		return m, nil
-
-	case "switch":
-		if len(parts) < 3 {
-			m.Error.Set(fmt.Sprintf("Usage: lrc switch <format> (available: %s)", strings.Join(lyrics.AvailableParsers(), ", ")), m.Config.Error.Duration)
-			return m, nil
-		}
-		if m.Audio.Player == nil {
-			m.Error.Set("No audio loaded", m.Config.Error.Duration)
-			return m, nil
-		}
-		format := parts[2]
-		if format == "online" {
-			return m, m.fetchLyricsManual()
-		}
-		data, err := lyrics.FindAndParse(m.Audio.Player.Path(), []string{format})
-		if err != nil {
-			m.Error.Set(fmt.Sprintf("Failed to parse %s lyrics: %v", format, err), m.Config.Error.Duration)
-			return m, nil
-		}
-		if data == nil {
-			m.Error.Set(fmt.Sprintf("No lyrics found for format: %s (available: %s)", format, strings.Join(lyrics.AvailableParsers(), ", ")), m.Config.Error.Duration)
-			return m, nil
-		}
-		m.Audio.Lyrics = data
-		m.Audio.LyricIndex = -1
-		m.Audio.ShowLyrics = true
-		return m, nil
-
-	case "refresh":
-		// Bypass the disk cache (including negative "no lyrics" records) and
-		// refetch. The session cache is cleared inside fetchLyricsManual.
-		if m.Audio.Player == nil {
-			m.Error.Set("No audio loaded", m.Config.Error.Duration)
-			return m, nil
-		}
-		if err := fetch.RemoveCache(m.currentSig()); err != nil {
-			m.Error.Set(fmt.Sprintf("Failed to clear lyrics cache: %v", err), m.Config.Error.Duration)
-			return m, nil
-		}
-		m.Info.Set("Lyrics cache cleared, refetching", m.Config.Error.Duration)
-		return m, m.fetchLyricsManual()
-
-	case "agent":
-		if len(parts) < 3 {
-			if m.Audio.Lyrics != nil && m.Audio.Lyrics.AgentFilter != "" {
-				m.Info.Set(fmt.Sprintf("Lyrics agent filter: %s", m.Audio.Lyrics.AgentFilter), m.Config.Error.Duration)
-			} else {
-				m.Info.Set("Lyrics agent filter: all", m.Config.Error.Duration)
-			}
-			return m, nil
-		}
-		if m.Audio.Lyrics == nil {
-			m.Error.Set("No lyrics loaded", m.Config.Error.Duration)
-			return m, nil
-		}
-		filter := parts[2]
-		switch filter {
-		case "all", "":
-			m.Audio.Lyrics.AgentFilter = ""
-			m.Info.Set("Lyrics: showing all agents", m.Config.Error.Duration)
-		default:
-			m.Audio.Lyrics.AgentFilter = filter
-			m.Info.Set(fmt.Sprintf("Lyrics: filtering agent %s", filter), m.Config.Error.Duration)
-		}
-		m.Audio.LyricScrollOffset = 0
-		m.Audio.LyricIndex = -1
-		m.Audio.ActiveLyricLines = nil
-		return m, nil
-
-	case "desktop":
-		m.DesktopLyricsEnabled = !m.DesktopLyricsEnabled
-		t := m.DesktopLyricsEnabled
-		if t {
-			m.Info.Set("Desktop lyrics: enabled", m.Config.Error.Duration)
-		} else {
-			m.Info.Set("Desktop lyrics: disabled", m.Config.Error.Duration)
-		}
-		// Sync with GUI if connected
-		if m.ipcServer != nil {
-			_ = m.ipcServer.SendJSON(ipc.Message{
-				Type:   "desktop_lyrics",
-				Enable: &t,
-			})
-		}
-		return m, nil
-
-	case "panel":
-		return executeLrcPanelCommand(m, parts)
-
-	default:
-		m.Error.Set(fmt.Sprintf("Unknown lrc subcommand: %s (use on, off, switch, refresh, agent, desktop, or panel)", subcmd), m.Config.Error.Duration)
-		return m, nil
-	}
-}
-
-// executeLrcPanelCommand implements ":lrc panel [on|off|auto]". Per design D3
-// the change is session-scoped: the config file only supplies the default mode.
-func executeLrcPanelCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
-	if len(parts) >= 3 {
-		switch mode := parts[2]; mode {
-		case config.PanelModeOn, config.PanelModeOff, config.PanelModeAuto:
-			m.panelMode = mode
-		default:
-			m.Error.Set(fmt.Sprintf("Unknown panel mode: %s (use on, off, or auto)", mode), m.Config.Error.Duration)
-			return m, nil
-		}
-	}
-	m.Info.Set(panelStatusText(m), m.Config.Error.Duration)
-	return m, nil
-}
-
-// panelStatusText describes the effective panel state for the current size, so
-// "nothing happened" is always explained.
-func panelStatusText(m *Model) string {
-	plan := m.layoutPlan()
-	mode := m.panelMode
-	if mode == "" {
-		mode = config.PanelModeAuto
-	}
-
-	switch {
-	case m.UI.Width < minWidth || m.UI.Height < minHeight:
-		// renderMainView shows the resize warning instead of the frame, so the
-		// panel cannot be visible whatever the mode says.
-		return "Lyrics panel: hidden (terminal too small)"
-	case plan.PanelShown:
-		note := ""
-		if m.Config.Lyrics.Panel.Width == config.PanelWidthAuto {
-			note = ", auto width"
-		}
-		return fmt.Sprintf("Lyrics panel: %s (shown, %d cols%s)", mode, plan.PanelWidth, note)
-	case mode == config.PanelModeOff:
-		return "Lyrics panel: off (hidden)"
-	case !m.Audio.ShowLyrics:
-		return "Lyrics panel: hidden (lyrics are off)"
-	default:
-		// panelShown(on) is true for every usable width, so "not shown" here
-		// implies auto: the content area would be squeezed below minWidth.
-		// An auto width needs the smallest box, a configured one its own.
-		width := m.Config.Lyrics.Panel.Width
-		if width == config.PanelWidthAuto {
-			width = config.MinPanelWidth
-		}
-		need := minWidth + int(width)
-		return fmt.Sprintf("Lyrics panel: %s (hidden, needs %d cols, now %d)", mode, need, m.UI.Width)
-	}
 }
 
 // fetchLyricsManual implements :lrc switch online. Unlike auto-fetch it

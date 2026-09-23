@@ -254,6 +254,13 @@ type Model struct {
 	CommandHistory []string
 	historyIndex   int
 
+	// Completion state for the command line. completionIndex is -1 while
+	// nothing is selected: the candidate list is shown passively, so <enter>
+	// keeps executing exactly what was typed until <tab> picks an entry.
+	completionCandidates []candidate
+	completionIndex      int
+	completionSeg        segment
+
 	// preferredLyricFormat is set when switching tracks to try the same
 	// lyrics format that was active on the previous track before falling
 	// back to the config priority order.
