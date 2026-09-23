@@ -145,7 +145,8 @@ impl Render for NeoVioletApp {
                 "[drag-drop] handing {} file(s) from an open-file event to the PTY",
                 late_paths.len()
             );
-            drop_paste::send_paths(cx, &self.terminal_child, &late_paths);
+            let outcome = drop_paste::send_paths(cx, &self.terminal_child, &late_paths);
+            drop_paste::defer_pending_paths(cx, outcome, late_paths);
         }
 
         // ── IPC messages from TUI ──
@@ -399,7 +400,8 @@ impl Render for NeoVioletApp {
                     return;
                 }
                 log::info!("[drag-drop] dropped {} file(s)", dropped.len());
-                drop_paste::send_paths(cx, &drop_child, &dropped);
+                let outcome = drop_paste::send_paths(cx, &drop_child, &dropped);
+                drop_paste::defer_pending_paths(cx, outcome, dropped);
             })
             .when(
                 !window.is_fullscreen() && cfg!(target_os = "macos"),

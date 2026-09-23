@@ -9,6 +9,7 @@
 use gpui::{App, Entity};
 
 use crate::app::TerminalApp;
+use crate::backend::PTY_READY_STATUS;
 use crate::state::AppState;
 use crate::terminal::BackendCommand;
 
@@ -16,10 +17,6 @@ use crate::terminal::BackendCommand;
 const PASTE_START: &[u8] = b"\x1b[200~";
 /// Frame closing a bracketed paste.
 const PASTE_END: &[u8] = b"\x1b[201~";
-
-/// Status text written by the backend once the PTY has been spawned, before
-/// the process has been closed.
-const PTY_RUNNING_STATUS: &str = "neoviolet ready";
 
 /// Drop every ESC from a path. The escape set cannot cover ESC itself (it
 /// cannot be escaped, only removed) and a surviving ESC would let a path close
@@ -31,12 +28,16 @@ fn strip_esc(path: &str) -> String {
 /// Backslash-escape the characters the receiving program's splitter treats as
 /// syntax.
 ///
-/// Cross-program invariant: the set must stay inside what the TUI's paste
-/// normalization can restore, because that normalization runs the payload
-/// through a de-escaping step and then falls back to the escaped text when the
-/// unescaped candidate does not exist on disk. All whitespace (the same set as
-/// Go's `unicode.IsSpace`), backslash, and the six quote characters the
-/// splitter recognizes qualify; nothing else may be added.
+/// Cross-program invariant: the set is exactly what the TUI's paste
+/// normalization restores — Go's `unescapeBackslashes` in `internal/ui/drop.go`
+/// drops the backslash before precisely these runes, and the symmetric set is
+/// what makes a GUI-escaped payload round-trip to the original path even when
+/// the file no longer exists on disk. The same round trip is pinned by a
+/// contract test on the Go side (`drop_test.go`, mirroring this function), so
+/// a one-sided change to either set fails a test on at least one side. All
+/// whitespace (the same set as Go's `unicode.IsSpace`), backslash, and the six
+/// quote characters the splitter recognizes qualify; nothing else may be
+/// added — in either program, without the other.
 fn escape_for_drop(path: &str) -> String {
     let mut escaped = String::with_capacity(path.len());
     for c in path.chars() {
@@ -90,17 +91,17 @@ pub fn bracketed_paste_payload(paths: &[String]) -> Vec<u8> {
 
 /// Whether a drop may be written to the PTY.
 ///
-/// `status` is `TerminalTab::status`. `"neoviolet ready"` means the PTY has
-/// been spawned and has not been closed yet — it is *not* a statement that the
-/// TUI inside it is ready to read input. The three flags are the GUI dialogs
-/// that own the keyboard.
+/// `status` is `TerminalTab::status`. `PTY_READY_STATUS` (see `backend.rs`, its
+/// only write point) means the PTY has been spawned and has not been closed
+/// and it is *not* a statement that the TUI inside it is ready to read input.
+/// The three flags are the GUI dialogs that own the keyboard.
 pub fn should_paste(
     status: &str,
     show_exit_error: bool,
     show_close: bool,
     show_about: bool,
 ) -> bool {
-    status == PTY_RUNNING_STATUS && !show_exit_error && !show_close && !show_about
+    status == PTY_READY_STATUS && !show_exit_error && !show_close && !show_about
 }
 
 /// The arguments a cold start appends to the GUI's own CLI args for `paths`.
@@ -120,41 +121,88 @@ pub fn launch_args_for(paths: &[String]) -> Vec<String> {
     vec!["--".to_string(), first.clone()]
 }
 
-/// Hand `paths` to the running PTY as one bracketed paste, if it may be written
-/// to. A refusal (nothing to paste into) is logged as a warning.
-pub(crate) fn send_paths(cx: &mut App, child: &Entity<TerminalApp>, paths: &[String]) {
+/// What one paste attempt did with the paths.
+pub(crate) enum PasteOutcome {
+    /// Written into the PTY by the same entity update that read its status.
+    Sent,
+    /// A dialog owns the keyboard. The paths are kept; the caller must offer
+    /// them again once the dialog is gone (the next render is enough: the
+    /// dialog state itself repaints when it closes).
+    Deferred,
+    /// There was nothing to paste into; the paths are gone (a warning log
+    /// records why).
+    Unavailable,
+}
+
+/// Hand `paths` to the running PTY as one bracketed paste.
+///
+/// The status read and the payload write happen inside one entity update: what
+/// is decided is decided against the state the PTY actually has at write time,
+/// so a close arriving between "read status" and "write bytes" cannot slip
+/// through. A refusal by an open dialog does not discard the paths — the
+/// caller decides from `PasteOutcome::Deferred` what a retry looks like; a PTY
+/// that never came up is reported as `Unavailable` instead.
+pub(crate) fn send_paths(
+    cx: &mut App,
+    child: &Entity<TerminalApp>,
+    paths: &[String],
+) -> PasteOutcome {
     if paths.is_empty() {
-        return;
+        return PasteOutcome::Unavailable;
     }
-
-    let status = child.read(cx).tab.status.clone();
-    let (show_exit_error, show_close, show_about) = {
-        let state = cx.global::<AppState>();
-        (
-            *state.show_exit_error.lock().unwrap(),
-            *state.show_close.lock().unwrap(),
-            *state.show_about.lock().unwrap(),
-        )
-    };
-    if !should_paste(&status, show_exit_error, show_close, show_about) {
-        log::warn!(
-            "[drag-drop] dropping {} file(s): no PTY to paste into (status: {status:?}, dialogs: exit_error={show_exit_error} close={show_close} about={show_about})",
-            paths.len()
-        );
-        return;
-    }
-
     let payload = bracketed_paste_payload(paths);
     if payload.is_empty() {
-        return;
+        return PasteOutcome::Unavailable;
     }
-    log::info!(
-        "[drag-drop] pasting {} file(s) into the terminal",
-        paths.len()
-    );
-    child.update(cx, |tab, _| {
+
+    child.update(cx, |tab, cx| {
+        let status = tab.tab.status.clone();
+        let (show_exit_error, show_close, show_about) = {
+            let state = cx.global::<AppState>();
+            (
+                *state.show_exit_error.lock().unwrap(),
+                *state.show_close.lock().unwrap(),
+                *state.show_about.lock().unwrap(),
+            )
+        };
+        if !should_paste(&status, show_exit_error, show_close, show_about) {
+            if show_exit_error || show_close || show_about {
+                // Debug rather than warn: a deferral is expected, temporary
+                // state while a dialog is up — and repeated attempts are
+                // normal, one per render until the dialog closes.
+                log::debug!(
+                    "[drag-drop] deferring {} file(s): a dialog owns the keyboard (status: {status})",
+                    paths.len()
+                );
+                return PasteOutcome::Deferred;
+            }
+            log::warn!(
+                "[drag-drop] dropping {} file(s): no PTY to paste into (status: {status:?})",
+                paths.len()
+            );
+            return PasteOutcome::Unavailable;
+        }
+        log::info!(
+            "[drag-drop] pasting {} file(s) into the terminal",
+            paths.len()
+        );
         let _ = tab.tab.backend.send(BackendCommand::Input(payload));
-    });
+        PasteOutcome::Sent
+    })
+}
+
+/// Store the paths of a deferred attempt back into the shared pending store,
+/// so the next render offers them again (closing a dialog repaints, which is
+/// the natural retry point). Both callers — the render-time open-file drain
+/// and the element-level `on_drop` — go through here; an attempt that was
+/// sent or had nothing to paste into is a no-op.
+pub(crate) fn defer_pending_paths(cx: &mut App, outcome: PasteOutcome, paths: Vec<String>) {
+    if let PasteOutcome::Deferred = outcome {
+        let pending = cx.global::<AppState>().pending_file_paths.clone();
+        if let Ok(mut guard) = pending.lock() {
+            guard.extend(paths);
+        }
+    }
 }
 
 #[cfg(test)]
