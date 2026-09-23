@@ -224,22 +224,15 @@ func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent bool) 
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}
 
-	spans := make([]styledSpan, 0, 3)
+	// The agent label marks a change of singer, not progress through the line, so
+	// it keeps the current style and stays out of the shading.
+	var spans []styledSpan
 	if showAgent {
 		if prefix := agentPrefix(m.Audio.Lyrics, line); prefix != "" {
 			spans = append(spans, styledSpan{Text: prefix, Style: current})
 		}
 	}
-	if played != "" {
-		spans = append(spans, styledSpan{Text: played, Style: current})
-	}
-	if rest != "" {
-		spans = append(spans, styledSpan{Text: rest, Style: panelContextStyle})
-	}
-	if len(spans) == 0 {
-		spans = append(spans, styledSpan{Text: line.Text, Style: current})
-	}
-	return spans
+	return append(spans, newLyricRamp(m).spans(line, m.Audio.Elapsed)...)
 }
 
 // splitWordsAt splits a line's text at the word fragment covering elapsed.
