@@ -43,8 +43,12 @@ func lyricMain(a *accent.Accent) colorful.Color {
 	return c
 }
 
-// lyricRune is one display rune of a line with the cell it starts at and how
-// many cells it covers.
+// lyricRune is one display rune of a line with the cell it starts at and the
+// sweep weight it carries. width is the rune's cell count, except that it is
+// never 0: a fragment made only of zero-width characters covers no cell but is
+// still weighted as one, so the intensity never divides by zero. Nothing may
+// treat width as a layout measure in that one degenerate case -- the panel's
+// geometry comes from wrapSpans measuring the text, not from this field.
 type lyricRune struct {
 	text  string
 	x     int
