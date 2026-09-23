@@ -151,7 +151,7 @@ func handleResize(m *Model, msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 		m.UI.tabWidth = 20
 	}
 
-	m.Components.CommandInput.SetWidth(msg.Width - 1)
+	syncCommandInputWidth(m)
 
 	return m, nil
 }

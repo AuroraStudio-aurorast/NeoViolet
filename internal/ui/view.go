@@ -418,7 +418,7 @@ func compactPath(path string, avail int) string {
 
 func renderHelp(m *Model) string {
 	if m.UI.Mode == ModeCommand {
-		return inputStyle.Render(m.Icons.Command + m.Components.CommandInput.View())
+		return renderCommandLine(m)
 	}
 
 	if m.switchingTrack {
