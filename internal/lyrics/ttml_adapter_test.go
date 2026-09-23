@@ -597,3 +597,20 @@ func TestTTML_BrIsNonGoal(t *testing.T) {
 			amllttml.CodeUnknownElement, doc.Diagnostics())
 	}
 }
+
+// A TTML span carries both begin and end; the adapter used to keep only begin.
+func TestTTML_AdapterWordFragmentsCarryTheirEnd(t *testing.T) {
+	data := ttmlToData(ttmlSampleDoc(t), "song.ttml")
+	first := data.Lines[0]
+	if len(first.Words) != 4 {
+		t.Fatalf("line 1 words = %d, want 4", len(first.Words))
+	}
+	// <span begin="00:01.000" end="00:01.500">I</span>
+	if want := 1500 * time.Millisecond; first.Words[0].End != want {
+		t.Errorf("word 1 End = %v, want %v", first.Words[0].End, want)
+	}
+	// <span begin="00:03.250" end="00:04.000">you</span>
+	if want := 4 * time.Second; first.Words[3].End != want {
+		t.Errorf("word 4 End = %v, want %v", first.Words[3].End, want)
+	}
+}

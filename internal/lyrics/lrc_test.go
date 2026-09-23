@@ -281,6 +281,27 @@ func TestParse_WordLevel(t *testing.T) {
 	}
 }
 
+// LRC is boundary-only: it has no per-word duration, so the end must stay
+// unknown and be resolved by WordEnd's fallback at read time.
+func TestParse_WordLevelHasNoEnd(t *testing.T) {
+	d, err := parseLRC(testLRC)
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	for _, l := range d.Lines {
+		if !strings.Contains(l.Text, "wordsyncedlyrics") {
+			continue
+		}
+		for _, w := range l.Words {
+			if w.End != 0 {
+				t.Errorf("word %q has End = %v, want 0", w.Text, w.End)
+			}
+		}
+		return
+	}
+	t.Fatal("word-level line not found")
+}
+
 func TestParse_OutOfOrder(t *testing.T) {
 	d, err := parseLRC(testLRC)
 	if err != nil {

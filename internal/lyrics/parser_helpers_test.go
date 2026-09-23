@@ -101,6 +101,23 @@ func TestShiftHelpers(t *testing.T) {
 	}
 }
 
+// A word whose End is unknown (0) must keep the zero sentinel through a shift:
+// shifting it would silently turn "unknown" into a real, bogus end time.
+func TestShiftWords_ShiftsEndButKeepsTheUnknownSentinel(t *testing.T) {
+	words := []WordFragment{
+		{Time: 1 * time.Second, End: 2 * time.Second, Text: "known"},
+		{Time: 3 * time.Second, Text: "unknown"},
+	}
+	got := shiftWords(words, 500*time.Millisecond)
+
+	if got[0].End != 2500*time.Millisecond {
+		t.Errorf("got[0].End = %v, want 2.5s", got[0].End)
+	}
+	if got[1].End != 0 {
+		t.Errorf("got[1].End = %v, want 0 (unknown must survive the shift)", got[1].End)
+	}
+}
+
 // TestScanWordTimed pins the shared word-timed scanner QRC, YRC and LYS will
 // run: QRC and LYS write each word before its (start,duration) tuple, YRC after
 // its (start,duration,flag) tuple.
@@ -117,6 +134,9 @@ func TestScanWordTimed(t *testing.T) {
 		words []string
 		// starts, when set, pins the Time of each fragment in order.
 		starts []time.Duration
+		// ends, when set, pins the End of each fragment in order. A zero entry
+		// means the fragment carries no end of its own.
+		ends []time.Duration
 		// start + wantStart pin the scan's Start; the flag is needed because 0 is
 		// itself a legitimate Start.
 		start     time.Duration
@@ -148,6 +168,10 @@ func TestScanWordTimed(t *testing.T) {
 			end:    1500 * time.Millisecond,
 			words:  []string{"lead ", "Hello"},
 			starts: []time.Duration{500 * time.Millisecond, 1000 * time.Millisecond},
+			// The untimed head fragment has no end of its own: its end is the next
+			// fragment's Time, which WordEnd resolves at read time. The word that
+			// carried a duration keeps the end that duration implies.
+			ends: []time.Duration{0, 1500 * time.Millisecond},
 			// The body opens with untimed text, so the head fragment is timed at
 			// the line start and Start is that fragment's Time.
 			start:     500 * time.Millisecond,
@@ -198,6 +222,10 @@ func TestScanWordTimed(t *testing.T) {
 			end:    1800 * time.Millisecond,
 			words:  []string{"I", " ", "could", " ", "not"},
 			starts: []time.Duration{1000 * time.Millisecond, 1200 * time.Millisecond, 1200 * time.Millisecond, 1500 * time.Millisecond, 1500 * time.Millisecond},
+			// I and could and not carry a duration; the two (0,0) space fillers do
+			// not, so their End stays unknown and WordEnd falls back to the next
+			// fragment's Time.
+			ends: []time.Duration{1200 * time.Millisecond, 0, 1500 * time.Millisecond, 0, 1800 * time.Millisecond},
 		},
 		{
 			// Same shape with YRC's polarity: the tuple precedes its text.
@@ -208,6 +236,9 @@ func TestScanWordTimed(t *testing.T) {
 			end:    1800 * time.Millisecond,
 			words:  []string{"I", " ", "could", " ", "not"},
 			starts: []time.Duration{1000 * time.Millisecond, 1200 * time.Millisecond, 1200 * time.Millisecond, 1500 * time.Millisecond, 1500 * time.Millisecond},
+			// Same as the QRC case: only the tuples that carry a duration give
+			// their fragment an end.
+			ends: []time.Duration{1200 * time.Millisecond, 0, 1500 * time.Millisecond, 0, 1800 * time.Millisecond},
 		},
 		{
 			name:   "only degenerate tuples leave no end",
@@ -272,6 +303,11 @@ func TestScanWordTimed(t *testing.T) {
 			for i, want := range tc.starts {
 				if got.Words[i].Time != want {
 					t.Errorf("Words[%d].Time = %v, want %v", i, got.Words[i].Time, want)
+				}
+			}
+			for i, want := range tc.ends {
+				if got.Words[i].End != want {
+					t.Errorf("Words[%d].End = %v, want %v", i, got.Words[i].End, want)
 				}
 			}
 			if tc.wantStart && got.Start != tc.start {

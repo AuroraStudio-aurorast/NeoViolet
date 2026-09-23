@@ -167,7 +167,7 @@ func ttmlWords(l *amllttml.Line) []WordFragment {
 		if w.EndsWithSpace {
 			text += " "
 		}
-		words = append(words, WordFragment{Time: w.Begin, Text: text})
+		words = append(words, WordFragment{Time: w.Begin, End: w.End, Text: text})
 	}
 	if len(words) == 0 {
 		return nil
