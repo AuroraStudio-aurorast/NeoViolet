@@ -248,6 +248,10 @@ func TestScanWordTimed(t *testing.T) {
 			end:    0,
 			words:  []string{"Hello"},
 			starts: []time.Duration{500 * time.Millisecond},
+			// The tuple carried no duration, so it must not hand its fragment an end
+			// either: End stays the unknown sentinel even though the fragment itself
+			// inherited the line's start.
+			ends: []time.Duration{0},
 			// A nonzero lineStart keeps this case from passing by accident: the
 			// degenerate tuple carries no duration, so the line must stay
 			// unbounded instead of inheriting lineStart as its End. The fragment
@@ -294,6 +298,13 @@ func TestScanWordTimed(t *testing.T) {
 			}
 			if len(texts) != len(tc.words) {
 				t.Fatalf("Words = %v, want %v", texts, tc.words)
+			}
+			// The two expectation slices below are indexed against got.Words, so a
+			// case listing more starts or ends than words would panic instead of
+			// failing. The check above compares against tc.words, not against them.
+			if len(tc.starts) > len(got.Words) || len(tc.ends) > len(got.Words) {
+				t.Fatalf("case lists %d starts and %d ends for %d words",
+					len(tc.starts), len(tc.ends), len(got.Words))
 			}
 			for i := range tc.words {
 				if texts[i] != tc.words[i] {

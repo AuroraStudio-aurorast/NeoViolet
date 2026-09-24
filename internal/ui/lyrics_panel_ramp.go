@@ -99,6 +99,13 @@ func lyricRunes(text string) []lyricRune {
 // lyricSweep returns the emphasis front's position in display cells: how far the
 // shading has reached into the line at elapsed. It is 0 before the first word and
 // stops at a word's end, so a silence between words does not drag it forward.
+//
+// It walks Words in order and stops at the first fragment starting after elapsed,
+// so it requires their Times to be non-decreasing -- which the parsers keep (a
+// (0,0) filler inherits the running boundary rather than resetting it). Note that
+// splitWordsAt, which decides whether a line may be split at all, is
+// order-independent, so unsorted Words could tile and still sweep from the wrong
+// fragment.
 func lyricSweep(line lyrics.LyricLine, elapsed time.Duration) float64 {
 	current := -1
 	for i, w := range line.Words {

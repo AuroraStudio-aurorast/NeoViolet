@@ -32,6 +32,68 @@ func mustColorful(t *testing.T, hex string) colorful.Color {
 	return c
 }
 
+// lyricShade is the one curve both features read: the sweep at a rune's own
+// progress, and a translated row at its midpoint. Only the midpoint is reachable
+// through them, so the two ends and the direction are pinned here -- a blend with
+// its endpoints swapped, or one that ran backwards, would otherwise leave the
+// whole suite green. The midpoint's own value and its hue are pinned by
+// TestLyricTranslationColour_IsTheMidpointTowardGrey, which reads the curve
+// through the row that uses it.
+func TestLyricShade_RunsFromTheGreyUpToTheAccent(t *testing.T) {
+	main := mustColorful(t, "#af87ff")
+
+	// The ends are the finished colours themselves, not lookalikes.
+	if got := lyricShade(main, 0); got != lyricGrey {
+		t.Errorf("lyricShade at 0 = %s, want the unplayed grey %s", got.Hex(), lyricGrey.Hex())
+	}
+	if got := lyricShade(main, 1); got != main {
+		t.Errorf("lyricShade at 1 = %s, want the emphasis colour %s", got.Hex(), main.Hex())
+	}
+	// styleFor clamps the same way, so an t outside [0,1] must not escape the ends.
+	if got := lyricShade(main, -0.5); got != lyricGrey {
+		t.Errorf("lyricShade at -0.5 = %s, want the unplayed grey", got.Hex())
+	}
+	if got := lyricShade(main, 1.5); got != main {
+		t.Errorf("lyricShade at 1.5 = %s, want the emphasis colour", got.Hex())
+	}
+
+	// Direction, which the midpoint cannot show: three quarters of the way must be
+	// further from the grey than a quarter. Swapping the two colours passed to the
+	// blend would flip this while leaving the midpoint identical.
+	_, greyC, _ := lyricGrey.Hcl()
+	_, nearC, _ := lyricShade(main, 0.25).Hcl()
+	_, farC, _ := lyricShade(main, 0.75).Hcl()
+	_, mainC, _ := main.Hcl()
+	if !(greyC <= nearC && nearC < farC && farC <= mainC) {
+		t.Errorf("chroma is not monotonic from grey up to the accent: 0.25=%.2f 0.75=%.2f (grey=%.2f accent=%.2f)",
+			nearC, farC, greyC, mainC)
+	}
+}
+
+// The two ends of the ramp hand back the panel's finished styles rather than
+// colours derived to look like them. That is what keeps a fully sung line and an
+// unplayed one byte-identical to how they rendered before the sweep existed, and it
+// stops the gradient's truecolor grey from reaching whole lines that the terminal
+// would otherwise render through its own 245 profile.
+func TestLyricRamp_EndsReuseThePanelStylesVerbatim(t *testing.T) {
+	m := &Model{}
+	r := newLyricRamp(m)
+
+	if got, want := r.styleFor(0).Render("x"), panelContextStyle.Render("x"); got != want {
+		t.Errorf("styleFor(0) renders %q, want panelContextStyle's %q", got, want)
+	}
+	if got, want := r.styleFor(1).Render("x"), panelCurrentStyle(m).Render("x"); got != want {
+		t.Errorf("styleFor(1) renders %q, want panelCurrentStyle's %q", got, want)
+	}
+	// The clamped ends land on the same two styles.
+	if got := r.styleFor(-1).Render("x"); got != panelContextStyle.Render("x") {
+		t.Errorf("styleFor(-1) renders %q, want panelContextStyle", got)
+	}
+	if got := r.styleFor(2).Render("x"); got != panelCurrentStyle(m).Render("x") {
+		t.Errorf("styleFor(2) renders %q, want panelCurrentStyle", got)
+	}
+}
+
 // A translated row takes the emphasis colour halfway toward the grey the unplayed
 // text uses, which is lyricShade read at translationShade. The hex values are
 // pinned as literals rather than recomputed from the same expression, so changing

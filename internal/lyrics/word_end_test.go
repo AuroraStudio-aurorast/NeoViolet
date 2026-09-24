@@ -51,6 +51,12 @@ func TestWordEnd_ResolutionOrder(t *testing.T) {
 			index: 4,
 			want:  0,
 		},
+		{
+			name:  "negative index reports zero",
+			line:  LyricLine{Words: []WordFragment{{Time: sec(1), Text: "a"}}},
+			index: -1,
+			want:  0,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
