@@ -85,6 +85,41 @@ func TestPathCandidatesReadDirFailureIsSilent(t *testing.T) {
 	}
 }
 
+// A prefix that already names a directory descends into it without the user
+// typing the separator: the values carry the one the listing needs.
+func TestPathCandidatesDescendIntoNamedDirectory(t *testing.T) {
+	root := mkTree(t)
+	got := value(t, candidatesFor(completionContextAt("open "+root, len("open "+root))))
+	want := []string{root + "/Album/", root + "/a.flac", root + "/b.mp3", root + "/d.mid"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("candidates = %v, want %v", got, want)
+	}
+}
+
+// On Windows a trailing backslash is a directory boundary, so the prefix names a
+// directory to list with nothing typed inside it yet -- not a fragment whose
+// directory has to be guessed back out of it.
+func TestScanForWindowsTrailingBackslash(t *testing.T) {
+	windowsSeparators(t)
+	prefix := `C:\Music\Albums\`
+	got := scanFor(prefix)
+	if got.dir != prefix || got.typedDir != prefix || got.fragment != "" {
+		t.Errorf("scanFor(%q) = %+v, want dir and typedDir %q with no fragment", prefix, got, prefix)
+	}
+}
+
+// Directory candidates are marked with the separator style of the typed prefix.
+// The listing is real -- a temporary directory stands in for the directory being
+// completed -- while the shape echoed back is the one a Windows user typed.
+func TestCandidatesInKeepsTheTypedSeparator(t *testing.T) {
+	windowsSeparators(t)
+	got := value(t, candidatesIn(pathScan{dir: mkTree(t), typedDir: `C:\Music\`}))
+	want := `C:\Music\Album\,C:\Music\a.flac,C:\Music\b.mp3,C:\Music\d.mid`
+	if strings.Join(got, ",") != want {
+		t.Errorf("candidates = %v, want %s", got, want)
+	}
+}
+
 func TestPathCandidatesKeepTildeShape(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
