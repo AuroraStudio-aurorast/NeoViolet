@@ -34,11 +34,10 @@ func mustColorful(t *testing.T, hex string) colorful.Color {
 
 // lyricShade is the one curve both features read: the sweep at a rune's own
 // progress, and a translated row at its midpoint. Only the midpoint is reachable
-// through them, so the two ends and the direction are pinned here -- a blend with
-// its endpoints swapped, or one that ran backwards, would otherwise leave the
-// whole suite green. The midpoint's own value and its hue are pinned by
-// TestLyricTranslationColour_IsTheMidpointTowardGrey, which reads the curve
-// through the row that uses it.
+// through them, so the ends and the direction are pinned here -- a blend with its
+// endpoints swapped, or one that ran backwards, would otherwise leave the whole
+// suite green. The midpoint's value and hue are pinned through the row that uses
+// it.
 func TestLyricShade_RunsFromTheGreyUpToTheAccent(t *testing.T) {
 	main := mustColorful(t, "#af87ff")
 

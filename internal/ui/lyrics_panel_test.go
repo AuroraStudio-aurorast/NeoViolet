@@ -452,8 +452,8 @@ func TestPanelWindow_KaraokeFallsBackWhenWordsDoNotTile(t *testing.T) {
 }
 
 // Word timings belong to the first part of a merged line, so only that part
-// karaokes; the translation part falls back to a whole-line highlight because
-// its words do not tile its text.
+// karaokes: the words do not tile the second part's text, which therefore renders
+// as a single whole-line span.
 func TestPanelWindow_KaraokeOnlyFirstPartOfMergedLine(t *testing.T) {
 	m := panelModel(t, 0)
 	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{

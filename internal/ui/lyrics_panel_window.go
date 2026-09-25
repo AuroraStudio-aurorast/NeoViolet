@@ -10,7 +10,7 @@ import (
 // This file holds the panel window: which lines the panel shows and how each
 // line is styled. lyrics_panel.go owns the surface (the box and row rendering);
 // this file selects the current line group, builds the window around it, and
-// splits highlighted lines into played/unplayed spans.
+// turns the highlighted line into the styled spans the panel draws.
 //
 // How the window is laid out (anchoring, the context cap, wrapping) is decided
 // by panelFormat in lyrics_panel_format.go.
@@ -172,8 +172,6 @@ func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlig
 	if line.PartCount() == 1 {
 		return wrapLineRows(panelLineSpans(m, line, highlight, showAgent, false), innerW, maxRows)
 	}
-	// An event whose parts are translations demotes every part after the first:
-	// those rows translate the line being sung rather than being it.
 	translated := m.Audio.Lyrics.TranslationsInParts
 	rows := make([]panelRow, 0, line.PartCount())
 	for i := 0; i < line.PartCount(); i++ {
@@ -197,22 +195,21 @@ func wrapLineRows(spans []styledSpan, innerW, maxRows int) []panelRow {
 	return rows
 }
 
-// partLine returns a copy of line whose Text is its i-th display part. Words,
-// Agent, Time and End stay untouched: panelLineSpans falls back to a whole-line
-// highlight when the word timings do not tile the text, so the first part of a
-// merged line keeps its karaoke and the remaining parts highlight as a whole
-// without any branching here.
+// partLine returns a copy of line whose Text is its i-th display part, leaving
+// Words, Agent, Time and End untouched. Keeping the words is what lets the first
+// part of a merged line karaoke: panelLineSpans falls back to a whole-line
+// highlight for any part whose word timings cannot tile its text, which is every
+// part but the first.
 func partLine(line lyrics.LyricLine, i int) lyrics.LyricLine {
 	line.Text = line.Part(i)
 	return line
 }
 
-// panelLineSpans styles a lyric line. The highlighted line is split into
-// played/unplayed spans when the format carries word timings that tile the text.
-// showAgent adds the "NAME: " label; the panel shows it only where the singer
-// changes, so when it is due it stays out of the karaoke split. translated marks a
-// part that renders the line being sung in another language, which is styled as a
-// whole subordinate row rather than karaoked (see below).
+// panelLineSpans styles a lyric line. The highlighted line is shaded from the
+// unplayed grey into the accent when the format carries word timings that tile the
+// text. showAgent adds the "NAME: " label; the panel shows it only where the singer
+// changes, so when it is due it stays out of the shading. translated marks a part
+// that renders the line being sung in another language rather than continuing it.
 func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent, translated bool) []styledSpan {
 	if !highlight {
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: panelContextStyle}}
