@@ -141,6 +141,31 @@ func TestCompactPath(t *testing.T) {
 	}
 }
 
+// A Windows path splits on its own separators, so a long one still loses its
+// left-hand directories and keeps the file name instead of being read as a
+// single unbreakable name and truncated from the right.
+func TestCompactPathWindows(t *testing.T) {
+	windowsSeparators(t)
+	const path = `C:\Users\me\Music\VeryLong\name.mp3`
+	for _, tc := range []struct {
+		avail int
+		want  string
+	}{
+		{62, path},
+		{24, `…\VeryLong\name.mp3`},
+		{15, `…\name.mp3`},
+	} {
+		if got := compactPath(path, tc.avail); got != tc.want {
+			t.Errorf("compactPath(%q, %d) = %q, want %q", path, tc.avail, got, tc.want)
+		}
+	}
+	// Below the middle-ellipsis width the row falls back to truncation, which
+	// keeps the drive and the start of the name.
+	if got := compactPath(`C:\a\very-long-file-name-here.mp3`, 10); got != `C:\a\very…` {
+		t.Errorf("compactPath narrow = %q, want %q", got, `C:\a\very…`)
+	}
+}
+
 // A pathological single file name must still come back as exactly avail cells:
 // nothing downstream clips an over-wide row (the compositor widens its canvas
 // instead), so compactPath and truncateLine have to land inside the budget on

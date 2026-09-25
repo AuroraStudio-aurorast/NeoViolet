@@ -388,7 +388,9 @@ func compactValue(cand candidate, avail int) string {
 }
 
 // compactPath keeps the file name and as many trailing directories as fit,
-// replacing the head with an ellipsis: "…/VeryLong/name.mp3".
+// replacing the head with an ellipsis: "…/VeryLong/name.mp3". The split follows
+// the separators the path is written with, so a Windows path is compacted on its
+// own separators instead of being read as one unbreakable name.
 func compactPath(path string, avail int) string {
 	if lipgloss.Width(path) <= avail {
 		return path
@@ -396,7 +398,8 @@ func compactPath(path string, avail int) string {
 	if avail < minCompactWidth {
 		return truncateLine(path, avail)
 	}
-	segs := strings.Split(path, "/")
+	sep := pathSep(path)
+	segs := strings.Split(path, sep)
 	if len(segs) > 0 && segs[0] == "" {
 		segs = segs[1:] // absolute path: drop the leading empty segment
 	}
@@ -405,9 +408,9 @@ func compactPath(path string, avail int) string {
 		return truncateLine(path, avail) // pathological file name
 	}
 
-	best := "…/" + base
+	best := "…" + sep + base
 	for k := 2; k <= len(segs); k++ {
-		cand := "…/" + strings.Join(segs[len(segs)-k:], "/")
+		cand := "…" + sep + strings.Join(segs[len(segs)-k:], sep)
 		if lipgloss.Width(cand) > avail {
 			break
 		}

@@ -29,7 +29,7 @@ func scanFor(prefix string) pathScan {
 	switch {
 	case full == "":
 		return pathScan{dir: "."}
-	case strings.HasSuffix(prefix, "/"):
+	case endsWithPathSep(prefix):
 		return pathScan{dir: full, typedDir: prefix}
 	default:
 		// The fragment and the directory to scan both come from the literal
@@ -41,7 +41,7 @@ func scanFor(prefix string) pathScan {
 		base := filepath.Base(prefix)
 		if base != "." {
 			if info, err := os.Stat(full); err == nil && info.IsDir() {
-				return pathScan{dir: full, typedDir: prefix + "/"}
+				return pathScan{dir: full, typedDir: prefix + pathSep(prefix)}
 			}
 		}
 		return pathScan{
@@ -63,7 +63,13 @@ func playableExt(ext string) bool {
 // files the player can open. A ReadDir failure yields no candidates and no
 // error state -- completion is a hint, not validation.
 func pathCandidates(prefix string) []candidate {
-	scan := scanFor(prefix)
+	return candidatesIn(scanFor(prefix))
+}
+
+// candidatesIn lists the entries of an already resolved scan. The separator that
+// marks a directory candidate comes from the scan's typed prefix rather than
+// from the entry itself, so the value keeps the style the user is typing in.
+func candidatesIn(scan pathScan) []candidate {
 	entries, err := os.ReadDir(scan.dir)
 	if err != nil {
 		return nil
@@ -85,14 +91,14 @@ func pathCandidates(prefix string) []candidate {
 		}
 		value := scan.typedDir + name
 		if isDir {
-			value += "/"
+			value += pathSep(scan.typedDir)
 		}
 		out = append(out, candidate{Value: value, Path: true})
 	}
 
 	sort.Slice(out, func(i, j int) bool {
-		iDir := strings.HasSuffix(out[i].Value, "/")
-		jDir := strings.HasSuffix(out[j].Value, "/")
+		iDir := endsWithPathSep(out[i].Value)
+		jDir := endsWithPathSep(out[j].Value)
 		if iDir != jDir {
 			return iDir
 		}
