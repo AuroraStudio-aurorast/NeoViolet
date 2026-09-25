@@ -10,7 +10,7 @@ import (
 // This file holds the panel window: which lines the panel shows and how each
 // line is styled. lyrics_panel.go owns the surface (the box and row rendering);
 // this file selects the current line group, builds the window around it, and
-// splits highlighted lines into played/unplayed spans.
+// turns the highlighted line into the styled spans the panel draws.
 //
 // How the window is laid out (anchoring, the context cap, wrapping) is decided
 // by panelFormat in lyrics_panel_format.go.
@@ -170,8 +170,9 @@ func panelLineIsCurrent(m *Model, line lyrics.LyricLine, currentTime time.Durati
 // for the line as a whole, so only its first part carries the label.
 func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlight, showAgent bool) []panelRow {
 	if line.PartCount() == 1 {
-		return wrapLineRows(panelLineSpans(m, line, highlight, showAgent), innerW, maxRows)
+		return wrapLineRows(panelLineSpans(m, line, highlight, showAgent, false), innerW, maxRows)
 	}
+	translated := m.Audio.Lyrics.TranslationsInParts
 	rows := make([]panelRow, 0, line.PartCount())
 	for i := 0; i < line.PartCount(); i++ {
 		if strings.TrimSpace(line.Part(i)) == "" {
@@ -179,7 +180,7 @@ func panelLineRows(m *Model, line lyrics.LyricLine, innerW, maxRows int, highlig
 		}
 		// The label belongs to the line, not to each of its parts: the
 		// translation row of a bilingual line must not repeat "NAME: ".
-		rows = append(rows, wrapLineRows(panelLineSpans(m, partLine(line, i), highlight, i == 0 && showAgent), innerW, maxRows)...)
+		rows = append(rows, wrapLineRows(panelLineSpans(m, partLine(line, i), highlight, i == 0 && showAgent, translated && i > 0), innerW, maxRows)...)
 	}
 	return rows
 }
@@ -194,25 +195,33 @@ func wrapLineRows(spans []styledSpan, innerW, maxRows int) []panelRow {
 	return rows
 }
 
-// partLine returns a copy of line whose Text is its i-th display part. Words,
-// Agent, Time and End stay untouched: panelLineSpans falls back to a whole-line
-// highlight when the word timings do not tile the text, so the first part of a
-// merged line keeps its karaoke and the remaining parts highlight as a whole
-// without any branching here.
+// partLine returns a copy of line whose Text is its i-th display part, leaving
+// Words, Agent, Time and End untouched. Keeping the words is what lets the first
+// part of a merged line karaoke: panelLineSpans falls back to a whole-line
+// highlight for any part whose word timings cannot tile its text, which is every
+// part but the first.
 func partLine(line lyrics.LyricLine, i int) lyrics.LyricLine {
 	line.Text = line.Part(i)
 	return line
 }
 
-// panelLineSpans styles a lyric line. The highlighted line is split into
-// played/unplayed spans when the format carries word timings that tile the text.
-// showAgent adds the "NAME: " label; the panel shows it only where the singer
-// changes, so when it is due it stays out of the karaoke split.
-func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent bool) []styledSpan {
-	current := panelCurrentStyle(m)
+// panelLineSpans styles a lyric line. The highlighted line is shaded from the
+// unplayed grey into the accent when the format carries word timings that tile the
+// text. showAgent adds the "NAME: " label; the panel shows it only where the singer
+// changes, so when it is due it stays out of the shading. translated marks a part
+// that renders the line being sung in another language rather than continuing it.
+func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent, translated bool) []styledSpan {
 	if !highlight {
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: panelContextStyle}}
 	}
+	if translated {
+		// A translated part carries the original line's word timings rather than its
+		// own, so sweeping it rune by rune would track the wrong text. The row is
+		// styled whole and one step quieter than the line it translates.
+		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: lyricTranslationStyle(m)}}
+	}
+
+	current := panelCurrentStyle(m)
 	if len(line.Words) == 0 {
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}
@@ -224,22 +233,15 @@ func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent bool) 
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}
 
-	spans := make([]styledSpan, 0, 3)
+	// The agent label marks a change of singer, not progress through the line, so
+	// it keeps the current style and stays out of the shading.
+	var spans []styledSpan
 	if showAgent {
 		if prefix := agentPrefix(m.Audio.Lyrics, line); prefix != "" {
 			spans = append(spans, styledSpan{Text: prefix, Style: current})
 		}
 	}
-	if played != "" {
-		spans = append(spans, styledSpan{Text: played, Style: current})
-	}
-	if rest != "" {
-		spans = append(spans, styledSpan{Text: rest, Style: panelContextStyle})
-	}
-	if len(spans) == 0 {
-		spans = append(spans, styledSpan{Text: line.Text, Style: current})
-	}
-	return spans
+	return append(spans, newLyricRamp(m).spans(line, m.Audio.Elapsed)...)
 }
 
 // splitWordsAt splits a line's text at the word fragment covering elapsed.

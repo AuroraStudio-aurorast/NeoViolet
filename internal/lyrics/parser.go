@@ -121,14 +121,19 @@ func shiftTime(t, delta time.Duration) time.Duration {
 }
 
 // shiftWords returns words with every Time shifted by delta, clamped at zero.
-// The input slice is left untouched.
+// End is shifted too, except when it is zero: zero is the "unknown" sentinel and
+// shifting it would invent an end time. The input slice is left untouched.
 func shiftWords(words []WordFragment, delta time.Duration) []WordFragment {
 	if delta == 0 || len(words) == 0 {
 		return words
 	}
 	out := make([]WordFragment, len(words))
 	for i, w := range words {
-		out[i] = WordFragment{Time: shiftTime(w.Time, delta), Text: w.Text}
+		out[i] = w
+		out[i].Time = shiftTime(w.Time, delta)
+		if w.End != 0 {
+			out[i].End = shiftTime(w.End, delta)
+		}
 	}
 	return out
 }
@@ -158,6 +163,17 @@ type wordTimedScan struct {
 	// Words keeps untimed leading/trailing text as ordinary fragments too, so
 	// that Text and Words cannot disagree.
 	Words []WordFragment
+}
+
+// wordEnd turns a parsed per-word duration into an absolute end time. A
+// non-positive duration means the tuple carried no time of its own (the (0,0)
+// filler QRC uses between words), so the end stays unknown and WordEnd falls
+// back to the next fragment.
+func wordEnd(start time.Duration, durMs int) time.Duration {
+	if durMs <= 0 {
+		return 0
+	}
+	return start + time.Duration(durMs)*time.Millisecond
 }
 
 // scanWordTimed scans a word-timed body (QRC, YRC and LYS share this).
@@ -210,7 +226,7 @@ func scanWordTimed(body string, groups wordTimedRe, lineStart time.Duration) wor
 			startAt = boundary
 		}
 		if text != "" {
-			scan.Words = append(scan.Words, WordFragment{Time: startAt, Text: text})
+			scan.Words = append(scan.Words, WordFragment{Time: startAt, End: wordEnd(startAt, durMs), Text: text})
 			sb.WriteString(text)
 		}
 		// Degenerate (0,0) tuples must not drag the boundary backwards.

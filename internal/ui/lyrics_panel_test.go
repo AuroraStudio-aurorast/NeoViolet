@@ -372,6 +372,26 @@ func TestPanelWindow_PastLastLine(t *testing.T) {
 	}
 }
 
+// splitByContextStyle splits a span row into the text that carries some
+// emphasis and the text that has none. The ramp emits a distinct shade for every
+// rune it is crossing, so asking "is this cell still unplayed?" is the stable way
+// to pin the front's position: comparing whole rendered styles is how the panel's
+// own tests already tell two styles apart.
+//
+// Emphasis only ever advances across a line, so the emphasised text is a prefix
+// and the unplayed text is the matching suffix.
+func splitByContextStyle(spans []styledSpan) (played, unplayed string) {
+	context := panelContextStyle.Render("x")
+	for _, s := range spans {
+		if s.Style.Render("x") == context {
+			unplayed += s.Text
+			continue
+		}
+		played += s.Text
+	}
+	return played, unplayed
+}
+
 func TestPanelWindow_KaraokeSplit(t *testing.T) {
 	m := panelModel(t, 2)
 	m.Audio.Lyrics = &lyrics.Data{Lines: []lyrics.LyricLine{{
@@ -393,15 +413,20 @@ func TestPanelWindow_KaraokeSplit(t *testing.T) {
 		t.Fatalf("row %d = %q", anchor, got)
 	}
 	spans := rows[anchor].spans
-	if len(spans) != 2 {
-		t.Fatalf("got %d spans, want 2 (played/unplayed)", len(spans))
+	// The word runs [0,3s) across 12 cells, so at 2s the front sits at the end of
+	// the fourth glyph. Whether that boundary glyph renders as fully or almost
+	// emphasised depends on float rounding, so this asserts the region the timings
+	// imply rather than an exact number of spans.
+	played, unplayed := splitByContextStyle(spans)
+	if played != "可是我没" {
+		t.Errorf("played region = %q, want %q", played, "可是我没")
 	}
-	if spans[0].Text != "可是我没有" || spans[1].Text != "听见你的声音" {
-		t.Errorf("spans = %q / %q", spans[0].Text, spans[1].Text)
+	if unplayed != "有听见你的声音" {
+		t.Errorf("unplayed region = %q, want %q", unplayed, "有听见你的声音")
 	}
 	// lipgloss emits ANSI even under `go test`, so different styles must produce
 	// different bytes. Comparing renders avoids depending on private style state.
-	if spans[0].Style.Render("x") == spans[1].Style.Render("x") {
+	if spans[0].Style.Render("x") == spans[len(spans)-1].Style.Render("x") {
 		t.Errorf("played and unplayed spans render identically: %q", spans[0].Style.Render("x"))
 	}
 }
@@ -427,8 +452,8 @@ func TestPanelWindow_KaraokeFallsBackWhenWordsDoNotTile(t *testing.T) {
 }
 
 // Word timings belong to the first part of a merged line, so only that part
-// karaokes; the translation part falls back to a whole-line highlight because
-// its words do not tile its text.
+// karaokes: the words do not tile the second part's text, which therefore renders
+// as a single whole-line span.
 func TestPanelWindow_KaraokeOnlyFirstPartOfMergedLine(t *testing.T) {
 	m := panelModel(t, 0)
 	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
@@ -447,14 +472,19 @@ func TestPanelWindow_KaraokeOnlyFirstPartOfMergedLine(t *testing.T) {
 	rows := panelWindow(m, plan)
 
 	spans := rows[0].spans
-	if len(spans) != 2 {
-		t.Fatalf("row 0 has %d spans, want 2 (played/unplayed)", len(spans))
+	if got := panelRowText(rows[0]); got != "Hello world" {
+		t.Fatalf("row 0 = %q, want %q", got, "Hello world")
 	}
-	if spans[0].Text != "Hello " || spans[1].Text != "world" {
-		t.Errorf("row 0 spans = %q / %q, want %q / %q",
-			spans[0].Text, spans[1].Text, "Hello ", "world")
+	// The first word runs [0,3s) across 6 cells, so at 2s the front sits at cell 4
+	// and the trailing word is still untouched.
+	played, unplayed := splitByContextStyle(spans)
+	if played != "Hell" {
+		t.Errorf("row 0 played region = %q, want %q", played, "Hell")
 	}
-	if spans[0].Style.Render("x") == spans[1].Style.Render("x") {
+	if unplayed != "o world" {
+		t.Errorf("row 0 unplayed region = %q, want %q", unplayed, "o world")
+	}
+	if spans[0].Style.Render("x") == spans[len(spans)-1].Style.Render("x") {
 		t.Errorf("played and unplayed spans render identically: %q", spans[0].Style.Render("x"))
 	}
 
@@ -554,11 +584,13 @@ func TestRenderLyricsPanel_ExtremeSizes(t *testing.T) {
 }
 
 // panelPartsModel is panelModel with a single event that carries several
-// display parts — what a bilingual LRC line or a multi-line SRT cue produces.
+// display parts. It declares no translated parts, which is the shape an author's
+// line break makes (a multi-line SRT cue, SMI <br>, a multi-line SYLT entry): the
+// parts belong to one sentence, so nothing may demote the later rows.
 func panelPartsModel(t *testing.T, contextLines int, parts []string) *Model {
 	t.Helper()
 	m := panelModel(t, contextLines)
-	m.Audio.Lyrics = &lyrics.Data{Format: "lrc", Lines: []lyrics.LyricLine{{
+	m.Audio.Lyrics = &lyrics.Data{Format: "srt", Lines: []lyrics.LyricLine{{
 		Time:  0,
 		Text:  strings.Join(parts, " | "),
 		Parts: parts,
@@ -587,10 +619,11 @@ func TestPanelWindow_MergedPartsEachGetARow(t *testing.T) {
 	panelRowWidths(t, rows, plan.PanelInnerW)
 }
 
-// Every part of one event is the same current line: a bilingual event must
-// not render its first row highlighted and its second row grey.
-func TestPanelWindow_AllPartsShareCurrentStyle(t *testing.T) {
-	m := panelPartsModel(t, 0, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
+// Parts of an event that declares no translations all stay on the current style:
+// an author's line break is still the same sung line, so demoting the second row
+// would render one sentence in two weights. Covers srt, smi and embedded SYLT.
+func TestPanelWindow_PartsShareCurrentStyleWithoutTranslations(t *testing.T) {
+	m := panelPartsModel(t, 0, []string{"I hear the rain fall", "on the green green grass"})
 	plan := m.layoutPlan()
 	rows := panelWindow(m, plan)
 	current := panelCurrentStyle(m).Render("x")

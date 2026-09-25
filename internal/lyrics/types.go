@@ -9,6 +9,10 @@ import (
 // WordFragment is a single timed word within a lyric line.
 type WordFragment struct {
 	Time time.Duration
+	// End is the moment the word stops being sung. Zero means unknown: the
+	// source format carried no duration for it, so WordEnd falls back to the next
+	// fragment's Time and then to the line's End.
+	End  time.Duration
 	Text string
 }
 
@@ -36,6 +40,27 @@ func (l LyricLine) PartCount() int {
 	return len(l.Parts)
 }
 
+// WordEnd returns the moment word i of the line stops being sung. It resolves
+// the most specific source available: the fragment's own End, then the next
+// fragment's Time, then the line's End. It returns 0 when none of them bound the
+// word, which callers must read as "unbounded" rather than "instant".
+func (l LyricLine) WordEnd(i int) time.Duration {
+	if i < 0 || i >= len(l.Words) {
+		return 0
+	}
+	w := l.Words[i]
+	if w.End > w.Time {
+		return w.End
+	}
+	if i+1 < len(l.Words) {
+		return l.Words[i+1].Time
+	}
+	if l.End > w.Time {
+		return l.End
+	}
+	return 0
+}
+
 // Part returns the i-th display sub-line. i must be in [0, PartCount()); for a
 // line without Parts every i returns Text, so callers can loop uniformly.
 func (l LyricLine) Part(i int) string {
@@ -56,6 +81,13 @@ type Data struct {
 	Lines   []LyricLine
 	Path    string
 	Format  string // parser name that produced this data ("lrc", "ttml", etc.)
+
+	// TranslationsInParts declares that the display parts after the first are
+	// translations of the first, so that a bilingual event can be told apart from
+	// one whose author broke a sentence across lines. Only LRC (a same-timestamp
+	// merge) and TTML (ordered [original, background vocal, translation]) set it;
+	// SRT, SMI and embedded SYLT parts are line breaks and leave it false.
+	TranslationsInParts bool
 
 	// Agents maps agent ID to display name (e.g. "v1" -> "Taylor Swift").
 	// Populated by the TTML parser from <ttm:agent> + <amll:meta key="artists">,
