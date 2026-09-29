@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
@@ -236,6 +237,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 		Icons:       activeIcons,
 		Error:       &MessageState{},
 		Info:        &MessageState{},
+		Anim:        anim.New(),
 		Loading:     filePath != "",
 		pendingPath: filePath,
 	}
