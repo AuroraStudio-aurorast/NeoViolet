@@ -78,7 +78,10 @@ func renderTabs(m *Model) string {
 			tabContent += " "
 		}
 		tabContent += name + " "
-		if i == m.UI.ActiveTab {
+		// The animation is not on a tab: it borrows the content area, so no tab
+		// claims to be the one showing. Focus still brightens the row, because
+		// that says where the keyboard is rather than what is on screen.
+		if i == m.UI.ActiveTab && !m.animVisible() {
 			accented := activeTabStyle.BorderForeground(lipgloss.Color(accentOrDefault(m.Accent, "57")))
 			tabs = append(tabs, accented.Width(m.UI.tabWidth).Render(tabContent))
 		} else {
@@ -105,6 +108,12 @@ func renderContent(m *Model, plan layoutPlan) string {
 		m.UI.Tabs[m.UI.ActiveTab],
 		descriptions[m.UI.ActiveTab],
 	)
+	// The animation borrows this box while it shows. An .nvaa file is a sidecar
+	// of the track, like its lyrics, so it takes the content area rather than a
+	// page of its own.
+	if body, ok := animBody(m, plan); ok {
+		content = body
+	}
 
 	s := contentStyle
 	if m.UI.Focus == FocusContent {

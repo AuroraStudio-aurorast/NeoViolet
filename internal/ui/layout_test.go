@@ -131,6 +131,14 @@ func TestComputeLayout_Invariants(t *testing.T) {
 						if got := tabsHeight + p.ContentHeight + p.FooterRows + helpHeight; got != h {
 							t.Errorf("tabs+content+footer+help = %d, want %d", got, h)
 						}
+						// The inner box is the content region minus the chrome its own
+						// style draws, and it never goes negative on a cramped frame.
+						if want := max(0, p.ContentWidth-contentBorderW-2*contentPaddingH); p.ContentInnerW != want {
+							t.Errorf("ContentInnerW = %d, want %d", p.ContentInnerW, want)
+						}
+						if want := max(0, p.ContentHeight-contentBorderH-2*contentPaddingV); p.ContentInnerH != want {
+							t.Errorf("ContentInnerH = %d, want %d", p.ContentInnerH, want)
+						}
 						if p.PanelShown {
 							if p.PanelInnerW != p.PanelWidth-4 {
 								t.Errorf("PanelInnerW = %d, want %d", p.PanelInnerW, p.PanelWidth-4)
@@ -188,6 +196,41 @@ func TestComputeLayout_MatchesToday(t *testing.T) {
 			}
 			if p.FooterRows != tc.wantFooter {
 				t.Errorf("FooterRows = %d, want %d", p.FooterRows, tc.wantFooter)
+			}
+		})
+	}
+}
+
+// The inner box is what a renderer may draw in without disturbing the frame
+// around it, so it is pinned at the two terminals that matter: the smallest
+// usable one, and a typical one with the lyric panel beside it.
+func TestComputeLayout_ContentInnerBox(t *testing.T) {
+	cases := []struct {
+		name    string
+		w, h    int
+		panelW  int
+		oneLine bool
+		wantW   int
+		wantH   int
+	}{
+		// 68x17 is minWidth x minHeight: no panel fits, so the content area gets
+		// the whole terminal and only the footer's lyric row can take a line away
+		// from it.
+		{"smallest terminal", 68, 17, testPanelWidth, false, 62, 4},
+		{"smallest with a lyric row", 68, 17, testPanelWidth, true, 62, 3},
+		// A 30-column panel beside it leaves 70 columns and 21 rows of content.
+		{"with the lyric panel", 100, 30, 30, false, 64, 17},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := input(config.PanelModeAuto, true, tc.oneLine)
+			in.PanelWidth = tc.panelW
+			p := computeLayout(tc.w, tc.h, in)
+			if p.ContentInnerW != tc.wantW || p.ContentInnerH != tc.wantH {
+				t.Errorf("inner box = %dx%d, want %dx%d (content %dx%d)",
+					p.ContentInnerW, p.ContentInnerH, tc.wantW, tc.wantH,
+					p.ContentWidth, p.ContentHeight)
 			}
 		})
 	}

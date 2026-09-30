@@ -44,6 +44,9 @@ func TestDefaultConfig(t *testing.T) {
 		{"Error.Duration", cfg.Error.Duration, 90},
 		{"Accent.AutoAccent", *cfg.Accent.AutoAccent, true},
 		{"Accent.IsEnabled", cfg.Accent.IsEnabled(), true},
+		{"Anim.Auto", cfg.Anim.Auto, false},
+		{"Anim.Photosensitivity.Mode", cfg.Anim.Photosensitivity.Mode, GateModeEither},
+		{"Anim.Power.WarnBelow", cfg.Anim.Power.WarnBelow, DefaultWarnBelow},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -394,5 +397,153 @@ func TestLyricsPanelConfig_OldConfigKeepsDefaults(t *testing.T) {
 	}
 	if cfg.Lyrics.Panel.Width != PanelWidthAuto || cfg.Lyrics.Panel.Mode != PanelModeAuto {
 		t.Errorf("panel defaults lost on old config: %+v", cfg.Lyrics.Panel)
+	}
+}
+
+// Old config.json files have no "anim" key at all, and a hand-written one may
+// spell the group out and still leave the mode out. Load() starts from
+// DefaultConfig() and unmarshals over it, so an absent key must leave the gate
+// up rather than let the animation through unchecked.
+func TestAnimConfig_OldConfigKeepsTheGateOn(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data string
+	}{
+		{"no anim key at all", `{"icon_theme":"nerd","lyrics":{"enabled":true}}`},
+		{"an empty anim object", `{"anim":{}}`},
+		{"anim without photosensitivity", `{"anim":{"auto":true}}`},
+		{"photosensitivity without a mode", `{"anim":{"photosensitivity":{}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			if err := json.Unmarshal([]byte(tc.data), &cfg); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if cfg.Anim.Photosensitivity.Mode != GateModeEither {
+				t.Errorf("gate mode = %q, want %q: an absent key must not weaken the check",
+					cfg.Anim.Photosensitivity.Mode, GateModeEither)
+			}
+		})
+	}
+}
+
+// A mode that is not one of the three documented words must repair to the
+// union. Falling back to off would turn a typo into a flashing file played at
+// someone who thought they were protected.
+func TestConfig_NormalizeAnim(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          string
+		want        string
+		wantChanged bool
+	}{
+		{"either untouched", GateModeEither, GateModeEither, false},
+		{"declared untouched", GateModeDeclared, GateModeDeclared, false},
+		{"off untouched", GateModeOff, GateModeOff, false},
+		{"unknown mode falls back to the union", "sometimes", GateModeEither, true},
+		{"empty mode falls back to the union", "", GateModeEither, true},
+		{"the documented words are case sensitive", "Off", GateModeEither, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Anim.Photosensitivity.Mode = tc.in
+			changed := cfg.Normalize()
+			if got := cfg.Anim.Photosensitivity.Mode; got != tc.want {
+				t.Errorf("mode = %q, want %q", got, tc.want)
+			}
+			if changed != tc.wantChanged {
+				t.Errorf("changed = %v, want %v", changed, tc.wantChanged)
+			}
+		})
+	}
+}
+
+// The keys are the user-facing name of the setting, so a save/load cycle has to
+// keep them spelled the same way.
+// A config written before the battery warning existed must still warn: the
+// charge it warns at is the default, not the zero a missing key decodes to.
+func TestAnimConfig_OldConfigKeepsTheWarning(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		data string
+	}{
+		{"no anim key at all", `{"icon_theme":"nerd","lyrics":{"enabled":true}}`},
+		{"an empty anim object", `{"anim":{}}`},
+		{"anim without power", `{"anim":{"auto":true}}`},
+		{"power without a warning line", `{"anim":{"power":{}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			if err := json.Unmarshal([]byte(tc.data), &cfg); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			if cfg.Anim.Power.WarnBelow != DefaultWarnBelow {
+				t.Errorf("warn below = %d, want %d: an absent key must not turn the warning off",
+					cfg.Anim.Power.WarnBelow, DefaultWarnBelow)
+			}
+		})
+	}
+}
+
+// A warning line outside 0 to 100 is repaired to one that can happen. Zero is
+// left alone: it is how the warning is turned off.
+func TestConfig_NormalizeAnimWarnBelow(t *testing.T) {
+	cases := []struct {
+		name        string
+		in          int
+		want        int
+		wantChanged bool
+	}{
+		{"a charge left alone", 30, 30, false},
+		{"off left alone", 0, 0, false},
+		{"a negative charge clamps to off", -5, 0, true},
+		{"a charge above full clamps to full", 150, maxPercent, true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.Anim.Power.WarnBelow = tc.in
+			changed := cfg.Normalize()
+			if got := cfg.Anim.Power.WarnBelow; got != tc.want {
+				t.Errorf("warn below = %d, want %d", got, tc.want)
+			}
+			if changed != tc.wantChanged {
+				t.Errorf("Normalize reported changed = %v, want %v", changed, tc.wantChanged)
+			}
+		})
+	}
+}
+
+func TestAnimConfig_KeysRoundTrip(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.Anim.Auto = true
+	cfg.Anim.Power.WarnBelow = 30
+
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(data), `"anim":{"auto":true`) {
+		t.Errorf("config json = %s, want anim.auto written", data)
+	}
+	if !strings.Contains(string(data), `"warn_below":30`) {
+		t.Errorf("config json = %s, want anim.power.warn_below written", data)
+	}
+
+	back := DefaultConfig()
+	if err := json.Unmarshal(data, &back); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if !back.Anim.Auto {
+		t.Error("auto lost in a save/load cycle")
+	}
+	if back.Anim.Power.WarnBelow != 30 {
+		t.Errorf("warn below = %d, want 30", back.Anim.Power.WarnBelow)
+	}
+	if back.Anim.Photosensitivity.Mode != GateModeEither {
+		t.Errorf("mode = %q, want %q", back.Anim.Photosensitivity.Mode, GateModeEither)
 	}
 }

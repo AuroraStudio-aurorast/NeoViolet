@@ -12,10 +12,41 @@ var (
 	seekBwdChordKey = key.NewBinding(key.WithKeys("ctrl+b"))
 	arrowLeftKey    = key.NewBinding(key.WithKeys("left"))
 	arrowRightKey   = key.NewBinding(key.WithKeys("right"))
+
+	// warnAcceptKey answers a warning gate. It is deliberately not the space
+	// bar: space is this program's play/pause, and a warning that starts
+	// flashing imagery on the same key that resumes music would train the wrong
+	// reflex. It is bound here rather than in KeyMap because it belongs to one
+	// transient question, not to the keyboard as a whole.
+	warnAcceptKey = key.NewBinding(key.WithKeys("enter"))
 )
 
 func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
+
+	// ─── Tier 0: keys that navigate away close the animation ───
+	//
+	// The animation borrows the content area, which belongs to the active tab, so
+	// it is not on a tab of its own and no tab claims it. Any key that means "go
+	// to a tab" therefore closes it first, and escape closes it where it stands.
+	// Nothing else is intercepted: play/pause, seeking, volume and the command
+	// line all keep working while it plays.
+	if m.animVisible() {
+		switch {
+		case (m.Anim.Gated() || m.Anim.Held()) && normMatch(msg, warnAcceptKey):
+			// Enter is what lets the animation through. One gate has it loaded
+			// but not started, the other has not read it at all; escape closes
+			// either, as it does anywhere.
+			return m, m.Anim.Approve()
+		case normMatch(msg, keys.NormalMode):
+			m.Anim.Close()
+			return m, nil
+		case normMatch(msg, keys.TabNext), normMatch(msg, keys.TabPrev):
+			m.Anim.Close()
+		case m.UI.Focus == FocusTabBar && (normMatch(msg, arrowLeftKey) || normMatch(msg, arrowRightKey)):
+			m.Anim.Close()
+		}
+	}
 
 	// ─── Tier 1: Always-global keys ───
 	switch {

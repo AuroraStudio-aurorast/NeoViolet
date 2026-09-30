@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
@@ -236,6 +237,7 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 		Icons:       activeIcons,
 		Error:       &MessageState{},
 		Info:        &MessageState{},
+		Anim:        anim.New(),
 		Loading:     filePath != "",
 		pendingPath: filePath,
 	}
@@ -299,6 +301,20 @@ func (m *Model) Init() tea.Cmd {
 			fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
 			return loadAudio(path, sfPath, backend, gen)
 		})
+
+		// A track named on the command line never goes through handleLoadTrack,
+		// so an animation that plays on its own has to be started here as well or
+		// it would miss the one track that is certain to be there. It is loaded
+		// with no box: the terminal has not reported its size yet, and the first
+		// tick sizes the animation anyway. A battery too low to start one nobody
+		// asked for says so instead.
+		if m.Anim != nil && m.animAuto() {
+			if reading, low := m.Anim.LowBattery(m.warnBelow()); low {
+				m.Info.Set(animSkippedMessage(reading.Percent), m.Config.Error.Duration)
+			} else {
+				cmds = append(cmds, m.Anim.LoadFor(anim.Load{Path: path, GateMode: m.gateMode()}))
+			}
+		}
 	}
 
 	// Accept GUI IPC connection in the background
