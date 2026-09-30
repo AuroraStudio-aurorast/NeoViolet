@@ -196,7 +196,7 @@ func TestAnimLoaded_NoSidecar(t *testing.T) {
 			m.Anim = anim.New()
 			m.animRequested = tc.requested
 
-			cmd := m.Anim.LoadFor(filepath.Join(t.TempDir(), "track.flac"), 40, 12, config.GateModeEither)
+			cmd := m.Anim.LoadFor(anim.Load{Path: filepath.Join(t.TempDir(), "track.flac"), Columns: 40, Lines: 12, GateMode: config.GateModeEither})
 			handleAnimLoaded(m, cmd().(anim.LoadedMsg))
 
 			if got := tc.message(m); !strings.Contains(got, "No animation for this track") {
@@ -213,7 +213,7 @@ func TestAnimLoaded_BrokenFile(t *testing.T) {
 	m := setupModel()
 	m.Anim = anim.New()
 
-	cmd := m.Anim.LoadFor(animFixturePath(t, "reject-truncated.nvaa"), 40, 12, config.GateModeEither)
+	cmd := m.Anim.LoadFor(anim.Load{Path: animFixturePath(t, "reject-truncated.nvaa"), Columns: 40, Lines: 12, GateMode: config.GateModeEither})
 	handleAnimLoaded(m, cmd().(anim.LoadedMsg))
 
 	if !strings.Contains(m.Error.Message, "Animation failed to load") {
@@ -421,7 +421,7 @@ func animModel(t *testing.T, fixture string, w, h int) *Model {
 	m.Anim = anim.New()
 
 	plan := m.layoutPlan()
-	cmd := m.Anim.LoadFor(animFixturePath(t, fixture), plan.ContentInnerW, plan.ContentInnerH, config.GateModeEither)
+	cmd := m.Anim.LoadFor(anim.Load{Path: animFixturePath(t, fixture), Columns: plan.ContentInnerW, Lines: plan.ContentInnerH, GateMode: config.GateModeEither})
 	if cmd == nil {
 		t.Fatal("LoadFor returned no command")
 	}
@@ -534,7 +534,7 @@ func TestAnimGateMode_ReachesTheAnimation(t *testing.T) {
 			}
 
 			plan := m.layoutPlan()
-			cmd := m.Anim.LoadFor(animFixturePath(t, animGateFixture), plan.ContentInnerW, plan.ContentInnerH, m.gateMode())
+			cmd := m.Anim.LoadFor(anim.Load{Path: animFixturePath(t, animGateFixture), Columns: plan.ContentInnerW, Lines: plan.ContentInnerH, GateMode: m.gateMode()})
 			m.Anim.Apply(cmd().(anim.LoadedMsg))
 
 			if got := m.Anim.Gated(); got != tc.wantGated {

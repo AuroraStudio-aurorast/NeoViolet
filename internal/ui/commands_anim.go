@@ -14,6 +14,7 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/power"
 )
 
 // warnDetailRows is the box height at which the photosensitivity gate can show
@@ -52,8 +53,23 @@ func runAnim(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	}
 
 	plan := m.layoutPlan()
+	load := anim.Load{
+		Path:     m.Audio.Player.Path(),
+		Columns:  plan.ContentInnerW,
+		Lines:    plan.ContentInnerH,
+		GateMode: m.gateMode(),
+	}
+
+	// Asking for the animation is what makes the battery worth asking about.
+	// The reading is taken before the sidecar is, so that a warning about a flat
+	// battery costs nothing to find out about: nothing is read, decoded or
+	// analysed until somebody says to go ahead.
 	m.animRequested = true
-	return m, m.Anim.LoadFor(m.Audio.Player.Path(), plan.ContentInnerW, plan.ContentInnerH, m.gateMode())
+	if reading, low := m.Anim.LowBattery(m.warnBelow()); low {
+		m.Anim.Hold(reading, load)
+		return m, nil
+	}
+	return m, m.Anim.LoadFor(load)
 }
 
 // handleAnimLoaded installs a sidecar that finished loading, or reports why
@@ -102,6 +118,17 @@ func (m *Model) gateMode() string {
 	return m.Config.Anim.Photosensitivity.Mode
 }
 
+// warnBelow is the charge at or below which an animation waits for an answer
+// before it is read. A Model built without NewModel carries no config and reads
+// as the default the config itself starts from; zero is a config's own way of
+// turning the warning off, and is passed through as one.
+func (m *Model) warnBelow() int {
+	if m.Config == nil {
+		return config.DefaultWarnBelow
+	}
+	return m.Config.Anim.Power.WarnBelow
+}
+
 // animBody returns what the animation wants to draw in the content box, and
 // whether it wants to draw anything at all.
 //
@@ -116,6 +143,8 @@ func animBody(m *Model, plan layoutPlan) (string, bool) {
 	switch {
 	case m.Anim.Loading:
 		return renderAnimLoading(m, plan), true
+	case m.Anim.Held():
+		return renderAnimPowerWarning(m, plan), true
 	case m.Anim.Gated():
 		return renderAnimWarning(m, plan), true
 	case m.Anim.Visible:
@@ -153,6 +182,51 @@ func renderAnimWarning(m *Model, plan layoutPlan) string {
 		return layoutWarnLines(warnDetail(readings), plan.ContentInnerW, plan.ContentInnerH)
 	}
 	return layoutWarnLines(warnCompact(readings), plan.ContentInnerW, plan.ContentInnerH)
+}
+
+// renderAnimPowerWarning draws the battery gate. Like the photosensitivity gate
+// it is drawn by the host, and unlike it nothing has been loaded at all: this
+// reading comes from the machine rather than from the file.
+func renderAnimPowerWarning(m *Model, plan layoutPlan) string {
+	reading := m.Anim.Reading()
+	if plan.ContentInnerH >= warnDetailRows {
+		return layoutWarnLines(powerWarnDetail(reading, m.warnBelow()), plan.ContentInnerW, plan.ContentInnerH)
+	}
+	return layoutWarnLines(powerWarnCompact(reading, m.warnBelow()), plan.ContentInnerW, plan.ContentInnerH)
+}
+
+// powerWarnDetail is the battery gate when there is room to say what it costs.
+//
+// It is written for whoever is playing music, so it names no setting and says
+// nothing about how the program works: the charge, what an animation costs, and
+// the way out.
+func powerWarnDetail(reading power.Status, warnBelow int) []warnLine {
+	return []warnLine{
+		{Text: "LOW BATTERY WARNING", Style: warnStyle},
+		{},
+		{Text: fmt.Sprintf("Battery at %d%%, below %d%%.", reading.Percent, warnBelow)},
+		{},
+		{Text: "Playing the animation may drain the battery faster."},
+		{},
+		{Text: inputStyle.Render("[enter]") + "  play anyway      " + inputStyle.Render("[esc]") + "  cancel"},
+	}
+}
+
+// powerWarnCompact is the battery gate for the smallest usable box: the charge,
+// what it costs, and the way out, in three rows.
+func powerWarnCompact(reading power.Status, warnBelow int) []warnLine {
+	return []warnLine{
+		{Text: "LOW BATTERY WARNING", Style: warnStyle},
+		{Text: fmt.Sprintf("Battery at %d%%, below %d%%; the animation drains it faster.", reading.Percent, warnBelow)},
+		{Text: inputStyle.Render("[enter]") + " play anyway   " + inputStyle.Render("[esc]") + " cancel"},
+	}
+}
+
+// animSkippedMessage says why an animation nobody asked for did not appear. It
+// names the way to overrule the answer, because the only other place the battery
+// is mentioned is a warning that was never opened.
+func animSkippedMessage(percent int) string {
+	return fmt.Sprintf("Animation skipped: battery at %d%% (:anim to play)", percent)
 }
 
 // warnLine is one line of the gate before it is wrapped into the box.

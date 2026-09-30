@@ -318,6 +318,9 @@ func DefaultConfig() Config {
 			Photosensitivity: PhotosensitivityConfig{
 				Mode: DefaultGateMode,
 			},
+			Power: PowerConfig{
+				WarnBelow: DefaultWarnBelow,
+			},
 		},
 		VolumeBar: VolumeBarConfig{
 			Width:          16,

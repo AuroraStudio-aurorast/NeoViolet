@@ -29,7 +29,7 @@ const (
 
 func TestLoadFor_NoSidecar(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, ""), 40, 12, config.GateModeEither))
+	msg := run(t, state.LoadFor(loadAt(audioWith(t, ""), 40, 12, config.GateModeEither)))
 
 	if !errors.Is(msg.Err, ErrNoSidecar) {
 		t.Fatalf("Err = %v, want ErrNoSidecar", msg.Err)
@@ -48,7 +48,7 @@ func TestLoadFor_NoSidecar(t *testing.T) {
 
 func TestLoadFor_PlaysWhenNothingObjects(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, plainFixture), 40, 12, config.GateModeEither))
+	msg := run(t, state.LoadFor(loadAt(audioWith(t, plainFixture), 40, 12, config.GateModeEither)))
 
 	if msg.Err != nil {
 		t.Fatalf("LoadFor error: %v", msg.Err)
@@ -79,7 +79,7 @@ func TestLoadFor_PlaysWhenNothingObjects(t *testing.T) {
 
 func TestLoadFor_GatesAFlashingFile(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, strobeFixture), 40, 12, config.GateModeEither))
+	msg := run(t, state.LoadFor(loadAt(audioWith(t, strobeFixture), 40, 12, config.GateModeEither)))
 
 	if msg.Err != nil {
 		t.Fatalf("LoadFor error: %v", msg.Err)
@@ -124,7 +124,7 @@ func TestLoadFor_GatesAFlashingFile(t *testing.T) {
 
 func TestLoadFor_BrokenFile(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, brokenFixture), 40, 12, config.GateModeEither))
+	msg := run(t, state.LoadFor(loadAt(audioWith(t, brokenFixture), 40, 12, config.GateModeEither)))
 
 	if msg.Err == nil {
 		t.Fatal("a truncated file should report a decode error")
@@ -150,8 +150,8 @@ func TestLoadFor_BrokenFile(t *testing.T) {
 func TestLoadFor_SupersededResultIsDropped(t *testing.T) {
 	audio := audioWith(t, plainFixture)
 	state := New()
-	stale := run(t, state.LoadFor(audio, 40, 12, config.GateModeEither))
-	fresh := run(t, state.LoadFor(audio, 40, 12, config.GateModeEither))
+	stale := run(t, state.LoadFor(loadAt(audio, 40, 12, config.GateModeEither)))
+	fresh := run(t, state.LoadFor(loadAt(audio, 40, 12, config.GateModeEither)))
 
 	if cmd := state.Apply(stale); cmd != nil {
 		t.Error("a superseded load took effect")
@@ -501,7 +501,7 @@ func TestLoadFor_GateModeSkipsTheAnalysis(t *testing.T) {
 	} {
 		t.Run(tt.mode, func(t *testing.T) {
 			state := New()
-			msg := run(t, state.LoadFor(audioWith(t, strobeFixture), 40, 12, tt.mode))
+			msg := run(t, state.LoadFor(loadAt(audioWith(t, strobeFixture), 40, 12, tt.mode)))
 			if msg.Err != nil {
 				t.Fatalf("LoadFor error: %v", msg.Err)
 			}
@@ -568,6 +568,11 @@ func TestPhotosensitivity_AnalysedTellsFailuresApart(t *testing.T) {
 	}
 }
 
+// loadAt builds one request for a track's animation.
+func loadAt(audioPath string, columns, lines int, gateMode string) Load {
+	return Load{Path: audioPath, Columns: columns, Lines: lines, GateMode: gateMode}
+}
+
 // audioWith builds a temp directory holding an audio file and, when sidecar is
 // not empty, the named testdata animation beside it under the same base name.
 func audioWith(t *testing.T, sidecar string) string {
@@ -612,7 +617,7 @@ func loaded(t *testing.T, sidecar string, columns, lines int) *State {
 	t.Helper()
 
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, sidecar), columns, lines, config.GateModeEither))
+	msg := run(t, state.LoadFor(loadAt(audioWith(t, sidecar), columns, lines, config.GateModeEither)))
 	if msg.Err != nil {
 		t.Fatalf("LoadFor(%s) error: %v", sidecar, msg.Err)
 	}

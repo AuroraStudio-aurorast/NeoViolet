@@ -9,7 +9,27 @@ type AnimConfig struct {
 
 	// Photosensitivity is the gate that stops an animation which flashes.
 	Photosensitivity PhotosensitivityConfig `json:"photosensitivity"`
+
+	// Power is the gate that holds an animation back on a low battery.
+	Power PowerConfig `json:"power"`
 }
+
+// PowerConfig controls the gate that holds an animation back when the machine
+// is running off a battery with little charge left in it.
+type PowerConfig struct {
+	// WarnBelow is the charge at or below which an animation waits for an
+	// answer before it is read. Zero turns the warning off, which is a
+	// documented choice rather than an absent key: Load starts from the
+	// defaults, so a key that is not there keeps DefaultWarnBelow.
+	WarnBelow int `json:"warn_below"`
+}
+
+// DefaultWarnBelow is the charge at which a battery counts as low. It is the
+// figure the systems themselves put their own low battery warning at.
+const DefaultWarnBelow = 20
+
+// maxPercent is the ceiling on a charge, and so on a hand-written warning line.
+const maxPercent = 100
 
 // PhotosensitivityConfig controls the gate that stops an animation which
 // flashes.
@@ -43,4 +63,8 @@ func normalizeAnim(a *AnimConfig) {
 	default:
 		a.Photosensitivity.Mode = DefaultGateMode
 	}
+
+	// Zero is the documented off, so it is left where it is. What is clamped is
+	// a charge that cannot exist.
+	a.Power.WarnBelow = clampInt(a.Power.WarnBelow, 0, maxPercent)
 }

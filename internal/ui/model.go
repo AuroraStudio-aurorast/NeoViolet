@@ -306,9 +306,14 @@ func (m *Model) Init() tea.Cmd {
 		// so an animation that plays on its own has to be started here as well or
 		// it would miss the one track that is certain to be there. It is loaded
 		// with no box: the terminal has not reported its size yet, and the first
-		// tick sizes the animation anyway.
+		// tick sizes the animation anyway. A battery too low to start one nobody
+		// asked for says so instead.
 		if m.Anim != nil && m.animAuto() {
-			cmds = append(cmds, m.Anim.LoadFor(path, 0, 0, m.gateMode()))
+			if reading, low := m.Anim.LowBattery(m.warnBelow()); low {
+				m.Info.Set(animSkippedMessage(reading.Percent), m.Config.Error.Duration)
+			} else {
+				cmds = append(cmds, m.Anim.LoadFor(anim.Load{Path: path, GateMode: m.gateMode()}))
+			}
 		}
 	}
 

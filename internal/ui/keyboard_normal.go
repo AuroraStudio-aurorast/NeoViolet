@@ -13,11 +13,11 @@ var (
 	arrowLeftKey    = key.NewBinding(key.WithKeys("left"))
 	arrowRightKey   = key.NewBinding(key.WithKeys("right"))
 
-	// warnAcceptKey dismisses the photosensitivity gate. It is deliberately not
-	// the space bar: space is this program's play/pause, and a warning that
-	// starts flashing imagery on the same key that resumes music would train the
-	// wrong reflex. It is bound here rather than in KeyMap because it belongs to
-	// one transient question, not to the keyboard as a whole.
+	// warnAcceptKey answers a warning gate. It is deliberately not the space
+	// bar: space is this program's play/pause, and a warning that starts
+	// flashing imagery on the same key that resumes music would train the wrong
+	// reflex. It is bound here rather than in KeyMap because it belongs to one
+	// transient question, not to the keyboard as a whole.
 	warnAcceptKey = key.NewBinding(key.WithKeys("enter"))
 )
 
@@ -33,9 +33,10 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	// line all keep working while it plays.
 	if m.animVisible() {
 		switch {
-		case m.Anim.Gated() && normMatch(msg, warnAcceptKey):
-			// The animation is loaded but not started while the gate is up, so
-			// enter is what lets it play. Escape closes it, as it does anywhere.
+		case (m.Anim.Gated() || m.Anim.Held()) && normMatch(msg, warnAcceptKey):
+			// Enter is what lets the animation through. One gate has it loaded
+			// but not started, the other has not read it at all; escape closes
+			// either, as it does anywhere.
 			return m, m.Anim.Approve()
 		case normMatch(msg, keys.NormalMode):
 			m.Anim.Close()

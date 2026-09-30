@@ -15,6 +15,12 @@
 // An animation is drawn at its own size rather than stretched to the box it has,
 // and centred in it, so a small animation sits in the middle of the content area
 // instead of in the corner of a large block of its own background.
+//
+// It is also the most expensive thing this program draws, on machines that are
+// often laptops. When the battery is low and unplugged, a load somebody asked
+// for waits behind a warning before anything is read, so the answer costs
+// nothing to discover; a load nobody asked for stands down instead. See
+// power.go.
 package anim
 
 import (
@@ -28,6 +34,7 @@ import (
 	"github.com/WhatDamon/go-nvaa-codec/player"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/power"
 )
 
 // ErrNoSidecar reports a track with no animation beside it. Most tracks will
@@ -37,21 +44,6 @@ var ErrNoSidecar = errors.New("no animation for this track")
 // minDriftMS is the floor on how far the animation may drift before it is
 // corrected. It keeps a file of very short frames from seeking on every tick.
 const minDriftMS = 50
-
-// LoadedMsg carries one track's sidecar back to the host, which hands it to
-// Apply.
-type LoadedMsg struct {
-	Path    string
-	Warning Photosensitivity
-	Err     error
-
-	player     *player.Player
-	viewW      int
-	viewH      int
-	columns    int
-	lines      int
-	generation uint64
-}
 
 // State is the animation surface for the current track.
 //
@@ -64,11 +56,25 @@ type State struct {
 	Loading bool
 	Err     error
 
+	// ReadPower asks the system for the power source. It is a field so that a
+	// test can answer for the machine it runs on, and so that a State built
+	// without New -- or a machine whose power cannot be read at all -- plays the
+	// animation rather than asking about a battery it cannot see.
+	ReadPower func() (power.Status, error)
+
 	path     string
 	player   *player.Player
 	warning  Photosensitivity
 	gated    bool
 	gateMode string
+
+	// held is the battery warning: nothing has been read, and pending is the
+	// load waiting for an answer. answered is that answer, which lasts for the
+	// rest of the run -- see power.go.
+	held     bool
+	reading  power.Status
+	pending  Load
+	answered bool
 
 	// viewW and viewH are the animation's own size, read from the file.
 	// columns and lines are the area it has to draw in, as most recently
@@ -84,7 +90,7 @@ type State struct {
 }
 
 // New returns an idle animation surface: nothing loaded, nothing shown.
-func New() *State { return &State{} }
+func New() *State { return &State{ReadPower: power.Read} }
 
 // Path reports the sidecar currently loaded, or "" when none is.
 func (s *State) Path() string { return s.path }
@@ -96,101 +102,6 @@ func (s *State) Warning() Photosensitivity { return s.warning }
 // it is true the animation is loaded but not started, and View draws nothing:
 // the host draws the warning in the same box instead.
 func (s *State) Gated() bool { return s.gated }
-
-// LoadFor reads the sidecar for audioPath and prepares it for a columns x lines
-// area, drawing it at its own size when that is smaller than the area.
-//
-// All the work happens in the returned command, and the file is read and decoded
-// in one pass so the animation and its warning arrive together. Usually the
-// analysis joins them, and it is cheap next to the decode -- microseconds for
-// the vectors in testdata -- and it is what catches a file that declares nothing
-// while flashing anyway. gateMode says whether to make that analysis at all, and
-// which of the readings stop the animation.
-func (s *State) LoadFor(audioPath string, columns, lines int, gateMode string) tea.Cmd {
-	s.Loading = true
-	s.Err = nil
-	s.gateMode = gateMode
-	s.generation++
-	generation := s.generation
-
-	return func() tea.Msg {
-		path := FindSidecar(audioPath)
-		if path == "" {
-			return LoadedMsg{Err: ErrNoSidecar, generation: generation}
-		}
-
-		animation, err := nvaa.ReadFile(path)
-		if err != nil {
-			return LoadedMsg{Path: path, Err: err, generation: generation}
-		}
-
-		viewW, viewH := naturalSize(animation)
-		boxW, boxH := fit(viewW, viewH, columns, lines)
-
-		return LoadedMsg{
-			Path:    path,
-			Warning: assess(animation, gateMode),
-			player: player.New(animation, player.Options{
-				Columns: boxW,
-				Lines:   boxH,
-				// Looping the player's own timeline is what lets a position
-				// taken modulo the length stay valid: a player that stopped at
-				// the end would have nothing for the wrap to land on.
-				Loop: true,
-				// The gate is drawn by the host in this program's own words and
-				// styles, and it is the host that starts the clock. The library
-				// gate would claim the space bar, which is already play/pause.
-				SkipWarning: true,
-				// No key belongs to the animation. Every key in this program is
-				// already spoken for, and the player reports unclaimed keys back
-				// as unhandled rather than swallowing them.
-				Keys: &player.KeyMap{},
-			}),
-			viewW:      viewW,
-			viewH:      viewH,
-			columns:    columns,
-			lines:      lines,
-			generation: generation,
-		}
-	}
-}
-
-// Apply installs a loaded sidecar. A result older than the most recent LoadFor
-// is dropped, so a second trigger or a track change during a load cannot install
-// the animation that lost. The returned command starts the clock, except when
-// the warning gate is up: the player is deliberately left unstarted until
-// someone chooses to see it, and Init is what would otherwise begin
-// immediately.
-func (s *State) Apply(msg LoadedMsg) tea.Cmd {
-	if msg.generation != s.generation {
-		return nil
-	}
-
-	s.Loading = false
-	s.path = msg.Path
-	s.warning = Photosensitivity{}
-	s.player = nil
-	s.gated = false
-	s.viewW, s.viewH = msg.viewW, msg.viewH
-	s.columns, s.lines = msg.columns, msg.lines
-	s.sizedW, s.sizedH = fit(s.viewW, s.viewH, s.columns, s.lines)
-	s.Err = msg.Err
-
-	if msg.Err != nil {
-		s.Visible = false
-		return nil
-	}
-
-	s.warning = msg.Warning
-	s.player = msg.player
-	s.gated = s.warning.Fails(s.gateMode)
-	s.Visible = true
-
-	if s.gated {
-		return nil
-	}
-	return s.player.Init()
-}
 
 // Sync aligns the animation with the audio, and sizes it to the box it is in.
 //
@@ -278,11 +189,25 @@ func (s *State) Fits(columns, lines int) bool {
 	return s != nil && s.columns == columns && s.lines == lines
 }
 
-// Approve dismisses the warning gate and starts the animation. It is the only
-// way out of the gate: a file that flashes cannot reach the screen before
-// somebody has chosen to see it.
+// Approve answers the warning the surface is standing at: the battery gate runs
+// the load it has been holding, and the photosensitivity gate starts the
+// animation it has been holding back.
+//
+// It is the only way out of either gate. A file that flashes cannot reach the
+// screen before somebody has chosen to see it, and neither can one that was not
+// read until somebody said to go ahead.
 func (s *State) Approve() tea.Cmd {
-	if s == nil || s.player == nil || !s.gated {
+	if s == nil {
+		return nil
+	}
+	// A battery answer is worth keeping: it says what the rest of the run costs,
+	// and being asked again on every track change would be nagging rather than
+	// warning.
+	if s.held {
+		s.answered = true
+		return s.LoadFor(s.pending)
+	}
+	if s.player == nil || !s.gated {
 		return nil
 	}
 	s.gated = false
@@ -307,6 +232,12 @@ func (s *State) Close() {
 	s.Loading = false
 	s.gated = false
 	s.gateMode = ""
+	s.held = false
+	s.reading = power.Status{}
+	s.pending = Load{}
+	// answered is deliberately left alone. Closing the surface is how escape,
+	// a tab change and a track change all end an animation, and none of them
+	// is an answer to a question that has already been answered.
 	s.Err = nil
 	s.path = ""
 	s.player = nil

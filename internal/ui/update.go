@@ -372,8 +372,29 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	// sidecar is read while the track is still loading.
 	if m.animVisible() || m.animAuto() {
 		plan := m.layoutPlan()
+		load := anim.Load{
+			Path:     msg.Path,
+			Columns:  plan.ContentInnerW,
+			Lines:    plan.ContentInnerH,
+			GateMode: m.gateMode(),
+		}
 		m.animRequested = false
-		return m, tea.Batch(loadCmd, m.Anim.LoadFor(msg.Path, plan.ContentInnerW, plan.ContentInnerH, m.gateMode()))
+
+		if reading, low := m.Anim.LowBattery(m.warnBelow()); low {
+			if m.Anim.Held() {
+				// The warning is already up for the track that was playing, and
+				// follows this one: answering it starts the animation the track
+				// changed to.
+				m.Anim.Hold(reading, load)
+				return m, loadCmd
+			}
+			// Nobody asked for this one, so it stands down rather than opening a
+			// warning nobody is waiting to read.
+			m.Info.Set(animSkippedMessage(reading.Percent), m.Config.Error.Duration)
+			return m, loadCmd
+		}
+
+		return m, tea.Batch(loadCmd, m.Anim.LoadFor(load))
 	}
 
 	return m, loadCmd
