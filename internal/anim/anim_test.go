@@ -15,6 +15,8 @@ import (
 	"github.com/WhatDamon/go-nvaa-codec/player"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
 // The fixtures are the decoder's own conformance vectors, copied into testdata
@@ -27,7 +29,7 @@ const (
 
 func TestLoadFor_NoSidecar(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, ""), 40, 12))
+	msg := run(t, state.LoadFor(audioWith(t, ""), 40, 12, config.GateModeEither))
 
 	if !errors.Is(msg.Err, ErrNoSidecar) {
 		t.Fatalf("Err = %v, want ErrNoSidecar", msg.Err)
@@ -46,7 +48,7 @@ func TestLoadFor_NoSidecar(t *testing.T) {
 
 func TestLoadFor_PlaysWhenNothingObjects(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, plainFixture), 40, 12))
+	msg := run(t, state.LoadFor(audioWith(t, plainFixture), 40, 12, config.GateModeEither))
 
 	if msg.Err != nil {
 		t.Fatalf("LoadFor error: %v", msg.Err)
@@ -60,7 +62,7 @@ func TestLoadFor_PlaysWhenNothingObjects(t *testing.T) {
 	if !msg.Warning.Analysed() {
 		t.Error("the analysis did not run")
 	}
-	if msg.Warning.Fails() {
+	if msg.Warning.Fails(config.GateModeEither) {
 		t.Fatalf("an animation that passes analysis was objected to: %+v", msg.Warning)
 	}
 
@@ -77,7 +79,7 @@ func TestLoadFor_PlaysWhenNothingObjects(t *testing.T) {
 
 func TestLoadFor_GatesAFlashingFile(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, strobeFixture), 40, 12))
+	msg := run(t, state.LoadFor(audioWith(t, strobeFixture), 40, 12, config.GateModeEither))
 
 	if msg.Err != nil {
 		t.Fatalf("LoadFor error: %v", msg.Err)
@@ -90,7 +92,7 @@ func TestLoadFor_GatesAFlashingFile(t *testing.T) {
 	if msg.Warning.Assessment.Verdict != photosensitivity.VerdictFail {
 		t.Errorf("measured verdict = %v, want fail", msg.Warning.Assessment.Verdict)
 	}
-	if !msg.Warning.Fails() {
+	if !msg.Warning.Fails(config.GateModeEither) {
 		t.Fatal("a file that fails both readings was not objected to")
 	}
 
@@ -122,7 +124,7 @@ func TestLoadFor_GatesAFlashingFile(t *testing.T) {
 
 func TestLoadFor_BrokenFile(t *testing.T) {
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, brokenFixture), 40, 12))
+	msg := run(t, state.LoadFor(audioWith(t, brokenFixture), 40, 12, config.GateModeEither))
 
 	if msg.Err == nil {
 		t.Fatal("a truncated file should report a decode error")
@@ -148,8 +150,8 @@ func TestLoadFor_BrokenFile(t *testing.T) {
 func TestLoadFor_SupersededResultIsDropped(t *testing.T) {
 	audio := audioWith(t, plainFixture)
 	state := New()
-	stale := run(t, state.LoadFor(audio, 40, 12))
-	fresh := run(t, state.LoadFor(audio, 40, 12))
+	stale := run(t, state.LoadFor(audio, 40, 12, config.GateModeEither))
+	fresh := run(t, state.LoadFor(audio, 40, 12, config.GateModeEither))
 
 	if cmd := state.Apply(stale); cmd != nil {
 		t.Error("a superseded load took effect")
@@ -263,6 +265,8 @@ func TestView_CentresTheAnimation(t *testing.T) {
 	}{
 		{"room on every side", 20, 9},
 		{"an odd remainder", 21, 10},
+		{"a margin above and below only", 8, 20},
+		{"a margin either side only", 20, 3},
 		{"exactly the animation", 8, 3},
 		{"smaller than the animation", 4, 2},
 	}
@@ -430,7 +434,7 @@ func TestUpdate_ClaimsNoKeys(t *testing.T) {
 	}
 }
 
-func TestPhotosensitivity_ObjectsToEitherReading(t *testing.T) {
+func TestPhotosensitivity_ObjectsToTheReadingItsModeActsOn(t *testing.T) {
 	pass := photosensitivity.Assessment{Verdict: photosensitivity.VerdictPass}
 	fail := photosensitivity.Assessment{Verdict: photosensitivity.VerdictFail}
 	unknown := photosensitivity.Assessment{}
@@ -441,20 +445,73 @@ func TestPhotosensitivity_ObjectsToEitherReading(t *testing.T) {
 	tests := []struct {
 		name string
 		p    Photosensitivity
+		mode string
 		want bool
 	}{
-		{"both pass", Photosensitivity{declaredPass, pass}, false},
-		{"nothing said, nothing found", Photosensitivity{declaredUnknown, unknown}, false},
-		{"nothing said, analysis objects", Photosensitivity{declaredUnknown, fail}, true},
-		{"declared pass, analysis objects", Photosensitivity{declaredPass, fail}, true},
-		{"declared fail", Photosensitivity{declaredFail, pass}, true},
-		{"declared fail, analysis broken", Photosensitivity{declaredFail, unknown}, true},
+		// The union is the default: either reading may object.
+		{"union: both pass", Photosensitivity{declaredPass, pass}, config.GateModeEither, false},
+		{"union: nothing said, nothing found", Photosensitivity{declaredUnknown, unknown}, config.GateModeEither, false},
+		{"union: nothing said, analysis objects", Photosensitivity{declaredUnknown, fail}, config.GateModeEither, true},
+		{"union: declared pass, analysis objects", Photosensitivity{declaredPass, fail}, config.GateModeEither, true},
+		{"union: declared fail", Photosensitivity{declaredFail, pass}, config.GateModeEither, true},
+		{"union: declared fail, analysis broken", Photosensitivity{declaredFail, unknown}, config.GateModeEither, true},
+
+		// Declared reads only the file's own claim, which is all a load in that
+		// mode ever makes.
+		{"declared: declared fail", Photosensitivity{declaredFail, pass}, config.GateModeDeclared, true},
+		{"declared: declared fail, analysis broken", Photosensitivity{declaredFail, unknown}, config.GateModeDeclared, true},
+		{"declared: analysis objects alone", Photosensitivity{declaredUnknown, fail}, config.GateModeDeclared, false},
+		{"declared: declared pass, analysis objects", Photosensitivity{declaredPass, fail}, config.GateModeDeclared, false},
+
+		// Off counts neither reading.
+		{"off: declared fail", Photosensitivity{declaredFail, fail}, config.GateModeOff, false},
+		{"off: analysis objects", Photosensitivity{declaredUnknown, fail}, config.GateModeOff, false},
+
+		// A mode that is not one of the three documented words behaves like the
+		// union rather than like off, so a value that ever slips past Normalize
+		// cannot remove the check.
+		{"an unknown mode behaves like the union", Photosensitivity{declaredUnknown, fail}, "sometimes", true},
+		{"an empty mode behaves like the union", Photosensitivity{declaredFail, pass}, "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.p.Fails(); got != tt.want {
-				t.Errorf("Fails() = %v, want %v", got, tt.want)
+			if got := tt.p.Fails(tt.mode); got != tt.want {
+				t.Errorf("Fails(%q) = %v, want %v", tt.mode, got, tt.want)
+			}
+		})
+	}
+}
+
+// The modes that do not act on our analysis do not make it. It is a walk over
+// every frame, so this is the difference between loading an animation and
+// loading one and measuring all of it -- and Analysed() is what says the walk
+// did not happen, since the fixture's analysis would otherwise return a verdict.
+func TestLoadFor_GateModeSkipsTheAnalysis(t *testing.T) {
+	for _, tt := range []struct {
+		mode         string
+		wantAnalysed bool
+		wantGated    bool
+	}{
+		// strobe.nvaa fails its own check, so declared still stops it while off
+		// plays it.
+		{config.GateModeEither, true, true},
+		{config.GateModeDeclared, false, true},
+		{config.GateModeOff, false, false},
+	} {
+		t.Run(tt.mode, func(t *testing.T) {
+			state := New()
+			msg := run(t, state.LoadFor(audioWith(t, strobeFixture), 40, 12, tt.mode))
+			if msg.Err != nil {
+				t.Fatalf("LoadFor error: %v", msg.Err)
+			}
+			if got := msg.Warning.Analysed(); got != tt.wantAnalysed {
+				t.Errorf("Analysed() = %v, want %v in mode %q", got, tt.wantAnalysed, tt.mode)
+			}
+
+			state.Apply(msg)
+			if got := state.Gated(); got != tt.wantGated {
+				t.Errorf("Gated() = %v, want %v in mode %q", got, tt.wantGated, tt.mode)
 			}
 		})
 	}
@@ -555,7 +612,7 @@ func loaded(t *testing.T, sidecar string, columns, lines int) *State {
 	t.Helper()
 
 	state := New()
-	msg := run(t, state.LoadFor(audioWith(t, sidecar), columns, lines))
+	msg := run(t, state.LoadFor(audioWith(t, sidecar), columns, lines, config.GateModeEither))
 	if msg.Err != nil {
 		t.Fatalf("LoadFor(%s) error: %v", sidecar, msg.Err)
 	}

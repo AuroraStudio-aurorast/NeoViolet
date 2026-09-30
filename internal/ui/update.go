@@ -367,12 +367,13 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// An animation that was showing follows the new track to its own sidecar,
-	// and closes if the new track has none. Reloading here rather than after the
-	// audio arrives means the sidecar is read while the track is still loading.
-	if m.animVisible() {
+	// and closes if the new track has none. So does one that the config plays on
+	// its own. Reloading here rather than after the audio arrives means the
+	// sidecar is read while the track is still loading.
+	if m.animVisible() || m.animAuto() {
 		plan := m.layoutPlan()
 		m.animRequested = false
-		return m, tea.Batch(loadCmd, m.Anim.LoadFor(msg.Path, plan.ContentInnerW, plan.ContentInnerH))
+		return m, tea.Batch(loadCmd, m.Anim.LoadFor(msg.Path, plan.ContentInnerW, plan.ContentInnerH, m.gateMode()))
 	}
 
 	return m, loadCmd

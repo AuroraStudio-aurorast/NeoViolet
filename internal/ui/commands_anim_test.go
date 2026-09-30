@@ -13,6 +13,7 @@ import (
 	"github.com/WhatDamon/go-nvaa-codec/player"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
 // The fixtures are the decoder's conformance vectors, shared with internal/anim
@@ -195,7 +196,7 @@ func TestAnimLoaded_NoSidecar(t *testing.T) {
 			m.Anim = anim.New()
 			m.animRequested = tc.requested
 
-			cmd := m.Anim.LoadFor(filepath.Join(t.TempDir(), "track.flac"), 40, 12)
+			cmd := m.Anim.LoadFor(filepath.Join(t.TempDir(), "track.flac"), 40, 12, config.GateModeEither)
 			handleAnimLoaded(m, cmd().(anim.LoadedMsg))
 
 			if got := tc.message(m); !strings.Contains(got, "No animation for this track") {
@@ -212,7 +213,7 @@ func TestAnimLoaded_BrokenFile(t *testing.T) {
 	m := setupModel()
 	m.Anim = anim.New()
 
-	cmd := m.Anim.LoadFor(animFixturePath(t, "reject-truncated.nvaa"), 40, 12)
+	cmd := m.Anim.LoadFor(animFixturePath(t, "reject-truncated.nvaa"), 40, 12, config.GateModeEither)
 	handleAnimLoaded(m, cmd().(anim.LoadedMsg))
 
 	if !strings.Contains(m.Error.Message, "Animation failed to load") {
@@ -420,7 +421,7 @@ func animModel(t *testing.T, fixture string, w, h int) *Model {
 	m.Anim = anim.New()
 
 	plan := m.layoutPlan()
-	cmd := m.Anim.LoadFor(animFixturePath(t, fixture), plan.ContentInnerW, plan.ContentInnerH)
+	cmd := m.Anim.LoadFor(animFixturePath(t, fixture), plan.ContentInnerW, plan.ContentInnerH, config.GateModeEither)
 	if cmd == nil {
 		t.Fatal("LoadFor returned no command")
 	}
@@ -450,4 +451,95 @@ func animFixturePath(t *testing.T, fixture string) string {
 		t.Fatal(err)
 	}
 	return filepath.Join(dir, "track.flac")
+}
+
+// A track named on the command line never goes through handleLoadTrack, so the
+// animation has a second entry point at Init. Without it, "play animations on
+// their own" would miss the one track that is certain to be there.
+func TestAnimAuto_StartsTheTrackNamedOnTheCommandLine(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		auto      bool
+		wantStart bool
+	}{
+		{"auto on", true, true},
+		{"auto off", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := setupModel()
+			m.Anim = anim.New()
+			m.Config.Anim.Auto = tc.auto
+			// This is the first test to call Init, which divides by the tick rate,
+			// and setupModel's config leaves it zero.
+			m.Config.TickRate = 30
+			m.pendingPath = animFixturePath(t, animPlainFixture)
+
+			m.Init()
+
+			// LoadFor marks the surface loading before it returns its command, so
+			// this says whether a load was started without running the batch, and
+			// without opening the audio file the other command in it names.
+			if got := m.Anim.Loading; got != tc.wantStart {
+				t.Errorf("animation loading = %v, want %v", got, tc.wantStart)
+			}
+		})
+	}
+}
+
+// The other entry point: a track that replaces the current one.
+func TestAnimAuto_FollowsATrackChange(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		auto      bool
+		wantStart bool
+	}{
+		{"auto on", true, true},
+		{"auto off", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := setupModel()
+			m.Anim = anim.New()
+			m.Config.Anim.Auto = tc.auto
+
+			handleLoadTrack(m, LoadTrackMsg{Path: animFixturePath(t, animPlainFixture)})
+
+			if got := m.Anim.Loading; got != tc.wantStart {
+				t.Errorf("animation loading = %v, want %v", got, tc.wantStart)
+			}
+		})
+	}
+}
+
+// The gate mode reaches the animation from the config, and the command and the
+// track-change path pass it through unchanged.
+func TestAnimGateMode_ReachesTheAnimation(t *testing.T) {
+	for _, tc := range []struct {
+		mode      string
+		wantGated bool
+	}{
+		// strobe.nvaa fails its own check, so two of the three modes stop it.
+		{config.GateModeEither, true},
+		{config.GateModeDeclared, true},
+		{config.GateModeOff, false},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			m := setupModel()
+			m.UI.Width, m.UI.Height = 100, 30
+			m.Anim = anim.New()
+			m.Config.Anim.Photosensitivity.Mode = tc.mode
+
+			// The config is what the two load sites hand to LoadFor.
+			if got := m.gateMode(); got != tc.mode {
+				t.Fatalf("gateMode() = %q, want %q", got, tc.mode)
+			}
+
+			plan := m.layoutPlan()
+			cmd := m.Anim.LoadFor(animFixturePath(t, animGateFixture), plan.ContentInnerW, plan.ContentInnerH, m.gateMode())
+			m.Anim.Apply(cmd().(anim.LoadedMsg))
+
+			if got := m.Anim.Gated(); got != tc.wantGated {
+				t.Errorf("gated = %v, want %v in mode %q", got, tc.wantGated, tc.mode)
+			}
+		})
+	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/WhatDamon/go-nvaa-codec/player"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
 // warnDetailRows is the box height at which the photosensitivity gate can show
@@ -52,7 +53,7 @@ func runAnim(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 
 	plan := m.layoutPlan()
 	m.animRequested = true
-	return m, m.Anim.LoadFor(m.Audio.Player.Path(), plan.ContentInnerW, plan.ContentInnerH)
+	return m, m.Anim.LoadFor(m.Audio.Player.Path(), plan.ContentInnerW, plan.ContentInnerH, m.gateMode())
 }
 
 // handleAnimLoaded installs a sidecar that finished loading, or reports why
@@ -83,6 +84,22 @@ func handleAnimLoaded(m *Model, msg anim.LoadedMsg) (tea.Model, tea.Cmd) {
 // NewModel carries no animation state and reads as hidden.
 func (m *Model) animVisible() bool {
 	return m.Anim != nil && m.Anim.Visible
+}
+
+// animAuto reports whether animations should show without being asked for. A
+// Model built without NewModel carries no config and reads as off.
+func (m *Model) animAuto() bool {
+	return m.Config != nil && m.Config.Anim.Auto
+}
+
+// gateMode is the photosensitivity gate the config asks for. An unrecognised
+// value behaves as the union inside the anim package, so the only thing to
+// guard here is a Model that carries no config at all.
+func (m *Model) gateMode() string {
+	if m.Config == nil {
+		return config.GateModeEither
+	}
+	return m.Config.Anim.Photosensitivity.Mode
 }
 
 // animBody returns what the animation wants to draw in the content box, and

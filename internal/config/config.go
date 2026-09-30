@@ -160,6 +160,7 @@ type Config struct {
 	SoundfontPath  string               `json:"soundfont_path"`
 	TrackerBackend string               `json:"tracker_backend"`
 	Lyrics         LyricsConfig         `json:"lyrics"`
+	Anim           AnimConfig           `json:"anim"`
 	ProgressBar    ProgressBarConfig    `json:"progress_bar"`
 	VolumeBar      VolumeBarConfig      `json:"volume_bar"`
 	CommandHistory CommandHistoryConfig `json:"command_history"`
@@ -184,6 +185,7 @@ func (c *Config) Normalize() bool {
 	}
 
 	normalizeLyricsPanel(&c.Lyrics.Panel)
+	normalizeAnim(&c.Anim)
 
 	f := &c.Lyrics.Fetch
 
@@ -227,12 +229,13 @@ func (c *Config) Normalize() bool {
 
 	volumeChanged := c.DefaultVolume != orig.DefaultVolume
 	panelChanged := c.Lyrics.Panel != orig.Lyrics.Panel
+	animChanged := c.Anim != orig.Anim
 	fetchChanged := f.Enabled != orig.Lyrics.Fetch.Enabled ||
 		f.BaseURL != orig.Lyrics.Fetch.BaseURL ||
 		f.Timeout != orig.Lyrics.Fetch.Timeout ||
 		f.Security != orig.Lyrics.Fetch.Security ||
 		f.InsecureTLS != orig.Lyrics.Fetch.InsecureTLS
-	return volumeChanged || fetchChanged || panelChanged
+	return volumeChanged || fetchChanged || panelChanged || animChanged
 }
 
 // normalizeLyricsPanel clamps the panel settings into their documented ranges.
@@ -308,6 +311,12 @@ func DefaultConfig() Config {
 				Mode:         PanelModeAuto,
 				Width:        PanelWidthAuto,
 				ContextLines: DefaultPanelContextLines,
+			},
+		},
+		Anim: AnimConfig{
+			Auto: false,
+			Photosensitivity: PhotosensitivityConfig{
+				Mode: DefaultGateMode,
 			},
 		},
 		VolumeBar: VolumeBarConfig{

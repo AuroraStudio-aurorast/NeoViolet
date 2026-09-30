@@ -301,6 +301,15 @@ func (m *Model) Init() tea.Cmd {
 			fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
 			return loadAudio(path, sfPath, backend, gen)
 		})
+
+		// A track named on the command line never goes through handleLoadTrack,
+		// so an animation that plays on its own has to be started here as well or
+		// it would miss the one track that is certain to be there. It is loaded
+		// with no box: the terminal has not reported its size yet, and the first
+		// tick sizes the animation anyway.
+		if m.Anim != nil && m.animAuto() {
+			cmds = append(cmds, m.Anim.LoadFor(path, 0, 0, m.gateMode()))
+		}
 	}
 
 	// Accept GUI IPC connection in the background

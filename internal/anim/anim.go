@@ -25,7 +25,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/WhatDamon/go-nvaa-codec"
-	"github.com/WhatDamon/go-nvaa-codec/photosensitivity"
 	"github.com/WhatDamon/go-nvaa-codec/player"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
@@ -38,33 +37,6 @@ var ErrNoSidecar = errors.New("no animation for this track")
 // minDriftMS is the floor on how far the animation may drift before it is
 // corrected. It keeps a file of very short frames from seeking on every tick.
 const minDriftMS = 50
-
-// Photosensitivity is the pair of readings a warning is drawn from: what the
-// file says about its own flashing, and what an analysis of its frames
-// measured.
-//
-// Both are kept because they can disagree. A file that declares nothing is not
-// thereby safe, and a file that declares a pass ran its own approximation over
-// a viewport that need not be the one being watched. Showing them side by side
-// lets a viewer see which reading objected.
-type Photosensitivity struct {
-	Declared   player.Warning
-	Assessment photosensitivity.Assessment
-}
-
-// Fails reports whether either reading found more flashing than the thresholds
-// allow. A reading that was never made does not object.
-func (p Photosensitivity) Fails() bool {
-	return p.Declared.Verdict == player.VerdictFail ||
-		p.Assessment.Verdict == photosensitivity.VerdictFail
-}
-
-// Analysed reports whether the analysis produced a verdict. It is false when
-// the analysis could not run, so a warning can say what it is missing rather
-// than implying the animation was measured and passed.
-func (p Photosensitivity) Analysed() bool {
-	return p.Assessment.Verdict != photosensitivity.VerdictUnknown
-}
 
 // LoadedMsg carries one track's sidecar back to the host, which hands it to
 // Apply.
@@ -92,10 +64,11 @@ type State struct {
 	Loading bool
 	Err     error
 
-	path    string
-	player  *player.Player
-	warning Photosensitivity
-	gated   bool
+	path     string
+	player   *player.Player
+	warning  Photosensitivity
+	gated    bool
+	gateMode string
 
 	// viewW and viewH are the animation's own size, read from the file.
 	// columns and lines are the area it has to draw in, as most recently
@@ -127,14 +100,16 @@ func (s *State) Gated() bool { return s.gated }
 // LoadFor reads the sidecar for audioPath and prepares it for a columns x lines
 // area, drawing it at its own size when that is smaller than the area.
 //
-// All the work happens in the returned command, and the file is read, analysed
-// and decoded in one pass so the animation and its warning arrive together. The
-// analysis is cheap next to the decode -- microseconds for the vectors in
-// testdata -- and it is what catches a file that declares nothing while
-// flashing anyway.
-func (s *State) LoadFor(audioPath string, columns, lines int) tea.Cmd {
+// All the work happens in the returned command, and the file is read and decoded
+// in one pass so the animation and its warning arrive together. Usually the
+// analysis joins them, and it is cheap next to the decode -- microseconds for
+// the vectors in testdata -- and it is what catches a file that declares nothing
+// while flashing anyway. gateMode says whether to make that analysis at all, and
+// which of the readings stop the animation.
+func (s *State) LoadFor(audioPath string, columns, lines int, gateMode string) tea.Cmd {
 	s.Loading = true
 	s.Err = nil
+	s.gateMode = gateMode
 	s.generation++
 	generation := s.generation
 
@@ -154,7 +129,7 @@ func (s *State) LoadFor(audioPath string, columns, lines int) tea.Cmd {
 
 		return LoadedMsg{
 			Path:    path,
-			Warning: assess(animation),
+			Warning: assess(animation, gateMode),
 			player: player.New(animation, player.Options{
 				Columns: boxW,
 				Lines:   boxH,
@@ -180,11 +155,12 @@ func (s *State) LoadFor(audioPath string, columns, lines int) tea.Cmd {
 	}
 }
 
-// Apply installs a loaded sidecar. than the most recent LoadFor is dropped, so a second trigger
-// or a track change during a load cannot install the animation that lost. The
-// returned command starts the clock, except when the warning gate is up: the
-// player is deliberately left unstarted until someone chooses to see it, and
-// Init is what would otherwise begin immediately.
+// Apply installs a loaded sidecar. A result older than the most recent LoadFor
+// is dropped, so a second trigger or a track change during a load cannot install
+// the animation that lost. The returned command starts the clock, except when
+// the warning gate is up: the player is deliberately left unstarted until
+// someone chooses to see it, and Init is what would otherwise begin
+// immediately.
 func (s *State) Apply(msg LoadedMsg) tea.Cmd {
 	if msg.generation != s.generation {
 		return nil
@@ -207,7 +183,7 @@ func (s *State) Apply(msg LoadedMsg) tea.Cmd {
 
 	s.warning = msg.Warning
 	s.player = msg.player
-	s.gated = s.warning.Fails()
+	s.gated = s.warning.Fails(s.gateMode)
 	s.Visible = true
 
 	if s.gated {
@@ -330,6 +306,7 @@ func (s *State) Close() {
 	s.Visible = false
 	s.Loading = false
 	s.gated = false
+	s.gateMode = ""
 	s.Err = nil
 	s.path = ""
 	s.player = nil
@@ -385,25 +362,50 @@ func centre(block string, blockW, blockH, areaW, areaH int) string {
 	if blockW > areaW || blockH > areaH {
 		return block
 	}
+	// A block that is already the whole area has nothing to centre, and it is
+	// the case with the most cells to copy, so it is the one worth not copying.
+	if blockW == areaW && blockH == areaH {
+		return block
+	}
 
 	top := (areaH - blockH) / 2
 	left := (areaW - blockW) / 2
 
-	rows := make([]string, 0, areaH)
 	blank := strings.Repeat(" ", areaW)
 	head := strings.Repeat(" ", left)
 	tail := strings.Repeat(" ", areaW-left-blockW)
 
-	for range top {
-		rows = append(rows, blank)
+	rows := strings.Split(block, "\n")
+	if len(rows) > blockH {
+		rows = rows[:blockH]
 	}
-	for _, row := range strings.Split(block, "\n") {
-		rows = append(rows, head+row+tail)
+
+	// Written into one buffer, sized for what is about to go into it, rather than
+	// a new string per row followed by a join of the lot: the rows are the whole
+	// area, so most of those allocations were producing a row of spaces. A
+	// margin row is one byte per column; an animation's row also carries the
+	// escapes it was rendered with, which is the difference from its width.
+	size := areaH*(areaW+1) - 1
+	for _, row := range rows {
+		size += len(row) - blockW
 	}
-	for len(rows) < areaH {
-		rows = append(rows, blank)
+
+	var out strings.Builder
+	out.Grow(max(0, size))
+	for i := range areaH {
+		if i > 0 {
+			out.WriteByte('\n')
+		}
+		row := i - top
+		if row < 0 || row >= len(rows) {
+			out.WriteString(blank)
+			continue
+		}
+		out.WriteString(head)
+		out.WriteString(rows[row])
+		out.WriteString(tail)
 	}
-	return strings.Join(rows, "\n")
+	return out.String()
 }
 
 // positionFor maps an audio position onto the animation's timeline.
@@ -439,23 +441,6 @@ func (s *State) tolerance(targetMS uint64) uint64 {
 		}
 	}
 	return minDriftMS
-}
-
-// assess reads both photosensitivity opinions about an animation.
-func assess(animation *nvaa.Animation) Photosensitivity {
-	readings := Photosensitivity{Declared: player.WarningFrom(animation)}
-
-	// The window is left unset so the analysis uses the viewport the file's own
-	// frames declare. Measuring there is what makes the two readings comparable:
-	// a different viewport would compare a claim about one size against a result
-	// for another, and flashing area is measured as a fraction of the window.
-	assessment, err := photosensitivity.Analyze(animation, photosensitivity.Options{})
-	if err != nil {
-		logger.Warn("photosensitivity analysis failed", "error", err)
-		return readings
-	}
-	readings.Assessment = assessment
-	return readings
 }
 
 func absDiff(a, b uint64) uint64 {
