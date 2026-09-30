@@ -80,10 +80,9 @@ var commands = []commandSpec{
 		Run:     runLrc,
 	},
 	{
-		Name:    "anim",
-		Aliases: []string{"nvaa"},
-		Desc:    "Toggle the animation for the current track",
-		Run:     runAnim,
+		Name: "anim",
+		Desc: "Toggle the animation for the current track",
+		Run:  runAnim,
 	},
 	{
 		Name:    "open",
