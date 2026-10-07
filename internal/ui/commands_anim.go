@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -23,6 +24,10 @@ import (
 // tall layout against this figure, so the two cannot drift apart.
 const warnDetailRows = 14
 
+// defaultTickRate is the rate assumed when the configuration names none, which is
+// the scale a movement is measured against to tell a jump from playback.
+const defaultTickRate = 30
+
 // syncAnim keeps the animation aligned with the audio and sized for its box.
 //
 // It runs on the tick rather than from a resize or panel hook because the box
@@ -34,11 +39,20 @@ func (m *Model) syncAnim() tea.Cmd {
 		return nil
 	}
 	plan := m.layoutPlan()
-	return m.Anim.Sync(m.Audio.Elapsed, m.Audio.IsPlaying, plan.ContentInnerW, plan.ContentInnerH)
+	return m.Anim.Sync(m.Audio.Elapsed, m.Audio.IsPlaying, m.tickInterval(), plan.ContentInnerW, plan.ContentInnerH)
 }
 
-// runAnim implements ":anim" and its alias: it turns the animation for the
-// current track on or off.
+// tickInterval is how often the animation hears where the audio is, which is how
+// far playback can move it between two reports.
+func (m *Model) tickInterval() time.Duration {
+	if m.Config == nil || m.Config.TickRate <= 0 {
+		return time.Second / defaultTickRate
+	}
+	return time.Second / time.Duration(m.Config.TickRate)
+}
+
+// runAnim implements ":anim": it turns the animation for the current track on or
+// off.
 func runAnim(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	if m.Anim == nil || m.Anim.Loading {
 		return m, nil

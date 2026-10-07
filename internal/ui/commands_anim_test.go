@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -541,5 +542,20 @@ func TestAnimGateMode_ReachesTheAnimation(t *testing.T) {
 				t.Errorf("gated = %v, want %v in mode %q", got, tc.wantGated, tc.mode)
 			}
 		})
+	}
+}
+
+func TestTickInterval_SurvivesAConfigThatNamesNoRate(t *testing.T) {
+	m := setupModel()
+
+	// A model built before the configuration says anything has a rate of zero,
+	// and dividing by it would take the whole program down.
+	if got := m.tickInterval(); got != time.Second/defaultTickRate {
+		t.Fatalf("with no tick rate the interval is %v, want %v", got, time.Second/defaultTickRate)
+	}
+
+	m.Config.TickRate = 10
+	if got := m.tickInterval(); got != 100*time.Millisecond {
+		t.Fatalf("at ten ticks a second the interval is %v, want 100ms", got)
 	}
 }
