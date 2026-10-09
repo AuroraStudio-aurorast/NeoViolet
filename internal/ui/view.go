@@ -78,7 +78,10 @@ func renderTabs(m *Model) string {
 			tabContent += " "
 		}
 		tabContent += name + " "
-		if i == m.UI.ActiveTab {
+		// The animation is not on a tab: it borrows the content area, so no tab
+		// claims to be the one showing. Focus still brightens the row, because
+		// that says where the keyboard is rather than what is on screen.
+		if i == m.UI.ActiveTab && !m.animVisible() {
 			accented := activeTabStyle.BorderForeground(lipgloss.Color(accentOrDefault(m.Accent, "57")))
 			tabs = append(tabs, accented.Width(m.UI.tabWidth).Render(tabContent))
 		} else {
@@ -93,22 +96,35 @@ func renderTabs(m *Model) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
+// contentDescriptions says what each tab is for. It is written once because it
+// is the same for every frame.
+var contentDescriptions = map[int]string{
+	0: "Browse your music library and manage the queue",
+	1: "View and manage your playlists",
+	2: "Adjust audio effects and enhancements",
+	3: "Configure application settings",
+}
+
 func renderContent(m *Model, plan layoutPlan) string {
-	descriptions := map[int]string{
-		0: "Browse your music library and manage the queue",
-		1: "View and manage your playlists",
-		2: "Adjust audio effects and enhancements",
-		3: "Configure application settings",
+	s := contentStyle
+	if m.UI.Focus == FocusContent {
+		s = s.BorderForeground(lipgloss.Color("15"))
+	}
+
+	// The animation borrows this box while it shows. An .nvaa file is a sidecar
+	// of the track, like its lyrics, so it takes the content area rather than a
+	// page of its own -- and it fills the interior exactly, which is what lets it
+	// go in without being measured.
+	if frame, ok := animFrame(m, plan); ok {
+		return contentBox(s, frame, plan)
 	}
 
 	content := fmt.Sprintf("[ %s ]\n\n%s",
 		m.UI.Tabs[m.UI.ActiveTab],
-		descriptions[m.UI.ActiveTab],
+		contentDescriptions[m.UI.ActiveTab],
 	)
-
-	s := contentStyle
-	if m.UI.Focus == FocusContent {
-		s = s.BorderForeground(lipgloss.Color("15"))
+	if body, ok := animBody(m, plan); ok {
+		content = body
 	}
 
 	return s.

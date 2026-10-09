@@ -53,6 +53,12 @@
 | `lys` | Lyricify Syllable File | EXPERIMENTAL |
 | `smi` | Synchronized Accessible Media Interchange | EXPERIMENTAL |
 
+### Animation File
+
+| Format | Description | Note |
+|--------|-------------|---------|
+| `nvaa` | NeoViolet ASCII-style Animation | sidecar of the track |
+
 ## OS Integration
 
 | OS | API | Status |

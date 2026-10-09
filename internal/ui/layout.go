@@ -26,6 +26,15 @@ const (
 	panelBorderH  = 2
 	panelPaddingH = 1
 
+	// Content box chrome, from contentStyle in styles.go: a rounded border plus
+	// Padding(1, 2), so one row of padding above and below and two columns on
+	// each side. A lipgloss Width or Height is the total, border and padding
+	// included, which is why ContentWidth already counts the border.
+	contentBorderW  = 2
+	contentBorderH  = 2
+	contentPaddingH = 2 // per side
+	contentPaddingV = 1 // above and below
+
 	// oneLineWidthInset is the footer chrome the one_line lyric row leaves
 	// free: border (2) + padding (2) + 2 spare columns.
 	oneLineWidthInset = 6
@@ -67,6 +76,12 @@ type layoutPlan struct {
 	ContentHeight int
 	FooterRows    int
 
+	// ContentInnerW and ContentInnerH are the writable box inside the content
+	// border and padding: what a renderer may draw in without disturbing the
+	// frame around it. They are zero when the region is too small to have one.
+	ContentInnerW int
+	ContentInnerH int
+
 	LyricMode         lyricDisplayMode
 	OneLineLyricWidth int // marquee width; 0 while the panel is shown
 }
@@ -77,6 +92,8 @@ type layoutPlan struct {
 //
 //	ContentWidth + PanelWidth == Width
 //	tabsHeight + ContentHeight + FooterRows + helpHeight == Height
+//	ContentInnerW == ContentWidth - contentBorderW - 2*contentPaddingH
+//	ContentInnerH == ContentHeight - contentBorderH - 2*contentPaddingV
 func computeLayout(w, h int, in layoutInput) layoutPlan {
 	if w <= 0 || h <= 0 {
 		return layoutPlan{}
@@ -114,6 +131,14 @@ func computeLayout(w, h int, in layoutInput) layoutPlan {
 
 	p.ContentWidth = w - p.PanelWidth
 	p.ContentHeight = h - tabsHeight - p.FooterRows - helpHeight
+	p.ContentInnerW = p.ContentWidth - contentBorderW - 2*contentPaddingH
+	p.ContentInnerH = p.ContentHeight - contentBorderH - 2*contentPaddingV
+	if p.ContentInnerW < 0 {
+		p.ContentInnerW = 0
+	}
+	if p.ContentInnerH < 0 {
+		p.ContentInnerH = 0
+	}
 	if p.PanelShown {
 		p.PanelInnerH = p.ContentHeight - panelBorderH
 	}

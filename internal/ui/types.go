@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
@@ -303,6 +304,16 @@ type Model struct {
 	// panelMode is the runtime panel mode (auto|on|off). It starts from the
 	// config default and is changed by ":lrc panel"; it is never persisted.
 	panelMode string
+
+	// Anim is the animation sidecar for the current track: whether it is showing
+	// and the player drawing it. It stays idle until ":anim" asks for it, so a
+	// track's sidecar is never read just because it exists.
+	Anim *anim.State
+
+	// animRequested is true when an animation already in flight was asked for by
+	// name rather than following a track change. It decides whether a track with
+	// no animation is reported as a failure or as an answer.
+	animRequested bool
 
 	MediaCtl mediactl.Controller
 }

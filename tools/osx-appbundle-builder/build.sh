@@ -163,6 +163,32 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
       </array>
     </dict>
   </array>
+  <!-- The animation sidecar states its own identity, so the system can name it
+       instead of inventing a dynamic type from the extension. Declared, not
+       claimed: a .nvaa is played with the track it sits beside, never on its
+       own, so no document type entry points at it. -->
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>com.neoviolet.nvaa</string>
+      <key>UTTypeDescription</key>
+      <string>NeoViolet ASCII-style Animation</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>nvaa</string>
+        </array>
+        <key>public.mime-type</key>
+        <string>application/vnd.neoviolet.nvaa</string>
+      </dict>
+    </dict>
+  </array>
 </dict>
 </plist>
 EOF

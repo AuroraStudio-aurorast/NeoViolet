@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
@@ -45,7 +46,18 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleLoadTrack(m, msg)
 	case FetchLyricsResultMsg:
 		return handleFetchLyricsResult(m, msg)
+	case anim.LoadedMsg:
+		return handleAnimLoaded(m, msg)
 	default:
+		// The animation wakes itself with a tick whose type is unexported, so the
+		// host cannot name it and cannot tell it apart from anything else it does
+		// not recognise. Everything the host does not claim is offered to the
+		// animation, which answers for what was its own.
+		if m.Anim != nil {
+			if cmd, handled := m.Anim.Update(msg); handled {
+				return m, cmd
+			}
+		}
 		return m, nil
 	}
 }
@@ -57,10 +69,11 @@ const lyricPushInterval = 33 * time.Millisecond
 
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
+	cmd = tea.Batch(cmd, m.syncAnim())
 	m.Error.Tick()
 	m.Info.Tick()
 
-	if m.Loading {
+	if m.Loading || (m.Anim != nil && m.Anim.Loading) {
 		m.loadingTick++
 	}
 
@@ -348,8 +361,41 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 		m.MediaCtl.Update(m.buildPlayState())
 	}
 
-	return m, func() tea.Msg {
+	loadCmd := func() tea.Msg {
 		fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
 		return loadAudio(msg.Path, m.Config.SoundfontPath, m.Config.TrackerBackend, m.loadGeneration)
 	}
+
+	// An animation that was showing follows the new track to its own sidecar,
+	// and closes if the new track has none. So does one that the config plays on
+	// its own. Reloading here rather than after the audio arrives means the
+	// sidecar is read while the track is still loading.
+	if m.animVisible() || m.animAuto() {
+		plan := m.layoutPlan()
+		load := anim.Load{
+			Path:     msg.Path,
+			Columns:  plan.ContentInnerW,
+			Lines:    plan.ContentInnerH,
+			GateMode: m.gateMode(),
+		}
+		m.animRequested = false
+
+		if reading, low := m.Anim.LowBattery(m.warnBelow()); low {
+			if m.Anim.Held() {
+				// The warning is already up for the track that was playing, and
+				// follows this one: answering it starts the animation the track
+				// changed to.
+				m.Anim.Hold(reading, load)
+				return m, loadCmd
+			}
+			// Nobody asked for this one, so it stands down rather than opening a
+			// warning nobody is waiting to read.
+			m.Info.Set(animSkippedMessage(reading.Percent), m.Config.Error.Duration)
+			return m, loadCmd
+		}
+
+		return m, tea.Batch(loadCmd, m.Anim.LoadFor(load))
+	}
+
+	return m, loadCmd
 }
