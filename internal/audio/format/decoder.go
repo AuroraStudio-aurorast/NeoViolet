@@ -10,7 +10,6 @@ import (
 
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/flac"
-	"github.com/gopxl/beep/v2/mp3"
 	"github.com/gopxl/beep/v2/vorbis"
 	"github.com/gopxl/beep/v2/wav"
 
@@ -82,7 +81,7 @@ func init() {
 	// Custom decoder formats (ALAC, Opus, MP2) are registered via init() in their own files.
 	registerFormat(formatHandler{
 		extensions:       []string{".mp3"},
-		decodeReadCloser: mp3.Decode,
+		decodeReadCloser: decodeMP3,
 	})
 	registerFormat(formatHandler{
 		extensions: []string{".wav"},

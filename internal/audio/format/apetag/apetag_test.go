@@ -124,6 +124,43 @@ func TestParseWithHeader(t *testing.T) {
 	}
 }
 
+func TestTrailingTagStart(t *testing.T) {
+	// buildFileWithTags lays the tag out after 4 bytes of fake APE magic and
+	// 200 bytes of fake audio data.
+	const fakeAudioSize = 4 + 200
+
+	for _, hasHeader := range []bool{false, true} {
+		data := buildFileWithTags([][]byte{buildItem("TITLE", "Song")}, hasHeader)
+		start, ok := TrailingTagStart(bytes.NewReader(data), int64(len(data)))
+		if !ok {
+			t.Fatalf("hasHeader=%v: TrailingTagStart found no tag", hasHeader)
+		}
+		if start != fakeAudioSize {
+			t.Errorf("hasHeader=%v: start = %d, want %d", hasHeader, start, fakeAudioSize)
+		}
+	}
+}
+
+func TestTrailingTagStartBeforeID3v1(t *testing.T) {
+	data := buildFileWithTags([][]byte{buildItem("TITLE", "Song")}, true)
+	data = append(data, append([]byte("TAG"), make([]byte, 125)...)...)
+
+	start, ok := TrailingTagStart(bytes.NewReader(data), int64(len(data)))
+	if !ok {
+		t.Fatal("TrailingTagStart found no tag before the ID3v1 block")
+	}
+	if start != 4+200 {
+		t.Errorf("start = %d, want %d", start, 4+200)
+	}
+}
+
+func TestTrailingTagStartWithoutTag(t *testing.T) {
+	data := bytes.Repeat([]byte{0}, 300)
+	if start, ok := TrailingTagStart(bytes.NewReader(data), int64(len(data))); ok {
+		t.Errorf("TrailingTagStart = (%d, true), want no tag", start)
+	}
+}
+
 func TestParseCoverArt(t *testing.T) {
 	// Cover art value = "cover.jpg\0" + fake JPEG bytes
 	coverValue := append([]byte("cover.jpg\x00"), []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10}...)
