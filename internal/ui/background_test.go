@@ -9,6 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 )
 
 // reset ends a styled span: the sequence that drops the background a line was
@@ -82,7 +84,7 @@ func TestPaintBackground_KeepsWhatTheFrameSays(t *testing.T) {
 // Every frame the program gives the renderer for the alternate screen carries a
 // background on every cell it draws, so no cell shows the terminal's own.
 func TestView_LeavesNoCellToTheTerminalBackground(t *testing.T) {
-	painted, _ := splitScreens(t)
+	painted, _, _ := splitScreens(t)
 	for name, m := range painted {
 		t.Run(name, func(t *testing.T) {
 			content := m.View().Content
@@ -116,9 +118,9 @@ func TestBackgroundHoles_FindsThemInAFrameNothingHasPainted(t *testing.T) {
 
 // The frames drawn on the shell's own screen come back exactly as renderMainView
 // wrote them: nothing touches the terminal there, neither the cells nor its
-// default colours.
+// default colours. The GUI is held to the same thing, below.
 func TestView_LeavesTheShellsScreenUntouched(t *testing.T) {
-	_, shell := splitScreens(t)
+	_, shell, _ := splitScreens(t)
 	for name, m := range shell {
 		t.Run(name, func(t *testing.T) {
 			view := m.View()
@@ -133,11 +135,29 @@ func TestView_LeavesTheShellsScreenUntouched(t *testing.T) {
 	}
 }
 
+// The GUI draws the frame on a canvas of its own, so the terminal it embeds is
+// left as it is: no cells of ours are painted there, and no defaults pinned.
+func TestView_LeavesTheGuiAlone(t *testing.T) {
+	_, _, gui := splitScreens(t)
+	for name, m := range gui {
+		t.Run(name, func(t *testing.T) {
+			view := m.View()
+			if raw := renderMainView(m).Content; view.Content != raw {
+				t.Error("the frame was painted inside the GUI's canvas")
+			}
+			if view.BackgroundColor != nil || view.ForegroundColor != nil {
+				t.Errorf("the terminal's colours were pinned to %v/%v inside the GUI",
+					view.BackgroundColor, view.ForegroundColor)
+			}
+		})
+	}
+}
+
 // The frames on the alternate screen pin the terminal's defaults to the
 // interface's colours, so the cells no frame writes -- what a resize clears --
 // are the interface's colour too.
 func TestView_PinsTheColoursOnTheAlternateScreen(t *testing.T) {
-	painted, _ := splitScreens(t)
+	painted, _, _ := splitScreens(t)
 	for name, m := range painted {
 		t.Run(name, func(t *testing.T) {
 			view := m.View()
@@ -151,62 +171,74 @@ func TestView_PinsTheColoursOnTheAlternateScreen(t *testing.T) {
 	}
 }
 
-// splitScreens sorts the screens by where they are drawn, refusing to hand out an
-// empty half: a check over nothing must not be able to pass.
-func splitScreens(t *testing.T) (painted, shell map[string]*Model) {
+// splitScreens sorts the screens by what is supposed to happen to them: painted
+// on the alternate screen, or handed back to the terminal untouched -- on the
+// shell's screen or in the GUI. It refuses to hand out an empty half, because a
+// check over nothing must not be able to pass.
+func splitScreens(t *testing.T) (painted, shell, gui map[string]*Model) {
 	t.Helper()
 
-	painted, shell = map[string]*Model{}, map[string]*Model{}
+	painted, shell, gui = map[string]*Model{}, map[string]*Model{}, map[string]*Model{}
 	for name, m := range everyScreen(t) {
-		if m.View().AltScreen {
+		switch {
+		case m.isGUI():
+			gui[name] = m
+		case m.View().AltScreen:
 			painted[name] = m
-			continue
+		default:
+			shell[name] = m
 		}
-		shell[name] = m
 	}
-	if len(painted) == 0 || len(shell) == 0 {
-		t.Fatalf("%d screens on the alternate screen and %d on the shell's, want both kinds", len(painted), len(shell))
+	if len(painted) == 0 || len(shell) == 0 || len(gui) == 0 {
+		t.Fatalf("%d screens painted, %d on the shell's screen and %d in the GUI, want all three",
+			len(painted), len(shell), len(gui))
 	}
-	return painted, shell
+	return painted, shell, gui
 }
 
-// everyScreen is one model per screen renderMainView can produce, so a check over
-// them covers all of its return paths rather than the one a default model happens
-// to be on.
+// everyScreen is one model per screen renderMainView can produce, each twice: in a
+// terminal and in the GUI. Checks over them cover all of its return paths rather
+// than the one a default model happens to be on.
 func everyScreen(t *testing.T) map[string]*Model {
 	t.Helper()
 
 	screens := map[string]*Model{}
+	for _, gui := range []string{"", " in the gui"} {
+		add := func(name string, m *Model) {
+			if gui != "" {
+				m.ipcServer = &ipc.Server{} // what the GUI's spawn leaves behind
+			}
+			screens[name+gui] = m
+		}
 
-	library := sized(t, setupModel(), 100, 30)
-	screens["library"] = library
+		add("library", sized(t, setupModel(), 100, 30))
 
-	loading := sized(t, setupModel(), 100, 30)
-	loading.Loading = true
-	screens["loading"] = loading
+		loading := sized(t, setupModel(), 100, 30)
+		loading.Loading = true
+		add("loading", loading)
 
-	screens["terminal too small"] = sized(t, setupModel(), 20, 5)
+		add("terminal too small", sized(t, setupModel(), 20, 5))
 
-	command := sized(t, setupModel(), 100, 30)
-	command.UI.Mode = ModeCommand
-	command.completionCandidates = []candidate{
-		{Value: "load", Desc: "<path>  Load an audio file"},
-		{Value: "lrc", Desc: "<sub>  Lyrics control"},
-		{Value: "queue"},
+		command := sized(t, setupModel(), 100, 30)
+		command.UI.Mode = ModeCommand
+		command.completionCandidates = []candidate{
+			{Value: "load", Desc: "<path>  Load an audio file"},
+			{Value: "lrc", Desc: "<sub>  Lyrics control"},
+			{Value: "queue"},
+		}
+		add("command line and completion overlay", command)
+
+		notice := sized(t, setupModel(), 100, 30)
+		notice.Info.Set("saved", 30)
+		add("info message", notice)
+
+		failure := sized(t, setupModel(), 100, 30)
+		failure.Error.Set("could not open the file", 30)
+		add("error message", failure)
+
+		add("lyrics panel", sized(t, lyricFooterModel(), 80, 24))
+		add("animation", sized(t, animModel(t, animPlainFixture, 100, 30), 100, 30))
 	}
-	screens["command line and completion overlay"] = command
-
-	notice := sized(t, setupModel(), 100, 30)
-	notice.Info.Set("saved", 30)
-	screens["info message"] = notice
-
-	failure := sized(t, setupModel(), 100, 30)
-	failure.Error.Set("could not open the file", 30)
-	screens["error message"] = failure
-
-	screens["lyrics panel"] = sized(t, lyricFooterModel(), 80, 24)
-	screens["animation"] = sized(t, animModel(t, animPlainFixture, 100, 30), 100, 30)
-
 	return screens
 }
 
