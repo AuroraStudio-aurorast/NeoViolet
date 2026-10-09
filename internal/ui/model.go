@@ -339,8 +339,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the current UI state.
+//
+// Every frame passes through here, so this is where the black background goes on
+// -- but only for a frame that asked for the alternate screen: the loading screen
+// and the too-small warning are drawn on the shell's own screen, and blackening
+// that, cell by cell or by pinning the terminal's defaults, would blacken the
+// shell instead, and leave it blackened if the program died before the renderer
+// could undo the pin.
 func (m *Model) View() tea.View {
-	return renderMainView(m)
+	view := renderMainView(m)
+	if view.AltScreen {
+		view.Content = paintBackground(view.Content)
+		view.BackgroundColor = uiBackground
+		view.ForegroundColor = uiForeground
+	}
+	return view
 }
 
 // Helper methods
