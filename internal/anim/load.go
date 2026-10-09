@@ -54,7 +54,6 @@ type LoadedMsg struct {
 func (s *State) LoadFor(load Load) tea.Cmd {
 	s.held = false
 	s.reading = power.Status{}
-	s.lastTarget = 0
 	s.Loading = true
 	s.Err = nil
 	s.gateMode = load.GateMode
@@ -131,7 +130,6 @@ func (s *State) Apply(msg LoadedMsg) tea.Cmd {
 
 	s.warning = msg.Warning
 	s.player = msg.player
-	s.keyframes = msg.player.Animation().Keyframes()
 	s.gated = s.warning.Fails(s.gateMode)
 	s.Visible = true
 

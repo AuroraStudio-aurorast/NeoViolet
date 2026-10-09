@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/WhatDamon/go-nvaa-codec/photosensitivity"
 	"github.com/WhatDamon/go-nvaa-codec/player"
@@ -351,18 +351,30 @@ func TestContent_AnimationBorrowsTheBox(t *testing.T) {
 	m := animModel(t, animPlainFixture, 100, 30)
 	plan := m.layoutPlan()
 
-	body, ok := animBody(m, plan)
+	frame, ok := animFrame(m, plan)
 	if !ok {
 		t.Fatal("the animation did not claim the content box")
 	}
-	if body == "" {
+	if frame == "" {
 		t.Error("the animation claimed the box and drew nothing")
 	}
-	if strings.Contains(body, m.UI.Tabs[m.UI.ActiveTab]) {
+	if strings.Contains(frame, m.UI.Tabs[m.UI.ActiveTab]) {
+		t.Error("the tab description is still in the box")
+	}
+
+	// The frame is what the box holds, and the description is not.
+	box := renderContent(m, plan)
+	if !strings.Contains(ansi.Strip(box), firstGlyphLine(frame)) {
+		t.Error("the box does not hold the frame")
+	}
+	if strings.Contains(box, m.UI.Tabs[m.UI.ActiveTab]) {
 		t.Error("the tab description is still in the box")
 	}
 
 	m.Anim.Close()
+	if _, ok := animFrame(m, plan); ok {
+		t.Error("a closed animation still draws a frame into the content box")
+	}
 	if _, ok := animBody(m, plan); ok {
 		t.Error("a closed animation still claims the content box")
 	}
@@ -545,17 +557,14 @@ func TestAnimGateMode_ReachesTheAnimation(t *testing.T) {
 	}
 }
 
-func TestTickInterval_SurvivesAConfigThatNamesNoRate(t *testing.T) {
-	m := setupModel()
-
-	// A model built before the configuration says anything has a rate of zero,
-	// and dividing by it would take the whole program down.
-	if got := m.tickInterval(); got != time.Second/defaultTickRate {
-		t.Fatalf("with no tick rate the interval is %v, want %v", got, time.Second/defaultTickRate)
+// firstGlyphLine is the first line of a frame that has something in it. An
+// animation smaller than the area it sits in is centred, so the lines before it
+// are blank.
+func firstGlyphLine(frame string) string {
+	for _, line := range strings.Split(ansi.Strip(frame), "\n") {
+		if strings.TrimSpace(line) != "" {
+			return line
+		}
 	}
-
-	m.Config.TickRate = 10
-	if got := m.tickInterval(); got != 100*time.Millisecond {
-		t.Fatalf("at ten ticks a second the interval is %v, want 100ms", got)
-	}
+	return ""
 }

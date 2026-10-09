@@ -210,7 +210,7 @@ func TestSync_FollowsTheAudioClock(t *testing.T) {
 		t.Fatalf("the fixture must have a frame at %dms other than the first", atMS)
 	}
 
-	state.Sync(atMS*time.Millisecond, true, testTick, 40, 12)
+	state.Sync(atMS*time.Millisecond, true, 40, 12)
 	if got := state.player.Index(); got != want {
 		t.Errorf("frame = %d, want %d: the animation did not follow the audio", got, want)
 	}
@@ -222,7 +222,7 @@ func TestSync_ResizesOnlyForARealBox(t *testing.T) {
 
 	// The fixture is 8x3. An area larger than that leaves the animation at its
 	// own size, so that View has a margin to centre it in.
-	state.Sync(0, true, testTick, 40, 12)
+	state.Sync(0, true, 40, 12)
 	if got := pl.Timeline().Columns(); got != 8 {
 		t.Errorf("columns = %d after a 40-cell area, want the animation's own 8", got)
 	}
@@ -232,7 +232,7 @@ func TestSync_ResizesOnlyForARealBox(t *testing.T) {
 
 	// An area smaller than the animation is the only thing that resizes it, and
 	// then only as far as the area.
-	state.Sync(0, true, testTick, 5, 2)
+	state.Sync(0, true, 5, 2)
 	if got := pl.Timeline().Columns(); got != 5 {
 		t.Errorf("columns = %d, want 5", got)
 	}
@@ -242,7 +242,7 @@ func TestSync_ResizesOnlyForARealBox(t *testing.T) {
 
 	// A box of nothing is a layout that has not been computed yet, not a
 	// request to make the animation zero cells wide.
-	state.Sync(0, true, testTick, 0, 0)
+	state.Sync(0, true, 0, 0)
 	if got := pl.Timeline().Columns(); got != 5 {
 		t.Errorf("columns = %d after an empty box, want 5", got)
 	}
@@ -366,17 +366,17 @@ func TestSync_FollowsTheTransport(t *testing.T) {
 	state := loaded(t, plainFixture, 40, 12)
 	pl := state.player
 
-	state.Sync(0, false, testTick, 40, 12)
+	state.Sync(0, false, 40, 12)
 	if !pl.Paused() {
 		t.Error("a paused track did not pause the animation")
 	}
 
-	state.Sync(0, true, testTick, 40, 12)
+	state.Sync(0, true, 40, 12)
 	if pl.Paused() {
 		t.Error("a playing track did not resume the animation")
 	}
 
-	state.Sync(0, true, testTick, 40, 12)
+	state.Sync(0, true, 40, 12)
 	if pl.Paused() {
 		t.Error("asking an already-playing animation to resume paused it")
 	}

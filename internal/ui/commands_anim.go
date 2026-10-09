@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -24,10 +23,6 @@ import (
 // tall layout against this figure, so the two cannot drift apart.
 const warnDetailRows = 14
 
-// defaultTickRate is the rate assumed when the configuration names none, which is
-// the scale a movement is measured against to tell a jump from playback.
-const defaultTickRate = 30
-
 // syncAnim keeps the animation aligned with the audio and sized for its box.
 //
 // It runs on the tick rather than from a resize or panel hook because the box
@@ -39,16 +34,7 @@ func (m *Model) syncAnim() tea.Cmd {
 		return nil
 	}
 	plan := m.layoutPlan()
-	return m.Anim.Sync(m.Audio.Elapsed, m.Audio.IsPlaying, m.tickInterval(), plan.ContentInnerW, plan.ContentInnerH)
-}
-
-// tickInterval is how often the animation hears where the audio is, which is how
-// far playback can move it between two reports.
-func (m *Model) tickInterval() time.Duration {
-	if m.Config == nil || m.Config.TickRate <= 0 {
-		return time.Second / defaultTickRate
-	}
-	return time.Second / time.Duration(m.Config.TickRate)
+	return m.Anim.Sync(m.Audio.Elapsed, m.Audio.IsPlaying, plan.ContentInnerW, plan.ContentInnerH)
 }
 
 // runAnim implements ":anim": it turns the animation for the current track on or
@@ -143,12 +129,72 @@ func (m *Model) warnBelow() int {
 	return m.Config.Anim.Power.WarnBelow
 }
 
+// animFrame returns the frame the animation is showing, when it is showing one
+// that already fills the box's interior. That is the case worth splicing into the
+// box rather than measuring into it -- see contentBox.
+func animFrame(m *Model, plan layoutPlan) (string, bool) {
+	if m.Anim == nil || !m.Anim.Visible || m.Anim.Loading || m.Anim.Held() || m.Anim.Gated() {
+		return "", false
+	}
+	if !m.Anim.Fits(plan.ContentInnerW, plan.ContentInnerH) {
+		return "", false
+	}
+	return m.Anim.View(), true
+}
+
+// contentBox wraps a frame in the content style without handing the frame to
+// lipgloss to measure.
+//
+// A frame arrives already the size of the box's interior -- it is fitted to it and
+// centred in it before it gets here -- so measuring it is work with nothing to
+// show for it, and it is the heaviest work a frame does. A dense animation is tens
+// of thousands of bytes of escape sequences, and lipgloss walks every one of them
+// to find where the lines end, once for this box and again for each box it is
+// joined into. An empty box of the same shape has the same border, the same
+// padding and the same interior rows, and costs almost nothing to measure, so the
+// frame's own lines are spliced into that instead.
+func contentBox(style lipgloss.Style, block string, plan layoutPlan) string {
+	paint := func(content string) string {
+		return style.Width(plan.ContentWidth).Height(plan.ContentHeight).Render(content)
+	}
+	if plan.ContentInnerW <= 0 || plan.ContentInnerH <= 0 {
+		// There is no interior to splice into. The style still knows what to draw.
+		return paint(block)
+	}
+
+	// One space is enough of a placeholder: the style pads what is short, so the
+	// box that comes back is the full size with the border in the right columns,
+	// and its interior rows are all the same row either way.
+	box := strings.Split(paint(" "), "\n")
+
+	// The interior rows of an empty box are all the same row -- border, padding,
+	// spaces -- so one of them says what every interior row has either side of the
+	// frame, and both pieces carry the border colour with them. The left edge is
+	// half the border, the two sides together being contentBorderW.
+	row := 1 + contentPaddingV
+	edge := contentBorderW/2 + contentPaddingH
+	if len(box) < row+plan.ContentInnerH {
+		return paint(block)
+	}
+	left := ansi.Truncate(box[row], edge, "")
+	right := ansi.TruncateLeft(box[row], edge+plan.ContentInnerW, "")
+
+	lines := strings.Split(block, "\n")
+	for i := 0; i < plan.ContentInnerH && i < len(lines); i++ {
+		if lines[i] != "" {
+			box[row+i] = left + lines[i] + right
+		}
+	}
+	return strings.Join(box, "\n")
+}
+
 // animBody returns what the animation wants to draw in the content box, and
 // whether it wants to draw anything at all.
 //
 // The box belongs to the active tab, and the animation borrows it: an .nvaa file
 // is a sidecar of the track, like its lyrics, so it takes the content area
-// rather than a page of its own.
+// rather than a page of its own. A frame that is ready to be drawn does not come
+// through here -- see animFrame.
 func animBody(m *Model, plan layoutPlan) (string, bool) {
 	if m.Anim == nil {
 		return "", false
@@ -162,12 +208,10 @@ func animBody(m *Model, plan layoutPlan) (string, bool) {
 	case m.Anim.Gated():
 		return renderAnimWarning(m, plan), true
 	case m.Anim.Visible:
-		if !m.Anim.Fits(plan.ContentInnerW, plan.ContentInnerH) {
-			// The box changed and the player has not been resized yet. One
-			// blank frame is better than a frame that overflows the border.
-			return "", true
-		}
-		return m.Anim.View(), true
+		// The animation owns the box but has nothing to put in it yet: the box
+		// changed and the player has not been resized to it. One blank frame is
+		// better than a frame that overflows the border.
+		return "", true
 	}
 	return "", false
 }

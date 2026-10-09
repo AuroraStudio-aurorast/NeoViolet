@@ -97,6 +97,19 @@ func renderTabs(m *Model) string {
 }
 
 func renderContent(m *Model, plan layoutPlan) string {
+	s := contentStyle
+	if m.UI.Focus == FocusContent {
+		s = s.BorderForeground(lipgloss.Color("15"))
+	}
+
+	// The animation borrows this box while it shows. An .nvaa file is a sidecar
+	// of the track, like its lyrics, so it takes the content area rather than a
+	// page of its own -- and it fills the interior exactly, which is what lets it
+	// go in without being measured.
+	if frame, ok := animFrame(m, plan); ok {
+		return contentBox(s, frame, plan)
+	}
+
 	descriptions := map[int]string{
 		0: "Browse your music library and manage the queue",
 		1: "View and manage your playlists",
@@ -108,16 +121,8 @@ func renderContent(m *Model, plan layoutPlan) string {
 		m.UI.Tabs[m.UI.ActiveTab],
 		descriptions[m.UI.ActiveTab],
 	)
-	// The animation borrows this box while it shows. An .nvaa file is a sidecar
-	// of the track, like its lyrics, so it takes the content area rather than a
-	// page of its own.
 	if body, ok := animBody(m, plan); ok {
 		content = body
-	}
-
-	s := contentStyle
-	if m.UI.Focus == FocusContent {
-		s = s.BorderForeground(lipgloss.Color("15"))
 	}
 
 	return s.

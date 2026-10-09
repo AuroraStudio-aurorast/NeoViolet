@@ -25,7 +25,6 @@ package anim
 
 import (
 	"errors"
-	"sort"
 	"strings"
 	"time"
 
@@ -45,15 +44,6 @@ var ErrNoSidecar = errors.New("no animation for this track")
 // minDriftMS is the floor on how far the animation may drift before it is
 // corrected. It keeps a file of very short frames from seeking on every tick.
 const minDriftMS = 50
-
-// jumpTicks is how many ticks' worth of movement still counts as playback. A
-// tick samples a position that a decoder reports in whole frames, so a step can
-// arrive a little wider than the tick itself and the margin has to cover that.
-const jumpTicks = 4
-
-// minJumpMS is the floor under jumpTicks, so that a host ticking far faster than
-// the position can move does not mistake playback for a jump.
-const minJumpMS = 100
 
 // State is the animation surface for the current track.
 //
@@ -90,20 +80,12 @@ type State struct {
 	// columns and lines are the area it has to draw in, as most recently
 	// reported to Sync. sizedW and sizedH are the box the player was given:
 	// the animation's size, capped by the area, centred in it by View.
-	viewW   int
-	viewH   int
-	columns int
-	lines   int
-	sizedW  int
-	sizedH  int
-
-	// lastTarget is the position the previous Sync aimed at, and keyframes are
-	// where a replay can start, in ascending order. Together they separate a
-	// position that flew from one that drifted, so that a flying one lands on a
-	// keyframe rather than decoding everything up to it -- see landing.
-	lastTarget uint64
-	keyframes  []int
-
+	viewW      int
+	viewH      int
+	columns    int
+	lines      int
+	sizedW     int
+	sizedH     int
 	generation uint64
 }
 
@@ -127,10 +109,8 @@ func (s *State) Gated() bool { return s.gated }
 // because the box depends on the terminal, the panel mode and whether the lyric
 // row is showing, and one idempotent call covers all of them. The same call
 // covers the clock: comparing positions here is what makes a pause, a seek and
-// a track change need no case each. The tick comes with them for the same reason:
-// it is how far a position may move between two calls before that movement is a
-// jump rather than playback -- see landing.
-func (s *State) Sync(elapsed time.Duration, playing bool, tick time.Duration, columns, lines int) tea.Cmd {
+// a track change need no case each.
+func (s *State) Sync(elapsed time.Duration, playing bool, columns, lines int) tea.Cmd {
 	if s == nil || !s.Visible || s.player == nil || s.gated {
 		return nil
 	}
@@ -151,9 +131,12 @@ func (s *State) Sync(elapsed time.Duration, playing bool, tick time.Duration, co
 	}
 
 	// Resume reports nothing to do for a player that is already running, so the
-	// playing case is safe to ask for every tick.
+	// playing case is safe to ask for every tick -- and it is what most of them
+	// are answered with.
 	if playing {
-		cmds = append(cmds, s.player.Resume())
+		if cmd := s.player.Resume(); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	} else if !s.player.Paused() {
 		s.player.Pause()
 	}
@@ -161,11 +144,8 @@ func (s *State) Sync(elapsed time.Duration, playing bool, tick time.Duration, co
 	if total := s.player.TotalMS(); total > 0 {
 		target := positionFor(elapsed, total)
 		if absDiff(s.player.ElapsedMS(), target) > s.tolerance(target) {
-			cmds = append(cmds, s.player.SeekToTime(s.landing(target, tick)))
+			cmds = append(cmds, s.player.SeekToTime(target))
 		}
-		// Recorded whether or not this call sought anything: what makes a
-		// position look like a jump is how far it moves between two calls.
-		s.lastTarget = target
 	}
 
 	return tea.Batch(cmds...)
@@ -268,8 +248,6 @@ func (s *State) Close() {
 	s.viewW, s.viewH = 0, 0
 	s.columns, s.lines = 0, 0
 	s.sizedW, s.sizedH = 0, 0
-	s.lastTarget = 0
-	s.keyframes = nil
 	s.generation++
 }
 
@@ -397,57 +375,6 @@ func (s *State) tolerance(targetMS uint64) uint64 {
 		}
 	}
 	return minDriftMS
-}
-
-// landing is the position a correction should put the animation at.
-//
-// Reaching a frame means decoding every frame between it and the nearest
-// keyframe at or before it, so a frame far from one is expensive to reach. A
-// position that moves further between two calls than playback could have moved it
-// is not drifting, it is being seeked or scrubbed, and while that is happening
-// the animation lands on that keyframe instead: it costs nothing to reach, so a
-// scrub stays responsive. The call after the position settles finds isJump false
-// and reaches the exact frame.
-func (s *State) landing(target uint64, tick time.Duration) uint64 {
-	if !isJump(s.lastTarget, target, tick) {
-		return target
-	}
-
-	animation := s.player.Animation()
-	frame := animation.FrameAtTime(target)
-	keyframe := keyframeAtOrBefore(s.keyframes, frame)
-	if keyframe < 0 || keyframe == frame {
-		return target
-	}
-	return animation.DurationBefore(keyframe)
-}
-
-// isJump reports whether a position moved further between two reports than
-// playback could have moved it in one tick.
-func isJump(previous, target uint64, tick time.Duration) bool {
-	threshold := tick * jumpTicks
-	if threshold < minJumpMS*time.Millisecond {
-		threshold = minJumpMS * time.Millisecond
-	}
-	// #nosec G115 -- both are positions in milliseconds, so the difference is a
-	// small non-negative duration rather than anything that could overflow.
-	return time.Duration(absDiff(previous, target))*time.Millisecond > threshold
-}
-
-// keyframeAtOrBefore finds the latest keyframe at or before a frame, which is
-// where a replay of that frame has to start. It reports -1 when there is no
-// keyframe to start from at all.
-func keyframeAtOrBefore(keyframes []int, frame int) int {
-	index := sort.SearchInts(keyframes, frame+1) - 1
-	if index < 0 {
-		// An NVAA file has to open with a keyframe, so a frame before every
-		// keyframe in the list can only mean the list is empty.
-		if len(keyframes) == 0 {
-			return -1
-		}
-		return 0
-	}
-	return keyframes[index]
 }
 
 func absDiff(a, b uint64) uint64 {
