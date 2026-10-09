@@ -20,5 +20,5 @@ func TestRead_Smoke(t *testing.T) {
 	if status.Percent < 0 || status.Percent > 100 {
 		t.Errorf("Percent = %d, want 0 to 100", status.Percent)
 	}
-	t.Logf("percent=%d onBattery=%v charging=%v", status.Percent, status.OnBattery, status.Charging)
+	t.Logf("percent=%d onBattery=%v", status.Percent, status.OnBattery)
 }

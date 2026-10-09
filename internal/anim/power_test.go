@@ -86,9 +86,6 @@ func TestHold_ReadsNothingUntilApproved(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("Approve must load what it was holding")
 	}
-	if !state.Answered() {
-		t.Error("approving the warning must be remembered")
-	}
 	if state.Held() {
 		t.Error("the surface is still holding the load it approved")
 	}
@@ -143,9 +140,6 @@ func TestClose_KeepsTheAnswer(t *testing.T) {
 
 	if state.Held() {
 		t.Error("closing must clear the hold")
-	}
-	if !state.Answered() {
-		t.Error("closing must not make the warning ask again")
 	}
 	if _, low := state.LowBattery(20); low {
 		t.Error("an answered warning is asked once, not twice")

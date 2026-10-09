@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/power"
 )
 
 // The fixtures are the decoder's own conformance vectors, copied into testdata
@@ -34,7 +35,7 @@ func TestLoadFor_NoSidecar(t *testing.T) {
 	if !errors.Is(msg.Err, ErrNoSidecar) {
 		t.Fatalf("Err = %v, want ErrNoSidecar", msg.Err)
 	}
-	if cmd := state.Apply(msg); cmd != nil {
+	if cmd, _ := state.Apply(msg); cmd != nil {
 		t.Error("Apply returned a command for a track with no animation")
 	}
 	if state.Visible || state.Loading || state.Path() != "" {
@@ -66,8 +67,8 @@ func TestLoadFor_PlaysWhenNothingObjects(t *testing.T) {
 		t.Fatalf("an animation that passes analysis was objected to: %+v", msg.Warning)
 	}
 
-	if cmd := state.Apply(msg); cmd == nil {
-		t.Error("Apply should start the clock for an animation nothing objected to")
+	if cmd, applied := state.Apply(msg); cmd == nil || !applied {
+		t.Errorf("this load should be taken and start the clock: cmd=%v applied=%v", cmd, applied)
 	}
 	if !state.Visible || state.Gated() {
 		t.Errorf("visible=%v gated=%v, want visible and ungated", state.Visible, state.Gated())
@@ -96,7 +97,7 @@ func TestLoadFor_GatesAFlashingFile(t *testing.T) {
 		t.Fatal("a file that fails both readings was not objected to")
 	}
 
-	if cmd := state.Apply(msg); cmd != nil {
+	if cmd, _ := state.Apply(msg); cmd != nil {
 		t.Error("a gated animation must not start before it is approved")
 	}
 	if !state.Gated() {
@@ -134,8 +135,8 @@ func TestLoadFor_BrokenFile(t *testing.T) {
 	}
 
 	// The host shows Err as a message and the animation stays closed.
-	if cmd := state.Apply(msg); cmd != nil {
-		t.Error("Apply returned a command for a broken file")
+	if cmd, applied := state.Apply(msg); cmd != nil || !applied {
+		t.Errorf("a broken file is this load's answer and should be taken: cmd=%v applied=%v", cmd, applied)
 	}
 	if state.Visible || state.Gated() {
 		t.Errorf("visible=%v gated=%v, want a closed surface", state.Visible, state.Gated())
@@ -153,15 +154,15 @@ func TestLoadFor_SupersededResultIsDropped(t *testing.T) {
 	stale := run(t, state.LoadFor(loadAt(audio, 40, 12, config.GateModeEither)))
 	fresh := run(t, state.LoadFor(loadAt(audio, 40, 12, config.GateModeEither)))
 
-	if cmd := state.Apply(stale); cmd != nil {
-		t.Error("a superseded load took effect")
+	if cmd, applied := state.Apply(stale); cmd != nil || applied {
+		t.Errorf("a superseded load took effect: cmd=%v applied=%v", cmd, applied)
 	}
 	if state.Visible {
 		t.Error("a superseded load made the surface visible")
 	}
 
-	if cmd := state.Apply(fresh); cmd == nil {
-		t.Error("the current load should take effect")
+	if cmd, applied := state.Apply(fresh); cmd == nil || !applied {
+		t.Errorf("the current load should take effect and say so: cmd=%v applied=%v", cmd, applied)
 	}
 	if !state.Visible {
 		t.Error("the current load did not make the surface visible")
@@ -592,7 +593,7 @@ func audioWith(t *testing.T, sidecar string) string {
 		t.Fatal(err)
 	}
 	// #nosec G703 -- the directory is a test temporary directory, not user input.
-	if err := os.WriteFile(filepath.Join(dir, "track"+SidecarExt), data, 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "track"+sidecarExt), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return audio
@@ -626,4 +627,50 @@ func loaded(t *testing.T, sidecar string, columns, lines int) *State {
 		t.Fatal("the fixture did not load a player")
 	}
 	return state
+}
+
+// A State that does not exist answers rather than panicking. The host can carry
+// a Model built without one, and every method it can reach has to say the same
+// thing an idle surface says.
+func TestNilState_AnswersWithoutPanicking(t *testing.T) {
+	var state *State
+
+	if got := state.Path(); got != "" {
+		t.Errorf("Path() = %q, want nothing loaded", got)
+	}
+	if state.Warning().Analysed() || state.Warning().Fails(config.GateModeEither) {
+		t.Error("a surface that does not exist reported a photosensitivity reading")
+	}
+	if state.Gated() || state.Held() {
+		t.Error("a surface that does not exist is standing at a gate")
+	}
+	if got := state.Reading(); got != (power.Status{}) {
+		t.Errorf("Reading() = %+v, want no reading", got)
+	}
+	if _, low := state.LowBattery(20); low {
+		t.Error("a surface that does not exist asked for an answer")
+	}
+	if state.Fits(40, 12) {
+		t.Error("a surface that does not exist fits an area")
+	}
+	if got := state.View(); got != "" {
+		t.Errorf("View() = %q, want nothing drawn", got)
+	}
+	if cmd := state.Sync(time.Second, true, 40, 12); cmd != nil {
+		t.Error("a surface that does not exist asked for a command")
+	}
+	if cmd, claimed := state.Update(nil); cmd != nil || claimed {
+		t.Error("a surface that does not exist claimed a message")
+	}
+	if cmd := state.Approve(); cmd != nil {
+		t.Error("a surface that does not exist approved anything")
+	}
+	if cmd := state.LoadFor(Load{}); cmd != nil {
+		t.Error("a surface that does not exist started a load")
+	}
+	if cmd, applied := state.Apply(LoadedMsg{}); cmd != nil || applied {
+		t.Error("a surface that does not exist took a result")
+	}
+	state.Hold(power.Status{Percent: 5, OnBattery: true, Known: true}, Load{})
+	state.Close()
 }

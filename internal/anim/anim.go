@@ -51,6 +51,10 @@ const minDriftMS = 50
 // with the audio position, so the animation follows a terminal resize, the
 // lyric panel being toggled, or a one-line lyric row appearing without any of
 // those needing to know an animation exists.
+//
+// Every method answers for a State that does not exist -- the host can carry a
+// Model built without one -- so a nil surface reads as idle rather than
+// panicking.
 type State struct {
 	Visible bool
 	Loading bool
@@ -80,12 +84,16 @@ type State struct {
 	// columns and lines are the area it has to draw in, as most recently
 	// reported to Sync. sizedW and sizedH are the box the player was given:
 	// the animation's size, capped by the area, centred in it by View.
-	viewW      int
-	viewH      int
-	columns    int
-	lines      int
-	sizedW     int
-	sizedH     int
+	viewW   int
+	viewH   int
+	columns int
+	lines   int
+	sizedW  int
+	sizedH  int
+	// failedW and failedH are the box a resize last failed at. A size that keeps
+	// failing is reported once rather than on every tick.
+	failedW    int
+	failedH    int
 	generation uint64
 }
 
@@ -93,15 +101,25 @@ type State struct {
 func New() *State { return &State{ReadPower: power.Read} }
 
 // Path reports the sidecar currently loaded, or "" when none is.
-func (s *State) Path() string { return s.path }
+func (s *State) Path() string {
+	if s == nil {
+		return ""
+	}
+	return s.path
+}
 
 // Warning reports the photosensitivity readings behind the gate.
-func (s *State) Warning() Photosensitivity { return s.warning }
+func (s *State) Warning() Photosensitivity {
+	if s == nil {
+		return Photosensitivity{}
+	}
+	return s.warning
+}
 
 // Gated reports whether the warning is waiting for the viewer to choose. While
 // it is true the animation is loaded but not started, and View draws nothing:
 // the host draws the warning in the same box instead.
-func (s *State) Gated() bool { return s.gated }
+func (s *State) Gated() bool { return s != nil && s.gated }
 
 // Sync aligns the animation with the audio, and sizes it to the box it is in.
 //
@@ -124,7 +142,12 @@ func (s *State) Sync(elapsed time.Duration, playing bool, columns, lines int) te
 	boxW, boxH := fit(s.viewW, s.viewH, columns, lines)
 	if boxW > 0 && boxH > 0 && (boxW != s.sizedW || boxH != s.sizedH) {
 		if err := s.player.SetSize(boxW, boxH); err != nil {
-			logger.Warn("animation resize failed", "error", err)
+			// This runs on every tick and a box this size will keep failing until
+			// it changes, so the same failure is worth saying once.
+			if boxW != s.failedW || boxH != s.failedH {
+				logger.Warn("animation resize failed", "error", err, "columns", boxW, "lines", boxH)
+				s.failedW, s.failedH = boxW, boxH
+			}
 		} else {
 			s.sizedW, s.sizedH = boxW, boxH
 		}
@@ -248,6 +271,7 @@ func (s *State) Close() {
 	s.viewW, s.viewH = 0, 0
 	s.columns, s.lines = 0, 0
 	s.sizedW, s.sizedH = 0, 0
+	s.failedW, s.failedH = 0, 0
 	s.generation++
 }
 

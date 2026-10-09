@@ -96,6 +96,15 @@ func renderTabs(m *Model) string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
+// contentDescriptions says what each tab is for. It is written once because it
+// is the same for every frame.
+var contentDescriptions = map[int]string{
+	0: "Browse your music library and manage the queue",
+	1: "View and manage your playlists",
+	2: "Adjust audio effects and enhancements",
+	3: "Configure application settings",
+}
+
 func renderContent(m *Model, plan layoutPlan) string {
 	s := contentStyle
 	if m.UI.Focus == FocusContent {
@@ -110,16 +119,9 @@ func renderContent(m *Model, plan layoutPlan) string {
 		return contentBox(s, frame, plan)
 	}
 
-	descriptions := map[int]string{
-		0: "Browse your music library and manage the queue",
-		1: "View and manage your playlists",
-		2: "Adjust audio effects and enhancements",
-		3: "Configure application settings",
-	}
-
 	content := fmt.Sprintf("[ %s ]\n\n%s",
 		m.UI.Tabs[m.UI.ActiveTab],
-		descriptions[m.UI.ActiveTab],
+		contentDescriptions[m.UI.ActiveTab],
 	)
 	if body, ok := animBody(m, plan); ok {
 		content = body

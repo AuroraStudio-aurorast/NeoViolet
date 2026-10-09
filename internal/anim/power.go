@@ -52,9 +52,9 @@ func (s *State) Hold(reading power.Status, load Load) {
 func (s *State) Held() bool { return s != nil && s.held }
 
 // Reading reports the power source reading behind the battery warning.
-func (s *State) Reading() power.Status { return s.reading }
-
-// Answered reports whether the battery warning has already been answered in
-// this run. Only an answer is remembered: declining closes the warning, and
-// asking for the animation again asks again.
-func (s *State) Answered() bool { return s != nil && s.answered }
+func (s *State) Reading() power.Status {
+	if s == nil {
+		return power.Status{}
+	}
+	return s.reading
+}

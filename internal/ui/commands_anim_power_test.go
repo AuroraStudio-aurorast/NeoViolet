@@ -111,8 +111,10 @@ func TestKey_EscapeDeclinesTheBatteryWarning(t *testing.T) {
 	if m.Anim.Held() || m.animVisible() {
 		t.Error("escape left the battery warning up")
 	}
-	if m.Anim.Answered() {
-		t.Error("declining must not count as an answer for the rest of the run")
+	// Declining is not an answer: asking again warns again.
+	runAnim(m, invocation{})
+	if !m.Anim.Held() {
+		t.Error("declining counted as an answer for the rest of the run")
 	}
 }
 

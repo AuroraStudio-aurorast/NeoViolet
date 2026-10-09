@@ -21,7 +21,7 @@ const deltaChainFixture = "delta-chain.nvaa"
 func TestSync_LandsWhereTheAudioIsWhileThePositionFlies(t *testing.T) {
 	state := New()
 	msg := run(t, state.LoadFor(loadAt(audioWith(t, deltaChainFixture), 8, 1, config.GateModeEither)))
-	if cmd := state.Apply(msg); cmd != nil {
+	if cmd, _ := state.Apply(msg); cmd != nil {
 		cmd()
 	}
 

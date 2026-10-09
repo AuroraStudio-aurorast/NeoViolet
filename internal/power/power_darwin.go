@@ -19,7 +19,6 @@ import (
 // code gets them from the header.
 const (
 	keyCurrentCapacity  = "Current Capacity"
-	keyIsCharging       = "Is Charging"
 	keyIsPresent        = "Is Present"
 	keyPowerSourceState = "Power Source State"
 	keyType             = "Type"
@@ -97,11 +96,9 @@ func describe(description objc.ID) Status {
 		return Status{}
 	}
 	present, _ := number(description, keyIsPresent)
-	charging, _ := number(description, keyIsCharging)
 	return Status{
 		Percent:   percent,
 		OnBattery: text(description, keyPowerSourceState) == valueBatteryPower,
-		Charging:  charging != 0,
 		Known:     present != 0,
 	}
 }

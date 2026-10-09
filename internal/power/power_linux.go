@@ -31,7 +31,6 @@ func read() (Status, error) {
 		return Status{
 			Percent:   percent,
 			OnBattery: state == "Discharging",
-			Charging:  state == "Charging",
 			Known:     true,
 		}, nil
 	}

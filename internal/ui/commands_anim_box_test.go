@@ -11,12 +11,11 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
-// contentBoxAllocationBudget is what drawing a frame is allowed to cost, set
-// from the figure the splice path was measured at plus room rather than from a
-// target. It is here so that a change which puts the frame back through a
-// measuring pass has to argue for it: a dense frame costs thousands of
-// allocations to measure and tens to place.
-const contentBoxAllocationBudget = 600
+// contentBoxAllocationBudget is what wrapping a frame was measured at, with room
+// for the box growing. Its point is that putting the frame itself back into the
+// style's measuring path -- thousands of allocations for a dense frame -- has to
+// argue its case here rather than pass unnoticed.
+const contentBoxAllocationBudget = 400
 
 // denseFrame builds a frame the shape a real animation hands over: every cell
 // carries its own two colours, which is what makes it both large and expensive
@@ -138,4 +137,20 @@ func borderInk(box string) string {
 		return ""
 	}
 	return box[start : glyph+len("│")]
+}
+
+// The command takes no arguments: ":anim on" is a typo, and answering it by
+// toggling the animation would be the wrong thing to do about a typo.
+func TestAnimCommand_TakesNoArguments(t *testing.T) {
+	m := animModel(t, animPlainFixture, 100, 30)
+	m.Anim.Close()
+
+	runAnim(m, invocation{Parts: []string{"anim", "on"}})
+
+	if m.Error.Message == "" {
+		t.Error("an argument was ignored")
+	}
+	if m.animVisible() {
+		t.Error("an argument toggled the animation anyway")
+	}
 }

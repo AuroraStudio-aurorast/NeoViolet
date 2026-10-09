@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 )
 
-// SidecarExt is the extension an animation sidecar carries.
-const SidecarExt = ".nvaa"
+// sidecarExt is the extension an animation sidecar carries.
+const sidecarExt = ".nvaa"
 
 // FindSidecar returns the path of the animation beside an audio file, or "" when
 // the track has none.
@@ -21,7 +21,7 @@ func FindSidecar(audioPath string) string {
 	}
 
 	ext := filepath.Ext(audioPath)
-	path := audioPath[:len(audioPath)-len(ext)] + SidecarExt
+	path := audioPath[:len(audioPath)-len(ext)] + sidecarExt
 
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {

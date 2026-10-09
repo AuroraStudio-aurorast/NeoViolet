@@ -15,6 +15,7 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/power"
 )
 
 // The fixtures are the decoder's conformance vectors, shared with internal/anim
@@ -567,4 +568,41 @@ func firstGlyphLine(frame string) string {
 		}
 	}
 	return ""
+}
+
+// A load that lost to a newer one says nothing about the animation that won: not
+// the news the newer one brought, and not the state of a request that is still
+// waiting. Both arrive as messages, and the older one can arrive last.
+func TestAnimLoaded_AnOlderResultSaysNothingAboutTheCurrentOne(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 100, 30
+	m.Anim = anim.New()
+	m.Anim.ReadPower = func() (power.Status, error) { return power.Status{}, nil }
+
+	plan := m.layoutPlan()
+	load := func(path string) anim.Load {
+		return anim.Load{Path: path, Columns: plan.ContentInnerW, Lines: plan.ContentInnerH, GateMode: config.GateModeEither}
+	}
+
+	// One load is under way when a second starts and finishes first, with a
+	// broken file to report.
+	older := m.Anim.LoadFor(load(animFixturePath(t, animPlainFixture)))
+	newer := m.Anim.LoadFor(load(animFixturePath(t, "reject-truncated.nvaa")))
+	if _, cmd := handleAnimLoaded(m, newer().(anim.LoadedMsg)); cmd != nil {
+		t.Error("a broken animation asked for a command")
+	}
+	if m.Error.Message == "" {
+		t.Fatal("the broken animation was not reported")
+	}
+
+	// Now the older one arrives. It is not about what is on the surface, and the
+	// request that is waiting is not its to answer, so it clears neither.
+	m.Error = &MessageState{}
+	m.animRequested = true
+	if _, _ = handleAnimLoaded(m, older().(anim.LoadedMsg)); m.Error.Message != "" {
+		t.Errorf("an older result reported %q", m.Error.Message)
+	}
+	if !m.animRequested {
+		t.Error("an older result answered for a request that is still waiting")
+	}
 }

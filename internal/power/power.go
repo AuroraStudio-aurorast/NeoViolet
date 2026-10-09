@@ -20,14 +20,10 @@ type Status struct {
 	// Percent is the charge left, 0 to 100.
 	Percent int
 
-	// OnBattery reports that the machine is running off its battery rather
-	// than off external power. It is not the opposite of Charging: a machine
-	// plugged in and holding its charge is on external power and not charging,
-	// and one on battery is not charging either.
+	// OnBattery reports that the machine is running off its battery rather than
+	// off external power. A machine plugged in and holding its charge is on
+	// external power, and so is one that is charging.
 	OnBattery bool
-
-	// Charging reports that current is going into the battery.
-	Charging bool
 
 	// Known reports that a battery was found. A desktop, and a platform this
 	// build cannot read, report false.

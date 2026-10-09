@@ -1,6 +1,10 @@
 package anim
 
 import (
+	"errors"
+	"io"
+	"os"
+
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/WhatDamon/go-nvaa-codec"
@@ -8,6 +12,14 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/power"
 )
+
+// ErrSidecarTooLarge reports an animation file too large to read whole.
+var ErrSidecarTooLarge = errors.New("animation file too large")
+
+// maxSidecarSize is the largest sidecar read into memory. A full-length
+// animation for a large terminal runs to tens of megabytes, which this leaves
+// room for; a file beyond it is a mistake rather than an animation.
+const maxSidecarSize = 64 << 20
 
 // Load is one request for a track's animation.
 //
@@ -52,8 +64,15 @@ type LoadedMsg struct {
 // while flashing anyway. GateMode says whether to make that analysis at all, and
 // which of the readings stop the animation.
 func (s *State) LoadFor(load Load) tea.Cmd {
+	if s == nil {
+		return nil
+	}
 	s.held = false
 	s.reading = power.Status{}
+	s.pending = Load{}
+	// A load starts a new player, whose first resize is worth hearing about even
+	// at a size this surface has already complained about.
+	s.failedW, s.failedH = 0, 0
 	s.Loading = true
 	s.Err = nil
 	s.gateMode = load.GateMode
@@ -66,7 +85,12 @@ func (s *State) LoadFor(load Load) tea.Cmd {
 			return LoadedMsg{Err: ErrNoSidecar, generation: generation}
 		}
 
-		animation, err := nvaa.ReadFile(path)
+		blob, err := readSidecar(path)
+		if err != nil {
+			return LoadedMsg{Path: path, Err: err, generation: generation}
+		}
+
+		animation, err := nvaa.Parse(blob)
 		if err != nil {
 			return LoadedMsg{Path: path, Err: err, generation: generation}
 		}
@@ -102,15 +126,39 @@ func (s *State) LoadFor(load Load) tea.Cmd {
 	}
 }
 
-// Apply installs a loaded sidecar. A result older than the most recent LoadFor
-// is dropped, so a second trigger or a track change during a load cannot install
-// the animation that lost. The returned command starts the clock, except when
-// the warning gate is up: the player is deliberately left unstarted until
-// someone chooses to see it, and Init is what would otherwise begin
-// immediately.
-func (s *State) Apply(msg LoadedMsg) tea.Cmd {
-	if msg.generation != s.generation {
-		return nil
+// readSidecar reads a sidecar whole, refusing one larger than maxSidecarSize.
+//
+// The read is bounded rather than measured and then trusted: an animation is read
+// into one buffer, so a file that is enormous -- or a device file that never ends
+// -- has to be refused while it is being read.
+func readSidecar(path string) ([]byte, error) {
+	f, err := os.Open(path) // #nosec G304 -- the animation beside the user's own track
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+
+	data, err := io.ReadAll(io.LimitReader(f, maxSidecarSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxSidecarSize {
+		return nil, ErrSidecarTooLarge
+	}
+	return data, nil
+}
+
+// Apply installs a loaded sidecar and reports whether it was the one this
+// surface was waiting for. A result older than the most recent LoadFor is
+// dropped, so a second trigger or a track change during a load cannot install
+// the animation that lost -- and the host is told, because a result that lost has
+// nothing to say about the animation that won. The returned command starts the
+// clock, except when the warning gate is up: the player is deliberately left
+// unstarted until someone chooses to see it, and Init is what would otherwise
+// begin immediately.
+func (s *State) Apply(msg LoadedMsg) (tea.Cmd, bool) {
+	if s == nil || msg.generation != s.generation {
+		return nil, false
 	}
 
 	s.Loading = false
@@ -125,7 +173,7 @@ func (s *State) Apply(msg LoadedMsg) tea.Cmd {
 
 	if msg.Err != nil {
 		s.Visible = false
-		return nil
+		return nil, true
 	}
 
 	s.warning = msg.Warning
@@ -134,7 +182,7 @@ func (s *State) Apply(msg LoadedMsg) tea.Cmd {
 	s.Visible = true
 
 	if s.gated {
-		return nil
+		return nil, true
 	}
-	return s.player.Init()
+	return s.player.Init(), true
 }
