@@ -10,7 +10,7 @@ require (
 	charm.land/log/v2 v2.0.1
 	github.com/EdlinOrg/prominentcolor v1.0.0
 	github.com/WhatDamon/go-amll-ttml-parser v0.0.0-20260918094540-d8fe6ac26bd6
-	github.com/WhatDamon/go-nvaa-codec v0.0.0-20260929151734-f7cb39dca246
+	github.com/WhatDamon/go-nvaa-codec v0.0.0-20261009094822-0e5842a563d5
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
