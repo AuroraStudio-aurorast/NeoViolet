@@ -14,7 +14,7 @@ on:
 # depends on the Go version, and the linters decide pass/fail themselves, so a
 # floating `stable`/`latest` can turn CI red without a code change.
 env:
-  GO_VERSION: "1.27.1"
+  GO_VERSION: "1.27.2"
   RUST_VERSION: "1.98.0"
   GOLANGCI_VERSION: v2.13.2
   GOVULNCHECK_VERSION: v1.8.0
