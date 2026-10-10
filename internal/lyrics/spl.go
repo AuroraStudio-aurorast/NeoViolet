@@ -17,6 +17,13 @@ const splStampFields = `(\d{1,3}):(\d{1,2})(?:\.(\d{1,6}))?`
 
 var splStampRe = regexp.MustCompile("^" + splStampFields + "$")
 
+// splMarkerRe finds the stamps written inside a line body, each of which marks
+// where the text after it starts. It shares splStampFields with splStampRe so a
+// bracket the standard calls a wrong writing stays text instead of turning into
+// a marker: the two grammars cannot drift apart, and a malformed stamp is handled
+// in one place, by parseSPLStamp.
+var splMarkerRe = regexp.MustCompile(`\[` + splStampFields + `\]`)
+
 func init() {
 	RegisterParser("spl", &splParser{})
 }
@@ -46,7 +53,8 @@ func (p *splParser) FindSidecar(audioPath string) string {
 
 // Parse reads an SPL file. A lyric line is "[stamp]text", and several adjacent
 // leading stamps are SPL's repeat syntax: "[05:20.22][05:30.22]text" is one text
-// line that starts at each stamp.
+// line that starts at each stamp. A stamp inside the text starts the word after
+// it, and a stamp with no text after it ends a line instead of writing one.
 func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
@@ -93,22 +101,41 @@ func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			body = rest
 		}
 
-		text := strings.TrimSpace(body)
-		if text == "" {
-			continue
-		}
-
 		// delta is read once per line, after applyHeaderField above may have
 		// written lyrics.Offset, so "[offset:]" shifts only the lines that follow
 		// it — the same timing rule LRC and LYS follow.
 		delta := time.Duration(lyrics.Offset) * time.Millisecond
+
+		// The line's text is the body with the markers cut out of it, while the
+		// scanner reads the body itself: that is where the markers still are.
+		trimmed := strings.TrimSpace(body)
+		text := splMarkerRe.ReplaceAllString(trimmed, "")
+		if text == "" {
+			// A stamp with no text after it is the standard's line-end marker: it
+			// writes no lyric of its own, it only says where the previous one stops.
+			// With no line before it there is nothing to end.
+			if n := len(lines); n > 0 {
+				if end := shiftTime(stamps[len(stamps)-1], delta); end > lines[n-1].Time {
+					lines[n-1].End = end
+				}
+			}
+			continue
+		}
+
 		for _, stamp := range stamps {
+			// The word markers are read against each line's own start rather than
+			// once for the text: a repeat that starts after them cannot use them, and
+			// the standard reads the markers it cannot place as ignored (scanSPLBody).
+			words, end := scanSPLBody(trimmed, stamp)
 			at := shiftTime(stamp, delta)
-			lines = append(lines, LyricLine{
-				Time:  at,
-				Text:  text,
-				Words: []WordFragment{{Time: at, Text: text}},
-			})
+			line := LyricLine{Time: at, Text: text, Words: shiftWords(words, delta)}
+			// An end that does not survive the shift is dropped rather than stored
+			// below the line's own start, which the panel would read as a line that
+			// is never active.
+			if shifted := shiftTime(end, delta); shifted > at {
+				line.End = shifted
+			}
+			lines = append(lines, line)
 		}
 	}
 
@@ -135,6 +162,62 @@ func cutSPLStamp(s string) (inner, rest string, ok bool) {
 		return "", s, false
 	}
 	return s[1:end], s[end+1:], true
+}
+
+// scanSPLBody splits a line body into the fragments the panel sweeps word by
+// word. A stamp inside the body marks where the text after it starts, so every
+// fragment runs from its own stamp to the next one; a stamp at the very end of
+// the body has no text behind it and is the line's end instead. The standard
+// requires the stamps to increase and to stay inside the line, and reads a stamp
+// that breaks either rule as ignored — its text joins the fragment before it, as
+// if the stamp had not been written at all.
+//
+// lineStart is the line's own time, and the start of a fragment that precedes the
+// first stamp. The returned end is zero when the line carries no end marker and
+// therefore lasts until the next line starts.
+func scanSPLBody(body string, lineStart time.Duration) (words []WordFragment, end time.Duration) {
+	matches := splMarkerRe.FindAllStringSubmatchIndex(body, -1)
+
+	// A stamp at the end of the body is the line's end, not a word marker: it
+	// writes no text of its own, so it is cut out of the line as well.
+	textEnd := len(body)
+	if n := len(matches); n > 0 && matches[n-1][1] == len(body) {
+		if stamp, err := parseSPLStamp(markerInner(body, matches[n-1])); err == nil && stamp > lineStart {
+			end = stamp
+		}
+		textEnd = matches[n-1][0]
+		matches = matches[:n-1]
+	}
+
+	at := lineStart
+	var pending strings.Builder
+	cut := 0
+	for _, loc := range matches {
+		pending.WriteString(body[cut:loc[0]])
+		cut = loc[1]
+		stamp, err := parseSPLStamp(markerInner(body, loc))
+		// An ignored marker leaves nothing behind, so the text on both sides of it
+		// lands in the same fragment.
+		if err != nil || stamp <= at || (end > 0 && stamp >= end) {
+			continue
+		}
+		if text := pending.String(); text != "" {
+			words = append(words, WordFragment{Time: at, Text: text})
+			pending.Reset()
+		}
+		at = stamp
+	}
+	pending.WriteString(body[cut:textEnd])
+	if text := pending.String(); text != "" {
+		words = append(words, WordFragment{Time: at, Text: text})
+	}
+	return words, end
+}
+
+// markerInner returns the stamp a splMarkerRe match wraps, with the brackets the
+// match includes dropped again.
+func markerInner(body string, loc []int) string {
+	return body[loc[0]+1 : loc[1]-1]
 }
 
 // parseSPLStamp parses one SPL stamp. It does not reuse parseTimestamp, which

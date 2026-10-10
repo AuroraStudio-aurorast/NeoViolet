@@ -301,3 +301,206 @@ func TestSPL_OutOfGrammarStampInBodyStaysText(t *testing.T) {
 		t.Errorf("Lines[0].Time = %v, want 1s", d.Lines[0].Time)
 	}
 }
+
+// TestSPL_WordMarkers pins the standard's word-by-word example, which writes a
+// line start, a marker inside the text and a marker at the end:
+//
+//	[05:20.22]Hello[05:23.22]World[05:24.22]
+//
+// Each marker starts the text that follows it, so "Hello" lasts the three seconds
+// up to the second marker and "World" the one second after it. The stamp at the
+// end of the line is both the last marker and the line's end.
+func TestSPL_WordMarkers(t *testing.T) {
+	d := parseSPL(t, "[05:20.22]Hello[05:23.22]World[05:24.22]\n")
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	line := d.Lines[0]
+	want := []WordFragment{
+		{Time: 5*time.Minute + 20*time.Second + 220*time.Millisecond, Text: "Hello"},
+		{Time: 5*time.Minute + 23*time.Second + 220*time.Millisecond, Text: "World"},
+	}
+	if len(line.Words) != len(want) {
+		t.Fatalf("Words = %+v, want %+v", line.Words, want)
+	}
+	for i, w := range want {
+		if line.Words[i] != w {
+			t.Errorf("Words[%d] = %+v, want %+v", i, line.Words[i], w)
+		}
+	}
+	if line.Text != "HelloWorld" {
+		t.Errorf("Text = %q, want the markers stripped", line.Text)
+	}
+	if got := wordsTileText(line); got != line.Text {
+		t.Errorf("Words %q do not tile Text %q", got, line.Text)
+	}
+	if wantEnd := 5*time.Minute + 24*time.Second + 220*time.Millisecond; line.End != wantEnd {
+		t.Errorf("End = %v, want %v", line.End, wantEnd)
+	}
+}
+
+// TestSPL_ExplicitLineEndInline pins the standard's inline end marker: a stamp
+// after the last text says where the line stops, so the line lasts exactly that
+// long instead of running until the next one.
+func TestSPL_ExplicitLineEndInline(t *testing.T) {
+	d := parseSPL(t, "[05:20.22]Hello World[05:21.22]\n")
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	line := d.Lines[0]
+	if line.End-line.Time != time.Second {
+		t.Errorf("line lasts %v, want the 1s the standard spells out", line.End-line.Time)
+	}
+	if len(line.Words) != 1 || line.Words[0].Text != "Hello World" {
+		t.Errorf("Words = %+v, want one fragment for the whole line", line.Words)
+	}
+}
+
+// TestSPL_ExplicitLineEndOnItsOwnLine pins the standard's separate end-marker
+// line, including the case it calls out: the marker usually carries the same
+// stamp as the line that follows it, and that is not a conflict.
+func TestSPL_ExplicitLineEndOnItsOwnLine(t *testing.T) {
+	d := parseSPL(t, "[05:20.22]Hello World\n[05:21.22]\n[05:21.22]Good day\n")
+
+	if len(d.Lines) != 2 {
+		t.Fatalf("len(Lines) = %d, want 2 (an end marker is not a lyric)", len(d.Lines))
+	}
+	if got := d.Lines[0].End; got != 5*time.Minute+21*time.Second+220*time.Millisecond {
+		t.Errorf("Lines[0].End = %v, want the marker's stamp", got)
+	}
+	if d.Lines[1].Text != "Good day" || d.Lines[1].End != 0 {
+		t.Errorf("Lines[1] = %q ending %v, want \"Good day\" with no end", d.Lines[1].Text, d.Lines[1].End)
+	}
+}
+
+// TestSPL_ImplicitLineEndIsNotStored pins the other half of the standard's line
+// endings: a line without a marker lasts until the next line starts. That window
+// is derived at display time, so writing it into End would invent a bound the file
+// never stated — and C5 forbids an End that is not past Time.
+func TestSPL_ImplicitLineEndIsNotStored(t *testing.T) {
+	d := parseSPL(t, "[00:01.00]A\n[00:05.00]B\n")
+
+	if d.Lines[0].End != 0 {
+		t.Errorf("Lines[0].End = %v, want 0 (unbounded)", d.Lines[0].End)
+	}
+	if active := d.ActiveLines(2 * time.Second); len(active) != 1 || active[0].Text != "A" {
+		t.Errorf("ActiveLines(2s) = %+v, want A: it lasts until B starts", active)
+	}
+	if active := d.ActiveLines(5 * time.Second); len(active) != 1 || active[0].Text != "B" {
+		t.Errorf("ActiveLines(5s) = %+v, want B", active)
+	}
+}
+
+// TestSPL_IgnoredWordMarkers pins the standard's recovery rule: a marker that is
+// not past the previous one, or not inside the line, is ignored, and the text it
+// was meant to start stays where it was.
+func TestSPL_IgnoredWordMarkers(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []WordFragment
+	}{
+		{
+			// Not increasing: it is not past the line's own start.
+			"marker at the line start",
+			"[00:05.00]a[00:05.00]b\n",
+			[]WordFragment{{Time: 5 * time.Second, Text: "ab"}},
+		},
+		{
+			// Outside the line: it would start before the line did.
+			"marker before the line start",
+			"[00:05.00]a[00:03.00]b\n",
+			[]WordFragment{{Time: 5 * time.Second, Text: "ab"}},
+		},
+		{
+			// Not increasing: it would start before the previous marker did.
+			"marker before the previous marker",
+			"[00:01.00]a[00:03.00]b[00:02.00]c\n",
+			[]WordFragment{
+				{Time: time.Second, Text: "a"},
+				{Time: 3 * time.Second, Text: "bc"},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := parseSPL(t, tc.src)
+			if len(d.Lines) != 1 {
+				t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+			}
+			got := d.Lines[0].Words
+			if len(got) != len(tc.want) {
+				t.Fatalf("Words = %+v, want %+v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf("Words[%d] = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestSPL_WordMarkersAndRepeatLines pins the limitation the standard documents:
+// the markers are read against each line's own start, so a repeat that begins
+// after them cannot use them and falls back to one fragment for its whole text.
+func TestSPL_WordMarkersAndRepeatLines(t *testing.T) {
+	d := parseSPL(t, "[05:20.22][05:30.22]Hello[05:23.22]World[05:24.22]\n")
+
+	if len(d.Lines) != 2 {
+		t.Fatalf("len(Lines) = %d, want 2", len(d.Lines))
+	}
+	first, second := d.Lines[0], d.Lines[1]
+	if len(first.Words) != 2 || first.Words[1].Text != "World" {
+		t.Errorf("Lines[0].Words = %+v, want the markers honoured", first.Words)
+	}
+	if first.End != 5*time.Minute+24*time.Second+220*time.Millisecond {
+		t.Errorf("Lines[0].End = %v, want the trailing marker", first.End)
+	}
+	want := WordFragment{Time: 5*time.Minute + 30*time.Second + 220*time.Millisecond, Text: "HelloWorld"}
+	if len(second.Words) != 1 || second.Words[0] != want {
+		t.Errorf("Lines[1].Words = %+v, want %+v", second.Words, want)
+	}
+	if second.End != 0 {
+		t.Errorf("Lines[1].End = %v, want 0: every marker precedes it", second.End)
+	}
+}
+
+// TestSPL_EndMarkerThatIsNotAnEndIsIgnored pins that an end is only stored when it
+// can be one: a stamp at or before the line's own start would leave a line whose
+// End is not past its Time, which the panel reads as a line that is never active.
+func TestSPL_EndMarkerThatIsNotAnEndIsIgnored(t *testing.T) {
+	d := parseSPL(t, "[00:05.00]text[00:03.00]\n")
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+	}
+	if d.Lines[0].End != 0 {
+		t.Errorf("End = %v, want 0 for a marker before the line started", d.Lines[0].End)
+	}
+	if active := d.ActiveLines(5 * time.Second); len(active) != 1 {
+		t.Errorf("ActiveLines(5s) = %+v, want the line to be active", active)
+	}
+}
+
+// TestSPL_OffsetShiftsTheLineEnd pins that an end marker is shifted like the line
+// it ends: both forms are read while one offset is in force, so the line keeps the
+// duration the file gave it.
+func TestSPL_OffsetShiftsTheLineEnd(t *testing.T) {
+	d := parseSPL(t, "[offset:+300]\n[00:01.00]A[00:02.00]\n[00:05.00]B\n[00:06.00]\n")
+
+	if len(d.Lines) != 2 {
+		t.Fatalf("len(Lines) = %d, want 2", len(d.Lines))
+	}
+	for i, want := range []struct{ at, end time.Duration }{
+		{1300 * time.Millisecond, 2300 * time.Millisecond},
+		{5300 * time.Millisecond, 6300 * time.Millisecond},
+	} {
+		if d.Lines[i].Time != want.at || d.Lines[i].End != want.end {
+			t.Errorf("Lines[%d] = %v..%v, want %v..%v", i, d.Lines[i].Time, d.Lines[i].End, want.at, want.end)
+		}
+	}
+}
