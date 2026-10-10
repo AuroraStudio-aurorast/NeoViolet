@@ -61,7 +61,8 @@ func (p *splParser) FindSidecar(audioPath string) string {
 // leading stamps are SPL's repeat syntax: "[05:20.22][05:30.22]text" is one text
 // line that starts at each stamp. A stamp inside the text starts the word after
 // it, and a stamp with no text after it ends a line instead of writing one. A line
-// with no stamp at all is a translation of the lyric line above it.
+// with no stamp at all is a translation of the lyric line above it, as is a line
+// that carries the same stamp as the line it translates.
 func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
@@ -171,8 +172,35 @@ func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	}
 
 	sortLyricLines(lines)
-	lyrics.Lines = lines
+	lyrics.Lines = mergeSameTime(lines)
 	return lyrics, nil
+}
+
+// mergeSameTime folds the lines that share one stamp into a single line whose Parts
+// are its display rows: the standard recognises a translation by its timestamp and
+// says the two lines may be written apart, so lines are grouped over the whole file
+// rather than run by run the way LRC's mergeSameTimestamp does.
+//
+// The first line of a group is the main lyric line the standard puts first, and it
+// governs the merged line: the later ones only contribute a row. Their words and
+// their end marker belong to the translation text, which has neither of its own.
+func mergeSameTime(lines []LyricLine) []LyricLine {
+	if len(lines) < 2 {
+		return lines
+	}
+
+	out := lines[:0]
+	for i := 0; i < len(lines); {
+		main := lines[i]
+		next := i + 1
+		for next < len(lines) && lines[next].Time == main.Time {
+			appendPart(&main, lines[next].Text)
+			next++
+		}
+		out = append(out, main)
+		i = next
+	}
+	return out
 }
 
 // cutSPLStamp splits one leading "[...]" bracket off s and returns its content
