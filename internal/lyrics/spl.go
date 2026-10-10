@@ -3,9 +3,19 @@ package lyrics
 import (
 	"fmt"
 	"io"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// splStampFields is the digit grammar of a single stamp with each field captured,
+// shared by splStampRe below and the in-line marker regex so the two cannot drift
+// apart. The standard gives minutes one to three digits, seconds one to two, and
+// the fraction one to six.
+const splStampFields = `(\d{1,3}):(\d{1,2})(?:\.(\d{1,6}))?`
+
+var splStampRe = regexp.MustCompile("^" + splStampFields + "$")
 
 func init() {
 	RegisterParser("spl", &splParser{})
@@ -64,7 +74,7 @@ func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			continue
 		}
 
-		start, err := parseTimestamp(inner)
+		start, err := parseSPLStamp(inner)
 		if err != nil {
 			continue
 		}
@@ -75,7 +85,7 @@ func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			if !ok {
 				break
 			}
-			stamp, err := parseTimestamp(next)
+			stamp, err := parseSPLStamp(next)
 			if err != nil {
 				break
 			}
@@ -125,4 +135,31 @@ func cutSPLStamp(s string) (inner, rest string, ok bool) {
 		return "", s, false
 	}
 	return s[1:end], s[end+1:], true
+}
+
+// parseSPLStamp parses one SPL stamp. It does not reuse parseTimestamp, which
+// reads the seconds as a float: that accepts any fraction length and a third
+// colon-separated field, and drops everything after the first field without a
+// word. The standard pins a digit count for each field instead, which is what
+// splStampRe enforces here.
+//
+// The fraction is a string of digits rather than a decimal fraction, so it is
+// padded on the right: a fraction shorter than three digits counts as having
+// zeros omitted from the end, which makes ".5" 500ms and not 5ms or 50ms. Four
+// to six digits therefore mean sub-millisecond precision, which is why the
+// padding target is microseconds rather than milliseconds.
+func parseSPLStamp(s string) (time.Duration, error) {
+	m := splStampRe.FindStringSubmatch(s)
+	if m == nil {
+		return 0, fmt.Errorf("invalid spl timestamp: %q", s)
+	}
+	minutes, _ := strconv.Atoi(m[1])
+	seconds, _ := strconv.Atoi(m[2])
+	// Pad to six digits so the value lands in microseconds; the doc comment
+	// explains why the digits are padded rather than scaled.
+	fraction := m[3] + strings.Repeat("0", 6-len(m[3]))
+	micros, _ := strconv.Atoi(fraction)
+	return time.Duration(minutes)*time.Minute +
+		time.Duration(seconds)*time.Second +
+		time.Duration(micros)*time.Microsecond, nil
 }

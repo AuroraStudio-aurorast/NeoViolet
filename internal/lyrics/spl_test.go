@@ -206,3 +206,98 @@ func TestSPL_NoLyricLinesIsAnError(t *testing.T) {
 		}
 	}
 }
+
+// TestSPL_StampDigitGrammar pins the standard's per-field digit limits and its
+// padding rule: the fraction is a string of digits, so a short one is padded on
+// the right and the shortest legal fraction is not read as a count of
+// milliseconds.
+func TestSPL_StampDigitGrammar(t *testing.T) {
+	tests := []struct {
+		stamp string
+		want  time.Duration
+		valid bool
+	}{
+		// The standard's own correct forms.
+		{"103:3.405", 103*time.Minute + 3*time.Second + 405*time.Millisecond, true},
+		{"3:12.5", 3*time.Minute + 12*time.Second + 500*time.Millisecond, true},
+		// "1" is 100ms and "02" is 20ms, not 1ms and 2ms.
+		{"3:12.1", 3*time.Minute + 12*time.Second + 100*time.Millisecond, true},
+		{"3:12.02", 3*time.Minute + 12*time.Second + 20*time.Millisecond, true},
+		// Four to six digits carry sub-millisecond precision.
+		{"3:12.450000", 3*time.Minute + 12*time.Second + 450*time.Millisecond, true},
+		{"3:12.0004", 3*time.Minute + 12*time.Second + 400*time.Microsecond, true},
+		// Shortest and longest legal width of each field, and a missing fraction.
+		{"1:1", time.Minute + time.Second, true},
+		{"02:02", 2*time.Minute + 2*time.Second, true},
+		{"999:99", 999*time.Minute + 99*time.Second, true},
+		{"3:12", 3*time.Minute + 12*time.Second, true},
+
+		// The standard's own wrong forms, plus one field over its limit each.
+		{"3:102.5", 0, false},
+		{"1234:1.0", 0, false},
+		{"3:12.1234567", 0, false},
+		{"3:12.", 0, false},
+		{"3:12.1.2", 0, false},
+		{"3:12:5", 0, false},
+		{"3:", 0, false},
+		{"3", 0, false},
+		{"", 0, false},
+		{"a:b", 0, false},
+	}
+
+	for _, tc := range tests {
+		got, err := parseSPLStamp(tc.stamp)
+		if !tc.valid {
+			if err == nil {
+				t.Errorf("parseSPLStamp(%q) = %v, want an error", tc.stamp, got)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("parseSPLStamp(%q) failed: %v", tc.stamp, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("parseSPLStamp(%q) = %v, want %v", tc.stamp, got, tc.want)
+		}
+	}
+}
+
+// TestSPL_StampGrammarIsEnforcedAtParse pins that the grammar reaches the line
+// loop and not just the helper: the standard's wrong writings are dropped, so a
+// file made of them reports no lyrics instead of rendering at a garbage time.
+func TestSPL_StampGrammarIsEnforcedAtParse(t *testing.T) {
+	const src = "(103:3.405)parentheses are not brackets\n" +
+		"[3:102.5]seconds out of range\n" +
+		"[1234:1.0]minutes out of range\n" +
+		"[3:12.1234567]fraction out of range\n" +
+		"[3:12.5]Good\n"
+
+	d := parseSPL(t, src)
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1: %+v", len(d.Lines), d.Lines)
+	}
+	if d.Lines[0].Text != "Good" || d.Lines[0].Time != 3*time.Minute+12*time.Second+500*time.Millisecond {
+		t.Errorf("Lines[0] = %q @ %v, want Good @ 3m12.5s", d.Lines[0].Text, d.Lines[0].Time)
+	}
+}
+
+// TestSPL_OutOfGrammarStampInBodyStaysText pins what happens to a stamp that is
+// inside a line but outside the grammar: it stays text. The standard calls such a
+// stamp a wrong writing and says nothing about how a reader should recover, and
+// deleting the bytes would silently drop part of the user's line. Note that the
+// repeat loop stops at it, so the line is not repeated either.
+func TestSPL_OutOfGrammarStampInBodyStaysText(t *testing.T) {
+	d := parseSPL(t, "[00:01.00][3:102.5]txt\n")
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1: %+v", len(d.Lines), d.Lines)
+	}
+	if d.Lines[0].Text != "[3:102.5]txt" {
+		t.Errorf("Lines[0].Text = %q, want the bracket kept as text", d.Lines[0].Text)
+	}
+	if d.Lines[0].Time != time.Second {
+		t.Errorf("Lines[0].Time = %v, want 1s", d.Lines[0].Time)
+	}
+}
