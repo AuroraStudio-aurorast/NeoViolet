@@ -60,15 +60,22 @@ func (p *splParser) FindSidecar(audioPath string) string {
 // Parse reads an SPL file. A lyric line is "[stamp]text", and several adjacent
 // leading stamps are SPL's repeat syntax: "[05:20.22][05:30.22]text" is one text
 // line that starts at each stamp. A stamp inside the text starts the word after
-// it, and a stamp with no text after it ends a line instead of writing one.
+// it, and a stamp with no text after it ends a line instead of writing one. A line
+// with no stamp at all is a translation of the lyric line above it.
 func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 	data, err := readAllWithLimit(r)
 	if err != nil {
 		return nil, fmt.Errorf("read spl: %w", err)
 	}
 
-	lyrics := &Data{Path: sourcePath}
+	// Parts after the first are translations, so the panel draws them the way it
+	// draws a translated LRC row.
+	lyrics := &Data{Path: sourcePath, TranslationsInParts: true}
 	var lines []LyricLine
+	// anchor is the first line of the group the last lyric line wrote, which is
+	// what a translation without a stamp of its own belongs to. -1 means no lyric
+	// line has been read yet.
+	anchor := -1
 
 	for _, raw := range strings.Split(string(data), "\n") {
 		line := strings.TrimSpace(raw)
@@ -78,6 +85,16 @@ func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 
 		inner, body, ok := cutSPLStamp(line)
 		if !ok {
+			// No stamp: the standard lets a translation leave it out when it sits
+			// right below its lyric line. Consecutive lines like this are one
+			// multi-line translation, and a line before any lyric has nothing to
+			// translate. An end marker in between does not interrupt them, because
+			// it is not a lyric line itself.
+			if text := strings.TrimSpace(line); text != "" && anchor >= 0 {
+				for i := anchor; i < len(lines); i++ {
+					appendPart(&lines[i], text)
+				}
+			}
 			continue
 		}
 
@@ -128,6 +145,10 @@ func (p *splParser) Parse(r io.Reader, sourcePath string) (*Data, error) {
 			continue
 		}
 
+		// The anchor is moved to this line's group before it is written, so every
+		// translation that follows attaches to the line it belongs to rather than
+		// to an earlier one — and so a repeat line's copies all get it.
+		anchor = len(lines)
 		for _, stamp := range stamps {
 			// The word markers are read against each line's own start rather than
 			// once for the text: a repeat that starts after them cannot use them, and
@@ -226,6 +247,17 @@ func scanSPLBody(body string, lineStart time.Duration) (words []WordFragment, en
 // match includes dropped again.
 func markerInner(body string, loc []int) string {
 	return body[loc[0]+1 : loc[1]-1]
+}
+
+// appendPart adds one display row to a line. Parts after the first are
+// translations, and Text keeps carrying all of them joined the way LRC and the
+// TTML adapter join theirs, so callers that show a single string keep working.
+func appendPart(line *LyricLine, text string) {
+	if line.Parts == nil {
+		line.Parts = []string{line.Text}
+	}
+	line.Parts = append(line.Parts, text)
+	line.Text = strings.Join(line.Parts, " | ")
 }
 
 // parseSPLStamp parses one SPL stamp. It does not reuse parseTimestamp, which

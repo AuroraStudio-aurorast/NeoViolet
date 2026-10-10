@@ -53,7 +53,7 @@ var contractCases = map[string]contractCase{
 	},
 	"spl": {
 		parse:  viaParser("spl", splContractSample),
-		expect: expectation{meta: true},
+		expect: expectation{meta: true, translations: true},
 	},
 	"srt": {
 		parse:  viaParser("srt", srtContractSample),
