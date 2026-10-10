@@ -504,3 +504,123 @@ func TestSPL_OffsetShiftsTheLineEnd(t *testing.T) {
 		}
 	}
 }
+
+// TestSPL_AngleBracketSugarMatchesThePlainForm pins the equivalence the standard
+// states: wrapping an interior marker in angle brackets instead of square ones
+// reads the same line, because the brackets only say which markers may appear
+// where, not what a marker means.
+func TestSPL_AngleBracketSugarMatchesThePlainForm(t *testing.T) {
+	plain := parseSPL(t, "[05:20.22]Hello[05:23.22]World[05:24.22]\n").Lines
+	sugar := parseSPL(t, "[05:20.22]Hello<05:23.22>World[05:24.22]\n").Lines
+
+	if len(plain) != 1 || len(sugar) != 1 {
+		t.Fatalf("lines = %d plain, %d sugar, want 1 each", len(plain), len(sugar))
+	}
+	if plain[0].Time != sugar[0].Time || plain[0].End != sugar[0].End || plain[0].Text != sugar[0].Text {
+		t.Errorf("sugar = %v..%v %q, want the plain form %v..%v %q",
+			sugar[0].Time, sugar[0].End, sugar[0].Text, plain[0].Time, plain[0].End, plain[0].Text)
+	}
+	if len(plain[0].Words) != len(sugar[0].Words) {
+		t.Fatalf("Words = %+v sugar, %+v plain", sugar[0].Words, plain[0].Words)
+	}
+	for i := range plain[0].Words {
+		if plain[0].Words[i] != sugar[0].Words[i] {
+			t.Errorf("Words[%d] = %+v, want %+v", i, sugar[0].Words[i], plain[0].Words[i])
+		}
+	}
+}
+
+// TestSPL_DelayedFirstWord pins the feature the angle brackets exist for, which
+// the standard calls a lyric row arriving before its first word starts: the line
+// is stamped at one time, the first word at a later one, and the row is current
+// for the whole gap without anything on it being lit yet.
+func TestSPL_DelayedFirstWord(t *testing.T) {
+	d := parseSPL(t, "[05:20.22]<05:21.22>Hello<05:23.22>World[05:24.22]\n")
+
+	if len(d.Lines) != 1 {
+		t.Fatalf("len(Lines) = %d, want 1: an angle marker must not read as a repeat", len(d.Lines))
+	}
+	line := d.Lines[0]
+	want := []WordFragment{
+		{Time: 5*time.Minute + 21*time.Second + 220*time.Millisecond, Text: "Hello"},
+		{Time: 5*time.Minute + 23*time.Second + 220*time.Millisecond, Text: "World"},
+	}
+	if len(line.Words) != len(want) {
+		t.Fatalf("Words = %+v, want %+v", line.Words, want)
+	}
+	for i, w := range want {
+		if line.Words[i] != w {
+			t.Errorf("Words[%d] = %+v, want %+v", i, line.Words[i], w)
+		}
+	}
+	if got, want := line.Text, "HelloWorld"; got != want {
+		t.Errorf("Text = %q, want %q", got, want)
+	}
+	if got, want := line.End, 5*time.Minute+24*time.Second+220*time.Millisecond; got != want {
+		t.Errorf("End = %v, want %v", got, want)
+	}
+
+	// A half second into the row the first word has not started, so the line is
+	// active while its word markers are all still ahead of the clock.
+	elapsed := 5*time.Minute + 20*time.Second + 720*time.Millisecond
+	active := d.ActiveLines(elapsed)
+	if len(active) != 1 || active[0].Text != "HelloWorld" {
+		t.Fatalf("ActiveLines(%v) = %+v, want the row to be current", elapsed, active)
+	}
+	if active[0].Words[0].Time <= elapsed {
+		t.Errorf("Words[0].Time = %v, want a word that has not started at %v", active[0].Words[0].Time, elapsed)
+	}
+}
+
+// TestSPL_AngleBracketEndMarker pins that the standard allows the end marker in
+// angle brackets too, since it is not the line's own leading stamp either.
+func TestSPL_AngleBracketEndMarker(t *testing.T) {
+	d := parseSPL(t, "[00:01.00]Hello<00:02.00>\n")
+
+	line := d.Lines[0]
+	if line.End != 2*time.Second {
+		t.Errorf("End = %v, want 2s", line.End)
+	}
+	if line.Text != "Hello" {
+		t.Errorf("Text = %q, want the marker cut out", line.Text)
+	}
+	if len(line.Words) != 1 || line.Words[0].Time != time.Second {
+		t.Errorf("Words = %+v, want one fragment at the line's own start", line.Words)
+	}
+}
+
+// TestSPL_IgnoredAngleBracketMarkers pins that the sugar changes the brackets and
+// nothing else: an angle marker that is not past the previous one, or that falls
+// outside the line, is ignored exactly like a square one.
+func TestSPL_IgnoredAngleBracketMarkers(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want []WordFragment
+	}{
+		{"before the line start", "[00:05.00]a<00:03.00>b\n", []WordFragment{{Time: 5 * time.Second, Text: "ab"}}},
+		{"at the line start", "[00:05.00]a<00:05.00>b\n", []WordFragment{{Time: 5 * time.Second, Text: "ab"}}},
+		{"before the previous marker", "[00:01.00]a<00:03.00>b<00:02.00>c\n", []WordFragment{
+			{Time: time.Second, Text: "a"},
+			{Time: 3 * time.Second, Text: "bc"},
+		}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			d := parseSPL(t, tc.src)
+			if len(d.Lines) != 1 {
+				t.Fatalf("len(Lines) = %d, want 1", len(d.Lines))
+			}
+			got := d.Lines[0].Words
+			if len(got) != len(tc.want) {
+				t.Fatalf("Words = %+v, want %+v", got, tc.want)
+			}
+			for i := range tc.want {
+				if got[i] != tc.want[i] {
+					t.Errorf("Words[%d] = %+v, want %+v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}

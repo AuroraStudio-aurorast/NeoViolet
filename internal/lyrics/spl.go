@@ -19,10 +19,16 @@ var splStampRe = regexp.MustCompile("^" + splStampFields + "$")
 
 // splMarkerRe finds the stamps written inside a line body, each of which marks
 // where the text after it starts. It shares splStampFields with splStampRe so a
-// bracket the standard calls a wrong writing stays text instead of turning into
-// a marker: the two grammars cannot drift apart, and a malformed stamp is handled
+// bracket the standard calls a wrong writing stays text instead of turning into a
+// marker: the two grammars cannot drift apart, and a malformed stamp is handled
 // in one place, by parseSPLStamp.
-var splMarkerRe = regexp.MustCompile(`\[` + splStampFields + `\]`)
+//
+// Both of the standard's bracket forms are read. "[...]" is the plain one, and
+// "<...>" is the compatibility sugar it allows for a non-start marker: only the
+// line's own leading stamp may be a square one, so angle brackets are what let a
+// marker at the very start of a body mean "the row arrives here, its first word
+// starts later" instead of repeating the line.
+var splMarkerRe = regexp.MustCompile(`\[` + splStampFields + `\]|<` + splStampFields + `>`)
 
 func init() {
 	RegisterParser("spl", &splParser{})
@@ -173,7 +179,9 @@ func cutSPLStamp(s string) (inner, rest string, ok bool) {
 // if the stamp had not been written at all.
 //
 // lineStart is the line's own time, and the start of a fragment that precedes the
-// first stamp. The returned end is zero when the line carries no end marker and
+// first stamp. A marker at the start of the body therefore holds the row back from
+// lighting up: the line is on screen from its own stamp, the first word only from
+// the marker's. The returned end is zero when the line carries no end marker and
 // therefore lasts until the next line starts.
 func scanSPLBody(body string, lineStart time.Duration) (words []WordFragment, end time.Duration) {
 	matches := splMarkerRe.FindAllStringSubmatchIndex(body, -1)
