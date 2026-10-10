@@ -15,3 +15,20 @@
 ; A stamp may leave the fraction out: SPL reads the missing digits as the
 ; omitted low ones, so this is the same as [00:13.00].
 [00:13]End of track.
+
+; The features SPL adds on top of LRC, in the order the standard introduces them.
+; Adjacent leading stamps share one text: this line starts at both stamps.
+[00:14.00][00:16.00]A repeated line.
+; A stamp inside the line starts the word after it, and the trailing one ends it.
+[00:18.00]Word by[00:19.00]word[00:20.00]
+; A non-start marker may use angle brackets, which is what lets the row arrive
+; before its first word starts.
+[00:21.00]<00:22.00>Late[00:23.00]arrival[00:24.00]
+; Two lines with one stamp are a lyric line and its translation.
+[00:25.00]A translated line.
+[00:25.00]Une ligne traduite.
+; A translation may leave its stamp out, and a stamp with no text after it ends
+; the line above instead of writing a line of its own.
+[00:27.00]Another translated line.
+Sans horodatage.
+[00:28.00]

@@ -53,7 +53,7 @@ var contractCases = map[string]contractCase{
 	},
 	"spl": {
 		parse:  viaParser("spl", splContractSample),
-		expect: expectation{meta: true, translations: true},
+		expect: expectation{requireEnd: true, hasParts: true, translations: true, meta: true},
 	},
 	"srt": {
 		parse:  viaParser("srt", srtContractSample),
@@ -109,14 +109,23 @@ const (
 		"00:00:05,000 --> 00:00:07,000\n" +
 		"bye\n"
 
-	// SPL opens a line with its own stamp and lets adjacent stamps share one text
-	// (the repeat syntax). spl_test.go pins the features the sample does not carry
-	// yet: word stamps, explicit line ends and both kinds of translation.
+	// SPL carries every feature it has in this one sample: metadata and an offset,
+	// word markers, the angle brackets that hold the first word back, an end marker
+	// written both inline and on its own line, and both ways of writing a
+	// translation. Every line ends up with an end, which is what the format claims:
+	// the two lines that have no end of their own are translations, and a translation
+	// takes the end of the line it belongs to.
 	splContractSample = "[ti:Contract]\n" +
 		"[ar:Tester]\n" +
 		"[offset:250]\n" +
-		"[00:01.00]Hello\n" +
-		"[00:05.00]Bye\n"
+		"[00:01.00]Hello[00:02.00]World[00:02.50]\n" +
+		"[00:01.00]Bonjour\n" +
+		"[00:04.00]<00:05.00>Late[00:06.00]\n" +
+		"[00:07.00]Plain[00:09.00]\n" +
+		"[00:07.00]Translation\n" +
+		"[00:10.00]Together\n" +
+		"Below\n" +
+		"[00:11.00]\n"
 )
 
 // eslrcContractSample = metadata header + the spec word-by-word sample (testESLRC
