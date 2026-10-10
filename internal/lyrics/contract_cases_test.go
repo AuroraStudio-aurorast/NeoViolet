@@ -51,6 +51,10 @@ var contractCases = map[string]contractCase{
 		parse:  viaParser("smi", smiContractSample),
 		expect: expectation{hasParts: true},
 	},
+	"spl": {
+		parse:  viaParser("spl", splContractSample),
+		expect: expectation{requireEnd: true, hasParts: true, translations: true, meta: true},
+	},
 	"srt": {
 		parse:  viaParser("srt", srtContractSample),
 		expect: expectation{hasParts: true},
@@ -104,6 +108,22 @@ const (
 		"2\n" +
 		"00:00:05,000 --> 00:00:07,000\n" +
 		"bye\n"
+
+	// SPL's whole feature set in one file: an offset, word markers, the angle brackets
+	// that hold the first word back, an end marker written both inline and on its own
+	// line, and both ways of writing a translation. Every line ends up with an end:
+	// the two without one are translations and take the end of the line they belong to.
+	splContractSample = "[ti:Contract]\n" +
+		"[ar:Tester]\n" +
+		"[offset:250]\n" +
+		"[00:01.00]Hello[00:02.00]World[00:02.50]\n" +
+		"[00:01.00]Bonjour\n" +
+		"[00:04.00]<00:05.00>Late[00:06.00]\n" +
+		"[00:07.00]Plain[00:09.00]\n" +
+		"[00:07.00]Translation\n" +
+		"[00:10.00]Together\n" +
+		"Below\n" +
+		"[00:11.00]\n"
 )
 
 // eslrcContractSample = metadata header + the spec word-by-word sample (testESLRC
