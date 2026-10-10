@@ -64,8 +64,8 @@ func TestCandidatesForLrcSubcommands(t *testing.T) {
 
 func TestCandidatesForLrcSwitchFormats(t *testing.T) {
 	cands := candidatesFor(completionContextAt("lrc switch ", 11))
-	if len(cands) != 10 {
-		t.Fatalf("candidates = %d, want 10 (online + 9 parsers)", len(cands))
+	if len(cands) != 11 {
+		t.Fatalf("candidates = %d, want 11 (online + 10 parsers)", len(cands))
 	}
 	if cands[0].Value != "online" {
 		t.Errorf("first candidate = %q, want \"online\"", cands[0].Value)

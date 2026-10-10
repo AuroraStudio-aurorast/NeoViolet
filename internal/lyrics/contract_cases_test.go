@@ -51,6 +51,10 @@ var contractCases = map[string]contractCase{
 		parse:  viaParser("smi", smiContractSample),
 		expect: expectation{hasParts: true},
 	},
+	"spl": {
+		parse:  viaParser("spl", splContractSample),
+		expect: expectation{meta: true},
+	},
 	"srt": {
 		parse:  viaParser("srt", srtContractSample),
 		expect: expectation{hasParts: true},
@@ -104,6 +108,15 @@ const (
 		"2\n" +
 		"00:00:05,000 --> 00:00:07,000\n" +
 		"bye\n"
+
+	// SPL opens a line with its own stamp and lets adjacent stamps share one text
+	// (the repeat syntax). spl_test.go pins the features the sample does not carry
+	// yet: word stamps, explicit line ends and both kinds of translation.
+	splContractSample = "[ti:Contract]\n" +
+		"[ar:Tester]\n" +
+		"[offset:250]\n" +
+		"[00:01.00]Hello\n" +
+		"[00:05.00]Bye\n"
 )
 
 // eslrcContractSample = metadata header + the spec word-by-word sample (testESLRC

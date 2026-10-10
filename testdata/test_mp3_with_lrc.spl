@@ -1,0 +1,17 @@
+[ti:Lyrics Test]
+[ar:Test Artist]
+[al:Test Album]
+[au:Test Author]
+[by:SPL Tester]
+
+; SPL is LRC-compatible: a stamp opens the line and the body follows.
+[00:00.00]This is the first line of the song.
+[00:01.72]Here comes the second line more words.
+[00:04.28]A third line to complete the verse.
+[00:06.16]The chorus begins right about now
+[00:07.82]Singing la la la la la la la
+[00:09.54]This is the final line of the test song.
+[00:12.36]Fading away slowly.
+; A stamp may leave the fraction out: SPL reads the missing digits as the
+; omitted low ones, so this is the same as [00:13.00].
+[00:13]End of track.

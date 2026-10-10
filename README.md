@@ -52,6 +52,7 @@
 | `eslrc` | Enhanced Synced Lyrics File | EXPERIMENTAL |
 | `lys` | Lyricify Syllable File | EXPERIMENTAL |
 | `smi` | Synchronized Accessible Media Interchange | EXPERIMENTAL |
+| `spl` | Salt Player Lyrics | EXPERIMENTAL |
 
 ### Animation File
 
