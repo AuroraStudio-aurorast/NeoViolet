@@ -105,6 +105,38 @@ func Parse(r io.ReadSeeker) (*Tags, error) {
 	return readItems(r, itemsStart, itemsEnd, int(itemCount))
 }
 
+// TrailingTagStart returns the offset at which a trailing APEv2 tag begins in a
+// stream of the given total size, including the tag's optional header. ok is
+// false when the stream ends with no APEv2 tag.
+func TrailingTagStart(r io.ReadSeeker, fileSize int64) (int64, bool) {
+	footerPos := findFooterPosition(r, fileSize)
+	if footerPos < 0 {
+		return 0, false
+	}
+
+	footer := make([]byte, 32)
+	if _, err := r.Seek(footerPos, io.SeekStart); err != nil {
+		return 0, false
+	}
+	if _, err := io.ReadFull(r, footer); err != nil {
+		return 0, false
+	}
+	tagSize, _, hasHeader, err := parseFooter(footer)
+	if err != nil {
+		return 0, false
+	}
+
+	// tagSize covers the footer and the items but not the header.
+	start := footerPos + 32 - int64(tagSize)
+	if hasHeader {
+		start -= 32
+	}
+	if start < 0 {
+		return 0, false
+	}
+	return start, true
+}
+
 // findFooterPosition locates the APEv2 footer, accounting for an optional
 // ID3v1 tag (128 bytes, "TAG" magic) that may follow the APEv2 footer.
 // Returns -1 if no footer is found.
