@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// partsOf returns a line's display rows, with a plain line reported as its one
-// row so a case can state what the panel draws either way.
+// partsOf reports a line's display rows, with a plain line as its one row, so a case
+// can state what the panel draws either way.
 func partsOf(l LyricLine) []string {
 	if l.Parts == nil {
 		return []string{l.Text}
@@ -15,9 +15,8 @@ func partsOf(l LyricLine) []string {
 }
 
 // TestSPL_TimestamplessTranslation pins the standard's other way of writing a
-// translation: a lyric line followed by a line with no stamp of its own. It stays
-// one lyric line that draws as two rows, and only the rows after the first are
-// translations, which is what the panel styles them by.
+// translation: it stays one lyric line that draws as two rows, and only the rows after
+// the first are translations, which is what the panel styles them by.
 func TestSPL_TimestamplessTranslation(t *testing.T) {
 	d := parseSPL(t, "[05:20.22]Hello\nBonjour\n")
 
@@ -45,8 +44,7 @@ func TestSPL_TimestamplessTranslation(t *testing.T) {
 }
 
 // TestSPL_MultiLineTranslation pins the standard's multi-line translation: every
-// consecutive line without a stamp stays part of the same translation until
-// another lyric line takes over.
+// stamp-less line joins the same translation until another lyric line takes over.
 func TestSPL_MultiLineTranslation(t *testing.T) {
 	d := parseSPL(t, "[05:20.22]Hello\nBonjour\nHola\n")
 
@@ -65,9 +63,9 @@ func TestSPL_MultiLineTranslation(t *testing.T) {
 	}
 }
 
-// TestSPL_TranslationFollowsTheLineAboveIt pins where a stamp-less line attaches:
-// the standard shows that a lyric line ending the translation of the line above it
-// becomes the anchor itself, so the text below it translates that line instead.
+// TestSPL_TranslationFollowsTheLineAboveIt pins where a stamp-less line attaches: a
+// lyric line ending the translation above it becomes the anchor itself, so the text
+// below it translates that line instead.
 func TestSPL_TranslationFollowsTheLineAboveIt(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]First\n[00:02.00]Second\nTranslation\n")
 
@@ -82,8 +80,8 @@ func TestSPL_TranslationFollowsTheLineAboveIt(t *testing.T) {
 	}
 }
 
-// TestSPL_TranslationBeforeAnyLyricIsDropped pins that a stamp-less line with no
-// lyric line above it has nothing to translate and is not invented into a lyric.
+// TestSPL_TranslationBeforeAnyLyricIsDropped pins that a stamp-less line with no lyric
+// above it has nothing to translate and is not invented into a lyric.
 func TestSPL_TranslationBeforeAnyLyricIsDropped(t *testing.T) {
 	d := parseSPL(t, "loose text\n[00:01.00]Hello\n")
 
@@ -95,9 +93,9 @@ func TestSPL_TranslationBeforeAnyLyricIsDropped(t *testing.T) {
 	}
 }
 
-// TestSPL_EndMarkerDoesNotInterruptATranslation pins that an end-marker line stays
-// what the standard calls it: not a lyric line, and therefore not a line that
-// takes the translation below it away from the lyric it belongs to.
+// TestSPL_EndMarkerDoesNotInterruptATranslation pins that an end-marker line is not a
+// lyric line, and so does not take the translation below it away from the lyric it
+// belongs to.
 func TestSPL_EndMarkerDoesNotInterruptATranslation(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]Hello\n[00:02.00]\nBonjour\n")
 
@@ -112,9 +110,9 @@ func TestSPL_EndMarkerDoesNotInterruptATranslation(t *testing.T) {
 	}
 }
 
-// TestSPL_RepeatLineTranslatesEveryCopy pins the reading of a translation that
-// follows a repeat line: the repeated sentence is one lyric with one translation,
-// and it is shown as many times as the sentence is.
+// TestSPL_RepeatLineTranslatesEveryCopy pins the reading of a translation after a
+// repeat line: the repeated sentence is one lyric with one translation, shown as many
+// times as the sentence is.
 func TestSPL_RepeatLineTranslatesEveryCopy(t *testing.T) {
 	d := parseSPL(t, "[00:01.00][00:02.00]Hello\nBonjour\n")
 
@@ -129,8 +127,8 @@ func TestSPL_RepeatLineTranslatesEveryCopy(t *testing.T) {
 }
 
 // TestSPL_SameTimestampTranslation pins the standard's first way of writing a
-// translation: two lines that carry the same stamp are one lyric line whose second
-// row is the translation.
+// translation: two lines carrying the same stamp are one lyric whose second row is
+// the translation.
 func TestSPL_SameTimestampTranslation(t *testing.T) {
 	d := parseSPL(t, "[05:20.22]Hello\n[05:20.22]Bonjour\n")
 
@@ -153,9 +151,8 @@ func TestSPL_SameTimestampTranslation(t *testing.T) {
 }
 
 // TestSPL_SameTimestampTranslationNeedNotBeAdjacent pins the grouping the standard
-// allows: it says the translation may be written apart from its lyric line, so the
-// file is grouped as a whole. LRC's merge only folds adjacent runs, which would
-// leave the pair below as three lines.
+// allows: the translation may be written apart from its lyric line, so the file is
+// grouped as a whole, where LRC's adjacent-only merge would leave three lines.
 func TestSPL_SameTimestampTranslationNeedNotBeAdjacent(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]Hello\n[00:02.00]Middle\n[00:01.00]Bonjour\n")
 
@@ -170,10 +167,9 @@ func TestSPL_SameTimestampTranslationNeedNotBeAdjacent(t *testing.T) {
 	}
 }
 
-// TestSPL_MainLineGovernsTheMergedLine pins which of two lines that share a stamp
-// owns the merged one: the standard puts the lyric line first and the translation
-// after it, so the words and the end marker of the line that comes first count, and
-// the translation only adds a row.
+// TestSPL_MainLineGovernsTheMergedLine pins which of two lines sharing a stamp owns
+// the merged one: the standard puts the lyric line first, so its words and its end
+// count and the translation only adds a row.
 func TestSPL_MainLineGovernsTheMergedLine(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]Hello[00:03.00]\n[00:01.00]Bonjour\n")
 
@@ -193,9 +189,8 @@ func TestSPL_MainLineGovernsTheMergedLine(t *testing.T) {
 }
 
 // TestSPL_TranslationWrittenFirstLosesItsOwnEnd pins the cost of that rule, so it
-// cannot change by accident: when the translation is the line written first, it is
-// the one that governs, and the end marker sitting on the other line is not read as
-// the line's end.
+// cannot change by accident: a translation written first governs the merged line and
+// loses the other line's end marker.
 func TestSPL_TranslationWrittenFirstLosesItsOwnEnd(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]Bonjour\n[00:01.00]Hello[00:03.00]\n")
 

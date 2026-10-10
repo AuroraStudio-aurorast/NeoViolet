@@ -109,12 +109,10 @@ const (
 		"00:00:05,000 --> 00:00:07,000\n" +
 		"bye\n"
 
-	// SPL carries every feature it has in this one sample: metadata and an offset,
-	// word markers, the angle brackets that hold the first word back, an end marker
-	// written both inline and on its own line, and both ways of writing a
-	// translation. Every line ends up with an end, which is what the format claims:
-	// the two lines that have no end of their own are translations, and a translation
-	// takes the end of the line it belongs to.
+	// SPL's whole feature set in one file: an offset, word markers, the angle brackets
+	// that hold the first word back, an end marker written both inline and on its own
+	// line, and both ways of writing a translation. Every line ends up with an end:
+	// the two without one are translations and take the end of the line they belong to.
 	splContractSample = "[ti:Contract]\n" +
 		"[ar:Tester]\n" +
 		"[offset:250]\n" +

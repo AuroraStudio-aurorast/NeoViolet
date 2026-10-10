@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// parseSPL runs the SPL parser over an inline sample. It fails the test on any
-// parse error, so a case that must fail parses through splParser.Parse instead.
+// parseSPL runs the parser over an inline sample and fails the test on a parse error;
+// a case that must fail calls splParser.Parse itself.
 func parseSPL(t *testing.T, src string) *Data {
 	t.Helper()
 	var p splParser
@@ -20,9 +20,8 @@ func parseSPL(t *testing.T, src string) *Data {
 	return d
 }
 
-// wordsTileText concatenates a line's fragments. The contract's C6 requires the
-// result to equal the line's display text, so an SPL line whose words do not
-// tile silently loses its word-by-word highlighting.
+// wordsTileText concatenates a line's fragments, which C6 requires to equal the line's
+// display text.
 func wordsTileText(l LyricLine) string {
 	var sb strings.Builder
 	for _, w := range l.Words {
@@ -31,10 +30,9 @@ func wordsTileText(l LyricLine) string {
 	return sb.String()
 }
 
-// TestSPL_FindSidecarOnlyReadsSpl pins the registration decision behind this
-// parser: ".spl" is SPL's own extension, and an ".lrc" file beside the audio
-// still belongs to lrcParser. Falling back to ".lrc" here would make two
-// parsers claim one file and let parse order decide which reading wins.
+// TestSPL_FindSidecarOnlyReadsSpl pins that ".spl" is this parser's only extension:
+// an ".lrc" beside the audio still belongs to lrcParser, so two parsers never claim
+// one file.
 func TestSPL_FindSidecarOnlyReadsSpl(t *testing.T) {
 	dir := t.TempDir()
 	audio := filepath.Join(dir, "song.mp3")
@@ -59,8 +57,8 @@ func TestSPL_FindSidecarOnlyReadsSpl(t *testing.T) {
 }
 
 // TestSPL_PlainLinesAndMetadata pins the line skeleton: a leading stamp starts a
-// line, the body is the line's text, and a "[key:value]" header is applied to
-// Data instead of turning into a lyric line of its own.
+// line, the body is its text, and a "[key:value]" header fills Data instead of
+// becoming a lyric line of its own.
 func TestSPL_PlainLinesAndMetadata(t *testing.T) {
 	const src = "[ti:My Song]\n" +
 		"[ar:Singer]\n" +
@@ -99,8 +97,8 @@ func TestSPL_PlainLinesAndMetadata(t *testing.T) {
 	}
 }
 
-// TestSPL_RepeatedStamps pins SPL's repeat syntax: adjacent leading stamps carry
-// one text between them, so three stamps produce three lines with the same text.
+// TestSPL_RepeatedStamps pins SPL's repeat syntax: adjacent leading stamps carry one
+// text between them, so three stamps produce three lines.
 func TestSPL_RepeatedStamps(t *testing.T) {
 	d := parseSPL(t, "[00:01.00][00:02.00][00:03.00]Again\n")
 
@@ -118,10 +116,8 @@ func TestSPL_RepeatedStamps(t *testing.T) {
 	}
 }
 
-// TestSPL_OffsetShiftsLinesAfterIt pins that delta is read at line-construction
-// time, so "[offset:]" shifts only the lines parsed after it — the rule LRC and
-// LYS follow (QRC and YRC instead read every header in a first pass and shift the
-// whole file, because SPL writes its headers inline among the lyrics).
+// TestSPL_OffsetShiftsLinesAfterIt pins that the offset is read at line-construction
+// time, so "[offset:]" shifts only the lines after it, the rule LRC and LYS follow.
 func TestSPL_OffsetShiftsLinesAfterIt(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]Before\n[offset:250]\n[00:03.00]After\n")
 
@@ -140,8 +136,8 @@ func TestSPL_OffsetShiftsLinesAfterIt(t *testing.T) {
 }
 
 // TestSPL_MalformedLinesDropped pins that a line with no usable stamp is dropped
-// rather than kept as literal text: a bare text line, an unrecognised colon
-// header and a bracket that is not a stamp at all.
+// rather than kept as text: a bare text line, an unrecognised colon header and a
+// bracket that is not a stamp.
 func TestSPL_MalformedLinesDropped(t *testing.T) {
 	const src = "this line has no timestamp\n" +
 		"[re:a tool tag]\n" +
@@ -159,8 +155,8 @@ func TestSPL_MalformedLinesDropped(t *testing.T) {
 	}
 }
 
-// TestSPL_OutOfOrderLinesAreSorted pins that the file's order is not the display
-// order: the panel walks Lines by time.
+// TestSPL_OutOfOrderLinesAreSorted pins that the file's order is not the display order:
+// the panel walks Lines by time.
 func TestSPL_OutOfOrderLinesAreSorted(t *testing.T) {
 	d := parseSPL(t, "[00:03.00]Third\n[00:01.00]First\n[00:02.00]Second\n")
 
@@ -175,8 +171,8 @@ func TestSPL_OutOfOrderLinesAreSorted(t *testing.T) {
 	}
 }
 
-// TestSPL_CRLFNeverLeaks pins that the single TrimSpace per line is the only
-// clean point, so a CRLF file leaves no \r in Text, Words or a fragment.
+// TestSPL_CRLFNeverLeaks pins that the one TrimSpace per line is the only clean point,
+// so a CRLF file leaves no \r in Text or in a fragment.
 func TestSPL_CRLFNeverLeaks(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]Hello\r\n[00:05.00]Bye\r\n")
 
@@ -195,9 +191,9 @@ func TestSPL_CRLFNeverLeaks(t *testing.T) {
 	}
 }
 
-// TestSPL_NoLyricLinesIsAnError pins the fall-through contract with the registry:
-// a file that yields no displayable line reports an error so FindAndParse moves
-// on to the next preferred format instead of stopping on an empty file.
+// TestSPL_NoLyricLinesIsAnError pins the fall-through contract with the registry: a
+// file that yields no displayable line reports an error, so FindAndParse moves on to
+// the next preferred format.
 func TestSPL_NoLyricLinesIsAnError(t *testing.T) {
 	var p splParser
 	for _, src := range []string{"", "; only a comment\n", "[ti:Title only]\n[00:01.00]\n"} {
@@ -208,9 +204,8 @@ func TestSPL_NoLyricLinesIsAnError(t *testing.T) {
 }
 
 // TestSPL_StampDigitGrammar pins the standard's per-field digit limits and its
-// padding rule: the fraction is a string of digits, so a short one is padded on
-// the right and the shortest legal fraction is not read as a count of
-// milliseconds.
+// padding rule: the fraction is a string of digits, so a short one is padded on the
+// right instead of being read as a count of milliseconds.
 func TestSPL_StampDigitGrammar(t *testing.T) {
 	tests := []struct {
 		stamp string
@@ -263,9 +258,9 @@ func TestSPL_StampDigitGrammar(t *testing.T) {
 	}
 }
 
-// TestSPL_StampGrammarIsEnforcedAtParse pins that the grammar reaches the line
-// loop and not just the helper: the standard's wrong writings are dropped, so a
-// file made of them reports no lyrics instead of rendering at a garbage time.
+// TestSPL_StampGrammarIsEnforcedAtParse pins that the grammar reaches the line loop
+// and not just the helper: the standard's wrong writings are dropped, so a file made
+// of them reports no lyrics instead of rendering at a garbage time.
 func TestSPL_StampGrammarIsEnforcedAtParse(t *testing.T) {
 	const src = "(103:3.405)parentheses are not brackets\n" +
 		"[3:102.5]seconds out of range\n" +
@@ -284,10 +279,9 @@ func TestSPL_StampGrammarIsEnforcedAtParse(t *testing.T) {
 }
 
 // TestSPL_OutOfGrammarStampInBodyStaysText pins what happens to a stamp that is
-// inside a line but outside the grammar: it stays text. The standard calls such a
-// stamp a wrong writing and says nothing about how a reader should recover, and
-// deleting the bytes would silently drop part of the user's line. Note that the
-// repeat loop stops at it, so the line is not repeated either.
+// inside a line but outside the grammar: it stays text. The standard defines no
+// recovery and deleting the bytes would drop part of the user's line; the repeat loop
+// stops at it too, so the line is not repeated either.
 func TestSPL_OutOfGrammarStampInBodyStaysText(t *testing.T) {
 	d := parseSPL(t, "[00:01.00][3:102.5]txt\n")
 
@@ -302,14 +296,12 @@ func TestSPL_OutOfGrammarStampInBodyStaysText(t *testing.T) {
 	}
 }
 
-// TestSPL_WordMarkers pins the standard's word-by-word example, which writes a
-// line start, a marker inside the text and a marker at the end:
+// TestSPL_WordMarkers pins the standard's word-by-word example:
 //
 //	[05:20.22]Hello[05:23.22]World[05:24.22]
 //
-// Each marker starts the text that follows it, so "Hello" lasts the three seconds
-// up to the second marker and "World" the one second after it. The stamp at the
-// end of the line is both the last marker and the line's end.
+// Each marker starts the text after it, so the stamp at the end of the line is both
+// the final word's start and the line's end.
 func TestSPL_WordMarkers(t *testing.T) {
 	d := parseSPL(t, "[05:20.22]Hello[05:23.22]World[05:24.22]\n")
 
@@ -340,9 +332,8 @@ func TestSPL_WordMarkers(t *testing.T) {
 	}
 }
 
-// TestSPL_ExplicitLineEndInline pins the standard's inline end marker: a stamp
-// after the last text says where the line stops, so the line lasts exactly that
-// long instead of running until the next one.
+// TestSPL_ExplicitLineEndInline pins the standard's inline end marker: a stamp after
+// the last text says where the line stops, so it does not run until the next one.
 func TestSPL_ExplicitLineEndInline(t *testing.T) {
 	d := parseSPL(t, "[05:20.22]Hello World[05:21.22]\n")
 
@@ -358,9 +349,8 @@ func TestSPL_ExplicitLineEndInline(t *testing.T) {
 	}
 }
 
-// TestSPL_ExplicitLineEndOnItsOwnLine pins the standard's separate end-marker
-// line, including the case it calls out: the marker usually carries the same
-// stamp as the line that follows it, and that is not a conflict.
+// TestSPL_ExplicitLineEndOnItsOwnLine pins the standard's separate end-marker line,
+// including the case it calls out: sharing the next line's stamp is not a conflict.
 func TestSPL_ExplicitLineEndOnItsOwnLine(t *testing.T) {
 	d := parseSPL(t, "[05:20.22]Hello World\n[05:21.22]\n[05:21.22]Good day\n")
 
@@ -376,9 +366,9 @@ func TestSPL_ExplicitLineEndOnItsOwnLine(t *testing.T) {
 }
 
 // TestSPL_ImplicitLineEndIsNotStored pins the other half of the standard's line
-// endings: a line without a marker lasts until the next line starts. That window
-// is derived at display time, so writing it into End would invent a bound the file
-// never stated — and C5 forbids an End that is not past Time.
+// endings: the window to the next line is derived at display time, so writing it into
+// End would invent a bound the file never stated — and C5 forbids an End not past
+// Time.
 func TestSPL_ImplicitLineEndIsNotStored(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]A\n[00:05.00]B\n")
 
@@ -393,9 +383,9 @@ func TestSPL_ImplicitLineEndIsNotStored(t *testing.T) {
 	}
 }
 
-// TestSPL_IgnoredWordMarkers pins the standard's recovery rule: a marker that is
-// not past the previous one, or not inside the line, is ignored, and the text it
-// was meant to start stays where it was.
+// TestSPL_IgnoredWordMarkers pins the standard's recovery rule: a marker that is not
+// past the previous one, or not inside the line, is ignored and the text it was meant
+// to start stays where it was.
 func TestSPL_IgnoredWordMarkers(t *testing.T) {
 	tests := []struct {
 		name string
@@ -444,9 +434,9 @@ func TestSPL_IgnoredWordMarkers(t *testing.T) {
 	}
 }
 
-// TestSPL_WordMarkersAndRepeatLines pins the limitation the standard documents:
-// the markers are read against each line's own start, so a repeat that begins
-// after them cannot use them and falls back to one fragment for its whole text.
+// TestSPL_WordMarkersAndRepeatLines pins the limitation the standard documents: the
+// markers are read against each line's own start, so a later repeat cannot use them
+// and falls back to one fragment for its whole text.
 func TestSPL_WordMarkersAndRepeatLines(t *testing.T) {
 	d := parseSPL(t, "[05:20.22][05:30.22]Hello[05:23.22]World[05:24.22]\n")
 
@@ -469,9 +459,9 @@ func TestSPL_WordMarkersAndRepeatLines(t *testing.T) {
 	}
 }
 
-// TestSPL_EndMarkerThatIsNotAnEndIsIgnored pins that an end is only stored when it
-// can be one: a stamp at or before the line's own start would leave a line whose
-// End is not past its Time, which the panel reads as a line that is never active.
+// TestSPL_EndMarkerThatIsNotAnEndIsIgnored pins that an end is stored only when it
+// can be one: an end at or before the line's start would leave a line that never
+// becomes active.
 func TestSPL_EndMarkerThatIsNotAnEndIsIgnored(t *testing.T) {
 	d := parseSPL(t, "[00:05.00]text[00:03.00]\n")
 
@@ -486,9 +476,8 @@ func TestSPL_EndMarkerThatIsNotAnEndIsIgnored(t *testing.T) {
 	}
 }
 
-// TestSPL_OffsetShiftsTheLineEnd pins that an end marker is shifted like the line
-// it ends: both forms are read while one offset is in force, so the line keeps the
-// duration the file gave it.
+// TestSPL_OffsetShiftsTheLineEnd pins that an end marker is shifted like the line it
+// ends, so the line keeps the duration the file gave it.
 func TestSPL_OffsetShiftsTheLineEnd(t *testing.T) {
 	d := parseSPL(t, "[offset:+300]\n[00:01.00]A[00:02.00]\n[00:05.00]B\n[00:06.00]\n")
 
@@ -506,9 +495,7 @@ func TestSPL_OffsetShiftsTheLineEnd(t *testing.T) {
 }
 
 // TestSPL_AngleBracketSugarMatchesThePlainForm pins the equivalence the standard
-// states: wrapping an interior marker in angle brackets instead of square ones
-// reads the same line, because the brackets only say which markers may appear
-// where, not what a marker means.
+// states: the brackets say where a marker may appear, not what a marker means.
 func TestSPL_AngleBracketSugarMatchesThePlainForm(t *testing.T) {
 	plain := parseSPL(t, "[05:20.22]Hello[05:23.22]World[05:24.22]\n").Lines
 	sugar := parseSPL(t, "[05:20.22]Hello<05:23.22>World[05:24.22]\n").Lines
@@ -530,10 +517,9 @@ func TestSPL_AngleBracketSugarMatchesThePlainForm(t *testing.T) {
 	}
 }
 
-// TestSPL_DelayedFirstWord pins the feature the angle brackets exist for, which
-// the standard calls a lyric row arriving before its first word starts: the line
-// is stamped at one time, the first word at a later one, and the row is current
-// for the whole gap without anything on it being lit yet.
+// TestSPL_DelayedFirstWord pins what the angle brackets exist for: the row arrives
+// at one time, its first word starts at a later one, and the row is current for the
+// whole gap with nothing on it lit yet.
 func TestSPL_DelayedFirstWord(t *testing.T) {
 	d := parseSPL(t, "[05:20.22]<05:21.22>Hello<05:23.22>World[05:24.22]\n")
 
@@ -572,8 +558,8 @@ func TestSPL_DelayedFirstWord(t *testing.T) {
 	}
 }
 
-// TestSPL_AngleBracketEndMarker pins that the standard allows the end marker in
-// angle brackets too, since it is not the line's own leading stamp either.
+// TestSPL_AngleBracketEndMarker pins that the end marker may use angle brackets too,
+// since it is not the line's own leading stamp either.
 func TestSPL_AngleBracketEndMarker(t *testing.T) {
 	d := parseSPL(t, "[00:01.00]Hello<00:02.00>\n")
 
@@ -590,8 +576,7 @@ func TestSPL_AngleBracketEndMarker(t *testing.T) {
 }
 
 // TestSPL_IgnoredAngleBracketMarkers pins that the sugar changes the brackets and
-// nothing else: an angle marker that is not past the previous one, or that falls
-// outside the line, is ignored exactly like a square one.
+// nothing else: an angle marker is ignored under the same rules as a square one.
 func TestSPL_IgnoredAngleBracketMarkers(t *testing.T) {
 	tests := []struct {
 		name string
