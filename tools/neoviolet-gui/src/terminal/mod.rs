@@ -466,7 +466,7 @@ fn zed_like_to_esc_str(
         ("enter", TerminalModifiers::Alt) => Some("\x1b\x0d"),
         ("backspace", TerminalModifiers::None) => Some("\x7f"),
         ("backspace", TerminalModifiers::Ctrl) => Some("\x08"),
-        ("backspace", TerminalModifiers::Alt) => Some("\x1b\x7f"),
+        ("backspace", TerminalModifiers::Alt) => Some("\x1b[27;3;127~"),
         ("backspace", TerminalModifiers::Shift) => Some("\x7f"),
         ("space", TerminalModifiers::Ctrl) => Some("\x00"),
         ("home", TerminalModifiers::None) if app_cursor_mode => Some("\x1bOH"),
@@ -483,6 +483,7 @@ fn zed_like_to_esc_str(
         ("left", TerminalModifiers::None) if !app_cursor_mode => Some("\x1b[D"),
         ("insert", TerminalModifiers::None) => Some("\x1b[2~"),
         ("delete", TerminalModifiers::None) => Some("\x1b[3~"),
+        ("delete", TerminalModifiers::Alt) => Some("\x1b[3;3~"),
         ("pageup", TerminalModifiers::None) => Some("\x1b[5~"),
         ("pagedown", TerminalModifiers::None) => Some("\x1b[6~"),
         ("a", TerminalModifiers::Ctrl) | ("A", TerminalModifiers::CtrlShift) => Some("\x01"),
@@ -545,10 +546,13 @@ fn zed_like_to_esc_str(
     }
 
     if !cfg!(target_os = "macos") || option_as_meta {
-        let is_alt_lowercase_ascii =
-            modifiers == TerminalModifiers::Alt && keystroke.key.is_ascii();
-        let is_alt_uppercase_ascii =
-            keystroke.modifiers.alt && keystroke.modifiers.shift && keystroke.key.is_ascii();
+        let is_alt_lowercase_ascii = modifiers == TerminalModifiers::Alt
+            && keystroke.key.is_ascii()
+            && keystroke.key.len() == 1;
+        let is_alt_uppercase_ascii = keystroke.modifiers.alt
+            && keystroke.modifiers.shift
+            && keystroke.key.is_ascii()
+            && keystroke.key.len() == 1;
         if is_alt_lowercase_ascii || is_alt_uppercase_ascii {
             let key = if is_alt_uppercase_ascii {
                 keystroke.key.to_ascii_uppercase()
@@ -594,6 +598,33 @@ mod tests {
         assert_eq!(
             encode_key(&keystroke, false, false),
             Some(b"\x1b[3;5~".to_vec())
+        );
+    }
+
+    #[test]
+    fn alt_delete_encodes_as_delete_word_forward() {
+        let keystroke = Keystroke::parse("alt-delete").expect("parse alt-delete");
+        assert_eq!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1b[3;3~".to_vec())
+        );
+    }
+
+    #[test]
+    fn alt_backspace_encodes_as_delete_word_backward() {
+        let keystroke = Keystroke::parse("alt-backspace").expect("parse alt-backspace");
+        assert_eq!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1b[27;3;127~".to_vec())
+        );
+    }
+
+    #[test]
+    fn alt_backspace_does_not_encode_the_key_name_as_meta_text() {
+        let keystroke = Keystroke::parse("alt-backspace").expect("parse alt-backspace");
+        assert_ne!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1bbackspace".to_vec())
         );
     }
 

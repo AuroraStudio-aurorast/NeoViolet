@@ -304,9 +304,11 @@ impl TerminalApp {
         }
         self.tab.clear_selection();
 
-        if let Some(bytes) =
-            terminal::encode_key(&event.keystroke, self.tab.app_cursor_mode(), false)
-        {
+        if let Some(bytes) = terminal::encode_key(
+            &event.keystroke,
+            self.tab.app_cursor_mode(),
+            cx.global::<AppState>().config.option_as_meta,
+        ) {
             let _ = self.tab.backend.send(BackendCommand::Input(bytes));
             window.prevent_default();
             cx.stop_propagation();
