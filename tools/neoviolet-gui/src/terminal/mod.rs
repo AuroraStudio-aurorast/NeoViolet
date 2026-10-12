@@ -30,6 +30,38 @@ pub enum BackendEvent {
     TerminalTitleChanged { tab_id: String, title: String },
 }
 
+// ── Paste encoding ──
+
+/// Frame opening a bracketed paste.
+pub(crate) const PASTE_START: &[u8] = b"\x1b[200~";
+/// Frame closing a bracketed paste.
+pub(crate) const PASTE_END: &[u8] = b"\x1b[201~";
+
+/// Encode pasted text for the PTY.
+///
+/// The text is normalized the way a terminal does for typed input: ESC is
+/// dropped (it cannot be escaped, only removed, and a surviving one would let
+/// the text close its own bracket early) and both CRLF and a lone LF become a
+/// single CR. When the program inside the PTY has enabled bracketed paste, the
+/// body is wrapped in the paste frame so the receiving TUI sees one paste
+/// instead of its line breaks acting as Enter presses.
+pub(crate) fn encode_paste(text: &str, bracketed_paste: bool) -> Vec<u8> {
+    let body = text
+        .replace('\x1b', "")
+        .replace("\r\n", "\r")
+        .replace('\n', "\r");
+
+    if !bracketed_paste {
+        return body.into_bytes();
+    }
+
+    let mut payload = Vec::with_capacity(PASTE_START.len() + body.len() + PASTE_END.len());
+    payload.extend_from_slice(PASTE_START);
+    payload.extend_from_slice(body.as_bytes());
+    payload.extend_from_slice(PASTE_END);
+    payload
+}
+
 #[allow(dead_code)]
 pub struct TerminalTab {
     pub id: String,
@@ -228,14 +260,10 @@ impl TerminalTab {
     }
 
     pub fn paste_text(&mut self, text: &str) {
-        let paste_text = text
-            .replace('\x1b', "")
-            .replace("\r\n", "\r")
-            .replace('\n', "\r");
-
+        let bracketed = self.term.mode().contains(TermMode::BRACKETED_PASTE);
         let _ = self
             .backend
-            .send(BackendCommand::Input(paste_text.into_bytes()));
+            .send(BackendCommand::Input(encode_paste(text, bracketed)));
     }
 
     pub fn term_mode(&self) -> TermMode {
@@ -525,4 +553,40 @@ fn modifier_code(keystroke: &Keystroke) -> u32 {
         modifier_code |= 1 << 2;
     }
     modifier_code + 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode_paste_frames_when_the_tui_asked_for_bracketed_paste() {
+        assert_eq!(
+            encode_paste("a\nb", true),
+            b"\x1b[200~a\rb\x1b[201~".to_vec()
+        );
+    }
+
+    #[test]
+    fn encode_paste_sends_the_text_bare_when_bracketed_paste_is_off() {
+        assert_eq!(encode_paste("a\nb", false), b"a\rb".to_vec());
+    }
+
+    #[test]
+    fn encode_paste_strips_esc_and_collapses_crlf() {
+        assert_eq!(
+            encode_paste("\x1b[31mred\r\n", false),
+            b"[31mred\r".to_vec()
+        );
+    }
+
+    #[test]
+    fn encode_paste_cannot_be_closed_early_by_its_own_terminator() {
+        // The ESC is stripped, so a pasted "\x1b[201~" reaches the TUI as the
+        // literal text "[201~" instead of ending the bracket early.
+        assert_eq!(
+            encode_paste("\x1b[201~", true),
+            b"\x1b[200~[201~\x1b[201~".to_vec()
+        );
+    }
 }
