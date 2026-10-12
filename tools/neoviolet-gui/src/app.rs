@@ -5,10 +5,10 @@ use std::{
 
 use alacritty_terminal::{index::Side, selection::SelectionType};
 use gpui::{
-    App, Bounds, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, SharedString, Styled,
-    Window, div, point, px, size,
+    App, Bounds, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, Font, FontStyle,
+    FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta,
+    ScrollWheelEvent, SharedString, Styled, TextRun, Window, div, point, px, size,
 };
 
 use crate::backend;
@@ -28,6 +28,8 @@ pub struct TerminalApp {
     terminal_marked_text: Option<String>,
     pub terminal_font_size: f32,
     pub terminal_font_family: SharedString,
+    terminal_metrics: (f32, f32),
+    terminal_metrics_key: Option<(SharedString, u32)>,
     pub focus_handle: FocusHandle,
     pub(crate) pending_resize: Option<(u16, u16)>,
     /// Buffer for recent PTY output (for bad-args crash diagnostics)
@@ -131,7 +133,9 @@ impl TerminalApp {
             terminal_selecting: false,
             terminal_marked_text: None,
             terminal_font_size: font_size,
-            terminal_font_family: font_family.into(),
+            terminal_font_family: font_family.clone().into(),
+            terminal_metrics: terminal::metrics_from_measurement(None, None, None, font_size),
+            terminal_metrics_key: None,
             focus_handle: cx.focus_handle(),
             pending_resize: None,
             recent_output,
@@ -181,11 +185,11 @@ impl TerminalApp {
     // ── Metrics ──
 
     pub fn terminal_cell_width(&self) -> f32 {
-        (self.terminal_font_size * 0.646).max(6.0)
+        self.terminal_metrics.0
     }
 
     pub fn terminal_line_height(&self) -> f32 {
-        (self.terminal_font_size * 1.385).max(self.terminal_font_size + 2.0)
+        self.terminal_metrics.1
     }
 
     // ── IME support ──
@@ -593,13 +597,41 @@ impl Focusable for TerminalApp {
 }
 
 impl Render for TerminalApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         // Process pending events
         self.drain_events();
 
         let snapshot = self.tab.render_snapshot();
         let font_family = self.terminal_font_family.clone();
         let font_size = px(self.terminal_font_size);
+        let metrics_key = (font_family.clone(), self.terminal_font_size.to_bits());
+        if self.terminal_metrics_key.as_ref() != Some(&metrics_key) {
+            let font = Font {
+                family: font_family.clone(),
+                weight: FontWeight::NORMAL,
+                style: FontStyle::Normal,
+                ..Font::default()
+            };
+            let text_system = window.text_system();
+            let font_id = text_system.resolve_font(&font);
+            let cell_width = text_system
+                .advance(font_id, font_size, 'M')
+                .ok()
+                .map(|size| f32::from(size.width));
+            let run = TextRun {
+                len: 1,
+                font,
+                ..TextRun::default()
+            };
+            let layout = text_system.layout_line("M", font_size, &[run], None);
+            self.terminal_metrics = terminal::metrics_from_measurement(
+                cell_width,
+                Some(f32::from(layout.ascent)),
+                Some(f32::from(layout.descent)),
+                self.terminal_font_size,
+            );
+            self.terminal_metrics_key = Some(metrics_key);
+        }
         let line_height = px(self.terminal_line_height());
         let cell_width = px(self.terminal_cell_width());
         let marked_text = self.terminal_marked_text.clone();

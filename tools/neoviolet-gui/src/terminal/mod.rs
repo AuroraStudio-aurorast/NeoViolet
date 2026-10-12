@@ -37,6 +37,34 @@ pub(crate) const PASTE_START: &[u8] = b"\x1b[200~";
 /// Frame closing a bracketed paste.
 pub(crate) const PASTE_END: &[u8] = b"\x1b[201~";
 
+/// Returns `(cell_width, line_height)` in logical pixels.
+///
+/// Measured values use defensive floors; failed measurements preserve the
+/// historical font-size ratios and their original minimums.
+pub(crate) fn metrics_from_measurement(
+    cell_width: Option<f32>,
+    ascent: Option<f32>,
+    descent: Option<f32>,
+    font_size: f32,
+) -> (f32, f32) {
+    let cell_width = cell_width
+        .filter(|width| width.is_finite() && *width > 0.0)
+        .map(|width| width.max(4.0))
+        .unwrap_or((font_size * 0.646).max(6.0));
+    let line_height = match (ascent, descent) {
+        (Some(ascent), Some(descent)) => {
+            let measured = ascent + descent;
+            if ascent.is_finite() && descent.is_finite() && measured.is_finite() && measured > 0.0 {
+                measured.max(font_size)
+            } else {
+                (font_size * 1.385).max(font_size + 2.0)
+            }
+        }
+        _ => (font_size * 1.385).max(font_size + 2.0),
+    };
+    (cell_width, line_height)
+}
+
 /// Encode pasted text for the PTY.
 ///
 /// The text is normalized the way a terminal does for typed input: ESC is
@@ -597,6 +625,56 @@ mod tests {
         assert_eq!(
             encode_paste("\x1b[201~", true),
             b"\x1b[200~[201~\x1b[201~".to_vec()
+        );
+    }
+
+    #[test]
+    fn measured_metrics_win_over_the_ratio() {
+        let (cell_width, line_height) =
+            metrics_from_measurement(Some(8.43), Some(12.0), Some(3.4), 14.0);
+        assert_eq!(cell_width, 8.43);
+        assert!(
+            (line_height - 15.4).abs() < 1e-3,
+            "line height was {line_height}"
+        );
+    }
+
+    #[test]
+    fn metrics_fall_back_to_the_historical_ratio_when_measurement_fails() {
+        let (cell_width, line_height) = metrics_from_measurement(None, None, None, 14.0);
+        assert_eq!(cell_width, (14.0f32 * 0.646).max(6.0));
+        assert_eq!(line_height, (14.0f32 * 1.385).max(14.0 + 2.0));
+    }
+
+    #[test]
+    fn metrics_reject_non_finite_measurements() {
+        let (cell_width, line_height) =
+            metrics_from_measurement(Some(f32::NAN), Some(f32::INFINITY), Some(0.0), 14.0);
+        assert!(
+            cell_width.is_finite() && cell_width > 0.0,
+            "cell width was {cell_width}"
+        );
+        assert!(
+            line_height.is_finite() && line_height > 0.0,
+            "line height was {line_height}"
+        );
+    }
+
+    #[test]
+    fn metrics_clamp_absurdly_small_measurements() {
+        let (cell_width, line_height) =
+            metrics_from_measurement(Some(0.1), Some(0.1), Some(0.0), 14.0);
+        assert!(cell_width >= 4.0, "cell width was {cell_width}");
+        assert!(line_height >= 14.0, "line height was {line_height}");
+    }
+
+    #[test]
+    fn metrics_follow_the_font_size() {
+        let at14 = metrics_from_measurement(None, None, None, 14.0);
+        let at28 = metrics_from_measurement(None, None, None, 28.0);
+        assert!(
+            at28.0 > at14.0 && at28.1 > at14.1,
+            "metrics did not follow the font size"
         );
     }
 }
