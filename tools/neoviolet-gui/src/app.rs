@@ -626,10 +626,25 @@ impl Render for TerminalApp {
                 ..TextRun::default()
             };
             let layout = text_system.layout_line("M", font_size, &[run], None);
+            let ascent = f32::from(layout.ascent);
+            let descent = f32::from(layout.descent);
+            let measurement_valid = cell_width
+                .is_some_and(|width| width.is_finite() && width > 0.0)
+                && ascent.is_finite()
+                && descent.is_finite()
+                && (ascent + descent).is_finite()
+                && ascent + descent > 0.0;
+            if !measurement_valid {
+                log::warn!(
+                    "[terminal] font measurement failed for '{}' at {}px; using fallback metrics",
+                    font_family,
+                    self.terminal_font_size
+                );
+            }
             self.terminal_metrics = terminal::metrics_from_measurement(
                 cell_width,
-                Some(f32::from(layout.ascent)),
-                Some(f32::from(layout.descent)),
+                Some(ascent),
+                Some(descent),
                 self.terminal_font_size,
             );
             self.terminal_metrics_key = Some(metrics_key);

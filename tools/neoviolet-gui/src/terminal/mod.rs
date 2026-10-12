@@ -288,6 +288,10 @@ impl TerminalTab {
     }
 
     pub fn paste_text(&mut self, text: &str) {
+        // Empty clipboard text has nothing to paste; avoid sending an empty bracketed frame.
+        if text.is_empty() {
+            return;
+        }
         let bracketed = self.term.mode().contains(TermMode::BRACKETED_PASTE);
         let _ = self
             .backend
@@ -664,6 +668,15 @@ mod tests {
         let keystroke = Keystroke::parse("alt-tab").expect("parse alt-tab");
         // Named ASCII keys must not pass the single-character Alt length guard.
         assert_eq!(encode_key(&keystroke, false, true), None);
+    }
+
+    #[test]
+    fn alt_shift_tab_does_not_encode_the_key_name_as_meta_text() {
+        let keystroke = Keystroke::parse("alt-shift-tab").expect("parse alt-shift-tab");
+        assert_ne!(
+            encode_key(&keystroke, false, true),
+            Some(b"\x1bTAB".to_vec())
+        );
     }
 
     #[test]
