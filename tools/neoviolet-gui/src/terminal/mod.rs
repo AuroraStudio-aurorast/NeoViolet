@@ -490,6 +490,7 @@ fn zed_like_to_esc_str(
         ("^", TerminalModifiers::Ctrl) => Some("\x1e"),
         ("_", TerminalModifiers::Ctrl) => Some("\x1f"),
         ("?", TerminalModifiers::Ctrl) => Some("\x7f"),
+        ("delete", TerminalModifiers::Ctrl) => Some("\x1b[3;5~"),
         _ => None,
     };
     if let Some(esc) = manual_esc_str {
@@ -558,6 +559,15 @@ fn modifier_code(keystroke: &Keystroke) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ctrl_delete_encodes_as_delete_word_forward() {
+        let keystroke = Keystroke::parse("ctrl-delete").expect("parse ctrl-delete");
+        assert_eq!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1b[3;5~".to_vec())
+        );
+    }
 
     #[test]
     fn encode_paste_frames_when_the_tui_asked_for_bracketed_paste() {
