@@ -11,6 +11,7 @@ var formatNames = map[string]string{
 	"lys":      "Lyricify Syllable File",
 	"qrc":      "QQ Music Word-for-Word Lyrics",
 	"smi":      "Synchronized Accessible Media Interchange",
+	"spl":      "Salt Player Lyrics",
 	"srt":      "SubRip Text",
 	"ttml":     "Timed Text Markup Language (AMLL-flavored)",
 	"yrc":      "NetEase Cloud Music Word-for-Word Lyrics",

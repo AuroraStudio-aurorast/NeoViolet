@@ -301,7 +301,7 @@ func DefaultConfig() Config {
 		Lyrics: LyricsConfig{
 			Enabled:        true,
 			ScrollSpeed:    6,
-			FormatPriority: []string{"embedded", "lrc", "ttml", "qrc", "yrc", "eslrc", "lys", "online"},
+			FormatPriority: []string{"embedded", "lrc", "spl", "ttml", "qrc", "yrc", "eslrc", "lys", "online"},
 			Fetch: LyricsFetchConfig{
 				Enabled:  true,
 				Timeout:  DefaultFetchTimeout,
