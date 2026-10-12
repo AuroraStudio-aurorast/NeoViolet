@@ -660,6 +660,13 @@ mod tests {
     }
 
     #[test]
+    fn alt_tab_does_not_encode_the_key_name_as_meta_text() {
+        let keystroke = Keystroke::parse("alt-tab").expect("parse alt-tab");
+        // Named ASCII keys must not pass the single-character Alt length guard.
+        assert_eq!(encode_key(&keystroke, false, true), None);
+    }
+
+    #[test]
     fn measured_metrics_win_over_the_ratio() {
         let (cell_width, line_height) =
             metrics_from_measurement(Some(8.43), Some(12.0), Some(3.4), 14.0);
