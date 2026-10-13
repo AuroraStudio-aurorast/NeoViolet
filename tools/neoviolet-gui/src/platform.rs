@@ -196,45 +196,34 @@ enum UrlOpener {
     Open,
     /// Linux and the BSDs: `xdg-open` through the desktop environment.
     XdgOpen,
-    /// Windows: `cmd /C start`.
-    CmdStart,
+    /// Windows: the Explorer shell.
+    Explorer,
 }
 
 fn url_opener() -> UrlOpener {
     if cfg!(target_os = "macos") {
         UrlOpener::Open
     } else if cfg!(target_os = "windows") {
-        UrlOpener::CmdStart
+        UrlOpener::Explorer
     } else {
         UrlOpener::XdgOpen
     }
 }
 
 /// The program and arguments that open `url` here.
-///
-/// `start` is a `cmd` builtin rather than an executable, and it reads its first
-/// argument as the window title, so an explicit empty title keeps a URL with
-/// spaces from being taken as the title.
 fn open_command(opener: UrlOpener, url: &str) -> (&'static str, Vec<String>) {
     match opener {
         UrlOpener::Open => ("open", vec![url.to_owned()]),
         UrlOpener::XdgOpen => ("xdg-open", vec![url.to_owned()]),
-        UrlOpener::CmdStart => (
-            "cmd",
-            vec![
-                "/C".to_owned(),
-                "start".to_owned(),
-                String::new(),
-                url.to_owned(),
-            ],
-        ),
+        UrlOpener::Explorer => ("explorer", vec![url.to_owned()]),
     }
 }
 
 /// Opens `url` with the desktop's own handler.
 ///
-/// Spawned without a shell, so the URL never reaches a command interpreter, and
-/// deliberately not waited on: the browser outlives this call.
+/// Spawned without a command-line interpreter, so the URL is passed directly
+/// to the platform's desktop handler, and deliberately not waited on: the
+/// browser outlives this call.
 pub fn open_url(url: &str) -> std::io::Result<()> {
     let (program, args) = open_command(url_opener(), url);
     std::process::Command::new(program)
@@ -281,20 +270,10 @@ mod tests {
     }
 
     #[test]
-    fn the_windows_opener_uses_start_with_a_title_placeholder() {
-        // `start` is a cmd builtin and treats its first argument as a window
-        // title, so an empty title has to be passed explicitly.
+    fn the_windows_opener_uses_explorer() {
         assert_eq!(
-            open_command(UrlOpener::CmdStart, "https://example.com"),
-            (
-                "cmd",
-                vec![
-                    "/C".to_string(),
-                    "start".to_string(),
-                    String::new(),
-                    "https://example.com".to_string()
-                ]
-            )
+            open_command(UrlOpener::Explorer, "https://example.com"),
+            ("explorer", vec!["https://example.com".to_string()])
         );
     }
 
@@ -303,9 +282,30 @@ mod tests {
         // The command is spawned without a shell, so shell metacharacters in the
         // URL must stay inside one argument instead of being split or expanded.
         let url = "https://example.com/?a=1&b=2 file";
-        for opener in [UrlOpener::Open, UrlOpener::XdgOpen, UrlOpener::CmdStart] {
+        for opener in [UrlOpener::Open, UrlOpener::XdgOpen, UrlOpener::Explorer] {
             let (_, args) = open_command(opener, url);
             assert_eq!(args.iter().filter(|arg| arg.as_str() == url).count(), 1);
+        }
+    }
+
+    #[test]
+    fn opener_programs_are_not_command_interpreters() {
+        let interpreters = [
+            "sh",
+            "bash",
+            "cmd",
+            "cmd.exe",
+            "powershell",
+            "powershell.exe",
+        ];
+        for opener in [UrlOpener::Open, UrlOpener::XdgOpen, UrlOpener::Explorer] {
+            let (program, _) = open_command(opener, "https://example.com");
+            assert!(
+                !interpreters
+                    .iter()
+                    .any(|interpreter| program.eq_ignore_ascii_case(interpreter)),
+                "{program} is a command interpreter"
+            );
         }
     }
 

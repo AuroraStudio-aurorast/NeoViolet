@@ -240,7 +240,7 @@ pub fn load_or_create() -> GuiConfig {
 /// 1. `$XDG_CONFIG_HOME/neoviolet/` — only when it is an absolute path, which
 ///    is the rule the CLI applies
 /// 2. `~/.config/neoviolet/`
-/// 3. OS config directory `/neoviolet/` (fallback when there is no home dir)
+/// 3. `<os config dir>/neoviolet/` (fallback when there is no home dir)
 /// 4. `.config/neoviolet/` (ultimate fallback when neither is available)
 pub fn config_dir_path() -> std::path::PathBuf {
     resolve_config_dir(
@@ -454,9 +454,13 @@ mod tests {
 
     #[test]
     fn an_absolute_xdg_config_home_is_used_as_is() {
+        let xdg_config_home = std::env::temp_dir();
+        let xdg_config_home_str = xdg_config_home
+            .to_str()
+            .expect("temporary directory path must be valid UTF-8");
         assert_eq!(
-            resolve_config_dir(Some("/abs/xdg"), None, None),
-            std::path::PathBuf::from("/abs/xdg/neoviolet")
+            resolve_config_dir(Some(xdg_config_home_str), None, None),
+            xdg_config_home.join("neoviolet")
         );
     }
 
