@@ -237,20 +237,41 @@ pub fn load_or_create() -> GuiConfig {
 /// Returns the config directory path (same as the CLI's --xdg-config path).
 ///
 /// Resolution order:
-/// 1. `$XDG_CONFIG_HOME/neoviolet/`
+/// 1. `$XDG_CONFIG_HOME/neoviolet/` — only when it is an absolute path, which
+///    is the rule the CLI applies
 /// 2. `~/.config/neoviolet/`
-/// 3. OS config directory /neoviolet/ (fallback)
-/// 4. `~/.config/neoviolet/` (ultimate fallback)
+/// 3. OS config directory `/neoviolet/` (fallback when there is no home dir)
+/// 4. `.config/neoviolet/` (ultimate fallback when neither is available)
 pub fn config_dir_path() -> std::path::PathBuf {
-    std::env::var("XDG_CONFIG_HOME")
-        .ok()
-        .filter(|p| !p.is_empty())
+    resolve_config_dir(
+        std::env::var("XDG_CONFIG_HOME").ok().as_deref(),
+        dirs::home_dir(),
+        dirs::config_dir(),
+    )
+}
+
+/// `$XDG_CONFIG_HOME` only counts when it is an absolute path.
+///
+/// The CLI only accepts an absolute value and otherwise uses `~/.config`, and
+/// both sides have to agree: the GUI and the CLI it launches must write to the
+/// same directory or a user ends up with two diverging configs.
+fn is_absolute_config_home(value: &str) -> bool {
+    !value.is_empty() && std::path::Path::new(value).is_absolute()
+}
+
+/// Resolves the config directory from its inputs, so the rules can be tested
+/// without touching the process environment.
+pub(crate) fn resolve_config_dir(
+    xdg_config_home: Option<&str>,
+    home: Option<std::path::PathBuf>,
+    os_config: Option<std::path::PathBuf>,
+) -> std::path::PathBuf {
+    xdg_config_home
+        .filter(|value| is_absolute_config_home(value))
         .map(std::path::PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
-        .unwrap_or_else(|| {
-            dirs::config_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
-        })
+        .or_else(|| home.map(|home| home.join(".config")))
+        .or(os_config)
+        .unwrap_or_else(|| std::path::PathBuf::from(".config"))
         .join("neoviolet")
 }
 
@@ -414,5 +435,45 @@ mod tests {
                 "desktop lyrics opacity {value} lost precision, file was: {text}",
             );
         }
+    }
+
+    #[test]
+    fn a_relative_xdg_config_home_falls_back_to_the_home_directory() {
+        // The CLI rejects a relative value and uses ~/.config instead; if the GUI
+        // kept using it verbatim, the two would write to different directories.
+        let home = std::path::PathBuf::from("/home/someone");
+        assert_eq!(
+            resolve_config_dir(Some("relative/path"), Some(home.clone()), None),
+            home.join(".config").join("neoviolet")
+        );
+        assert_eq!(
+            resolve_config_dir(Some("./cfg"), Some(home.clone()), None),
+            home.join(".config").join("neoviolet")
+        );
+    }
+
+    #[test]
+    fn an_absolute_xdg_config_home_is_used_as_is() {
+        assert_eq!(
+            resolve_config_dir(Some("/abs/xdg"), None, None),
+            std::path::PathBuf::from("/abs/xdg/neoviolet")
+        );
+    }
+
+    #[test]
+    fn an_empty_xdg_config_home_falls_back_to_the_home_directory() {
+        let home = std::path::PathBuf::from("/home/someone");
+        assert_eq!(
+            resolve_config_dir(Some(""), Some(home.clone()), None),
+            home.join(".config").join("neoviolet")
+        );
+    }
+
+    #[test]
+    fn the_os_config_directory_is_the_fallback_without_a_home_directory() {
+        assert_eq!(
+            resolve_config_dir(None, None, Some(std::path::PathBuf::from("/os/config"))),
+            std::path::PathBuf::from("/os/config/neoviolet")
+        );
     }
 }
