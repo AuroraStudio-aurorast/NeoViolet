@@ -1,5 +1,5 @@
 //! Cross-platform utilities: binary discovery, font defaults, version check,
-//! input method detection.
+//! input method detection, URL opening.
 
 use std::time::Duration;
 
@@ -147,4 +147,110 @@ fn run_version_command(bin: &str) -> String {
         let _ = tx.send(raw);
     });
     rx.recv_timeout(VERSION_CHECK_TIMEOUT).unwrap_or_default()
+}
+
+// ── Opening URLs in the desktop's browser ──
+
+/// How this platform hands a URL to the desktop.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UrlOpener {
+    /// macOS: the `open` command.
+    Open,
+    /// Linux and the BSDs: `xdg-open` through the desktop environment.
+    XdgOpen,
+    /// Windows: `cmd /C start`.
+    CmdStart,
+}
+
+fn url_opener() -> UrlOpener {
+    if cfg!(target_os = "macos") {
+        UrlOpener::Open
+    } else if cfg!(target_os = "windows") {
+        UrlOpener::CmdStart
+    } else {
+        UrlOpener::XdgOpen
+    }
+}
+
+/// The program and arguments that open `url` here.
+///
+/// `start` is a `cmd` builtin rather than an executable, and it reads its first
+/// argument as the window title, so an explicit empty title keeps a URL with
+/// spaces from being taken as the title.
+fn open_command(opener: UrlOpener, url: &str) -> (&'static str, Vec<String>) {
+    match opener {
+        UrlOpener::Open => ("open", vec![url.to_owned()]),
+        UrlOpener::XdgOpen => ("xdg-open", vec![url.to_owned()]),
+        UrlOpener::CmdStart => (
+            "cmd",
+            vec![
+                "/C".to_owned(),
+                "start".to_owned(),
+                String::new(),
+                url.to_owned(),
+            ],
+        ),
+    }
+}
+
+/// Opens `url` with the desktop's own handler.
+///
+/// Spawned without a shell, so the URL never reaches a command interpreter, and
+/// deliberately not waited on: the browser outlives this call.
+pub fn open_url(url: &str) -> std::io::Result<()> {
+    let (program, args) = open_command(url_opener(), url);
+    std::process::Command::new(program)
+        .args(args)
+        .spawn()
+        .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_macos_opener_uses_open() {
+        assert_eq!(
+            open_command(UrlOpener::Open, "https://example.com"),
+            ("open", vec!["https://example.com".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_linux_opener_uses_xdg_open() {
+        assert_eq!(
+            open_command(UrlOpener::XdgOpen, "https://example.com"),
+            ("xdg-open", vec!["https://example.com".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_windows_opener_uses_start_with_a_title_placeholder() {
+        // `start` is a cmd builtin and treats its first argument as a window
+        // title, so an empty title has to be passed explicitly.
+        assert_eq!(
+            open_command(UrlOpener::CmdStart, "https://example.com"),
+            (
+                "cmd",
+                vec![
+                    "/C".to_string(),
+                    "start".to_string(),
+                    String::new(),
+                    "https://example.com".to_string()
+                ]
+            )
+        );
+    }
+
+    #[test]
+    fn the_url_is_always_a_single_argument() {
+        // The command is spawned without a shell, so shell metacharacters in the
+        // URL must stay inside one argument instead of being split or expanded.
+        let url = "https://example.com/?a=1&b=2 file";
+        for opener in [UrlOpener::Open, UrlOpener::XdgOpen, UrlOpener::CmdStart] {
+            let (_, args) = open_command(opener, url);
+            assert_eq!(args.iter().filter(|arg| arg.as_str() == url).count(), 1);
+        }
+    }
 }

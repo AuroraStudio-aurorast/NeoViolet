@@ -113,9 +113,11 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     });
 
     cx.on_action(|_: &OpenRepository, _cx: &mut App| {
-        let _ = std::process::Command::new("open")
-            .arg("https://github.com/AuroraStudio-aurorast/NeoViolet")
-            .spawn();
+        if let Err(error) =
+            crate::platform::open_url("https://github.com/AuroraStudio-aurorast/NeoViolet")
+        {
+            log::warn!("could not open the repository page: {error}");
+        }
     });
 
     // Open File — native file picker, sends path via IPC socket.
