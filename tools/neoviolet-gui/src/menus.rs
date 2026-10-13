@@ -184,7 +184,6 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
 
     register_bindings(cx);
 
-    #[cfg(target_os = "macos")]
     cx.set_menus(vec![
         Menu {
             name: "NeoViolet GUI".into(),
