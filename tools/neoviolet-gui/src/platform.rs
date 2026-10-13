@@ -65,16 +65,54 @@ pub fn default_monospace_font() -> &'static str {
     }
 }
 
-/// Check whether a font family is installed on the system.
-/// Uses `fontdb` under the hood — queries the system font database.
+/// The system font database, loaded once.
+///
+/// Callers sit on the startup path and ask more than once (terminal font, then
+/// lyric font), and a scan is not free.
+fn system_fonts() -> &'static fontdb::Database {
+    static FONTS: std::sync::OnceLock<fontdb::Database> = std::sync::OnceLock::new();
+    FONTS.get_or_init(|| {
+        let mut database = fontdb::Database::new();
+        database.load_system_fonts();
+        database
+    })
+}
+
+/// The fontconfig generic family a name stands for, if any.
+///
+/// Generic names are resolved by fontconfig rather than listed in the family
+/// database, so a lookup by name cannot find them even though they name a real
+/// font. Only these names may fall back to a generic query: falling back for any
+/// miss would report an uninstalled font as available.
+fn generic_family(family: &str) -> Option<fontdb::Family<'static>> {
+    match family.trim().to_ascii_lowercase().as_str() {
+        "monospace" => Some(fontdb::Family::Monospace),
+        "sans" | "sans-serif" | "sans serif" => Some(fontdb::Family::SansSerif),
+        "serif" => Some(fontdb::Family::Serif),
+        "cursive" => Some(fontdb::Family::Cursive),
+        "fantasy" => Some(fontdb::Family::Fantasy),
+        _ => None,
+    }
+}
+
+/// Whether this platform can resolve `family`, including generic aliases.
 pub fn is_font_available(family: &str) -> bool {
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
-    db.query(&fontdb::Query {
+    let database = system_fonts();
+    let named = fontdb::Query {
         families: &[fontdb::Family::Name(family)],
         ..Default::default()
+    };
+    if database.query(&named).is_some() {
+        return true;
+    }
+
+    generic_family(family).is_some_and(|generic| {
+        let query = fontdb::Query {
+            families: &[generic],
+            ..Default::default()
+        };
+        database.query(&query).is_some()
     })
-    .is_some()
 }
 
 // ── CLI version check (async, non-blocking) ──
@@ -252,5 +290,37 @@ mod tests {
             let (_, args) = open_command(opener, url);
             assert_eq!(args.iter().filter(|arg| arg.as_str() == url).count(), 1);
         }
+    }
+
+    #[test]
+    fn generic_family_names_are_recognised() {
+        // fontconfig resolves these itself, so they are absent from the family
+        // database while still naming a usable font.
+        assert_eq!(generic_family("Monospace"), Some(fontdb::Family::Monospace));
+        assert_eq!(
+            generic_family("sans-serif"),
+            Some(fontdb::Family::SansSerif)
+        );
+        assert_eq!(generic_family("SERIF"), Some(fontdb::Family::Serif));
+        assert_eq!(generic_family("Comic Sans MS"), None);
+    }
+
+    #[test]
+    fn the_linux_default_font_is_available() {
+        // The Linux default is fontconfig's generic "Monospace"; treating its
+        // absence from the family database as "not installed" warned on every
+        // start and fell back to the very same name.
+        assert!(is_font_available("Monospace"));
+    }
+
+    #[test]
+    fn a_missing_font_family_is_unavailable() {
+        assert!(!is_font_available("Definitely-Not-Installed Font 9000"));
+    }
+
+    #[test]
+    fn blank_font_families_are_unavailable() {
+        assert!(!is_font_available(""));
+        assert!(!is_font_available("   "));
     }
 }
