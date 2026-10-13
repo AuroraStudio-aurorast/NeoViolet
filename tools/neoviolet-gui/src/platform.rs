@@ -1,6 +1,26 @@
-//! Cross-platform utilities: binary discovery, font defaults, version check.
+//! Cross-platform utilities: binary discovery, font defaults, version check,
+//! input method detection.
 
 use std::time::Duration;
+
+#[cfg(target_os = "macos")]
+mod macos_tis;
+
+/// Whether a composing input method (Chinese, Japanese, Korean) is selected.
+///
+/// Only macOS implements the detection; elsewhere this reports `false`, which
+/// makes `ImeRouting::Auto` behave like `ImeRouting::Never`. `ImeRouting::Always`
+/// is how a caller asks for the other behaviour regardless of platform.
+pub fn ime_is_active() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos_tis::ime_is_active()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
 
 /// Returns the neoviolet binary name for this platform.
 pub fn binary_name() -> &'static str {

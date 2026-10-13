@@ -110,6 +110,27 @@ pub struct CursorState {
     pub shape: CursorShape,
 }
 
+/// A cell of the visible grid.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GridCell {
+    pub row: usize,
+    pub col: usize,
+}
+
+/// Maps an alacritty cursor point onto the visible grid.
+///
+/// The point is an absolute grid line: negative lines are scrollback and
+/// `display_offset` says how far the viewport is scrolled up, so the row it is
+/// drawn at is `line + display_offset`. Anything outside the grid is clamped,
+/// because an approximate position beats no position.
+fn viewport_cell(line: i32, col: usize, rows: u16, cols: u16, display_offset: usize) -> GridCell {
+    let last_row = rows.saturating_sub(1) as i32;
+    GridCell {
+        row: (line + display_offset as i32).clamp(0, last_row) as usize,
+        col: col.min(cols.saturating_sub(1) as usize),
+    }
+}
+
 #[derive(Clone)]
 pub struct RenderCell {
     pub row: i32,
@@ -122,6 +143,8 @@ pub struct RenderCell {
 pub struct RenderSnapshot {
     pub cells: Vec<RenderCell>,
     pub cursor: Option<CursorState>,
+    /// Where the input method anchors, even when the cursor is not painted.
+    pub ime_anchor: GridCell,
     pub selection: Option<ViewportSelection>,
     pub display_offset: usize,
     pub history_size: usize,
@@ -199,6 +222,26 @@ impl TerminalTab {
         })
     }
 
+    /// The cell an input method should anchor its candidate window to.
+    ///
+    /// Unlike [`TerminalTab::cursor_state`] this ignores cursor visibility and
+    /// scrollback. A terminal program hides the cursor whenever it draws no
+    /// caret of its own — Bubble Tea does, and only shows one inside a focused
+    /// text input — while a composition can run regardless. Reporting no
+    /// rectangle in that state makes the platform fall back to the screen
+    /// origin, which puts the candidate window in the corner of the display, so
+    /// this always names a cell.
+    pub fn ime_anchor(&self) -> GridCell {
+        let content = self.term.renderable_content();
+        viewport_cell(
+            content.cursor.point.line.0,
+            content.cursor.point.column.0,
+            self.rows,
+            self.cols,
+            content.display_offset,
+        )
+    }
+
     pub fn app_cursor_mode(&self) -> bool {
         self.term.mode().contains(TermMode::APP_CURSOR)
     }
@@ -235,6 +278,7 @@ impl TerminalTab {
         RenderSnapshot {
             cells,
             cursor: self.cursor_state(),
+            ime_anchor: self.ime_anchor(),
             selection: viewport_selection_from_range(content.display_offset, &content.selection),
             display_offset: content.display_offset,
             history_size: self.term.grid().history_size(),
@@ -419,6 +463,41 @@ pub fn encode_key(
 ) -> Option<Vec<u8>> {
     zed_like_to_esc_str(keystroke, app_cursor_mode, option_as_meta)
         .map(|text| text.into_owned().into_bytes())
+}
+
+/// Whether a keystroke is a candidate for an input method to compose with.
+///
+/// A composing input method only ever receives a keystroke the application did
+/// not consume, so a character key encoded for the terminal can never start a
+/// composition: typing Chinese or Japanese would insert raw Latin letters. The
+/// caller combines this with `ImeRouting` to decide when to leave the key alone.
+///
+/// Modifier combinations and control codes are deliberately excluded. They are
+/// commands rather than composition input: `Ctrl`+letter has to reach the PTY as
+/// a control byte, `Alt`/`Option` has to stay available to `option_as_meta`, and
+/// `Tab`/`Enter` arrive carrying `"\t"`/`"\n"`. Keys without a `key_char`
+/// (arrows, escape, backspace, function keys) need no special case because the
+/// platform already offers them to the input method before asking the
+/// application at all.
+pub(crate) fn is_composable_key(keystroke: &Keystroke) -> bool {
+    keystroke
+        .key_char
+        .as_deref()
+        .is_some_and(is_composable_character)
+        && !keystroke.modifiers.control
+        && !keystroke.modifiers.alt
+        && !keystroke.modifiers.platform
+        && !keystroke.modifiers.function
+}
+
+/// Whether a typed character is composition input rather than a control code.
+///
+/// Space is composition input because it picks an input method's candidate, but
+/// a control code is a keystroke for the terminal: an input method that received
+/// `Enter` mid-composition would commit its candidate instead of the terminal
+/// ever seeing the key.
+fn is_composable_character(key_char: &str) -> bool {
+    !key_char.is_empty() && key_char.chars().all(|c| !c.is_control())
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -726,6 +805,150 @@ mod tests {
         assert!(
             at28.0 > at14.0 && at28.1 > at14.1,
             "metrics did not follow the font size"
+        );
+    }
+
+    // ── Input method routing ──
+
+    fn typed(key: &str, key_char: Option<&str>) -> Keystroke {
+        Keystroke {
+            key: key.into(),
+            key_char: key_char.map(Into::into),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn printable_keys_are_composable() {
+        // A composition can only start from a key the app did not consume.
+        assert!(is_composable_key(&typed("a", Some("a"))));
+        assert!(is_composable_key(&typed("space", Some(" "))), "space");
+        assert!(is_composable_key(&typed("s", Some("ß"))), "option-s");
+        assert!(is_composable_key(&typed("a", Some("中"))), "composed text");
+        assert!(!is_composable_key(&typed("a", Some(""))), "empty character");
+    }
+
+    #[test]
+    fn shifted_letters_are_composable() {
+        // Shift is part of ordinary typing, not a command.
+        let mut keystroke = typed("A", Some("A"));
+        keystroke.modifiers.shift = true;
+        assert!(is_composable_key(&keystroke));
+    }
+
+    #[test]
+    fn modifier_combos_are_not_composable() {
+        // Ctrl+letter must reach the PTY as a control byte, and Option must stay
+        // available to `option_as_meta`; neither is composition input.
+        let with = |modifiers: gpui::Modifiers| Keystroke {
+            modifiers,
+            ..typed("a", Some("a"))
+        };
+        let control = gpui::Modifiers {
+            control: true,
+            ..Default::default()
+        };
+        let alt = gpui::Modifiers {
+            alt: true,
+            ..Default::default()
+        };
+        let platform = gpui::Modifiers {
+            platform: true,
+            ..Default::default()
+        };
+        let function = gpui::Modifiers {
+            function: true,
+            ..Default::default()
+        };
+
+        assert!(!is_composable_key(&with(control)), "ctrl+a");
+        assert!(!is_composable_key(&with(alt)), "alt+a");
+        assert!(!is_composable_key(&with(platform)), "cmd+a");
+        assert!(!is_composable_key(&with(function)), "fn+a");
+    }
+
+    #[test]
+    fn control_codes_are_not_composable() {
+        // Tab and Enter carry a character on macOS, but they are keystrokes for
+        // the terminal: giving them to an input method lets it swallow the key.
+        assert!(!is_composable_key(&typed("tab", Some("\t"))), "tab");
+        assert!(!is_composable_key(&typed("enter", Some("\n"))), "enter");
+        assert!(
+            !is_composable_key(&typed("x", Some("\r"))),
+            "carriage return"
+        );
+        assert!(
+            !is_composable_key(&typed("x", Some("\u{8}"))),
+            "control byte"
+        );
+    }
+
+    #[test]
+    fn keys_without_a_character_are_not_composable() {
+        // Named keys keep their escape encoding; gpui already offers them to the
+        // input method before the app is asked.
+        assert!(!is_composable_key(&typed("escape", None)));
+        assert!(!is_composable_key(&typed("left", None)));
+        assert!(!is_composable_key(&typed("backspace", None)));
+    }
+
+    // ── Input method anchor ──
+
+    fn new_tab() -> TerminalTab {
+        let (backend, _backend_rx) = std::sync::mpsc::channel();
+        let (events, _events_rx) = std::sync::mpsc::channel();
+        TerminalTab::new("test".into(), "Test".into(), backend, events)
+    }
+
+    #[test]
+    fn ime_anchor_survives_a_hidden_cursor() {
+        // A terminal program hides the cursor whenever it draws no caret of its
+        // own — Bubble Tea does, and only shows one inside a focused text input.
+        // A composition can run anyway, and a handler that reports no rectangle
+        // makes the platform place the candidate window at the screen origin.
+        let mut tab = new_tab();
+        tab.feed(b"\x1b[5;7H");
+        tab.feed(b"\x1b[?25l");
+
+        assert!(
+            tab.cursor_state().is_none(),
+            "a hidden cursor is not painted"
+        );
+        assert_eq!(tab.ime_anchor(), GridCell { row: 4, col: 6 });
+    }
+
+    #[test]
+    fn ime_anchor_follows_the_visible_cursor() {
+        let mut tab = new_tab();
+        tab.feed(b"\x1b[2;3H");
+
+        assert_eq!(tab.ime_anchor(), GridCell { row: 1, col: 2 });
+        assert_eq!(
+            tab.cursor_state().map(|cursor| (cursor.row, cursor.col)),
+            Some((1, 2))
+        );
+    }
+
+    #[test]
+    fn viewport_cell_offsets_scrolled_rows() {
+        // The cursor point is an absolute grid line, so a viewport scrolled up by
+        // three lines shows that line three rows lower.
+        assert_eq!(viewport_cell(5, 0, 30, 100, 3), GridCell { row: 8, col: 0 });
+    }
+
+    #[test]
+    fn viewport_cell_clamps_to_the_visible_grid() {
+        assert_eq!(
+            viewport_cell(-7, 0, 30, 100, 0),
+            GridCell { row: 0, col: 0 }
+        );
+        assert_eq!(
+            viewport_cell(29, 0, 30, 100, 40),
+            GridCell { row: 29, col: 0 }
+        );
+        assert_eq!(
+            viewport_cell(0, 500, 30, 100, 0),
+            GridCell { row: 0, col: 99 }
         );
     }
 }

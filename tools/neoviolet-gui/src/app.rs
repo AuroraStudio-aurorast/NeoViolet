@@ -8,10 +8,11 @@ use gpui::{
     App, Bounds, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, Font, FontStyle,
     FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
     MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta,
-    ScrollWheelEvent, SharedString, Styled, TextRun, Window, div, point, px, size,
+    ScrollWheelEvent, SharedString, Styled, Subscription, TextRun, Window, div, point, px, size,
 };
 
 use crate::backend;
+use crate::platform;
 use crate::state::AppState;
 use crate::terminal::{
     self, BackendCommand, BackendEvent, TerminalTab,
@@ -31,6 +32,8 @@ pub struct TerminalApp {
     terminal_metrics: (f32, f32),
     terminal_metrics_key: Option<(SharedString, u32)>,
     pub focus_handle: FocusHandle,
+    /// Keeps the focus-loss listener alive for as long as this terminal does.
+    focus_observer: Option<Subscription>,
     pub(crate) pending_resize: Option<(u16, u16)>,
     /// Buffer for recent PTY output (for bad-args crash diagnostics)
     recent_output: Arc<Mutex<Vec<u8>>>,
@@ -137,6 +140,7 @@ impl TerminalApp {
             terminal_metrics: terminal::metrics_from_measurement(None, None, None, font_size),
             terminal_metrics_key: None,
             focus_handle: cx.focus_handle(),
+            focus_observer: None,
             pending_resize: None,
             recent_output,
         }
@@ -252,12 +256,13 @@ impl TerminalApp {
         cell_width: f32,
         line_height: f32,
     ) -> Option<Bounds<Pixels>> {
-        let snapshot = self.tab.render_snapshot();
-        let cursor = snapshot.cursor?;
+        // Anchored to the terminal cursor even while it is hidden, which is the
+        // normal state for a text-UI that draws its own caret.
+        let anchor = self.tab.ime_anchor();
         let x = element_bounds.origin.x
-            + px(cell_width) * cursor.col as f32
+            + px(cell_width) * anchor.col as f32
             + px(cell_width) * range_utf16.start as f32;
-        let y = element_bounds.origin.y + px(line_height) * cursor.row as f32;
+        let y = element_bounds.origin.y + px(line_height) * anchor.row as f32;
         Some(Bounds::new(
             point(x, y),
             size(px(cell_width), px(line_height)),
@@ -293,9 +298,22 @@ impl TerminalApp {
             return;
         }
 
-        // Character input — defer to the IME/InputHandler system.
-        // The EntityInputHandler will commit the final text via replace_text_in_range.
+        // A keystroke that produced a character is delivered as text rather than
+        // as a keystroke on some platforms; letting it through keeps composed
+        // input working there.
         if event.prefer_character_input {
+            return;
+        }
+
+        // A composing input method only ever receives a keystroke the application
+        // did not consume, so a printable key encoded here can never start a
+        // composition: typing Chinese or Japanese would insert raw Latin letters
+        // instead. Which keys that applies to is decided in `is_composable_key`;
+        // the committed text comes back through `replace_text_in_range`.
+        let routing = cx.global::<AppState>().config.ime_routing;
+        if terminal::is_composable_key(&event.keystroke)
+            && routing.defers_printable_keys(platform::ime_is_active())
+        {
             return;
         }
 
@@ -600,6 +618,17 @@ impl Focusable for TerminalApp {
 
 impl Render for TerminalApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A composition interrupted by a focus change must not keep its marked
+        // range alive: while it does, the platform keeps routing every key to the
+        // input method and the preedit stays painted at a stale position.
+        if self.focus_observer.is_none() {
+            let subscription =
+                cx.on_blur(&self.focus_handle.clone(), window, |this, window, cx| {
+                    this.clear_terminal_marked_text(window, cx);
+                });
+            self.focus_observer = Some(subscription);
+        }
+
         // Process pending events
         self.drain_events();
 

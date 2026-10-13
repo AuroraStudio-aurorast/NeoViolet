@@ -48,6 +48,9 @@ fn default_zoom_via_scroll() -> bool {
 fn default_option_as_meta() -> bool {
     false
 }
+fn default_ime_routing() -> ImeRouting {
+    ImeRouting::Auto
+}
 fn default_desktop_lyrics_enabled() -> bool {
     false
 }
@@ -103,6 +106,42 @@ impl Default for DesktopLyricsConfig {
     }
 }
 
+/// How printable keys are routed while an input method (IME) is in play.
+///
+/// A composing input method only ever receives a keystroke the application did
+/// not consume, so leaving printable keys to the terminal makes Chinese,
+/// Japanese and Korean input impossible: every keystroke of a composition would
+/// be inserted as raw Latin text. Leaving them to the input method instead costs
+/// raw key delivery for as long as a composing input source is selected, which
+/// is what [`ImeRouting::Auto`] limits itself to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImeRouting {
+    /// Leave printable keys to the input method only while a composing input
+    /// source (Chinese, Japanese, Korean) is active, so ordinary keyboard
+    /// layouts keep sending raw keys.
+    Auto,
+    /// Always leave printable keys to the input method. The escape hatch for
+    /// input methods that the platform detection misses; raw keys are then only
+    /// available after switching back to a non-composing input source.
+    Always,
+    /// Never leave printable keys to the input method: raw keys always reach the
+    /// terminal, and composition does not work.
+    Never,
+}
+
+impl ImeRouting {
+    /// Whether printable keys should be left for the input method, given the
+    /// platform's answer for whether a composing input source is active.
+    pub fn defers_printable_keys(self, ime_active: bool) -> bool {
+        match self {
+            Self::Auto => ime_active,
+            Self::Always => true,
+            Self::Never => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuiConfig {
     pub monospace_font: String,
@@ -118,6 +157,9 @@ pub struct GuiConfig {
     /// (macOS only; ignored elsewhere because Alt already sends ESC there).
     #[serde(default = "default_option_as_meta")]
     pub option_as_meta: bool,
+    /// Leave printable keys to the input method so that IME composition works.
+    #[serde(default = "default_ime_routing")]
+    pub ime_routing: ImeRouting,
     #[serde(default)]
     pub desktop_lyrics: DesktopLyricsConfig,
 }
@@ -133,6 +175,7 @@ impl Default for GuiConfig {
             neoviolet_path: None,
             zoom_via_scroll: false,
             option_as_meta: false,
+            ime_routing: ImeRouting::Auto,
             desktop_lyrics: DesktopLyricsConfig::default(),
         }
     }
@@ -241,6 +284,61 @@ mod tests {
     }
 
     #[test]
+    fn ime_routing_defaults_to_auto() {
+        assert_eq!(GuiConfig::default().ime_routing, ImeRouting::Auto);
+    }
+
+    #[test]
+    fn ime_routing_falls_back_when_the_file_omits_it() {
+        let text = toml::to_string_pretty(&GuiConfig::default()).expect("serialize defaults");
+        let without = text
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("ime_routing"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed: GuiConfig = toml::from_str(&without).expect("parse without ime_routing");
+        assert_eq!(parsed.ime_routing, ImeRouting::Auto);
+    }
+
+    #[test]
+    fn ime_routing_writes_and_reads_its_documented_values() {
+        // These strings are the public contract of the config file; renaming one
+        // silently invalidates existing user configs.
+        for (value, text) in [
+            (ImeRouting::Auto, "auto"),
+            (ImeRouting::Always, "always"),
+            (ImeRouting::Never, "never"),
+        ] {
+            let config = GuiConfig {
+                ime_routing: value,
+                ..GuiConfig::default()
+            };
+            let serialized = toml::to_string_pretty(&config).expect("serialize");
+            assert!(
+                serialized.contains(&format!("ime_routing = \"{text}\"")),
+                "expected `ime_routing = \"{text}\"` in:\n{serialized}"
+            );
+            let parsed: GuiConfig = toml::from_str(&serialized).expect("parse back");
+            assert_eq!(parsed.ime_routing, value);
+        }
+    }
+
+    #[test]
+    fn ime_routing_decides_when_printable_keys_defer() {
+        // Auto follows the platform: an ordinary layout keeps raw keys, a
+        // composing input source takes them.
+        assert!(!ImeRouting::Auto.defers_printable_keys(false));
+        assert!(ImeRouting::Auto.defers_printable_keys(true));
+        // Always is the escape hatch for input methods the detection misses, so
+        // it must not depend on the platform answer at all.
+        assert!(ImeRouting::Always.defers_printable_keys(false));
+        assert!(ImeRouting::Always.defers_printable_keys(true));
+        // Never restores the raw-key behaviour unconditionally.
+        assert!(!ImeRouting::Never.defers_printable_keys(false));
+        assert!(!ImeRouting::Never.defers_printable_keys(true));
+    }
+
+    #[test]
     fn malformed_toml_falls_back_to_defaults() {
         let cfg = toml::from_str::<GuiConfig>("not valid toml [[[").unwrap_or_default();
         assert!(cfg.desktop_lyrics.font_size > 0);
@@ -267,6 +365,7 @@ mod tests {
         assert_eq!(parsed.opacity, original.opacity);
         assert_eq!(parsed.zoom_via_scroll, original.zoom_via_scroll);
         assert_eq!(parsed.option_as_meta, original.option_as_meta);
+        assert_eq!(parsed.ime_routing, original.ime_routing);
         assert_eq!(
             parsed.desktop_lyrics.opacity,
             original.desktop_lyrics.opacity
