@@ -134,12 +134,12 @@ fn main() {
         // Open window
         let titlebar_opts = Some(TitlebarOptions {
             title: Some("NeoViolet".into()),
-            appears_transparent: cfg!(target_os = "macos"),
+            appears_transparent: platform::titlebar_appears_transparent(),
             traffic_light_position: None,
         });
 
         let config_opacity = gui_config.opacity.clamp(0.1, 1.0);
-        let window_background = if config_opacity < 1.0 {
+        let window_background = if platform::background_should_be_transparent(config_opacity) {
             WindowBackgroundAppearance::Transparent
         } else {
             WindowBackgroundAppearance::Opaque

@@ -1,5 +1,5 @@
 //! Cross-platform utilities: binary discovery, font defaults, version check,
-//! input method detection, URL opening.
+//! input method detection, URL opening, window appearance.
 
 use std::time::Duration;
 
@@ -243,6 +243,23 @@ pub fn open_url(url: &str) -> std::io::Result<()> {
         .map(|_| ())
 }
 
+// ── Window appearance ──
+
+/// Whether the title bar should blend into the window.
+///
+/// Only the macOS backend draws a window that extends under its title bar.
+pub fn titlebar_appears_transparent() -> bool {
+    cfg!(target_os = "macos")
+}
+
+/// Whether a window at `opacity` needs a transparent background.
+///
+/// Whether the request is honoured is up to the platform backend; the caller
+/// keeps the mapping onto the appearance enum.
+pub fn background_should_be_transparent(opacity: f32) -> bool {
+    opacity < 1.0
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,5 +339,17 @@ mod tests {
     fn blank_font_families_are_unavailable() {
         assert!(!is_font_available(""));
         assert!(!is_font_available("   "));
+    }
+
+    #[test]
+    fn transparent_titlebars_are_a_macos_feature() {
+        assert_eq!(titlebar_appears_transparent(), cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn opacity_below_one_asks_for_a_transparent_background() {
+        assert!(background_should_be_transparent(0.5));
+        assert!(background_should_be_transparent(0.99));
+        assert!(!background_should_be_transparent(1.0));
     }
 }
