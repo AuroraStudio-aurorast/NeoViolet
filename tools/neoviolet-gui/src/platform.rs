@@ -78,12 +78,12 @@ fn system_fonts() -> &'static fontdb::Database {
     })
 }
 
-/// The fontconfig generic family a name stands for, if any.
+/// The generic font family a name stands for, if any.
 ///
-/// Generic names are resolved by fontconfig rather than listed in the family
-/// database, so a lookup by name cannot find them even though they name a real
-/// font. Only these names may fall back to a generic query: falling back for any
-/// miss would report an uninstalled font as available.
+/// Generic names (`Monospace`, `Sans`, …) are resolved by the system's font stack
+/// rather than listed in the family database, so a lookup by name cannot find them
+/// even though they work. Only these names are exempt from the lookup: exempting
+/// every miss would report an uninstalled font as available.
 fn generic_family(family: &str) -> Option<fontdb::Family<'static>> {
     match family.trim().to_ascii_lowercase().as_str() {
         "monospace" => Some(fontdb::Family::Monospace),
@@ -97,22 +97,27 @@ fn generic_family(family: &str) -> Option<fontdb::Family<'static>> {
 
 /// Whether this platform can resolve `family`, including generic aliases.
 pub fn is_font_available(family: &str) -> bool {
-    let database = system_fonts();
-    let named = fontdb::Query {
-        families: &[fontdb::Family::Name(family)],
-        ..Default::default()
-    };
-    if database.query(&named).is_some() {
+    family_is_available(system_fonts(), family)
+}
+
+/// Whether `database` can resolve `family`.
+///
+/// A generic alias is resolved by the system's font stack rather than by an installed
+/// family, so no font database answers for it: an empty one and a full one give the
+/// same result, and asking anyway made the answer depend on which fonts the machine
+/// happens to have. Aliases are therefore taken as available; only real family names
+/// are looked up, which is what keeps a misspelled or uninstalled family reported as
+/// missing.
+fn family_is_available(database: &fontdb::Database, family: &str) -> bool {
+    if generic_family(family).is_some() {
         return true;
     }
 
-    generic_family(family).is_some_and(|generic| {
-        let query = fontdb::Query {
-            families: &[generic],
-            ..Default::default()
-        };
-        database.query(&query).is_some()
-    })
+    let query = fontdb::Query {
+        families: &[fontdb::Family::Name(family)],
+        ..Default::default()
+    };
+    database.query(&query).is_some()
 }
 
 // ── CLI version check (async, non-blocking) ──
@@ -311,8 +316,8 @@ mod tests {
 
     #[test]
     fn generic_family_names_are_recognised() {
-        // fontconfig resolves these itself, so they are absent from the family
-        // database while still naming a usable font.
+        // The system font stack resolves these itself, so they are absent from the
+        // family database while still naming a usable font.
         assert_eq!(generic_family("Monospace"), Some(fontdb::Family::Monospace));
         assert_eq!(
             generic_family("sans-serif"),
@@ -323,10 +328,26 @@ mod tests {
     }
 
     #[test]
+    fn a_generic_family_is_available_without_any_font_database() {
+        // An empty database knows no fonts, and no database can answer for a generic
+        // name anyway. Consulting one made this answer depend on the machine's installed
+        // fonts, which is how a check on "Monospace" failed on a minimal font set.
+        assert!(family_is_available(&fontdb::Database::new(), "Monospace"));
+        assert!(family_is_available(&fontdb::Database::new(), "Sans"));
+    }
+
+    #[test]
+    fn an_exact_family_name_is_looked_up_in_the_database() {
+        // The other half of the rule: a real family name still needs the database, so a
+        // misspelled or uninstalled family is reported instead of silently substituted.
+        assert!(!family_is_available(&fontdb::Database::new(), "Menlo"));
+    }
+
+    #[test]
     fn the_linux_default_font_is_available() {
-        // The Linux default is fontconfig's generic "Monospace"; treating its
-        // absence from the family database as "not installed" warned on every
-        // start and fell back to the very same name.
+        // The Linux default is the generic "Monospace"; treating its absence from the
+        // family database as "not installed" warned on every start and fell back to the
+        // very same name. This has to hold on a machine with no fonts installed.
         assert!(is_font_available("Monospace"));
     }
 
