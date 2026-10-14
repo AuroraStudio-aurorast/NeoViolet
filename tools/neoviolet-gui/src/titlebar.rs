@@ -122,16 +122,18 @@ pub fn edge_strips(width: f32, height: f32, thickness: f32) -> Vec<(ResizeEdge, 
 /// Depth of the grab strips along each window edge.
 const FRAME_THICKNESS: f32 = 6.0;
 
-/// The window's own frame: a 1px border and the eight strips that start a
-/// resize, sized for a window of `size`.
+/// The window's own frame: a 1px border, and — when `resize_grips` is set —
+/// the eight strips that start a resize, sized for a window of `size`.
 ///
 /// This has to be the **last** child of the window root. gpui dispatches mouse
 /// events to the elements painted last first, and everything below it — the
 /// terminal above all — paints before it. That ordering is what makes the
 /// outermost few pixels the ones the user grabs, keeps those clicks out of the
 /// terminal, and keeps the border visible instead of covered by the terminal's
-/// opaque background.
-pub fn window_frame(size: Size<Pixels>, border_color: Hsla) -> Div {
+/// opaque background. The border is drawn on every platform that draws no frame
+/// of its own; the grab strips only where the platform lets the client start the
+/// resize, since elsewhere they would swallow the click without resizing.
+pub fn window_frame(size: Size<Pixels>, border_color: Hsla, resize_grips: bool) -> Div {
     let width = f32::from(size.width);
     let height = f32::from(size.height);
     let mut frame = div()
@@ -147,32 +149,34 @@ pub fn window_frame(size: Size<Pixels>, border_color: Hsla) -> Div {
                 .border_1()
                 .border_color(border_color),
         );
-    for (edge, bounds) in edge_strips(width, height, FRAME_THICKNESS) {
-        frame = frame.child(
-            div()
-                .id(strip_id(edge))
-                .absolute()
-                .left(bounds.origin.x)
-                .top(bounds.origin.y)
-                .w(bounds.size.width)
-                .h(bounds.size.height)
-                .cursor(resize_cursor(edge))
-                .on_mouse_down(MouseButton::Left, move |event, window, cx| {
-                    let Some(edge) = edge_for_point(
-                        f32::from(event.position.x),
-                        f32::from(event.position.y),
-                        width,
-                        height,
-                        FRAME_THICKNESS,
-                    ) else {
-                        return;
-                    };
-                    window.start_window_resize(edge);
-                    // The strips sit on top of the terminal, which would
-                    // otherwise receive the same click.
-                    cx.stop_propagation();
-                }),
-        );
+    if resize_grips {
+        for (edge, bounds) in edge_strips(width, height, FRAME_THICKNESS) {
+            frame = frame.child(
+                div()
+                    .id(strip_id(edge))
+                    .absolute()
+                    .left(bounds.origin.x)
+                    .top(bounds.origin.y)
+                    .w(bounds.size.width)
+                    .h(bounds.size.height)
+                    .cursor(resize_cursor(edge))
+                    .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                        let Some(edge) = edge_for_point(
+                            f32::from(event.position.x),
+                            f32::from(event.position.y),
+                            width,
+                            height,
+                            FRAME_THICKNESS,
+                        ) else {
+                            return;
+                        };
+                        window.start_window_resize(edge);
+                        // The strips sit on top of the terminal, which would
+                        // otherwise receive the same click.
+                        cx.stop_propagation();
+                    }),
+            );
+        }
     }
     frame
 }

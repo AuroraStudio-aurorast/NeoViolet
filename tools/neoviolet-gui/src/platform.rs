@@ -351,6 +351,22 @@ pub fn chrome_plan(kind: PlatformKind, client_decorations: bool, fullscreen: boo
     plan
 }
 
+/// Whether the client can start an edge resize on this platform.
+///
+/// gpui implements `start_window_resize` on X11 and Wayland only; macOS and
+/// Windows resize through their own native paths, where the call does nothing.
+/// Mounting a self-drawn grab strip there would swallow the click without
+/// resizing anything.
+pub fn client_side_resize_is_honoured() -> bool {
+    client_side_resize_is_honoured_on(current_platform_kind())
+}
+
+/// Whether `kind` resizes through the client, which is the same platforms that
+/// drag through the compositor rather than through a window control area.
+fn client_side_resize_is_honoured_on(kind: PlatformKind) -> bool {
+    matches!(kind, PlatformKind::Linux)
+}
+
 /// Whether a window at `opacity` needs a transparent background.
 ///
 /// Whether the request is honoured is up to the platform backend; the caller
@@ -569,6 +585,32 @@ mod tests {
     #[test]
     fn no_platform_needs_its_own_window_buttons_off_the_client_side() {
         assert!(!chrome_plan(PlatformKind::MacOs, true, false).window_buttons);
+    }
+
+    #[test]
+    fn only_linux_honours_a_client_side_resize() {
+        // gpui implements `start_window_resize` on X11 and Wayland only, so the
+        // self-drawn grab strips would swallow clicks without resizing anywhere else.
+        assert_eq!(
+            client_side_resize_is_honoured(),
+            matches!(current_platform_kind(), PlatformKind::Linux)
+        );
+        // The platforms whose drag goes through the compositor instead of a control
+        // area are exactly the ones that own the resize path as well.
+        for kind in [
+            PlatformKind::MacOs,
+            PlatformKind::Windows,
+            PlatformKind::Linux,
+        ] {
+            let plan = chrome_plan(
+                kind, /* client_decorations */ true, /* fullscreen */ false,
+            );
+            assert_eq!(
+                client_side_resize_is_honoured_on(kind),
+                !plan.drag_via_control_area,
+                "{kind:?} 的自绘缩放与自绘拖拽必须走同一条路径"
+            );
+        }
     }
 
     #[test]
