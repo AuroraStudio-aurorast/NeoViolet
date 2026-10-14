@@ -462,7 +462,7 @@ impl Render for NeoVioletApp {
             base
         };
 
-        if show_about {
+        let base = if show_about {
             base.child(components::render_about_dialog(
                 cx,
                 &self.about_modal,
@@ -470,8 +470,20 @@ impl Render for NeoVioletApp {
             ))
         } else {
             base
-        }
-        .into_any_element()
+        };
+
+        // The window's own frame goes last, so its border and grab strips sit
+        // above the terminal instead of being covered by it.
+        let base = if chrome.frame {
+            base.child(crate::titlebar::window_frame(
+                window.viewport_size(),
+                crate::theme_colors::tertiary(cx),
+            ))
+        } else {
+            base
+        };
+
+        base.into_any_element()
     }
 }
 

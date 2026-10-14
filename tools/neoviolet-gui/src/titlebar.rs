@@ -36,7 +36,15 @@ pub fn button_action(button: TitlebarButton) -> TitlebarAction {
     }
 }
 
-#[allow(dead_code)]
+/// Which edge or corner of a `width` × `height` window the point `(x, y)` grabs.
+///
+/// `(x, y)` is relative to the window's top-left corner. Corners win over
+/// edges: a point that is inside a corner strip is that corner, never either of
+/// the two edges it also touches. A window no wider (or no taller) than two
+/// strips has no distinguishable edges left, and its overlapping strips simply
+/// make one of the corners cover it, so the answer stays defined rather than
+/// bailing out — that is what keeps the outermost pixels of a tiny window
+/// grabbable at all.
 pub fn edge_for_point(
     x: f32,
     y: f32,
@@ -61,16 +69,142 @@ pub fn edge_for_point(
     }
 }
 
-pub fn hamburger_icon() -> Div {
+pub fn hamburger_icon(color: Hsla) -> Div {
     div()
         .w(px(16.0))
         .h(px(14.0))
         .flex()
         .flex_col()
         .justify_between()
-        .child(div().w_full().h(px(2.0)).bg(rgb(0xcfcfc2)))
-        .child(div().w_full().h(px(2.0)).bg(rgb(0xcfcfc2)))
-        .child(div().w_full().h(px(2.0)).bg(rgb(0xcfcfc2)))
+        .child(div().w_full().h(px(2.0)).bg(color))
+        .child(div().w_full().h(px(2.0)).bg(color))
+        .child(div().w_full().h(px(2.0)).bg(color))
+}
+
+/// The eight invisible grab strips around a `width` × `height` window, in
+/// window coordinates, `thickness` deep.
+///
+/// Edges come first and corners last, so a corner strip is drawn over — and so
+/// hit before — the two edges it sits on, which is the same verdict
+/// [`edge_for_point`] reaches. `thickness` is capped at half of each axis, so a
+/// window too small to carry two full strips still gets strips that stay inside
+/// its own bounds instead of overlapping into a negative size.
+pub fn edge_strips(width: f32, height: f32, thickness: f32) -> Vec<(ResizeEdge, Bounds<Pixels>)> {
+    let thickness = thickness
+        .max(0.0)
+        .min(width.max(0.0) / 2.0)
+        .min(height.max(0.0) / 2.0);
+    let strip =
+        |x: f32, y: f32, w: f32, h: f32| Bounds::new(point(px(x), px(y)), size(px(w), px(h)));
+    let far_x = width - thickness;
+    let far_y = height - thickness;
+    vec![
+        (ResizeEdge::Top, strip(0.0, 0.0, width, thickness)),
+        (ResizeEdge::Bottom, strip(0.0, far_y, width, thickness)),
+        (ResizeEdge::Left, strip(0.0, 0.0, thickness, height)),
+        (ResizeEdge::Right, strip(far_x, 0.0, thickness, height)),
+        (ResizeEdge::TopLeft, strip(0.0, 0.0, thickness, thickness)),
+        (
+            ResizeEdge::TopRight,
+            strip(far_x, 0.0, thickness, thickness),
+        ),
+        (
+            ResizeEdge::BottomLeft,
+            strip(0.0, far_y, thickness, thickness),
+        ),
+        (
+            ResizeEdge::BottomRight,
+            strip(far_x, far_y, thickness, thickness),
+        ),
+    ]
+}
+
+/// Depth of the grab strips along each window edge.
+const FRAME_THICKNESS: f32 = 6.0;
+
+/// The window's own frame: a 1px border and the eight strips that start a
+/// resize, sized for a window of `size`.
+///
+/// This has to be the **last** child of the window root. gpui dispatches mouse
+/// events to the elements painted last first, and everything below it — the
+/// terminal above all — paints before it. That ordering is what makes the
+/// outermost few pixels the ones the user grabs, keeps those clicks out of the
+/// terminal, and keeps the border visible instead of covered by the terminal's
+/// opaque background.
+pub fn window_frame(size: Size<Pixels>, border_color: Hsla) -> Div {
+    let width = f32::from(size.width);
+    let height = f32::from(size.height);
+    let mut frame = div()
+        .absolute()
+        .left_0()
+        .top_0()
+        .w(size.width)
+        .h(size.height)
+        .child(
+            div()
+                .absolute()
+                .size_full()
+                .border_1()
+                .border_color(border_color),
+        );
+    for (edge, bounds) in edge_strips(width, height, FRAME_THICKNESS) {
+        frame = frame.child(
+            div()
+                .id(strip_id(edge))
+                .absolute()
+                .left(bounds.origin.x)
+                .top(bounds.origin.y)
+                .w(bounds.size.width)
+                .h(bounds.size.height)
+                .cursor(resize_cursor(edge))
+                .on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                    let Some(edge) = edge_for_point(
+                        f32::from(event.position.x),
+                        f32::from(event.position.y),
+                        width,
+                        height,
+                        FRAME_THICKNESS,
+                    ) else {
+                        return;
+                    };
+                    window.start_window_resize(edge);
+                    // The strips sit on top of the terminal, which would
+                    // otherwise receive the same click.
+                    cx.stop_propagation();
+                }),
+        );
+    }
+    frame
+}
+
+/// The element id of `edge`'s strip, in the app's `aria:` naming scheme.
+fn strip_id(edge: ResizeEdge) -> &'static str {
+    match edge {
+        ResizeEdge::Top => "aria:window:resize-top",
+        ResizeEdge::TopRight => "aria:window:resize-top-right",
+        ResizeEdge::Right => "aria:window:resize-right",
+        ResizeEdge::BottomRight => "aria:window:resize-bottom-right",
+        ResizeEdge::Bottom => "aria:window:resize-bottom",
+        ResizeEdge::BottomLeft => "aria:window:resize-bottom-left",
+        ResizeEdge::Left => "aria:window:resize-left",
+        ResizeEdge::TopLeft => "aria:window:resize-top-left",
+    }
+}
+
+/// The resize cursor that points along `edge`.
+///
+/// gpui has no per-corner cursors, so each corner takes the diagonal it lies on:
+/// `ResizeUpLeftDownRight` is the top-left/bottom-right diagonal and
+/// `ResizeUpRightDownLeft` the top-right/bottom-left one.
+fn resize_cursor(edge: ResizeEdge) -> CursorStyle {
+    match edge {
+        ResizeEdge::Top => CursorStyle::ResizeUp,
+        ResizeEdge::Bottom => CursorStyle::ResizeDown,
+        ResizeEdge::Left => CursorStyle::ResizeLeft,
+        ResizeEdge::Right => CursorStyle::ResizeRight,
+        ResizeEdge::TopLeft | ResizeEdge::BottomRight => CursorStyle::ResizeUpLeftDownRight,
+        ResizeEdge::TopRight | ResizeEdge::BottomLeft => CursorStyle::ResizeUpRightDownLeft,
+    }
 }
 
 type MenuSelectCallback = std::sync::Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync>;
@@ -154,7 +288,7 @@ impl Titlebar {
             .child(drag_area);
 
         if plan.menu_button {
-            let trigger = hamburger_icon()
+            let trigger = hamburger_icon(crate::theme_colors::secondary(cx))
                 .id("aria:titlebar:menu-trigger")
                 .on_click({
                     let menu = menu.clone();
@@ -235,71 +369,6 @@ impl Titlebar {
             })
             .border_b_1()
             .border_color(crate::theme_colors::tertiary(cx));
-        if plan.frame {
-            let edge = |id: &'static str, resize_edge| {
-                div()
-                    .id(id)
-                    .absolute()
-                    .on_mouse_down(MouseButton::Left, move |_, window, _| {
-                        window.start_window_resize(resize_edge);
-                    })
-            };
-            row = row
-                .border_1()
-                .border_color(crate::theme_colors::tertiary(cx))
-                .child(
-                    edge("aria:titlebar:resize-left", ResizeEdge::Left)
-                        .left_0()
-                        .top_0()
-                        .w(px(6.0))
-                        .h_full(),
-                )
-                .child(
-                    edge("aria:titlebar:resize-right", ResizeEdge::Right)
-                        .right_0()
-                        .top_0()
-                        .w(px(6.0))
-                        .h_full(),
-                )
-                .child(
-                    edge("aria:titlebar:resize-top", ResizeEdge::Top)
-                        .left_0()
-                        .top_0()
-                        .w_full()
-                        .h(px(6.0)),
-                )
-                .child(
-                    edge("aria:titlebar:resize-bottom", ResizeEdge::Bottom)
-                        .left_0()
-                        .bottom_0()
-                        .w_full()
-                        .h(px(6.0)),
-                )
-                .child(
-                    edge("aria:titlebar:resize-top-left", ResizeEdge::TopLeft)
-                        .left_0()
-                        .top_0()
-                        .size(px(6.0)),
-                )
-                .child(
-                    edge("aria:titlebar:resize-top-right", ResizeEdge::TopRight)
-                        .right_0()
-                        .top_0()
-                        .size(px(6.0)),
-                )
-                .child(
-                    edge("aria:titlebar:resize-bottom-left", ResizeEdge::BottomLeft)
-                        .left_0()
-                        .bottom_0()
-                        .size(px(6.0)),
-                )
-                .child(
-                    edge("aria:titlebar:resize-bottom-right", ResizeEdge::BottomRight)
-                        .right_0()
-                        .bottom_0()
-                        .size(px(6.0)),
-                );
-        }
         let _ = window;
         row.into_any_element()
     }
@@ -376,7 +445,7 @@ fn menu_content(
 
 #[cfg(test)]
 mod tests {
-    use super::{TitlebarAction, TitlebarButton, button_action, edge_for_point};
+    use super::{TitlebarAction, TitlebarButton, button_action, edge_for_point, edge_strips};
     use gpui::ResizeEdge;
 
     #[test]
@@ -429,6 +498,78 @@ mod tests {
             edge_for_point(398.0, 2.0, w, h, t),
             Some(ResizeEdge::TopRight)
         );
+    }
+
+    #[test]
+    fn corner_hits_win_over_edge_hits() {
+        let (w, h, t) = (400.0, 300.0, 6.0);
+        // 角上的点必须判定为角，而不是任意一条边
+        assert_eq!(
+            edge_for_point(t - 0.5, t - 0.5, w, h, t),
+            Some(ResizeEdge::TopLeft)
+        );
+        assert_eq!(
+            edge_for_point(w - t + 0.5, h - t + 0.5, w, h, t),
+            Some(ResizeEdge::BottomRight)
+        );
+    }
+
+    #[test]
+    fn a_window_smaller_than_the_grab_thickness_still_resolves_deterministically() {
+        let (w, h, t) = (8.0, 8.0, 6.0);
+        // 不能 panic，且中心点必须落到某个角上而不是 None
+        assert!(edge_for_point(4.0, 4.0, w, h, t).is_some());
+    }
+
+    #[test]
+    fn the_side_strips_run_the_whole_window_height() {
+        let strips = edge_strips(400.0, 300.0, 6.0);
+        for edge in [ResizeEdge::Left, ResizeEdge::Right] {
+            let bounds = strip_of(&strips, edge);
+            assert_eq!(
+                f32::from(bounds.size.height),
+                300.0,
+                "{edge:?} 必须纵向铺满整个窗口，而不是只铺标题栏那一行"
+            );
+        }
+    }
+
+    #[test]
+    fn the_bottom_strip_sits_on_the_window_bottom() {
+        let strips = edge_strips(400.0, 300.0, 6.0);
+        let bounds = strip_of(&strips, ResizeEdge::Bottom);
+        assert_eq!(
+            f32::from(bounds.origin.y) + f32::from(bounds.size.height),
+            300.0,
+            "底边命中条必须落在窗口底部"
+        );
+    }
+
+    #[test]
+    fn strips_stay_inside_a_window_narrower_than_two_strips() {
+        let (w, h, t) = (8.0, 8.0, 6.0);
+        let strips = edge_strips(w, h, t);
+        assert_eq!(strips.len(), 8, "四边四角各一条");
+        for (edge, bounds) in &strips {
+            let (x, y) = (f32::from(bounds.origin.x), f32::from(bounds.origin.y));
+            let (sw, sh) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
+            assert!(sw >= 0.0 && sh >= 0.0, "{edge:?} 的尺寸不能为负");
+            assert!(
+                x >= 0.0 && y >= 0.0 && x + sw <= w && y + sh <= h,
+                "{edge:?} 越出窗口"
+            );
+        }
+    }
+
+    fn strip_of(
+        strips: &[(ResizeEdge, gpui::Bounds<gpui::Pixels>)],
+        edge: ResizeEdge,
+    ) -> gpui::Bounds<gpui::Pixels> {
+        strips
+            .iter()
+            .find(|(candidate, _)| *candidate == edge)
+            .map(|(_, bounds)| *bounds)
+            .expect("每条边都该有命中条")
     }
 
     #[test]
