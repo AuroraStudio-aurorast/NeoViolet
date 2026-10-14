@@ -211,8 +211,9 @@ pub fn layout(kind: PlatformKind) -> Vec<MenuGroup> {
     }
 }
 
-/// Every action `kind`'s menu binds, with the key it shows — read out of
-/// [`layout`], so the keymap holds exactly the shortcuts the menu advertises.
+/// Every shortcut `kind`'s menu displays, with the key it shows — read out of
+/// [`layout`]. The keymap binds these plus the platform aliases in
+/// [`platform_aliases`], which are deliberately not menu rows.
 pub fn keybindings(kind: PlatformKind) -> Vec<(MenuAction, &'static str)> {
     layout(kind)
         .into_iter()
@@ -253,11 +254,27 @@ pub fn boxed_action(action: MenuAction) -> Box<dyn Action> {
 
 // ── Keybindings ──
 
+/// Keys `kind` binds on top of its menu rows.
+///
+/// macOS presses ⌘= for Zoom In as readily as the ⌘+ the menu advertises — ⌘+
+/// needs Shift on most layouts, so the two are not the same key, and the bare ⌘=
+/// has always been bound beside it. An alias is not a menu row, which is why it
+/// lives here instead of in [`layout`].
+fn platform_aliases(kind: PlatformKind) -> Vec<(MenuAction, &'static str)> {
+    match kind {
+        PlatformKind::MacOs => vec![(MenuAction::ZoomIn, "secondary-=")],
+        PlatformKind::Windows | PlatformKind::Linux => Vec::new(),
+    }
+}
+
 fn register_bindings(cx: &mut App) {
+    let kind = current_platform_kind();
+
     // `KeyBinding::new` takes the concrete action type; the layout hands back a
     // runtime choice, so load the boxed action directly instead.
-    let bindings = keybindings(current_platform_kind())
+    let bindings = keybindings(kind)
         .into_iter()
+        .chain(platform_aliases(kind))
         .map(|(action, keystrokes)| {
             KeyBinding::load(
                 keystrokes,
@@ -447,41 +464,46 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
 
     register_bindings(cx);
 
-    // A native menu bar is a macOS concept: gpui's `set_menus` is a no-op on
-    // Windows and Linux, whose menus the app draws for itself from the same
-    // layout. The macOS layout is therefore the only one that reaches a native
-    // menu bar.
-    cx.set_menus(
-        layout(PlatformKind::MacOs)
-            .into_iter()
-            .map(|group| Menu {
-                name: group.title.into(),
-                items: group
-                    .entries
-                    .into_iter()
-                    .map(|entry| match entry {
-                        // `MenuItem::action` wants a concrete action, and the row's
-                        // action is chosen from the layout at runtime.
-                        MenuEntry::Action { label, action, .. } => MenuItem::Action {
-                            name: label.into(),
-                            action: boxed_action(action),
-                            os_action: None,
-                            checked: false,
-                        },
-                        MenuEntry::Separator => MenuItem::separator(),
-                        MenuEntry::Services => {
-                            MenuItem::os_submenu("Services", SystemMenuType::Services)
-                        }
-                    })
-                    .collect(),
-            })
-            .collect(),
-    );
+    // A native menu bar is a macOS concept. gpui only keeps the menus handed to
+    // `set_menus` in the platform's state on Windows and Linux — retrievable
+    // through `get_menus()`, and installing no menu bar of their own; the app
+    // draws its own Windows and Linux menus from the same layout. Only macOS is
+    // therefore given the macOS layout.
+    if current_platform_kind() == PlatformKind::MacOs {
+        cx.set_menus(
+            layout(PlatformKind::MacOs)
+                .into_iter()
+                .map(|group| Menu {
+                    name: group.title.into(),
+                    items: group
+                        .entries
+                        .into_iter()
+                        .map(|entry| match entry {
+                            // `MenuItem::action` wants a concrete action, and the
+                            // row's action is chosen from the layout at runtime.
+                            MenuEntry::Action { label, action, .. } => MenuItem::Action {
+                                name: label.into(),
+                                action: boxed_action(action),
+                                os_action: None,
+                                checked: false,
+                            },
+                            MenuEntry::Separator => MenuItem::separator(),
+                            MenuEntry::Services => {
+                                MenuItem::os_submenu("Services", SystemMenuType::Services)
+                            }
+                        })
+                        .collect(),
+                })
+                .collect(),
+        );
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MenuAction, MenuEntry, MenuGroup, keybindings, layout};
+    use super::{
+        MenuAction, MenuEntry, MenuGroup, boxed_action, keybindings, layout, platform_aliases,
+    };
     use crate::platform::PlatformKind;
 
     fn actions_of(group: &MenuGroup) -> Vec<MenuAction> {
@@ -657,6 +679,116 @@ mod tests {
             assert!(keys.contains(&(MenuAction::About, "ctrl-shift-a")));
             assert!(keys.contains(&(MenuAction::OpenRepository, "ctrl-shift-r")));
         }
+    }
+
+    #[test]
+    fn the_windows_and_linux_keymaps_are_the_layout_spelled_out() {
+        // Written out instead of read back from `layout`: comparing the two lists
+        // again passes on a wrong key written into both of them, and this is the
+        // list the keymap really binds.
+        let expected = vec![
+            (MenuAction::OpenFile, "ctrl-o"),
+            (MenuAction::Quit, "ctrl-q"),
+            (MenuAction::Preferences, "ctrl-,"),
+            (MenuAction::ZoomIn, "ctrl-+"),
+            (MenuAction::ZoomOut, "ctrl--"),
+            (MenuAction::ZoomReset, "ctrl-0"),
+            (MenuAction::ToggleDesktopLyrics, "ctrl-shift-l"),
+            (MenuAction::OpenRepository, "ctrl-shift-r"),
+            (MenuAction::About, "ctrl-shift-a"),
+        ];
+        // Linux differs from Windows only in the Quit row's label, which is not a
+        // key, so both platforms bind the same list.
+        for kind in [PlatformKind::Windows, PlatformKind::Linux] {
+            assert_eq!(keybindings(kind), expected, "{kind:?} 的绑定列表");
+        }
+    }
+
+    #[test]
+    fn macos_keeps_the_bare_equal_key_as_a_hidden_zoom_in_alias() {
+        // Aliases and menu rows are separate lists: an alias must not become a
+        // menu row, and ⌘= must not drop out of the keymap because the layout
+        // advertises ⌘+ only (the two are not the same physical key).
+        assert_eq!(
+            platform_aliases(PlatformKind::MacOs),
+            vec![(MenuAction::ZoomIn, "secondary-=")]
+        );
+        assert!(platform_aliases(PlatformKind::Windows).is_empty());
+        assert!(platform_aliases(PlatformKind::Linux).is_empty());
+        assert!(
+            !keybindings(PlatformKind::MacOs).contains(&(MenuAction::ZoomIn, "secondary-=")),
+            "别名不该作为菜单行出现"
+        );
+    }
+
+    #[test]
+    fn every_menu_action_maps_to_its_own_gpui_action() {
+        // The whole table is pinned: swapping two rows (`ZoomOut` for `ZoomReset`,
+        // say) leaves the action names unique, so counting them would not notice.
+        let expected = [
+            (MenuAction::About, "neoviolet_gui::About"),
+            (MenuAction::Preferences, "neoviolet_gui::Preferences"),
+            (MenuAction::Quit, "neoviolet_gui::QuitApp"),
+            (MenuAction::ZoomIn, "neoviolet_gui::ZoomIn"),
+            (MenuAction::ZoomOut, "neoviolet_gui::ZoomOut"),
+            (MenuAction::ZoomReset, "neoviolet_gui::ZoomReset"),
+            (MenuAction::OpenRepository, "neoviolet_gui::OpenRepository"),
+            (MenuAction::OpenFile, "neoviolet_gui::OpenFile"),
+            (
+                MenuAction::ToggleDesktopLyrics,
+                "neoviolet_gui::ToggleDesktopLyrics",
+            ),
+            (MenuAction::MinimizeWindow, "neoviolet_gui::MinimizeWindow"),
+            (MenuAction::ZoomWindow, "neoviolet_gui::ZoomWindow"),
+            (
+                MenuAction::HideApplication,
+                "neoviolet_gui::HideApplication",
+            ),
+            (
+                MenuAction::HideOtherApplications,
+                "neoviolet_gui::HideOtherApplications",
+            ),
+            (
+                MenuAction::ShowAllApplications,
+                "neoviolet_gui::ShowAllApplications",
+            ),
+        ];
+
+        let mut mapped = Vec::new();
+        let mut names: Vec<&str> = Vec::new();
+        for (action, want) in expected {
+            assert_eq!(boxed_action(action).name(), want, "{action:?} 映射错了动作");
+            mapped.push(action as u8);
+            names.push(want);
+        }
+
+        let mut unique = names.clone();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(
+            unique.len(),
+            names.len(),
+            "两个菜单动作映射到了同一个 gpui 动作"
+        );
+
+        // ... and every action the layouts name has a row here, with none left over.
+        let mut declared: Vec<u8> = [
+            PlatformKind::MacOs,
+            PlatformKind::Windows,
+            PlatformKind::Linux,
+        ]
+        .iter()
+        .flat_map(|kind| layout(*kind))
+        .flat_map(|group| group.entries)
+        .filter_map(|entry| match entry {
+            MenuEntry::Action { action, .. } => Some(action as u8),
+            _ => None,
+        })
+        .collect();
+        declared.sort_unstable();
+        declared.dedup();
+        mapped.sort_unstable();
+        assert_eq!(mapped, declared, "映射表必须与布局里的动作一一对应");
     }
 
     #[test]
