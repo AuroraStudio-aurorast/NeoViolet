@@ -1,13 +1,12 @@
+use std::cell::Cell;
+use std::rc::Rc;
+
 use gpui::prelude::*;
 use gpui::*;
-use yororen_ui::headless::dropdown_menu::{
-    DropdownItem, DropdownMenuGroup, DropdownMenuItem, DropdownMenuState, dropdown_menu,
-};
-use yororen_ui::headless::icon::IconSource;
+use yororen_ui::headless::icon::{IconSource, icon};
 use yororen_ui::headless::icon_button::icon_button;
-use yororen_ui::headless::menu::MenuState;
 
-use crate::menus::{self, MenuEntry};
+use crate::menus::{self, MenuAction, MenuEntry};
 use crate::neo_violet_app::NeoVioletApp;
 use crate::platform::{PlatformKind, current_platform_kind};
 use crate::state::AppState;
@@ -81,6 +80,18 @@ pub fn hamburger_icon(color: Hsla) -> Div {
         .child(div().w_full().h(px(2.0)).bg(color))
         .child(div().w_full().h(px(2.0)).bg(color))
 }
+
+/// Height of the title bar, in points.
+const TITLEBAR_HEIGHT: f32 = 30.0;
+
+/// Width of the panel the menu drops down.
+const MENU_PANEL_WIDTH: f32 = 240.0;
+
+/// Gap between the panel and the trigger it hangs from.
+const MENU_PANEL_GAP: f32 = 4.0;
+
+/// Least distance the panel keeps from the window's edges.
+const MENU_PANEL_MARGIN: f32 = 8.0;
 
 /// The eight invisible grab strips around a `width` × `height` window, in
 /// window coordinates, `thickness` deep.
@@ -205,46 +216,28 @@ fn resize_cursor(edge: ResizeEdge) -> CursorStyle {
 }
 
 pub struct Titlebar {
-    /// The dropdown shell: open/close, positioning and outside-click dismissal.
-    menu: Entity<DropdownMenuState>,
-    /// The menu itself. The registered menu renderer paints the panel and the
-    /// rows from these items, so this entity owns the highlight and the
-    /// selection callback those rows fire.
-    menu_body: Entity<MenuState>,
+    /// What the drawn menu remembers: whether it is open, and which row the
+    /// keyboard is on.
+    menu: Entity<DrawnMenu>,
     menu_focus_handle: FocusHandle,
+    /// Where the menu trigger was painted, which is what the panel hangs from.
+    /// gpui hands these bounds out while painting, so the panel follows the
+    /// trigger one frame behind rather than waiting for a measurement pass of its
+    /// own.
+    trigger_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
 }
 
 impl Titlebar {
     pub fn new(cx: &mut App) -> Self {
-        let menu = DropdownMenuState::new(cx);
-        let menu_body = MenuState::new(cx);
-        let menu_focus_handle = cx.focus_handle();
-        menu.update(cx, |state, _| {
-            state.set_dismiss_on_outside_click(true);
-        });
-        let menu_for_close = menu.clone();
-        menu_body.update(cx, |state, _| {
-            state.set_items(menu_items(current_platform_kind()));
-            state.set_on_select(move |id, window, cx| {
-                // The shell fires the item's callback without closing itself.
-                menu_for_close.update(cx, |state, cx| {
-                    state.close();
-                    cx.notify();
-                });
-                if let Some(action) = menus::action_from_id(id.as_ref()) {
-                    menus::dispatch(action, window, cx);
-                }
-            });
-        });
         Self {
-            menu,
-            menu_body,
-            menu_focus_handle,
+            menu: cx.new(|_| DrawnMenu::new()),
+            menu_focus_handle: cx.focus_handle(),
+            trigger_bounds: Rc::new(Cell::new(None)),
         }
     }
 
     pub fn menu_is_open(&self, cx: &App) -> bool {
-        self.menu.read(cx).is_open()
+        self.menu.read(cx).open
     }
 
     pub fn render(
@@ -260,7 +253,6 @@ impl Titlebar {
         } else {
             px(8.0)
         };
-        let menu = self.menu.clone();
         let mut drag_area = div()
             .id("aria:titlebar:drag-area")
             .h_full()
@@ -295,7 +287,7 @@ impl Titlebar {
             .id("aria:region:titlebar")
             .relative()
             .w_full()
-            .h(px(30.0))
+            .h(px(TITLEBAR_HEIGHT))
             .bg(crate::theme_colors::sunken(cx))
             .flex()
             .flex_row()
@@ -303,79 +295,118 @@ impl Titlebar {
             .child(drag_area);
 
         if plan.menu_button {
+            let rows = menu_rows(current_platform_kind(), lyrics_overlay_is_on(cx));
+            let (is_open, highlighted) = {
+                let state = self.menu.read(cx);
+                (state.open, state.highlighted)
+            };
             let menu_focus_handle = self.menu_focus_handle.clone();
-            let trigger = hamburger_icon(crate::theme_colors::secondary(cx))
-                .id("aria:titlebar:menu-trigger")
-                .on_click({
-                    let menu = menu.clone();
-                    let menu_focus_handle = menu_focus_handle.clone();
-                    move |_, window, cx| {
-                        if button_action(TitlebarButton::Menu) == TitlebarAction::ToggleMenu {
-                            let is_open = menu.update(cx, |state, cx| {
-                                state.toggle();
-                                cx.notify();
-                                state.is_open()
-                            });
-                            if is_open {
-                                window.focus(&menu_focus_handle);
-                            }
-                        }
+            let trigger = hamburger_icon(if is_open {
+                crate::theme_colors::primary(cx)
+            } else {
+                crate::theme_colors::secondary(cx)
+            })
+            // gpui hands these bounds out while it paints, a frame after the
+            // panel would have needed them, so the panel follows the trigger
+            // rather than waiting for it. This listener lives on the bare `Div`,
+            // hence before the id that makes the element stateful.
+            .on_children_prepainted({
+                let trigger_bounds = self.trigger_bounds.clone();
+                move |bounds, _window, _cx| {
+                    if let Some(bounds) = bounds.first() {
+                        trigger_bounds.set(Some(*bounds));
                     }
-                })
-                .into_any_element();
-            let menu_focus_handle = self.menu_focus_handle.clone();
-            let menu_body_for_keys = self.menu_body.clone();
-            let menu_for_close = menu.clone();
+                }
+            })
+            .id("aria:titlebar:menu-trigger")
+            .p(px(4.0))
+            .rounded(px(4.0))
+            .when(is_open, |this| this.bg(crate::theme_colors::hover(cx)))
+            .hover(|this| this.bg(crate::theme_colors::hover(cx)))
+            .on_click({
+                let menu = self.menu.clone();
+                let menu_focus_handle = menu_focus_handle.clone();
+                move |_, window, cx| {
+                    if button_action(TitlebarButton::Menu) != TitlebarAction::ToggleMenu {
+                        return;
+                    }
+                    let opened = menu.update(cx, |state, cx| {
+                        state.open = !state.open;
+                        state.highlighted = None;
+                        cx.notify();
+                        state.open
+                    });
+                    if opened {
+                        window.focus(&menu_focus_handle);
+                    }
+                }
+            });
+
+            let panel = deferred(
+                anchored()
+                    // The panel hangs off the trigger's bottom-right corner and
+                    // grows leftwards and downwards, which is where a menu at the
+                    // end of a title bar has room. gpui pulls it back inside the
+                    // window when it would not fit; placing a panel by hand is how
+                    // a menu ends up half past the window edge.
+                    .anchor(Corner::TopRight)
+                    .position(anchor_for_panel(
+                        self.trigger_bounds.get(),
+                        window.viewport_size(),
+                    ))
+                    .offset(point(px(0.0), px(MENU_PANEL_GAP)))
+                    .snap_to_window_with_margin(px(MENU_PANEL_MARGIN))
+                    .child(menu_panel(rows, highlighted, self.menu.clone(), window, cx)),
+            );
+
+            let menu_for_keys = self.menu.clone();
             row = row.child(
                 div()
                     .track_focus(&menu_focus_handle)
                     .on_key_down(move |event, window, cx| {
                         let key = event.keystroke.key.to_ascii_lowercase();
+                        let rows = menu_rows(current_platform_kind(), lyrics_overlay_is_on(cx));
                         let step = match key.as_str() {
                             "up" | "arrowup" => Some(false),
                             "down" | "arrowdown" => Some(true),
                             _ => None,
                         };
                         if let Some(forward) = step {
-                            let target = {
-                                let state = menu_body_for_keys.read(cx);
-                                next_row_index(&state.items, state.highlighted_index, forward)
-                            };
-                            menu_body_for_keys.update(cx, |state, cx| {
-                                if let Some(index) = target {
-                                    state.highlighted_index = Some(index);
-                                }
+                            menu_for_keys.update(cx, |state, cx| {
+                                state.highlighted =
+                                    next_row_index(&rows, state.highlighted, forward);
                                 cx.notify();
                             });
                             cx.stop_propagation();
                             return;
                         }
-                        match key.as_str() {
-                            "enter" | "return" => menu_body_for_keys.update(cx, |state, cx| {
-                                state.select_highlighted(window, cx);
-                                cx.notify();
+                        let chosen = match key.as_str() {
+                            "enter" | "return" => menu_for_keys.update(cx, |state, cx| {
+                                let chosen =
+                                    state.highlighted.and_then(|index| match rows.get(index) {
+                                        Some(MenuRow::Item { action, .. }) => Some(*action),
+                                        _ => None,
+                                    });
+                                if chosen.is_some() {
+                                    state.open = false;
+                                    state.highlighted = None;
+                                    cx.notify();
+                                }
+                                chosen
                             }),
-                            "escape" => menu_for_close.update(cx, |state, cx| {
-                                state.close();
-                                cx.notify();
-                            }),
+                            "escape" => {
+                                close_menu(&menu_for_keys, cx);
+                                None
+                            }
                             _ => return,
-                        }
+                        };
                         cx.stop_propagation();
+                        if let Some(action) = chosen {
+                            menus::dispatch(action, window, cx);
+                        }
                     })
-                    .child(
-                        dropdown_menu("aria:titlebar:menu", menu.clone())
-                            .trigger(trigger)
-                            .content(
-                                yororen_ui::headless::menu::menu(
-                                    "aria:titlebar:menu-body",
-                                    self.menu_body.clone(),
-                                )
-                                .render(cx)
-                                .into_any_element(),
-                            )
-                            .render(cx),
-                    ),
+                    .child(trigger)
+                    .when(is_open, |this| this.child(panel)),
             );
         }
 
@@ -448,19 +479,102 @@ impl Titlebar {
     }
 }
 
-/// The rows the drawn menu shows, in the order the renderer paints them.
+/// What the drawn menu remembers between frames.
+pub struct DrawnMenu {
+    open: bool,
+    /// The row the keyboard is on, as an index into [`menu_rows`].
+    highlighted: Option<usize>,
+}
+
+impl DrawnMenu {
+    fn new() -> Self {
+        Self {
+            open: false,
+            highlighted: None,
+        }
+    }
+}
+
+impl Render for DrawnMenu {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
+/// One row of the panel the menu drops down.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MenuRow {
+    /// The title over a group of rows.
+    Heading(&'static str),
+    /// A row that runs `action`. `shortcut` is the key the layout advertises for
+    /// it, which is what the tests read; the panel itself shows the binding gpui
+    /// reports, so an alias the layout does not list still shows up.
+    Item {
+        action: MenuAction,
+        label: &'static str,
+        shortcut: Option<&'static str>,
+        /// Whether the row stands for something that is currently on.
+        checked: bool,
+    },
+    Separator,
+}
+
+/// The rows the panel shows, in the order it paints them.
 ///
-/// The shell's menu renderer paints a `Group` as a section heading rather than
-/// as a container, so the layout's groups are flattened into a heading followed
-/// by their own rows.
-/// The next row the user can actually activate, wrapping around.
+/// Each group of the layout becomes a heading with its own rows under it — the
+/// shape of a menu bar, flattened into the one panel a menu drawn by the app can
+/// show. The separators a layout writes inside a group are kept; runs of them
+/// collapse into one, and the list neither starts nor ends with one, since a gap
+/// is meant to say "something else follows" and two gaps, or a gap against the
+/// panel's own edge, say nothing.
 ///
-/// The shell's `MenuState` treats only separators as unselectable, and the menu
-/// renderer paints a section heading as plain text that never highlights, so
-/// stepping with the library's own navigation would look like a lost keypress
-/// whenever it landed on a heading or a separator.
-fn next_row_index(items: &[DropdownItem], from: Option<usize>, forward: bool) -> Option<usize> {
-    let len = items.len();
+/// `lyrics_shown` is whether the desktop lyrics overlay is on, which is what the
+/// lyrics row's check mark reports.
+pub fn menu_rows(kind: PlatformKind, lyrics_shown: bool) -> Vec<MenuRow> {
+    let mut rows = Vec::new();
+    for (index, group) in menus::layout(kind).into_iter().enumerate() {
+        if index > 0 {
+            push_separator(&mut rows);
+        }
+        rows.push(MenuRow::Heading(group.title));
+        for entry in group.entries {
+            match entry {
+                MenuEntry::Action {
+                    action,
+                    label,
+                    shortcut,
+                } => rows.push(MenuRow::Item {
+                    action,
+                    label,
+                    shortcut,
+                    checked: action == MenuAction::ToggleDesktopLyrics && lyrics_shown,
+                }),
+                MenuEntry::Separator => push_separator(&mut rows),
+                // macOS fills its own Services submenu in; there is nothing here
+                // to draw for it.
+                MenuEntry::Services => {}
+            }
+        }
+    }
+    while matches!(rows.last(), Some(MenuRow::Separator)) {
+        rows.pop();
+    }
+    rows
+}
+
+/// Adds a separator unless the list is empty or already ends with one.
+fn push_separator(rows: &mut Vec<MenuRow>) {
+    if !rows.is_empty() && !matches!(rows.last(), Some(MenuRow::Separator)) {
+        rows.push(MenuRow::Separator);
+    }
+}
+
+/// The next row the keyboard can run, wrapping around.
+///
+/// Headings and separators are skipped: neither runs anything, so stopping on one
+/// would look like a lost keypress.
+fn next_row_index(rows: &[MenuRow], from: Option<usize>, forward: bool) -> Option<usize> {
+    let len = rows.len();
     if len == 0 {
         return None;
     }
@@ -471,7 +585,7 @@ fn next_row_index(items: &[DropdownItem], from: Option<usize>, forward: bool) ->
         (None, false) => len - 1,
     };
     for _ in 0..len {
-        if matches!(items.get(index), Some(DropdownItem::Item(_))) {
+        if matches!(rows.get(index), Some(MenuRow::Item { .. })) {
             return Some(index);
         }
         index = if forward {
@@ -483,147 +597,360 @@ fn next_row_index(items: &[DropdownItem], from: Option<usize>, forward: bool) ->
     None
 }
 
-fn menu_items(kind: PlatformKind) -> Vec<DropdownItem> {
-    let mut items = Vec::new();
-    for (index, group) in menus::layout(kind).into_iter().enumerate() {
-        if index > 0 {
-            items.push(DropdownItem::Separator);
-        }
-        items.push(DropdownItem::Group(DropdownMenuGroup {
-            label: group.title.into(),
-            items: Vec::new(),
-        }));
-        for entry in group.entries {
-            match entry {
-                MenuEntry::Action {
-                    action,
-                    label,
-                    shortcut,
-                } => {
-                    let mut item = DropdownMenuItem::new(menus::action_id(action), label);
-                    if let Some(shortcut) = shortcut {
-                        item = item.shortcut(shortcut.split('-').map(str::to_string).collect());
-                    }
-                    items.push(DropdownItem::Item(item));
-                }
-                MenuEntry::Separator => items.push(DropdownItem::Separator),
-                MenuEntry::Services => {}
+/// Closes the menu and lets go of the highlighted row.
+fn close_menu(menu: &Entity<DrawnMenu>, cx: &mut App) {
+    menu.update(cx, |state, cx| {
+        state.open = false;
+        state.highlighted = None;
+        cx.notify();
+    });
+}
+
+/// Whether the desktop lyrics overlay is on.
+fn lyrics_overlay_is_on(cx: &App) -> bool {
+    *cx.global::<AppState>()
+        .desktop_lyrics_enabled
+        .lock()
+        .unwrap()
+}
+
+/// Where the panel's top-right corner goes: under the trigger once its bounds are
+/// known, and under the trailing edge of the title bar before that.
+fn anchor_for_panel(trigger: Option<Bounds<Pixels>>, viewport: Size<Pixels>) -> Point<Pixels> {
+    trigger
+        .map(|bounds| bounds.corner(Corner::BottomRight))
+        .unwrap_or_else(|| {
+            point(
+                px(f32::from(viewport.width) - MENU_PANEL_MARGIN),
+                px(TITLEBAR_HEIGHT),
+            )
+        })
+}
+
+/// The panel the menu drops down.
+///
+/// The panel is ours rather than the UI library's dropdown because its position
+/// has to come from gpui's anchored element — see [`anchor_for_panel`]. Its rows
+/// come from [`menu_rows`], and its shortcut column from gpui's own answer for the
+/// action, so the key a row displays is the key that is really bound.
+fn menu_panel(
+    rows: Vec<MenuRow>,
+    highlighted: Option<usize>,
+    menu: Entity<DrawnMenu>,
+    window: &mut Window,
+    cx: &mut App,
+) -> impl IntoElement {
+    let panel_bg = crate::theme_colors::elevated(cx);
+    let border = crate::theme_colors::border(cx);
+    let hover = crate::theme_colors::hover(cx);
+    let label_color = crate::theme_colors::primary(cx);
+    let dim = crate::theme_colors::tertiary(cx);
+
+    let mut panel = div()
+        .id("aria:titlebar:menu-panel")
+        .w(px(MENU_PANEL_WIDTH))
+        .p(px(4.0))
+        .flex()
+        .flex_col()
+        .bg(panel_bg)
+        .border_1()
+        .border_color(border)
+        .rounded(px(6.0))
+        .shadow(vec![BoxShadow {
+            color: hsla(0.0, 0.0, 0.0, 0.35),
+            blur_radius: px(12.0),
+            spread_radius: px(0.0),
+            offset: point(px(0.0), px(4.0)),
+        }])
+        .on_mouse_down_out({
+            let menu = menu.clone();
+            move |_, _, cx| close_menu(&menu, cx)
+        });
+
+    for (index, row) in rows.into_iter().enumerate() {
+        panel = match row {
+            MenuRow::Heading(title) => panel.child(
+                div()
+                    .px(px(8.0))
+                    .pt(px(6.0))
+                    .pb(px(2.0))
+                    .text_size(px(11.0))
+                    .text_color(dim)
+                    .child(title),
+            ),
+            MenuRow::Separator => panel.child(div().w_full().h(px(1.0)).my(px(4.0)).bg(border)),
+            MenuRow::Item {
+                action,
+                label,
+                checked,
+                ..
+            } => {
+                let package = menus::boxed_action(action);
+                let key_text = window.keystroke_text_for(package.as_ref());
+                // An action with no binding answers with its own name, which is no
+                // shortcut at all and does not belong in the column.
+                let shortcut = (key_text != package.as_ref().name()).then_some(key_text);
+                let action_id = menus::action_id(action);
+                let menu_for_click = menu.clone();
+                panel.child(
+                    div()
+                        .id(ElementId::Name(format!("aria:titlebar:{action_id}").into()))
+                        .h(px(24.0))
+                        .px(px(8.0))
+                        .rounded(px(4.0))
+                        .flex()
+                        .flex_row()
+                        .items_center()
+                        .gap(px(8.0))
+                        .cursor(CursorStyle::PointingHand)
+                        .when(highlighted == Some(index), |this| this.bg(hover))
+                        .hover(move |this| this.bg(hover))
+                        .child(
+                            // A column of its own, so labels line up whether or
+                            // not a row is checked.
+                            div()
+                                .w(px(14.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .when(checked, |this| {
+                                    this.child(
+                                        icon(
+                                            ElementId::Name(
+                                                format!("aria:titlebar:{action_id}:check").into(),
+                                            ),
+                                            IconSource::Builtin("check".into()),
+                                            cx,
+                                        )
+                                        .size(px(12.0))
+                                        .color(label_color)
+                                        .render(cx),
+                                    )
+                                }),
+                        )
+                        .child(
+                            div()
+                                .flex_grow()
+                                .text_size(px(13.0))
+                                .text_color(label_color)
+                                .child(label),
+                        )
+                        .when_some(shortcut, |this, shortcut| {
+                            this.child(div().text_size(px(11.0)).text_color(dim).child(shortcut))
+                        })
+                        .on_click(move |_, window, cx| {
+                            close_menu(&menu_for_click, cx);
+                            menus::dispatch(action, window, cx);
+                        }),
+                )
             }
-        }
+        };
     }
-    items
+    panel
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        TitlebarAction, TitlebarButton, button_action, edge_for_point, edge_strips, menu_items,
-        next_row_index,
+        MenuRow, TitlebarAction, TitlebarButton, anchor_for_panel, button_action, edge_for_point,
+        edge_strips, menu_rows, next_row_index,
     };
+    use crate::menus::{MenuAction, MenuEntry};
     use crate::platform::PlatformKind;
-    use gpui::ResizeEdge;
-    use yororen_ui::headless::dropdown_menu::{DropdownItem, DropdownMenuGroup, DropdownMenuItem};
+    use gpui::{Bounds, ResizeEdge, point, px, size};
 
-    #[test]
-    fn the_drawn_menu_keeps_separators_and_shortcuts() {
-        let items = menu_items(PlatformKind::Windows);
-        assert!(
-            items
-                .iter()
-                .any(|item| matches!(item, DropdownItem::Separator))
-        );
-        let shortcut = items.iter().find_map(|item| match item {
-            DropdownItem::Item(item) => {
-                (item.label.as_ref() == "Open File…").then(|| item.shortcut.clone())
-            }
-            _ => None,
-        });
-        assert_eq!(
-            shortcut,
-            Some(Some(vec!["ctrl".to_string(), "o".to_string()]))
-        );
+    /// The actions a layout lists, in order, to compare against the rows a panel
+    /// would draw.
+    fn listed_actions(kind: PlatformKind) -> Vec<MenuAction> {
+        crate::menus::layout(kind)
+            .into_iter()
+            .flat_map(|group| group.entries)
+            .filter_map(|entry| match entry {
+                MenuEntry::Action { action, .. } => Some(action),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn drawn_actions(rows: &[MenuRow]) -> Vec<MenuAction> {
+        rows.iter()
+            .filter_map(|row| match row {
+                MenuRow::Item { action, .. } => Some(*action),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
     fn the_drawn_menu_heads_each_group_with_its_title() {
-        let items = menu_items(PlatformKind::Windows);
-        let headings: Vec<String> = items
+        let rows = menu_rows(PlatformKind::Windows, false);
+        let headings: Vec<&str> = rows
             .iter()
-            .filter_map(|item| match item {
-                DropdownItem::Group(group) => Some(group.label.to_string()),
+            .filter_map(|row| match row {
+                MenuRow::Heading(title) => Some(*title),
                 _ => None,
             })
             .collect();
         assert_eq!(headings, vec!["File", "Edit", "View", "Help"]);
-        // The renderer paints a `Group` as a heading, not as a container, so a
-        // heading must not carry rows of its own — they would never be painted.
-        assert!(items.iter().all(|item| match item {
-            DropdownItem::Group(group) => group.items.is_empty(),
-            _ => true,
-        }));
-        // Flattening must not lose or duplicate a row.
-        let rows = items
-            .iter()
-            .filter(|item| matches!(item, DropdownItem::Item(_)))
-            .count();
-        let actions: usize = crate::menus::layout(PlatformKind::Windows)
-            .iter()
-            .map(|group| {
-                group
-                    .entries
-                    .iter()
-                    .filter(|entry| matches!(entry, crate::menus::MenuEntry::Action { .. }))
-                    .count()
-            })
-            .sum();
-        assert_eq!(rows, actions);
     }
 
-    fn rows_with_headings() -> Vec<DropdownItem> {
+    #[test]
+    fn the_drawn_menu_keeps_every_row_exactly_once() {
+        for kind in [
+            PlatformKind::MacOs,
+            PlatformKind::Windows,
+            PlatformKind::Linux,
+        ] {
+            let rows = menu_rows(kind, false);
+            assert_eq!(
+                drawn_actions(&rows),
+                listed_actions(kind),
+                "{kind:?} 面板必须把 layout 的每一行都画出来，且只画一次"
+            );
+        }
+    }
+
+    #[test]
+    fn the_drawn_menu_keeps_separators_where_they_separate_things() {
+        for kind in [
+            PlatformKind::MacOs,
+            PlatformKind::Windows,
+            PlatformKind::Linux,
+        ] {
+            let rows = menu_rows(kind, false);
+            // A gap says "something else follows", so the panel must not open or
+            // close with one, and two in a row say nothing at all.
+            assert!(
+                !matches!(rows.first(), Some(MenuRow::Separator)),
+                "{kind:?}"
+            );
+            assert!(!matches!(rows.last(), Some(MenuRow::Separator)), "{kind:?}");
+            assert!(
+                rows.windows(2)
+                    .all(|pair| !matches!(pair, [MenuRow::Separator, MenuRow::Separator])),
+                "{kind:?} 连续分隔线没有意义"
+            );
+            // macOS's application menu separates about/hide/quit, so it keeps at
+            // least the gaps the layout writes.
+            if kind == PlatformKind::MacOs {
+                assert!(rows.iter().any(|row| matches!(row, MenuRow::Separator)));
+            }
+        }
+    }
+
+    #[test]
+    fn the_drawn_menu_keeps_the_layout_shortcuts() {
+        let rows = menu_rows(PlatformKind::Windows, false);
+        let shortcut = rows.iter().find_map(|row| match row {
+            MenuRow::Item {
+                label, shortcut, ..
+            } if *label == "Open File…" => Some(*shortcut),
+            _ => None,
+        });
+        assert_eq!(shortcut, Some(Some("ctrl-o")));
+    }
+
+    #[test]
+    fn the_drawn_menu_leaves_services_to_macos() {
+        // macOS fills its own Services submenu in, so the panel has nothing to
+        // show for it.
+        let rows = menu_rows(PlatformKind::MacOs, false);
+        assert!(
+            !rows
+                .iter()
+                .any(|row| matches!(row, MenuRow::Heading(title) if *title == "Services")),
+            "Services 由 macOS 自己填，面板里不该出现"
+        );
+    }
+
+    #[test]
+    fn the_drawn_menu_checks_the_lyrics_row_when_the_overlay_is_on() {
+        let checked_count = |lyrics_shown| {
+            menu_rows(PlatformKind::Windows, lyrics_shown)
+                .iter()
+                .filter(|row| matches!(row, MenuRow::Item { checked: true, .. }))
+                .count()
+        };
+        assert_eq!(checked_count(false), 0);
+        assert_eq!(checked_count(true), 1, "只在歌词行上打勾");
+        assert!(
+            menu_rows(PlatformKind::Windows, true)
+                .iter()
+                .any(|row| matches!(
+                    row,
+                    MenuRow::Item {
+                        action: MenuAction::ToggleDesktopLyrics,
+                        checked: true,
+                        ..
+                    }
+                ))
+        );
+    }
+
+    #[test]
+    fn the_panel_anchors_under_the_trigger() {
+        let trigger = Bounds::new(point(px(700.0), px(0.0)), size(px(24.0), px(30.0)));
+        assert_eq!(
+            anchor_for_panel(Some(trigger), size(px(800.0), px(600.0))),
+            point(px(724.0), px(30.0)),
+            "面板挂在触发器的右下角"
+        );
+        // Before the trigger has been painted there is still a home for the panel:
+        // the trailing edge of the title bar, a margin's width in.
+        assert_eq!(
+            anchor_for_panel(None, size(px(800.0), px(600.0))),
+            point(px(792.0), px(30.0))
+        );
+    }
+
+    fn rows_with_headings() -> Vec<MenuRow> {
         vec![
-            DropdownItem::Group(DropdownMenuGroup {
-                label: "File".into(),
-                items: Vec::new(),
-            }),
-            DropdownItem::Item(DropdownMenuItem::new("open-file", "Open File…")),
-            DropdownItem::Item(DropdownMenuItem::new("quit", "Exit")),
-            DropdownItem::Separator,
-            DropdownItem::Group(DropdownMenuGroup {
-                label: "Help".into(),
-                items: Vec::new(),
-            }),
-            DropdownItem::Item(DropdownMenuItem::new("about", "About")),
+            MenuRow::Heading("File"),
+            MenuRow::Item {
+                action: MenuAction::OpenFile,
+                label: "Open File…",
+                shortcut: Some("ctrl-o"),
+                checked: false,
+            },
+            MenuRow::Item {
+                action: MenuAction::Quit,
+                label: "Exit",
+                shortcut: Some("ctrl-q"),
+                checked: false,
+            },
+            MenuRow::Separator,
+            MenuRow::Heading("Help"),
+            MenuRow::Item {
+                action: MenuAction::About,
+                label: "About",
+                shortcut: Some("ctrl-shift-a"),
+                checked: false,
+            },
         ]
     }
 
     #[test]
     fn keyboard_navigation_skips_headings_and_separators() {
-        let items = rows_with_headings();
-        assert_eq!(next_row_index(&items, None, true), Some(1));
-        assert_eq!(next_row_index(&items, Some(1), true), Some(2));
+        let rows = rows_with_headings();
+        assert_eq!(next_row_index(&rows, None, true), Some(1));
+        assert_eq!(next_row_index(&rows, Some(1), true), Some(2));
         assert_eq!(
-            next_row_index(&items, Some(2), true),
+            next_row_index(&rows, Some(2), true),
             Some(5),
             "跳过分隔符与组标题，直接落到最后一行"
         );
         assert_eq!(
-            next_row_index(&items, Some(5), true),
+            next_row_index(&rows, Some(5), true),
             Some(1),
             "循环回到第一行"
         );
-        assert_eq!(next_row_index(&items, Some(1), false), Some(5));
-        assert_eq!(next_row_index(&items, Some(5), false), Some(2));
+        assert_eq!(next_row_index(&rows, Some(1), false), Some(5));
+        assert_eq!(next_row_index(&rows, Some(5), false), Some(2));
     }
 
     #[test]
     fn keyboard_navigation_gives_up_without_any_row() {
-        let headings_only = vec![
-            DropdownItem::Separator,
-            DropdownItem::Group(DropdownMenuGroup {
-                label: "File".into(),
-                items: Vec::new(),
-            }),
-        ];
+        let headings_only = vec![MenuRow::Separator, MenuRow::Heading("File")];
         assert_eq!(next_row_index(&headings_only, None, true), None);
         assert_eq!(next_row_index(&[], None, true), None);
     }

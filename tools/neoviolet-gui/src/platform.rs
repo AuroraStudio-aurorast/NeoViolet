@@ -296,14 +296,44 @@ pub struct ChromePlan {
     pub drag_via_control_area: bool,
 }
 
+/// The environment variable that turns the drawn menu off on the one platform
+/// that has a system menu bar of its own — the way Zed's
+/// `ZED_USE_CROSS_PLATFORM_MENU` switches the same thing on.
+pub const USE_DRAWN_MENU: &str = "NEOVIOLET_USE_DRAWN_MENU";
+
+/// Whether the drawn menu is wanted on a platform that also has a system menu bar.
+///
+/// macOS draws the menu itself too, for now, so that it can be worked on beside
+/// the system one. Setting the variable to `0` gives the platform its system menu
+/// bar back.
+pub fn drawn_menu_requested() -> bool {
+    match std::env::var(USE_DRAWN_MENU) {
+        Ok(value) => value != "0",
+        Err(_) => cfg!(target_os = "macos"),
+    }
+}
+
 /// What `kind` draws, given the client decorations in play.
 ///
 /// `client_decorations` is what the caller asked for at window creation and what
 /// the window actually got at render time: on Linux the compositor may grant
 /// server decorations anyway, in which case the desktop already draws a title
 /// bar and drawing a second one would double it. `fullscreen` leaves the drag
-/// area at its platform value so callers need not special-case it.
+/// area at its platform value so callers need not special-case it. The menu
+/// button follows [`USE_DRAWN_MENU`], which is read here rather than by the
+/// callers so window creation and every frame agree.
 pub fn chrome_plan(kind: PlatformKind, client_decorations: bool, fullscreen: bool) -> ChromePlan {
+    chrome_plan_for(kind, client_decorations, fullscreen, drawn_menu_requested())
+}
+
+/// [`chrome_plan`] with the drawn-menu switch handed in rather than read from the
+/// environment, which is what the tests call.
+fn chrome_plan_for(
+    kind: PlatformKind,
+    client_decorations: bool,
+    fullscreen: bool,
+    drawn_menu: bool,
+) -> ChromePlan {
     let mut plan = match kind {
         // The native frame and traffic lights stay; only the area under the
         // transparent title bar becomes ours. Starting the move is ours too:
@@ -314,7 +344,7 @@ pub fn chrome_plan(kind: PlatformKind, client_decorations: bool, fullscreen: boo
             titlebar: true,
             frame: false,
             window_buttons: false,
-            menu_button: false,
+            menu_button: drawn_menu,
             drag_via_control_area: false,
         },
         // No caption, but the frame keeps resizing and snapping, and the caption
@@ -519,10 +549,11 @@ mod tests {
 
     #[test]
     fn macos_keeps_its_native_frame_and_traffic_lights() {
-        let plan = chrome_plan(
+        let plan = chrome_plan_for(
             PlatformKind::MacOs,
             /* client_decorations */ false,
             /* fullscreen */ false,
+            /* drawn_menu */ false,
         );
         assert_eq!(
             plan,
@@ -538,7 +569,7 @@ mod tests {
 
     #[test]
     fn windows_draws_its_own_caption_controls() {
-        let plan = chrome_plan(PlatformKind::Windows, false, false);
+        let plan = chrome_plan_for(PlatformKind::Windows, false, false, false);
         assert_eq!(
             plan,
             ChromePlan {
@@ -553,7 +584,7 @@ mod tests {
 
     #[test]
     fn linux_draws_everything_only_with_client_decorations() {
-        let client = chrome_plan(PlatformKind::Linux, true, false);
+        let client = chrome_plan_for(PlatformKind::Linux, true, false, false);
         assert_eq!(
             client,
             ChromePlan {
@@ -568,7 +599,7 @@ mod tests {
 
     #[test]
     fn linux_with_server_decorations_draws_nothing() {
-        let server = chrome_plan(PlatformKind::Linux, false, false);
+        let server = chrome_plan_for(PlatformKind::Linux, false, false, false);
         assert!(
             !server.titlebar && !server.frame && !server.window_buttons && !server.menu_button,
             "服务端装饰下必须什么都不画，否则会出现双标题栏"
@@ -583,7 +614,7 @@ mod tests {
             PlatformKind::Linux,
         ] {
             for client in [true, false] {
-                let plan = chrome_plan(kind, client, true);
+                let plan = chrome_plan_for(kind, client, true, false);
                 assert!(!plan.titlebar, "{kind:?} 全屏时不得绘制标题栏");
                 assert!(!plan.frame, "{kind:?} 全屏时不得绘制窗口边框");
                 assert!(!plan.window_buttons, "{kind:?} 全屏时不得绘制窗口按钮");
@@ -598,8 +629,18 @@ mod tests {
     }
 
     #[test]
+    fn the_drawn_menu_is_off_on_macos_unless_it_is_asked_for() {
+        // macOS has a system menu bar, so the drawn menu is opt-in there; the
+        // platforms gpui gives no menu bar to always draw their own.
+        assert!(!chrome_plan_for(PlatformKind::MacOs, false, false, false).menu_button);
+        assert!(chrome_plan_for(PlatformKind::MacOs, false, false, true).menu_button);
+        assert!(chrome_plan_for(PlatformKind::Windows, false, false, false).menu_button);
+        assert!(chrome_plan_for(PlatformKind::Linux, true, false, false).menu_button);
+    }
+
+    #[test]
     fn no_platform_needs_its_own_window_buttons_off_the_client_side() {
-        assert!(!chrome_plan(PlatformKind::MacOs, true, false).window_buttons);
+        assert!(!chrome_plan_for(PlatformKind::MacOs, true, false, false).window_buttons);
     }
 
     #[test]
@@ -618,8 +659,9 @@ mod tests {
             PlatformKind::Windows,
             PlatformKind::Linux,
         ] {
-            let plan = chrome_plan(
+            let plan = chrome_plan_for(
                 kind, /* client_decorations */ true, /* fullscreen */ false,
+                /* drawn_menu */ false,
             );
             assert_eq!(
                 plan.drag_via_control_area,

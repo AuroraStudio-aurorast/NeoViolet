@@ -76,26 +76,6 @@ pub fn action_id(action: MenuAction) -> &'static str {
     }
 }
 
-pub fn action_from_id(id: &str) -> Option<MenuAction> {
-    Some(match id {
-        "about" => MenuAction::About,
-        "preferences" => MenuAction::Preferences,
-        "quit" => MenuAction::Quit,
-        "zoom-in" => MenuAction::ZoomIn,
-        "zoom-out" => MenuAction::ZoomOut,
-        "zoom-reset" => MenuAction::ZoomReset,
-        "open-repository" => MenuAction::OpenRepository,
-        "open-file" => MenuAction::OpenFile,
-        "toggle-desktop-lyrics" => MenuAction::ToggleDesktopLyrics,
-        "minimize-window" => MenuAction::MinimizeWindow,
-        "zoom-window" => MenuAction::ZoomWindow,
-        "hide-application" => MenuAction::HideApplication,
-        "hide-other-applications" => MenuAction::HideOtherApplications,
-        "show-all-applications" => MenuAction::ShowAllApplications,
-        _ => return None,
-    })
-}
-
 /// One row of a menu.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuEntry {
