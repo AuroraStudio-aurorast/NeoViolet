@@ -11,10 +11,10 @@
 
 use std::ffi::c_void;
 
-/// A window handle.
-type HWND = *mut c_void;
-/// An input-method context handle.
-type HIMC = *mut c_void;
+/// A window handle (`HWND`).
+type Hwnd = *mut c_void;
+/// An input-method context handle (`HIMC`).
+type Himc = *mut c_void;
 
 #[derive(Clone, Copy)]
 #[repr(C)]
@@ -54,15 +54,15 @@ const CFS_CANDIDATEPOS: u32 = 0x0040;
 
 #[link(name = "imm32")]
 unsafe extern "system" {
-    fn ImmGetContext(hwnd: HWND) -> HIMC;
-    fn ImmSetCompositionWindow(himc: HIMC, form: *const CompositionForm) -> i32;
-    fn ImmSetCandidateWindow(himc: HIMC, form: *const CandidateForm) -> i32;
-    fn ImmReleaseContext(hwnd: HWND, himc: HIMC) -> i32;
+    fn ImmGetContext(hwnd: Hwnd) -> Himc;
+    fn ImmSetCompositionWindow(himc: Himc, form: *const CompositionForm) -> i32;
+    fn ImmSetCandidateWindow(himc: Himc, form: *const CandidateForm) -> i32;
+    fn ImmReleaseContext(hwnd: Hwnd, himc: Himc) -> i32;
 }
 
 #[link(name = "user32")]
 unsafe extern "system" {
-    fn GetActiveWindow() -> HWND;
+    fn GetActiveWindow() -> Hwnd;
 }
 
 /// Ask the input method of the active window where the caret is.
