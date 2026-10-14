@@ -5,6 +5,7 @@ use yororen_ui::headless::dropdown_menu::{
 };
 use yororen_ui::headless::icon::IconSource;
 use yororen_ui::headless::icon_button::icon_button;
+use yororen_ui::headless::menu::MenuState;
 
 use crate::menus::{self, MenuEntry};
 use crate::neo_violet_app::NeoVioletApp;
@@ -203,34 +204,42 @@ fn resize_cursor(edge: ResizeEdge) -> CursorStyle {
     }
 }
 
-type MenuSelectCallback = std::sync::Arc<dyn Fn(SharedString, &mut Window, &mut App) + Send + Sync>;
-
 pub struct Titlebar {
+    /// The dropdown shell: open/close, positioning and outside-click dismissal.
     menu: Entity<DropdownMenuState>,
+    /// The menu itself. The registered menu renderer paints the panel and the
+    /// rows from these items, so this entity owns the highlight and the
+    /// selection callback those rows fire.
+    menu_body: Entity<MenuState>,
     menu_focus_handle: FocusHandle,
-    on_select: MenuSelectCallback,
 }
 
 impl Titlebar {
     pub fn new(cx: &mut App) -> Self {
         let menu = DropdownMenuState::new(cx);
+        let menu_body = MenuState::new(cx);
         let menu_focus_handle = cx.focus_handle();
-        let on_select =
-            std::sync::Arc::new(|id: SharedString, _window: &mut Window, cx: &mut App| {
+        menu.update(cx, |state, _| {
+            state.set_dismiss_on_outside_click(true);
+        });
+        let menu_for_close = menu.clone();
+        menu_body.update(cx, |state, _| {
+            state.set_items(menu_items(current_platform_kind()));
+            state.set_on_select(move |id, _window, cx| {
+                // The shell fires the item's callback without closing itself.
+                menu_for_close.update(cx, |state, cx| {
+                    state.close();
+                    cx.notify();
+                });
                 if let Some(action) = menus::action_from_id(id.as_ref()) {
                     menus::dispatch(action, cx);
                 }
             });
-        let callback = on_select.clone();
-        menu.update(cx, |state, _| {
-            state.set_dismiss_on_outside_click(true);
-            state.set_items(menu_state_items(current_platform_kind()));
-            state.set_on_select(move |id, window, cx| callback(id, window, cx));
         });
         Self {
             menu,
+            menu_body,
             menu_focus_handle,
-            on_select,
         }
     }
 
@@ -315,26 +324,38 @@ impl Titlebar {
                 })
                 .into_any_element();
             let menu_focus_handle = self.menu_focus_handle.clone();
-            let menu_for_keys = menu.clone();
+            let menu_body_for_keys = self.menu_body.clone();
+            let menu_for_close = menu.clone();
             row = row.child(
                 div()
                     .track_focus(&menu_focus_handle)
                     .on_key_down(move |event, window, cx| {
                         let key = event.keystroke.key.to_ascii_lowercase();
+                        let step = match key.as_str() {
+                            "up" | "arrowup" => Some(false),
+                            "down" | "arrowdown" => Some(true),
+                            _ => None,
+                        };
+                        if let Some(forward) = step {
+                            let target = {
+                                let state = menu_body_for_keys.read(cx);
+                                next_row_index(&state.items, state.highlighted_index, forward)
+                            };
+                            menu_body_for_keys.update(cx, |state, cx| {
+                                if let Some(index) = target {
+                                    state.highlighted_index = Some(index);
+                                }
+                                cx.notify();
+                            });
+                            cx.stop_propagation();
+                            return;
+                        }
                         match key.as_str() {
-                            "up" | "arrowup" => menu_for_keys.update(cx, |state, cx| {
-                                state.highlight_prev();
-                                cx.notify();
-                            }),
-                            "down" | "arrowdown" => menu_for_keys.update(cx, |state, cx| {
-                                state.highlight_next();
-                                cx.notify();
-                            }),
-                            "enter" | "return" => menu_for_keys.update(cx, |state, cx| {
+                            "enter" | "return" => menu_body_for_keys.update(cx, |state, cx| {
                                 state.select_highlighted(window, cx);
                                 cx.notify();
                             }),
-                            "escape" => menu_for_keys.update(cx, |state, cx| {
+                            "escape" => menu_for_close.update(cx, |state, cx| {
                                 state.close();
                                 cx.notify();
                             }),
@@ -346,12 +367,11 @@ impl Titlebar {
                         dropdown_menu("aria:titlebar:menu", menu.clone())
                             .trigger(trigger)
                             .content(
-                                menu_content(
-                                    current_platform_kind(),
-                                    menu.clone(),
-                                    self.on_select.clone(),
-                                    cx,
+                                yororen_ui::headless::menu::menu(
+                                    "aria:titlebar:menu-body",
+                                    self.menu_body.clone(),
                                 )
+                                .render(cx)
                                 .into_any_element(),
                             )
                             .render(cx),
@@ -431,25 +451,51 @@ impl Titlebar {
     }
 }
 
-fn menu_state_items(kind: PlatformKind) -> Vec<DropdownItem> {
-    menus::layout(kind)
-        .into_iter()
-        .flat_map(|group| group.entries)
-        .filter_map(|entry| match entry {
-            MenuEntry::Action { action, label, .. } => Some(DropdownItem::Item(
-                DropdownMenuItem::new(menus::action_id(action), label),
-            )),
-            MenuEntry::Separator => Some(DropdownItem::Separator),
-            MenuEntry::Services => None,
-        })
-        .collect()
+/// The rows the drawn menu shows, in the order the renderer paints them.
+///
+/// The shell's menu renderer paints a `Group` as a section heading rather than
+/// as a container, so the layout's groups are flattened into a heading followed
+/// by their own rows.
+/// The next row the user can actually activate, wrapping around.
+///
+/// The shell's `MenuState` treats only separators as unselectable, and the menu
+/// renderer paints a section heading as plain text that never highlights, so
+/// stepping with the library's own navigation would look like a lost keypress
+/// whenever it landed on a heading or a separator.
+fn next_row_index(items: &[DropdownItem], from: Option<usize>, forward: bool) -> Option<usize> {
+    let len = items.len();
+    if len == 0 {
+        return None;
+    }
+    let mut index = match (from, forward) {
+        (Some(index), true) => (index + 1) % len,
+        (Some(index), false) => (index + len - 1) % len,
+        (None, true) => 0,
+        (None, false) => len - 1,
+    };
+    for _ in 0..len {
+        if matches!(items.get(index), Some(DropdownItem::Item(_))) {
+            return Some(index);
+        }
+        index = if forward {
+            (index + 1) % len
+        } else {
+            (index + len - 1) % len
+        };
+    }
+    None
 }
 
 fn menu_items(kind: PlatformKind) -> Vec<DropdownItem> {
     let mut items = Vec::new();
-    for group in menus::layout(kind) {
-        let mut group_title = Some(group.title);
-        let mut group_items = Vec::new();
+    for (index, group) in menus::layout(kind).into_iter().enumerate() {
+        if index > 0 {
+            items.push(DropdownItem::Separator);
+        }
+        items.push(DropdownItem::Group(DropdownMenuGroup {
+            label: group.title.into(),
+            items: Vec::new(),
+        }));
         for entry in group.entries {
             match entry {
                 MenuEntry::Action {
@@ -461,115 +507,25 @@ fn menu_items(kind: PlatformKind) -> Vec<DropdownItem> {
                     if let Some(shortcut) = shortcut {
                         item = item.shortcut(shortcut.split('-').map(str::to_string).collect());
                     }
-                    group_items.push(item);
+                    items.push(DropdownItem::Item(item));
                 }
-                MenuEntry::Separator => {
-                    if !group_items.is_empty() {
-                        items.push(DropdownItem::Group(DropdownMenuGroup {
-                            label: group_title.take().unwrap_or_default().into(),
-                            items: std::mem::take(&mut group_items),
-                        }));
-                    }
-                    items.push(DropdownItem::Separator);
-                }
+                MenuEntry::Separator => items.push(DropdownItem::Separator),
                 MenuEntry::Services => {}
             }
         }
-        if !group_items.is_empty() {
-            items.push(DropdownItem::Group(DropdownMenuGroup {
-                label: group_title.unwrap_or_default().into(),
-                items: group_items,
-            }));
-        }
     }
     items
-}
-
-fn menu_content(
-    kind: PlatformKind,
-    menu: Entity<DropdownMenuState>,
-    on_select: MenuSelectCallback,
-    cx: &App,
-) -> Div {
-    let mut content = div().flex().flex_col();
-    let highlighted_index = menu.read(cx).highlighted_index;
-    let mut state_index = 0usize;
-    for item in menu_items(kind) {
-        match item {
-            DropdownItem::Separator => {
-                content = content.child(div().mx(px(8.0)).my(px(3.0)).h(px(1.0)).bg(rgb(0x44475a)));
-                state_index += 1;
-            }
-            DropdownItem::Group(group) => {
-                if !group.label.is_empty() {
-                    content = content.child(
-                        div()
-                            .px(px(8.0))
-                            .py(px(4.0))
-                            .text_color(rgb(0x6272a4))
-                            .text_size(px(11.0))
-                            .child(group.label.to_string()),
-                    );
-                }
-                for item in group.items {
-                    let id = item.id.clone();
-                    let label = item.label.to_string();
-                    let shortcut_keys = item.shortcut.unwrap_or_default();
-                    let mut shortcut = div().flex().flex_row().gap(px(3.0));
-                    for key in shortcut_keys {
-                        shortcut = shortcut.child(
-                            div()
-                                .px(px(4.0))
-                                .py(px(1.0))
-                                .border_1()
-                                .border_color(rgb(0x6272a4))
-                                .bg(rgb(0x343746))
-                                .text_color(rgb(0x9aa0b5))
-                                .text_xs()
-                                .child(key),
-                        );
-                    }
-                    let menu = menu.clone();
-                    let on_select = on_select.clone();
-                    let index = state_index;
-                    state_index += 1;
-                    content = content.child(
-                        div()
-                            .id(ElementId::Name(format!("titlebar-menu-{id}").into()))
-                            .w_full()
-                            .px(px(10.0))
-                            .py(px(6.0))
-                            .flex()
-                            .flex_row()
-                            .justify_between()
-                            .gap(px(20.0))
-                            .when(highlighted_index == Some(index), |row| {
-                                row.bg(rgb(0x44475a))
-                            })
-                            .hover(|style| style.bg(rgb(0x44475a)))
-                            .child(label)
-                            .child(shortcut)
-                            .on_click(move |_, window, cx| {
-                                menu.update(cx, |state, _| state.close());
-                                on_select(id.clone(), window, cx);
-                            }),
-                    );
-                }
-            }
-            DropdownItem::Item(_) => {}
-        }
-    }
-    content
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         TitlebarAction, TitlebarButton, button_action, edge_for_point, edge_strips, menu_items,
+        next_row_index,
     };
     use crate::platform::PlatformKind;
     use gpui::ResizeEdge;
-    use yororen_ui::headless::dropdown_menu::DropdownItem;
+    use yororen_ui::headless::dropdown_menu::{DropdownItem, DropdownMenuGroup, DropdownMenuItem};
 
     #[test]
     fn the_drawn_menu_keeps_separators_and_shortcuts() {
@@ -580,15 +536,99 @@ mod tests {
                 .any(|item| matches!(item, DropdownItem::Separator))
         );
         let shortcut = items.iter().find_map(|item| match item {
-            DropdownItem::Group(group) => group.items.iter().find_map(|item| {
+            DropdownItem::Item(item) => {
                 (item.label.as_ref() == "Open File…").then(|| item.shortcut.clone())
-            }),
+            }
             _ => None,
         });
         assert_eq!(
             shortcut,
             Some(Some(vec!["ctrl".to_string(), "o".to_string()]))
         );
+    }
+
+    #[test]
+    fn the_drawn_menu_heads_each_group_with_its_title() {
+        let items = menu_items(PlatformKind::Windows);
+        let headings: Vec<String> = items
+            .iter()
+            .filter_map(|item| match item {
+                DropdownItem::Group(group) => Some(group.label.to_string()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(headings, vec!["File", "Edit", "View", "Help"]);
+        // The renderer paints a `Group` as a heading, not as a container, so a
+        // heading must not carry rows of its own — they would never be painted.
+        assert!(items.iter().all(|item| match item {
+            DropdownItem::Group(group) => group.items.is_empty(),
+            _ => true,
+        }));
+        // Flattening must not lose or duplicate a row.
+        let rows = items
+            .iter()
+            .filter(|item| matches!(item, DropdownItem::Item(_)))
+            .count();
+        let actions: usize = crate::menus::layout(PlatformKind::Windows)
+            .iter()
+            .map(|group| {
+                group
+                    .entries
+                    .iter()
+                    .filter(|entry| matches!(entry, crate::menus::MenuEntry::Action { .. }))
+                    .count()
+            })
+            .sum();
+        assert_eq!(rows, actions);
+    }
+
+    fn rows_with_headings() -> Vec<DropdownItem> {
+        vec![
+            DropdownItem::Group(DropdownMenuGroup {
+                label: "File".into(),
+                items: Vec::new(),
+            }),
+            DropdownItem::Item(DropdownMenuItem::new("open-file", "Open File…")),
+            DropdownItem::Item(DropdownMenuItem::new("quit", "Exit")),
+            DropdownItem::Separator,
+            DropdownItem::Group(DropdownMenuGroup {
+                label: "Help".into(),
+                items: Vec::new(),
+            }),
+            DropdownItem::Item(DropdownMenuItem::new("about", "About")),
+        ]
+    }
+
+    #[test]
+    fn keyboard_navigation_skips_headings_and_separators() {
+        let items = rows_with_headings();
+        assert_eq!(next_row_index(&items, None, true), Some(1));
+        assert_eq!(next_row_index(&items, Some(1), true), Some(2));
+        assert_eq!(
+            next_row_index(&items, Some(2), true),
+            Some(5),
+            "跳过分隔符与组标题，直接落到最后一行"
+        );
+        assert_eq!(
+            next_row_index(&items, Some(5), true),
+            Some(1),
+            "循环回到第一行"
+        );
+        assert_eq!(next_row_index(&items, Some(1), false), Some(5));
+        assert_eq!(next_row_index(&items, Some(5), false), Some(2));
+    }
+
+    #[test]
+    fn keyboard_navigation_gives_up_without_any_row() {
+        let headings_only = vec![
+            DropdownItem::Separator,
+            DropdownItem::Group(DropdownMenuGroup {
+                label: "File".into(),
+                items: Vec::new(),
+            }),
+        ];
+        assert_eq!(next_row_index(&headings_only, None, true), None);
+        assert_eq!(next_row_index(&[], None, true), None);
     }
 
     #[test]
