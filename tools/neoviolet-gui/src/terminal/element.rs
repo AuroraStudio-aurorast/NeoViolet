@@ -222,6 +222,18 @@ impl gpui::InputHandler for TerminalInputHandler {
         self.view.update(cx, |view, cx| {
             view.set_terminal_marked_text(new_text.to_string(), window, cx);
         });
+
+        // Keep the input method's windows on the caret while a composition runs; see
+        // `follow_ime_caret` for why Windows needs the reminder. The rect is the one the
+        // candidate window is placed with, anchored at the caret itself.
+        if let Some(bounds) = self.bounds_for_range(0..0, window, cx) {
+            crate::platform::follow_ime_caret(
+                f32::from(bounds.origin.x),
+                f32::from(bounds.origin.y),
+                f32::from(bounds.size.height),
+                window.scale_factor(),
+            );
+        }
     }
 
     fn unmark_text(&mut self, window: &mut Window, cx: &mut App) {
