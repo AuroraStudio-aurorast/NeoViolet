@@ -140,10 +140,17 @@ fn main() {
         // Menu setup
         menus::setup(cx, gui_config.neoviolet_path.as_deref());
 
+        // The window does not exist yet, so this is what we ask for: client
+        // decorations everywhere but macOS, and not fullscreen because the window
+        // opens windowed. The render side re-runs this with the decorations the
+        // window actually got.
+        let kind = platform::current_platform_kind();
+        let chrome = platform::chrome_plan(kind, kind != platform::PlatformKind::MacOs, false);
+
         // Open window
         let titlebar_opts = Some(TitlebarOptions {
             title: Some("NeoViolet".into()),
-            appears_transparent: platform::titlebar_appears_transparent(),
+            appears_transparent: chrome.titlebar,
             traffic_light_position: None,
         });
 
@@ -164,6 +171,11 @@ fn main() {
                     ),
                 ))),
                 titlebar: titlebar_opts,
+                window_decorations: if chrome.frame {
+                    Some(WindowDecorations::Client)
+                } else {
+                    None
+                },
                 window_background,
                 ..Default::default()
             },

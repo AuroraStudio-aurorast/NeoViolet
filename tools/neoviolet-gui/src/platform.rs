@@ -276,11 +276,79 @@ pub fn open_url(url: &str) -> std::io::Result<()> {
 
 // ── Window appearance ──
 
-/// Whether the title bar should blend into the window.
+/// What the title bar area has to draw on one platform.
 ///
-/// Only the macOS backend draws a window that extends under its title bar.
-pub fn titlebar_appears_transparent() -> bool {
-    cfg!(target_os = "macos")
+/// One decision for both callers of [`chrome_plan`]: window creation and the
+/// per-frame render. They differ only in what `client_decorations` means.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ChromePlan {
+    /// Draw our own title bar at all.
+    pub titlebar: bool,
+    /// Draw our own frame, because the platform draws none.
+    pub frame: bool,
+    /// Draw the minimize/maximize/close buttons.
+    pub window_buttons: bool,
+    /// Draw the menu button, for platforms whose menus we render ourselves.
+    pub menu_button: bool,
+    /// Drag through `WindowControlArea::Drag` rather than an explicit move.
+    pub drag_via_control_area: bool,
+}
+
+/// What `kind` draws, given the client decorations in play.
+///
+/// `client_decorations` is what the caller asked for at window creation and what
+/// the window actually got at render time: on Linux the compositor may grant
+/// server decorations anyway, in which case the desktop already draws a title
+/// bar and drawing a second one would double it. `fullscreen` leaves the drag
+/// area at its platform value so callers need not special-case it.
+pub fn chrome_plan(kind: PlatformKind, client_decorations: bool, fullscreen: bool) -> ChromePlan {
+    let mut plan = match kind {
+        // The native frame and traffic lights stay; only the area under the
+        // transparent title bar becomes ours.
+        PlatformKind::MacOs => ChromePlan {
+            titlebar: true,
+            frame: false,
+            window_buttons: false,
+            menu_button: false,
+            drag_via_control_area: true,
+        },
+        // No caption, but the frame keeps resizing and snapping, and the caption
+        // controls are ours to draw and route back through the control areas.
+        PlatformKind::Windows => ChromePlan {
+            titlebar: true,
+            frame: true,
+            window_buttons: true,
+            menu_button: true,
+            drag_via_control_area: true,
+        },
+        // Client decorations are what make the title bar the window's own;
+        // dragging goes through the compositor instead of a control area, which
+        // is empty on Linux.
+        PlatformKind::Linux if client_decorations => ChromePlan {
+            titlebar: true,
+            frame: true,
+            window_buttons: true,
+            menu_button: true,
+            drag_via_control_area: false,
+        },
+        PlatformKind::Linux => ChromePlan {
+            titlebar: false,
+            frame: false,
+            window_buttons: false,
+            menu_button: false,
+            drag_via_control_area: false,
+        },
+    };
+
+    // A fullscreen window has no title bar anywhere.
+    if fullscreen {
+        plan.titlebar = false;
+        plan.frame = false;
+        plan.window_buttons = false;
+        plan.menu_button = false;
+    }
+
+    plan
 }
 
 /// Whether a window at `opacity` needs a transparent background.
@@ -427,8 +495,80 @@ mod tests {
     }
 
     #[test]
-    fn transparent_titlebars_are_a_macos_feature() {
-        assert_eq!(titlebar_appears_transparent(), cfg!(target_os = "macos"));
+    fn macos_keeps_its_native_frame_and_traffic_lights() {
+        let plan = chrome_plan(
+            PlatformKind::MacOs,
+            /* client_decorations */ false,
+            /* fullscreen */ false,
+        );
+        assert_eq!(
+            plan,
+            ChromePlan {
+                titlebar: true,
+                frame: false,
+                window_buttons: false,
+                menu_button: false,
+                drag_via_control_area: true
+            }
+        );
+    }
+
+    #[test]
+    fn windows_draws_its_own_caption_controls() {
+        let plan = chrome_plan(PlatformKind::Windows, false, false);
+        assert_eq!(
+            plan,
+            ChromePlan {
+                titlebar: true,
+                frame: true,
+                window_buttons: true,
+                menu_button: true,
+                drag_via_control_area: true
+            }
+        );
+    }
+
+    #[test]
+    fn linux_draws_everything_only_with_client_decorations() {
+        let client = chrome_plan(PlatformKind::Linux, true, false);
+        assert_eq!(
+            client,
+            ChromePlan {
+                titlebar: true,
+                frame: true,
+                window_buttons: true,
+                menu_button: true,
+                drag_via_control_area: false
+            }
+        );
+    }
+
+    #[test]
+    fn linux_with_server_decorations_draws_nothing() {
+        let server = chrome_plan(PlatformKind::Linux, false, false);
+        assert!(
+            !server.titlebar && !server.frame && !server.window_buttons && !server.menu_button,
+            "服务端装饰下必须什么都不画，否则会出现双标题栏"
+        );
+    }
+
+    #[test]
+    fn fullscreen_never_draws_the_titlebar() {
+        for kind in [
+            PlatformKind::MacOs,
+            PlatformKind::Windows,
+            PlatformKind::Linux,
+        ] {
+            for client in [true, false] {
+                let plan = chrome_plan(kind, client, true);
+                assert!(!plan.titlebar, "{kind:?} 全屏时不得绘制标题栏");
+            }
+        }
+    }
+
+    #[test]
+    fn no_platform_needs_its_own_window_buttons_off_the_client_side() {
+        assert!(!chrome_plan(PlatformKind::MacOs, true, false).window_buttons);
     }
 
     #[test]
