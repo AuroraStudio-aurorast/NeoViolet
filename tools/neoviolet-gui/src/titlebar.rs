@@ -215,12 +215,14 @@ type MenuSelectCallback = std::sync::Arc<dyn Fn(SharedString, &mut Window, &mut 
 
 pub struct Titlebar {
     menu: Entity<DropdownMenuState>,
+    menu_focus_handle: FocusHandle,
     on_select: MenuSelectCallback,
 }
 
 impl Titlebar {
     pub fn new(cx: &mut App) -> Self {
         let menu = DropdownMenuState::new(cx);
+        let menu_focus_handle = cx.focus_handle();
         let on_select =
             std::sync::Arc::new(|id: SharedString, _window: &mut Window, cx: &mut App| {
                 if let Some(action) = menus::action_from_id(id.as_ref()) {
@@ -230,10 +232,18 @@ impl Titlebar {
         let callback = on_select.clone();
         menu.update(cx, |state, _| {
             state.set_dismiss_on_outside_click(true);
-            state.set_items(menu_items(current_platform_kind()));
+            state.set_items(menu_state_items(current_platform_kind()));
             state.set_on_select(move |id, window, cx| callback(id, window, cx));
         });
-        Self { menu, on_select }
+        Self {
+            menu,
+            menu_focus_handle,
+            on_select,
+        }
+    }
+
+    pub fn menu_is_open(&self, cx: &App) -> bool {
+        self.menu.read(cx).is_open()
     }
 
     pub fn render(
@@ -292,32 +302,68 @@ impl Titlebar {
             .child(drag_area);
 
         if plan.menu_button {
+            let menu_focus_handle = self.menu_focus_handle.clone();
             let trigger = hamburger_icon(crate::theme_colors::secondary(cx))
                 .id("aria:titlebar:menu-trigger")
                 .on_click({
                     let menu = menu.clone();
-                    move |_, _, cx| {
+                    let menu_focus_handle = menu_focus_handle.clone();
+                    move |_, window, cx| {
                         if button_action(TitlebarButton::Menu) == TitlebarAction::ToggleMenu {
-                            menu.update(cx, |state, cx| {
+                            let is_open = menu.update(cx, |state, cx| {
                                 state.toggle();
                                 cx.notify();
+                                state.is_open()
                             });
+                            if is_open {
+                                window.focus(&menu_focus_handle);
+                            }
                         }
                     }
                 })
                 .into_any_element();
+            let menu_focus_handle = self.menu_focus_handle.clone();
+            let menu_for_keys = menu.clone();
             row = row.child(
-                dropdown_menu("aria:titlebar:menu", menu.clone())
-                    .trigger(trigger)
-                    .content(
-                        menu_content(
-                            current_platform_kind(),
-                            menu.clone(),
-                            self.on_select.clone(),
-                        )
-                        .into_any_element(),
-                    )
-                    .render(cx),
+                div()
+                    .track_focus(&menu_focus_handle)
+                    .on_key_down(move |event, window, cx| {
+                        let key = event.keystroke.key.to_ascii_lowercase();
+                        match key.as_str() {
+                            "up" | "arrowup" => menu_for_keys.update(cx, |state, cx| {
+                                state.highlight_prev();
+                                cx.notify();
+                            }),
+                            "down" | "arrowdown" => menu_for_keys.update(cx, |state, cx| {
+                                state.highlight_next();
+                                cx.notify();
+                            }),
+                            "enter" | "return" => menu_for_keys.update(cx, |state, cx| {
+                                state.select_highlighted(window, cx);
+                                cx.notify();
+                            }),
+                            "escape" => menu_for_keys.update(cx, |state, cx| {
+                                state.close();
+                                cx.notify();
+                            }),
+                            _ => return,
+                        }
+                        cx.stop_propagation();
+                    })
+                    .child(
+                        dropdown_menu("aria:titlebar:menu", menu.clone())
+                            .trigger(trigger)
+                            .content(
+                                menu_content(
+                                    current_platform_kind(),
+                                    menu.clone(),
+                                    self.on_select.clone(),
+                                    cx,
+                                )
+                                .into_any_element(),
+                            )
+                            .render(cx),
+                    ),
             );
         }
 
@@ -364,7 +410,22 @@ impl Titlebar {
                     }
                 })
                 .render(cx);
-            row = row.child(minimize).child(maximize).child(close);
+            row = row
+                .child(
+                    div()
+                        .window_control_area(WindowControlArea::Min)
+                        .child(minimize),
+                )
+                .child(
+                    div()
+                        .window_control_area(WindowControlArea::Max)
+                        .child(maximize),
+                )
+                .child(
+                    div()
+                        .window_control_area(WindowControlArea::Close)
+                        .child(close),
+                );
         }
 
         row = row
@@ -378,70 +439,132 @@ impl Titlebar {
     }
 }
 
-fn menu_items(kind: PlatformKind) -> Vec<DropdownItem> {
+fn menu_state_items(kind: PlatformKind) -> Vec<DropdownItem> {
     menus::layout(kind)
         .into_iter()
-        .map(|group| {
-            let mut items = Vec::new();
-            for entry in group.entries {
-                match entry {
-                    MenuEntry::Action {
-                        action,
-                        label,
-                        shortcut,
-                    } => {
-                        let mut item = DropdownMenuItem::new(menus::action_id(action), label);
-                        if let Some(shortcut) = shortcut {
-                            item = item.shortcut(shortcut.split('-').map(str::to_string).collect());
-                        }
-                        items.push(item);
-                    }
-                    MenuEntry::Separator | MenuEntry::Services => {}
-                }
-            }
-            DropdownItem::Group(DropdownMenuGroup {
-                label: group.title.into(),
-                items,
-            })
+        .flat_map(|group| group.entries)
+        .filter_map(|entry| match entry {
+            MenuEntry::Action { action, label, .. } => Some(DropdownItem::Item(
+                DropdownMenuItem::new(menus::action_id(action), label),
+            )),
+            MenuEntry::Separator => Some(DropdownItem::Separator),
+            MenuEntry::Services => None,
         })
         .collect()
+}
+
+fn menu_items(kind: PlatformKind) -> Vec<DropdownItem> {
+    let mut items = Vec::new();
+    for group in menus::layout(kind) {
+        let mut group_title = Some(group.title);
+        let mut group_items = Vec::new();
+        for entry in group.entries {
+            match entry {
+                MenuEntry::Action {
+                    action,
+                    label,
+                    shortcut,
+                } => {
+                    let mut item = DropdownMenuItem::new(menus::action_id(action), label);
+                    if let Some(shortcut) = shortcut {
+                        item = item.shortcut(shortcut.split('-').map(str::to_string).collect());
+                    }
+                    group_items.push(item);
+                }
+                MenuEntry::Separator => {
+                    if !group_items.is_empty() {
+                        items.push(DropdownItem::Group(DropdownMenuGroup {
+                            label: group_title.take().unwrap_or_default().into(),
+                            items: std::mem::take(&mut group_items),
+                        }));
+                    }
+                    items.push(DropdownItem::Separator);
+                }
+                MenuEntry::Services => {}
+            }
+        }
+        if !group_items.is_empty() {
+            items.push(DropdownItem::Group(DropdownMenuGroup {
+                label: group_title.unwrap_or_default().into(),
+                items: group_items,
+            }));
+        }
+    }
+    items
 }
 
 fn menu_content(
     kind: PlatformKind,
     menu: Entity<DropdownMenuState>,
     on_select: MenuSelectCallback,
+    cx: &App,
 ) -> Div {
     let mut content = div().flex().flex_col();
-    for group in menu_items(kind) {
-        if let DropdownItem::Group(group) = group {
-            content = content.child(
-                div()
-                    .px(px(8.0))
-                    .py(px(4.0))
-                    .text_color(rgb(0x6272a4))
-                    .text_size(px(11.0))
-                    .child(group.label.to_string()),
-            );
-            for item in group.items {
-                let id = item.id.clone();
-                let label = item.label.to_string();
-                let menu = menu.clone();
-                let on_select = on_select.clone();
-                content = content.child(
-                    div()
-                        .id(ElementId::Name(format!("titlebar-menu-{id}").into()))
-                        .w_full()
-                        .px(px(10.0))
-                        .py(px(6.0))
-                        .hover(|style| style.bg(rgb(0x44475a)))
-                        .child(label)
-                        .on_click(move |_, window, cx| {
-                            menu.update(cx, |state, _| state.close());
-                            on_select(id.clone(), window, cx);
-                        }),
-                );
+    let highlighted_index = menu.read(cx).highlighted_index;
+    let mut state_index = 0usize;
+    for item in menu_items(kind) {
+        match item {
+            DropdownItem::Separator => {
+                content = content.child(div().mx(px(8.0)).my(px(3.0)).h(px(1.0)).bg(rgb(0x44475a)));
+                state_index += 1;
             }
+            DropdownItem::Group(group) => {
+                if !group.label.is_empty() {
+                    content = content.child(
+                        div()
+                            .px(px(8.0))
+                            .py(px(4.0))
+                            .text_color(rgb(0x6272a4))
+                            .text_size(px(11.0))
+                            .child(group.label.to_string()),
+                    );
+                }
+                for item in group.items {
+                    let id = item.id.clone();
+                    let label = item.label.to_string();
+                    let shortcut_keys = item.shortcut.unwrap_or_default();
+                    let mut shortcut = div().flex().flex_row().gap(px(3.0));
+                    for key in shortcut_keys {
+                        shortcut = shortcut.child(
+                            div()
+                                .px(px(4.0))
+                                .py(px(1.0))
+                                .border_1()
+                                .border_color(rgb(0x6272a4))
+                                .bg(rgb(0x343746))
+                                .text_color(rgb(0x9aa0b5))
+                                .text_xs()
+                                .child(key),
+                        );
+                    }
+                    let menu = menu.clone();
+                    let on_select = on_select.clone();
+                    let index = state_index;
+                    state_index += 1;
+                    content = content.child(
+                        div()
+                            .id(ElementId::Name(format!("titlebar-menu-{id}").into()))
+                            .w_full()
+                            .px(px(10.0))
+                            .py(px(6.0))
+                            .flex()
+                            .flex_row()
+                            .justify_between()
+                            .gap(px(20.0))
+                            .when(highlighted_index == Some(index), |row| {
+                                row.bg(rgb(0x44475a))
+                            })
+                            .hover(|style| style.bg(rgb(0x44475a)))
+                            .child(label)
+                            .child(shortcut)
+                            .on_click(move |_, window, cx| {
+                                menu.update(cx, |state, _| state.close());
+                                on_select(id.clone(), window, cx);
+                            }),
+                    );
+                }
+            }
+            DropdownItem::Item(_) => {}
         }
     }
     content
@@ -449,8 +572,32 @@ fn menu_content(
 
 #[cfg(test)]
 mod tests {
-    use super::{TitlebarAction, TitlebarButton, button_action, edge_for_point, edge_strips};
+    use super::{
+        TitlebarAction, TitlebarButton, button_action, edge_for_point, edge_strips, menu_items,
+    };
+    use crate::platform::PlatformKind;
     use gpui::ResizeEdge;
+    use yororen_ui::headless::dropdown_menu::DropdownItem;
+
+    #[test]
+    fn the_drawn_menu_keeps_separators_and_shortcuts() {
+        let items = menu_items(PlatformKind::Windows);
+        assert!(
+            items
+                .iter()
+                .any(|item| matches!(item, DropdownItem::Separator))
+        );
+        let shortcut = items.iter().find_map(|item| match item {
+            DropdownItem::Group(group) => group.items.iter().find_map(|item| {
+                (item.label.as_ref() == "Open File…").then(|| item.shortcut.clone())
+            }),
+            _ => None,
+        });
+        assert_eq!(
+            shortcut,
+            Some(Some(vec!["ctrl".to_string(), "o".to_string()]))
+        );
+    }
 
     #[test]
     fn the_close_button_requests_the_dialog_instead_of_quitting() {

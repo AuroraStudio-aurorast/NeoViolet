@@ -282,9 +282,9 @@ pub fn open_url(url: &str) -> std::io::Result<()> {
 /// per-frame render. They differ only in what `client_decorations` means.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ChromePlan {
-    /// Draw our own title bar at all.
+    /// Draw the app's title bar content; this can sit under native titlebar controls.
     pub titlebar: bool,
-    /// Draw our own frame, because the platform draws none.
+    /// Draw the app's frame treatment where native window decorations omit it.
     pub frame: bool,
     /// Draw the minimize/maximize/close buttons.
     pub window_buttons: bool,
@@ -578,6 +578,14 @@ mod tests {
             for client in [true, false] {
                 let plan = chrome_plan(kind, client, true);
                 assert!(!plan.titlebar, "{kind:?} 全屏时不得绘制标题栏");
+                assert!(!plan.frame, "{kind:?} 全屏时不得绘制窗口边框");
+                assert!(!plan.window_buttons, "{kind:?} 全屏时不得绘制窗口按钮");
+                assert!(!plan.menu_button, "{kind:?} 全屏时不得绘制菜单按钮");
+                assert_eq!(
+                    plan.drag_via_control_area,
+                    kind != PlatformKind::Linux,
+                    "{kind:?} 全屏仍保留平台拖拽策略"
+                );
             }
         }
     }

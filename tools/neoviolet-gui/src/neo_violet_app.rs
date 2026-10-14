@@ -306,7 +306,7 @@ impl Render for NeoVioletApp {
             if !self.focus_handle.is_focused(window) {
                 window.focus(&self.focus_handle);
             }
-        } else {
+        } else if !self.titlebar.menu_is_open(cx) {
             let terminal_focus = self.terminal_child.read(cx).focus_handle.clone();
             if !terminal_focus.is_focused(window) {
                 window.focus(&terminal_focus);

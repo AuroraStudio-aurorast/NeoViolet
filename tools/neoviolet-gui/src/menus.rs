@@ -837,19 +837,29 @@ mod tests {
 
     #[test]
     fn window_actions_never_collide_with_terminal_control_characters() {
-        for kind in [
-            PlatformKind::MacOs,
-            PlatformKind::Windows,
-            PlatformKind::Linux,
-        ] {
-            for (action, key) in keybindings(kind) {
-                if matches!(action, MenuAction::MinimizeWindow | MenuAction::ZoomWindow) {
-                    assert!(
-                        key.starts_with("cmd-"),
-                        "{action:?} 只能用 cmd- 前缀，避免抢终端控制字符"
-                    );
-                }
-            }
+        for kind in [PlatformKind::Windows, PlatformKind::Linux] {
+            assert!(
+                !keybindings(kind).iter().any(|(action, _)| matches!(
+                    action,
+                    MenuAction::MinimizeWindow | MenuAction::ZoomWindow
+                )),
+                "{kind:?} 不应绑定 Window 菜单动作"
+            );
         }
+        let mac_window_actions: Vec<_> = keybindings(PlatformKind::MacOs)
+            .into_iter()
+            .filter(|(action, _)| {
+                matches!(action, MenuAction::MinimizeWindow | MenuAction::ZoomWindow)
+            })
+            .collect();
+        assert_eq!(
+            mac_window_actions,
+            vec![(MenuAction::MinimizeWindow, "cmd-m")]
+        );
+        assert!(
+            mac_window_actions
+                .iter()
+                .all(|(_, key)| key.starts_with("cmd-"))
+        );
     }
 }
