@@ -21,6 +21,7 @@ mod terminal;
 mod theme_colors;
 mod titlebar;
 mod util;
+mod window_controls;
 
 use gpui::*;
 #[cfg(target_os = "macos")]

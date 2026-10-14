@@ -4,37 +4,12 @@ use std::rc::Rc;
 use gpui::prelude::*;
 use gpui::*;
 use yororen_ui::headless::icon::{IconSource, icon};
-use yororen_ui::headless::icon_button::icon_button;
 
 use crate::menus::{self, MenuAction, MenuEntry};
 use crate::neo_violet_app::NeoVioletApp;
-use crate::platform::{PlatformKind, current_platform_kind};
+use crate::platform::{ChromePlan, PlatformKind, current_platform_kind};
 use crate::state::AppState;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TitlebarButton {
-    Minimize,
-    MaximizeRestore,
-    Close,
-    Menu,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TitlebarAction {
-    Minimize,
-    Zoom,
-    RequestClose,
-    ToggleMenu,
-}
-
-pub fn button_action(button: TitlebarButton) -> TitlebarAction {
-    match button {
-        TitlebarButton::Minimize => TitlebarAction::Minimize,
-        TitlebarButton::MaximizeRestore => TitlebarAction::Zoom,
-        TitlebarButton::Close => TitlebarAction::RequestClose,
-        TitlebarButton::Menu => TitlebarAction::ToggleMenu,
-    }
-}
+use crate::window_controls;
 
 /// Which edge or corner of a `width` × `height` window the point `(x, y)` grabs.
 ///
@@ -225,6 +200,10 @@ pub struct Titlebar {
     /// trigger one frame behind rather than waiting for a measurement pass of its
     /// own.
     trigger_bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+    /// Whether a left press is waiting to become a window drag. The drag starts on
+    /// the first movement rather than on the press, the way a system caption does
+    /// it, so that a click which only selects or maximizes never moves anything.
+    should_move: Rc<Cell<bool>>,
 }
 
 impl Titlebar {
@@ -233,6 +212,7 @@ impl Titlebar {
             menu: cx.new(|_| DrawnMenu::new()),
             menu_focus_handle: cx.focus_handle(),
             trigger_bounds: Rc::new(Cell::new(None)),
+            should_move: Rc::new(Cell::new(false)),
         }
     }
 
@@ -248,7 +228,8 @@ impl Titlebar {
         window: &mut Window,
         cx: &mut Context<NeoVioletApp>,
     ) -> AnyElement {
-        let left_padding = if current_platform_kind() == PlatformKind::MacOs {
+        let kind = current_platform_kind();
+        let left_padding = if kind == PlatformKind::MacOs {
             px(72.0)
         } else {
             px(8.0)
@@ -272,16 +253,44 @@ impl Titlebar {
                     .overflow_hidden()
                     .child(title.to_string()),
             );
-        if plan.drag_via_control_area {
-            drag_area = drag_area.window_control_area(WindowControlArea::Drag);
-        }
-        drag_area = drag_area.on_mouse_down(MouseButton::Left, move |event, window, _| {
-            if event.click_count > 1 {
-                window.zoom_window();
-            } else if !plan.drag_via_control_area {
-                window.start_window_move();
-            }
-        });
+        // Windows moves a window through its control areas, and this bar is the
+        // area it should use; the other platforms leave the area alone and are
+        // moved by hand below.
+        drag_area = drag_area
+            .window_control_area(WindowControlArea::Drag)
+            .on_mouse_down(MouseButton::Left, {
+                let should_move = self.should_move.clone();
+                move |event, window, _| {
+                    if event.click_count > 1 {
+                        toggle_zoom(plan, window);
+                    } else {
+                        should_move.set(true);
+                    }
+                }
+            })
+            .on_mouse_up(MouseButton::Left, {
+                let should_move = self.should_move.clone();
+                move |_, _, _| should_move.set(false)
+            })
+            .on_mouse_down_out({
+                let should_move = self.should_move.clone();
+                move |_, _, _| should_move.set(false)
+            })
+            .on_mouse_move({
+                let should_move = self.should_move.clone();
+                move |event, window, _| {
+                    // A press only becomes a drag once the pointer moves, the way a
+                    // system caption behaves: clicking the bar must be able to
+                    // select and double-click without moving the window.
+                    if !should_move.get() {
+                        return;
+                    }
+                    should_move.set(false);
+                    if event.pressed_button == Some(MouseButton::Left) {
+                        start_window_drag(plan, window);
+                    }
+                }
+            });
 
         let mut row = div()
             .id("aria:region:titlebar")
@@ -327,9 +336,6 @@ impl Titlebar {
                 let menu = self.menu.clone();
                 let menu_focus_handle = menu_focus_handle.clone();
                 move |_, window, cx| {
-                    if button_action(TitlebarButton::Menu) != TitlebarAction::ToggleMenu {
-                        return;
-                    }
                     let opened = menu.update(cx, |state, cx| {
                         state.open = !state.open;
                         state.highlighted = None;
@@ -411,64 +417,13 @@ impl Titlebar {
         }
 
         if plan.window_buttons {
-            let minimize = icon_button("aria:titlebar:minimize", cx)
-                .icon(IconSource::Builtin("minimize".into()))
-                .icon_size(px(14.0))
-                .on_click(
-                    |_, window, _| match button_action(TitlebarButton::Minimize) {
-                        TitlebarAction::Minimize => window.minimize_window(),
-                        _ => unreachable!(),
-                    },
-                )
-                .render(cx);
-            let maximize_name = if is_maximized {
-                "maximize-off"
-            } else {
-                "maximize-on"
-            };
-            let maximize = icon_button("aria:titlebar:maximize", cx)
-                .icon(IconSource::Builtin(maximize_name.into()))
-                .icon_size(px(14.0))
-                .on_click(
-                    |_, window, _| match button_action(TitlebarButton::MaximizeRestore) {
-                        TitlebarAction::Zoom => window.zoom_window(),
-                        _ => unreachable!(),
-                    },
-                )
-                .render(cx);
-            let close = icon_button("aria:titlebar:close", cx)
-                .icon(IconSource::Builtin("close".into()))
-                .icon_size(px(14.0))
-                .on_click(|_, _window, cx| {
-                    if button_action(TitlebarButton::Close) != TitlebarAction::RequestClose {
-                        return;
-                    }
-                    let eid = {
-                        let state = cx.global::<AppState>();
-                        *state.show_close.lock().unwrap() = true;
-                        *state.root_entity_id.lock().unwrap()
-                    };
-                    if let Some(eid) = eid {
-                        cx.notify(eid);
-                    }
-                })
-                .render(cx);
-            row = row
-                .child(
-                    div()
-                        .window_control_area(WindowControlArea::Min)
-                        .child(minimize),
-                )
-                .child(
-                    div()
-                        .window_control_area(WindowControlArea::Max)
-                        .child(maximize),
-                )
-                .child(
-                    div()
-                        .window_control_area(WindowControlArea::Close)
-                        .child(close),
-                );
+            row = row.child(window_controls::caption_row(
+                kind,
+                TITLEBAR_HEIGHT,
+                is_maximized,
+                window.window_controls(),
+                cx,
+            ));
         }
 
         row = row.on_mouse_down(MouseButton::Right, |event, window, _| {
@@ -476,6 +431,31 @@ impl Titlebar {
         });
         let _ = window;
         row.into_any_element()
+    }
+}
+
+/// Start moving the window from the drag area.
+///
+/// Windows has no toolkit call for this at all — `start_window_move` is an empty
+/// default there — so the shell has to run its own caption drag. macOS and Linux
+/// do have the call, and no shell drag to ask for.
+fn start_window_drag(plan: ChromePlan, window: &mut Window) {
+    if plan.drag_via_control_area {
+        crate::platform::start_window_drag();
+    } else {
+        window.start_window_move();
+    }
+}
+
+/// Maximize the window, or put it back if it is already maximized.
+///
+/// gpui can only do the first half; the shell can do both, so on Windows — the
+/// platform we hand the drag area to — the toggle goes through it.
+fn toggle_zoom(plan: ChromePlan, window: &mut Window) {
+    if plan.drag_via_control_area {
+        crate::platform::toggle_window_zoom();
+    } else {
+        window.zoom_window();
     }
 }
 
@@ -752,8 +732,7 @@ fn menu_panel(
 #[cfg(test)]
 mod tests {
     use super::{
-        MenuRow, TitlebarAction, TitlebarButton, anchor_for_panel, button_action, edge_for_point,
-        edge_strips, menu_rows, next_row_index,
+        MenuRow, anchor_for_panel, edge_for_point, edge_strips, menu_rows, next_row_index,
     };
     use crate::menus::{MenuAction, MenuEntry};
     use crate::platform::PlatformKind;
@@ -953,30 +932,6 @@ mod tests {
         let headings_only = vec![MenuRow::Separator, MenuRow::Heading("File")];
         assert_eq!(next_row_index(&headings_only, None, true), None);
         assert_eq!(next_row_index(&[], None, true), None);
-    }
-
-    #[test]
-    fn the_close_button_requests_the_dialog_instead_of_quitting() {
-        assert_eq!(
-            button_action(TitlebarButton::Close),
-            TitlebarAction::RequestClose
-        );
-    }
-
-    #[test]
-    fn every_button_maps_to_a_window_operation() {
-        assert_eq!(
-            button_action(TitlebarButton::Minimize),
-            TitlebarAction::Minimize
-        );
-        assert_eq!(
-            button_action(TitlebarButton::MaximizeRestore),
-            TitlebarAction::Zoom
-        );
-        assert_eq!(
-            button_action(TitlebarButton::Menu),
-            TitlebarAction::ToggleMenu
-        );
     }
 
     #[test]

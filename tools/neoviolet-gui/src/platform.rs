@@ -5,6 +5,8 @@ use std::time::Duration;
 
 #[cfg(target_os = "macos")]
 mod macos_tis;
+#[cfg(target_os = "windows")]
+mod windows_drag;
 
 /// Whether a composing input method (Chinese, Japanese, Korean) is selected.
 ///
@@ -402,6 +404,38 @@ pub fn client_side_resize_is_honoured() -> bool {
 /// of platforms that can start a window move.
 fn client_side_resize_is_honoured_on(kind: PlatformKind) -> bool {
     matches!(kind, PlatformKind::Linux)
+}
+
+/// Start moving the window from a title bar we draw ourselves, on a platform
+/// whose toolkit has no call for it.
+///
+/// gpui implements `start_window_move` on macOS, X11 and Wayland but not on
+/// Windows, so there the shell's own caption drag — a `WM_NCLBUTTONDOWN` on
+/// `HTCAPTION` — is the only way to move the window from our own bar.
+pub fn start_window_drag() {
+    #[cfg(target_os = "windows")]
+    windows_drag::start_window_drag();
+}
+
+/// Maximize the window, or put it back if it is already maximized, on a platform
+/// whose toolkit can only do the first half: gpui's `zoom_window` maximizes and
+/// has no way to restore.
+pub fn toggle_window_zoom() {
+    #[cfg(target_os = "windows")]
+    windows_drag::toggle_zoom();
+}
+
+/// The font this platform draws caption button glyphs with, or `None` where the
+/// buttons use the app's own icons.
+pub fn caption_font() -> Option<&'static str> {
+    #[cfg(target_os = "windows")]
+    {
+        Some(windows_drag::caption_font())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
 }
 
 /// Whether a window at `opacity` needs a transparent background.
