@@ -39,6 +39,8 @@ pub struct NeoVioletApp {
     close_modal: Entity<ModalState>,
     error_modal: Entity<ModalState>,
     bad_args_modal: Entity<ModalState>,
+    titlebar: crate::titlebar::Titlebar,
+    appearance_observer: Option<Subscription>,
 }
 
 impl NeoVioletApp {
@@ -61,6 +63,8 @@ impl NeoVioletApp {
             close_modal: ModalState::new(cx),
             error_modal: ModalState::new(cx),
             bad_args_modal: ModalState::new(cx),
+            titlebar: crate::titlebar::Titlebar::new(cx),
+            appearance_observer: None,
         }
     }
 
@@ -382,6 +386,18 @@ impl Render for NeoVioletApp {
         // drop for the element under the cursor — hence on this root element,
         // which covers the whole window.
         let drop_child = self.terminal_child.clone();
+        if self.appearance_observer.is_none() {
+            let root_id = cx.entity_id();
+            self.appearance_observer = Some(window.observe_window_appearance(move |_, cx| {
+                cx.notify(root_id);
+            }));
+        }
+
+        let chrome = crate::platform::chrome_plan(
+            crate::platform::current_platform_kind(),
+            matches!(window.window_decorations(), Decorations::Client { .. }),
+            window.is_fullscreen(),
+        );
         let base = div()
             .id("aria:app:neoviolet-gui")
             .size_full()
@@ -403,52 +419,15 @@ impl Render for NeoVioletApp {
                 let outcome = drop_paste::send_paths(cx, &drop_child, &dropped);
                 drop_paste::defer_pending_paths(cx, outcome, dropped);
             })
-            .when(
-                !window.is_fullscreen() && cfg!(target_os = "macos"),
-                |base| {
-                    base.child(
-                        div()
-                            .id("aria:region:titlebar")
-                            .w_full()
-                            .h(px(28.0))
-                            .bg(crate::theme_colors::sunken(cx))
-                            .flex()
-                            .flex_row()
-                            .items_center()
-                            .child(
-                                div()
-                                    .id("aria:titlebar:drag-area")
-                                    .window_control_area(WindowControlArea::Drag)
-                                    .h_full()
-                                    .flex()
-                                    .flex_row()
-                                    .items_center()
-                                    .flex_grow()
-                                    .min_w(px(0.0))
-                                    .pl_3()
-                                    .child(div().flex_grow())
-                                    .child(
-                                        div()
-                                            .id("aria:titlebar:title")
-                                            .font_weight(FontWeight::SEMIBOLD)
-                                            .text_sm()
-                                            .text_color(crate::theme_colors::secondary(cx))
-                                            .child(self.current_title.clone()),
-                                    )
-                                    .child(div().flex_grow()),
-                            )
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(move |_t, ev: &MouseDownEvent, w, cx| {
-                                    if ev.click_count > 1 {
-                                        w.zoom_window();
-                                        cx.notify();
-                                    }
-                                }),
-                            ),
-                    )
-                },
-            )
+            .when(chrome.titlebar, |base| {
+                base.child(self.titlebar.render(
+                    &self.current_title,
+                    chrome,
+                    window.is_maximized(),
+                    window,
+                    cx,
+                ))
+            })
             .child(div().flex_1().child(self.terminal_child.clone()));
 
         let base = if self.exit_is_bad_args {

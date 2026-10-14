@@ -19,6 +19,7 @@ mod platform;
 mod state;
 mod terminal;
 mod theme_colors;
+mod titlebar;
 mod util;
 
 use gpui::*;

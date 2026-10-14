@@ -57,6 +57,45 @@ pub enum MenuAction {
     ShowAllApplications,
 }
 
+pub fn action_id(action: MenuAction) -> &'static str {
+    match action {
+        MenuAction::About => "about",
+        MenuAction::Preferences => "preferences",
+        MenuAction::Quit => "quit",
+        MenuAction::ZoomIn => "zoom-in",
+        MenuAction::ZoomOut => "zoom-out",
+        MenuAction::ZoomReset => "zoom-reset",
+        MenuAction::OpenRepository => "open-repository",
+        MenuAction::OpenFile => "open-file",
+        MenuAction::ToggleDesktopLyrics => "toggle-desktop-lyrics",
+        MenuAction::MinimizeWindow => "minimize-window",
+        MenuAction::ZoomWindow => "zoom-window",
+        MenuAction::HideApplication => "hide-application",
+        MenuAction::HideOtherApplications => "hide-other-applications",
+        MenuAction::ShowAllApplications => "show-all-applications",
+    }
+}
+
+pub fn action_from_id(id: &str) -> Option<MenuAction> {
+    Some(match id {
+        "about" => MenuAction::About,
+        "preferences" => MenuAction::Preferences,
+        "quit" => MenuAction::Quit,
+        "zoom-in" => MenuAction::ZoomIn,
+        "zoom-out" => MenuAction::ZoomOut,
+        "zoom-reset" => MenuAction::ZoomReset,
+        "open-repository" => MenuAction::OpenRepository,
+        "open-file" => MenuAction::OpenFile,
+        "toggle-desktop-lyrics" => MenuAction::ToggleDesktopLyrics,
+        "minimize-window" => MenuAction::MinimizeWindow,
+        "zoom-window" => MenuAction::ZoomWindow,
+        "hide-application" => MenuAction::HideApplication,
+        "hide-other-applications" => MenuAction::HideOtherApplications,
+        "show-all-applications" => MenuAction::ShowAllApplications,
+        _ => return None,
+    })
+}
+
 /// One row of a menu.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuEntry {
@@ -250,6 +289,11 @@ pub fn boxed_action(action: MenuAction) -> Box<dyn Action> {
         MenuAction::HideOtherApplications => Box::new(HideOtherApplications),
         MenuAction::ShowAllApplications => Box::new(ShowAllApplications),
     }
+}
+
+pub fn dispatch(action: MenuAction, cx: &mut App) {
+    let action = boxed_action(action);
+    cx.dispatch_action(action.as_ref());
 }
 
 // ── Keybindings ──
