@@ -1,3 +1,8 @@
+// Windows: link as a GUI program, so that no console window appears beside the
+// window. Windows then hands the process no console at all, so a launch from a
+// terminal recovers one through `platform::attach_parent_console`.
+#![windows_subsystem = "windows"]
+
 mod app;
 mod backend;
 mod components;
@@ -27,6 +32,10 @@ use neo_violet_app::NeoVioletApp;
 use state::AppState;
 
 fn main() {
+    // Before anything can write to the standard streams: Windows gives a GUI
+    // program no console, so a terminal launch has to reclaim the one it came from.
+    platform::attach_parent_console();
+
     // Sync macOS launch environment (runs at most once, before any threads).
     #[cfg(target_os = "macos")]
     {

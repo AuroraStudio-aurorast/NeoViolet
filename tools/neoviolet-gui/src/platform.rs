@@ -178,12 +178,24 @@ fn truncate(s: String, max: usize) -> String {
     }
 }
 
+/// Windows: keep a console program from opening a console window of its own.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 fn run_version_command(bin: &str) -> String {
     let (tx, rx) = std::sync::mpsc::channel();
     let bin = bin.to_string();
     std::thread::spawn(move || {
-        let raw = std::process::Command::new(&bin)
-            .arg("--version")
+        let mut command = std::process::Command::new(&bin);
+        command.arg("--version");
+        // This child is a console program and the GUI has no console of its own,
+        // so Windows would give it a console window to flash at startup.
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let raw = command
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
@@ -254,9 +266,36 @@ pub fn background_should_be_transparent(opacity: f32) -> bool {
     opacity < 1.0
 }
 
+// ── Console output ──
+
+#[cfg(target_os = "windows")]
+mod windows_console;
+
+/// Give this process somewhere to write its log when it was started from a console.
+///
+/// Windows builds are GUI programs (see `main.rs`), so Windows never gives them a
+/// console: started from a terminal, the process would otherwise have nowhere to
+/// write. This attaches to that terminal's console. Started from Explorer there is
+/// no console to attach to, and none appears — which is the point of the subsystem.
+pub fn attach_parent_console() {
+    #[cfg(target_os = "windows")]
+    windows_console::attach_parent_console();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn main_declares_the_windows_subsystem() {
+        // Without it the binary links as a console program, and Windows opens a
+        // console window beside the window it was asked for — the reason
+        // `attach_parent_console` has to reattach to a terminal's console by hand.
+        assert!(
+            include_str!("main.rs").contains("windows_subsystem = \"windows\""),
+            "main.rs must declare the Windows subsystem"
+        );
+    }
 
     #[test]
     fn the_macos_opener_uses_open() {
