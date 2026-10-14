@@ -9,7 +9,7 @@
 //! window behaviour stay in one place.
 
 use gpui::{
-    AnyElement, App, CursorStyle, Hsla, MouseButton, SharedString, WindowControlArea,
+    AnyElement, App, ClickEvent, CursorStyle, Hsla, MouseButton, SharedString, WindowControlArea,
     WindowControls, div, prelude::*, px,
 };
 use yororen_ui::headless::icon::{IconSource, icon};
@@ -251,18 +251,27 @@ fn caption_button(
         .active(move |this| this.bg(hover_bg).text_color(hover_fg))
         .window_control_area(caption_area(button))
         .child(drawn_icon)
-        .on_click(move |_, window, cx| match caption_action(button) {
-            CaptionAction::Minimize => window.minimize_window(),
-            CaptionAction::ToggleZoom => {
-                // gpui can only maximize a window; the shell can also put one
-                // back, so Windows toggles through it.
-                if kind == PlatformKind::Windows {
-                    crate::platform::toggle_window_zoom();
-                } else {
-                    window.zoom_window();
-                }
+        .on_click(move |event, window, cx| {
+            // A double click is still one press of this button: acting on both
+            // halves of it would maximize a window and put it straight back.
+            if let ClickEvent::Mouse(mouse) = event
+                && mouse.down.click_count > 1
+            {
+                return;
             }
-            CaptionAction::RequestClose => request_close(cx),
+            match caption_action(button) {
+                CaptionAction::Minimize => window.minimize_window(),
+                CaptionAction::ToggleZoom => {
+                    // gpui can only maximize a window; the shell can also put one
+                    // back, so Windows toggles through it.
+                    if kind == PlatformKind::Windows {
+                        crate::platform::toggle_window_zoom();
+                    } else {
+                        window.zoom_window();
+                    }
+                }
+                CaptionAction::RequestClose => request_close(cx),
+            }
         })
 }
 

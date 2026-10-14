@@ -260,7 +260,13 @@ impl Titlebar {
             .window_control_area(WindowControlArea::Drag)
             .on_mouse_down(MouseButton::Left, {
                 let should_move = self.should_move.clone();
-                move |event, window, _| {
+                move |event, window, cx| {
+                    // The press belongs to this bar. Windows hands non-client
+                    // presses to the app and, when nothing consumes one, passes
+                    // it on to DefWindowProc — which would start a move loop of
+                    // its own beside the one this bar drives, and toggle the
+                    // window back on the second half of a double click.
+                    cx.stop_propagation();
                     if event.click_count > 1 {
                         toggle_zoom(plan, window);
                     } else {
