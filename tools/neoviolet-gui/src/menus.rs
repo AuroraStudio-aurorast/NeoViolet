@@ -291,9 +291,34 @@ pub fn boxed_action(action: MenuAction) -> Box<dyn Action> {
     }
 }
 
-pub fn dispatch(action: MenuAction, cx: &mut App) {
-    let action = boxed_action(action);
-    cx.dispatch_action(action.as_ref());
+/// Runs `action` inside the window that is already handling input.
+///
+/// This goes through the window rather than `App::dispatch_action`, which would
+/// pick the active window and update it — impossible while that same window is
+/// the one being updated, which is exactly the case for a click in our own menu.
+/// The window queues the dispatch for the next frame, so it always lands.
+pub fn dispatch(action: MenuAction, window: &mut Window, cx: &mut App) {
+    window.dispatch_action(boxed_action(action), cx);
+}
+
+/// Runs a window operation on the window this app opened, one frame from now.
+///
+/// The delay is required rather than stylistic: an action the menu bar dispatches
+/// already runs inside an update of that same window, and updating a window takes
+/// it out of the app's table for the duration, so a second update of it cannot
+/// succeed — it fails with `window not found`. Queued for the next frame the
+/// window is free again. From a keybinding or from our own menu the delay is a
+/// single frame, which no one can see.
+fn defer_window_action(cx: &mut App, what: &'static str, run: impl FnOnce(&mut Window) + 'static) {
+    let Some(handle) = window_to_control(cx) else {
+        log::warn!("[gui] no window to {what}");
+        return;
+    };
+    cx.defer(move |cx| {
+        if let Err(err) = handle.update(cx, |_, window, _| run(window)) {
+            log::warn!("[gui] could not {what} the window: {err}");
+        }
+    });
 }
 
 /// The window a menu action should act on: the one this app opened, falling back
@@ -433,24 +458,12 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     // Window menu — act on the window we opened; `App::active_window` is nil on
     // macOS until the app has been activated, and a menu item that silently did
     // nothing would look like an unimplemented one.
-    cx.on_action(
-        |_: &MinimizeWindow, cx: &mut App| match window_to_control(cx) {
-            Some(handle) => {
-                if let Err(err) = handle.update(cx, |_, window, _| window.minimize_window()) {
-                    log::warn!("[gui] could not minimize the window: {err}");
-                }
-            }
-            None => log::warn!("[gui] no window to minimize"),
-        },
-    );
+    cx.on_action(|_: &MinimizeWindow, cx: &mut App| {
+        defer_window_action(cx, "minimize", |window| window.minimize_window());
+    });
 
-    cx.on_action(|_: &ZoomWindow, cx: &mut App| match window_to_control(cx) {
-        Some(handle) => {
-            if let Err(err) = handle.update(cx, |_, window, _| window.zoom_window()) {
-                log::warn!("[gui] could not zoom the window: {err}");
-            }
-        }
-        None => log::warn!("[gui] no window to zoom"),
+    cx.on_action(|_: &ZoomWindow, cx: &mut App| {
+        defer_window_action(cx, "zoom", |window| window.zoom_window());
     });
 
     cx.on_action(|_: &OpenRepository, _cx: &mut App| {

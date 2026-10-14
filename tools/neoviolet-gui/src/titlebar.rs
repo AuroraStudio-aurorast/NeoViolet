@@ -225,14 +225,14 @@ impl Titlebar {
         let menu_for_close = menu.clone();
         menu_body.update(cx, |state, _| {
             state.set_items(menu_items(current_platform_kind()));
-            state.set_on_select(move |id, _window, cx| {
+            state.set_on_select(move |id, window, cx| {
                 // The shell fires the item's callback without closing itself.
                 menu_for_close.update(cx, |state, cx| {
                     state.close();
                     cx.notify();
                 });
                 if let Some(action) = menus::action_from_id(id.as_ref()) {
-                    menus::dispatch(action, cx);
+                    menus::dispatch(action, window, cx);
                 }
             });
         });
