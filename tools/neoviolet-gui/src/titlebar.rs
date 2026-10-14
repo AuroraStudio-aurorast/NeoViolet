@@ -122,18 +122,17 @@ pub fn edge_strips(width: f32, height: f32, thickness: f32) -> Vec<(ResizeEdge, 
 /// Depth of the grab strips along each window edge.
 const FRAME_THICKNESS: f32 = 6.0;
 
-/// The window's own frame: a 1px border, and — when `resize_grips` is set —
-/// the eight strips that start a resize, sized for a window of `size`.
+/// The eight invisible strips that start a resize, sized for a window of
+/// `size`.
 ///
 /// This has to be the **last** child of the window root. gpui dispatches mouse
 /// events to the elements painted last first, and everything below it — the
 /// terminal above all — paints before it. That ordering is what makes the
-/// outermost few pixels the ones the user grabs, keeps those clicks out of the
-/// terminal, and keeps the border visible instead of covered by the terminal's
-/// opaque background. The border is drawn on every platform that draws no frame
-/// of its own; the grab strips only where the platform lets the client start the
-/// resize, since elsewhere they would swallow the click without resizing.
-pub fn window_frame(size: Size<Pixels>, border_color: Hsla, resize_grips: bool) -> Div {
+/// outermost few pixels the ones the user grabs and keeps those clicks out of
+/// the terminal. Callers mount it only where the platform lets the client start
+/// the resize itself, since elsewhere the strips would swallow clicks without
+/// resizing anything.
+pub fn window_frame(size: Size<Pixels>) -> Div {
     let width = f32::from(size.width);
     let height = f32::from(size.height);
     let mut frame = div()
@@ -141,15 +140,8 @@ pub fn window_frame(size: Size<Pixels>, border_color: Hsla, resize_grips: bool) 
         .left_0()
         .top_0()
         .w(size.width)
-        .h(size.height)
-        .child(
-            div()
-                .absolute()
-                .size_full()
-                .border_1()
-                .border_color(border_color),
-        );
-    if resize_grips {
+        .h(size.height);
+    {
         for (edge, bounds) in edge_strips(width, height, FRAME_THICKNESS) {
             frame = frame.child(
                 div()

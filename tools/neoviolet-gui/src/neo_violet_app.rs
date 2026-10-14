@@ -472,15 +472,11 @@ impl Render for NeoVioletApp {
             base
         };
 
-        // The window's own frame goes last, so its border and grab strips sit
-        // above the terminal instead of being covered by it. The grab strips
-        // only go on where the platform lets the client start the resize itself.
-        let base = if chrome.frame {
-            base.child(crate::titlebar::window_frame(
-                window.viewport_size(),
-                crate::theme_colors::tertiary(cx),
-                crate::platform::client_side_resize_is_honoured(),
-            ))
+        // The grab strips go last, so they sit above the terminal instead of
+        // being covered by it. Only the platforms that let the client start the
+        // resize themselves get any, and the window draws no border of its own.
+        let base = if crate::platform::client_side_resize_is_honoured() {
+            base.child(crate::titlebar::window_frame(window.viewport_size()))
         } else {
             base
         };

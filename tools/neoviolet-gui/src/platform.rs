@@ -290,7 +290,9 @@ pub struct ChromePlan {
     pub window_buttons: bool,
     /// Draw the menu button, for platforms whose menus we render ourselves.
     pub menu_button: bool,
-    /// Drag through `WindowControlArea::Drag` rather than an explicit move.
+    /// Whether the platform consumes `WindowControlArea` hit tests for dragging
+    /// and for the window buttons. Only Windows does; on macOS and Linux the
+    /// title bar has to start the move itself.
     pub drag_via_control_area: bool,
 }
 
@@ -304,16 +306,20 @@ pub struct ChromePlan {
 pub fn chrome_plan(kind: PlatformKind, client_decorations: bool, fullscreen: bool) -> ChromePlan {
     let mut plan = match kind {
         // The native frame and traffic lights stay; only the area under the
-        // transparent title bar becomes ours.
+        // transparent title bar becomes ours. Starting the move is ours too:
+        // gpui's macOS backend leaves the control-area hit test empty and never
+        // lets AppKit drag from the background, so a title bar that only
+        // declared a control area would not move the window at all.
         PlatformKind::MacOs => ChromePlan {
             titlebar: true,
             frame: false,
             window_buttons: false,
             menu_button: false,
-            drag_via_control_area: true,
+            drag_via_control_area: false,
         },
         // No caption, but the frame keeps resizing and snapping, and the caption
-        // controls are ours to draw and route back through the control areas.
+        // controls are ours to draw and route back through the control areas —
+        // this is the one backend that consumes them.
         PlatformKind::Windows => ChromePlan {
             titlebar: true,
             frame: true,
@@ -361,8 +367,9 @@ pub fn client_side_resize_is_honoured() -> bool {
     client_side_resize_is_honoured_on(current_platform_kind())
 }
 
-/// Whether `kind` resizes through the client, which is the same platforms that
-/// drag through the compositor rather than through a window control area.
+/// Whether `kind` resizes through the client. gpui implements
+/// `start_window_resize` on X11 and Wayland only, which is narrower than the set
+/// of platforms that can start a window move.
 fn client_side_resize_is_honoured_on(kind: PlatformKind) -> bool {
     matches!(kind, PlatformKind::Linux)
 }
@@ -524,7 +531,7 @@ mod tests {
                 frame: false,
                 window_buttons: false,
                 menu_button: false,
-                drag_via_control_area: true
+                drag_via_control_area: false
             }
         );
     }
@@ -583,7 +590,7 @@ mod tests {
                 assert!(!plan.menu_button, "{kind:?} 全屏时不得绘制菜单按钮");
                 assert_eq!(
                     plan.drag_via_control_area,
-                    kind != PlatformKind::Linux,
+                    kind == PlatformKind::Windows,
                     "{kind:?} 全屏仍保留平台拖拽策略"
                 );
             }
@@ -603,8 +610,9 @@ mod tests {
             client_side_resize_is_honoured(),
             matches!(current_platform_kind(), PlatformKind::Linux)
         );
-        // The platforms whose drag goes through the compositor instead of a control
-        // area are exactly the ones that own the resize path as well.
+        // Dragging and resizing do not run through the same channel everywhere:
+        // gpui implements `start_window_move` on macOS, X11 and Wayland but not
+        // on Windows, which is the one backend that consumes control areas.
         for kind in [
             PlatformKind::MacOs,
             PlatformKind::Windows,
@@ -614,9 +622,9 @@ mod tests {
                 kind, /* client_decorations */ true, /* fullscreen */ false,
             );
             assert_eq!(
-                client_side_resize_is_honoured_on(kind),
-                !plan.drag_via_control_area,
-                "{kind:?} 的自绘缩放与自绘拖拽必须走同一条路径"
+                plan.drag_via_control_area,
+                kind == PlatformKind::Windows,
+                "{kind:?} 只有 Windows 靠控制区命中测试来拖动窗口"
             );
         }
     }

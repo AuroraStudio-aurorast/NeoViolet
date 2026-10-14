@@ -239,12 +239,19 @@ fn main() {
                 root_entity
             },
         );
-        if let Err(err) = opened {
-            // With no window there is nothing left to drive the run loop, so
-            // report and quit rather than unwinding through the callback with a
-            // backtrace.
-            log::error!("[gui] could not open the main window: {err}");
-            cx.quit();
+        match opened {
+            Ok(handle) => {
+                // Remember the window itself: menu actions that need a window must
+                // not depend on the platform's notion of the active one.
+                *cx.global::<AppState>().main_window_handle.lock().unwrap() = Some(handle.into());
+            }
+            Err(err) => {
+                // With no window there is nothing left to drive the run loop, so
+                // report and quit rather than unwinding through the callback with
+                // a backtrace.
+                log::error!("[gui] could not open the main window: {err}");
+                cx.quit();
+            }
         }
     });
 }

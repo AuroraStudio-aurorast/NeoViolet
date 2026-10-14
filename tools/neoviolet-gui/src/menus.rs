@@ -296,6 +296,13 @@ pub fn dispatch(action: MenuAction, cx: &mut App) {
     cx.dispatch_action(action.as_ref());
 }
 
+/// The window a menu action should act on: the one this app opened, falling back
+/// to whatever the platform reports as active.
+fn window_to_control(cx: &App) -> Option<AnyWindowHandle> {
+    let opened = *cx.global::<AppState>().main_window_handle.lock().unwrap();
+    opened.or_else(|| cx.active_window())
+}
+
 // ── Keybindings ──
 
 /// Keys `kind` binds on top of its menu rows.
@@ -423,15 +430,17 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
         cx.unhide_other_apps();
     });
 
-    // Window menu — act on whichever window is focused when the row is picked.
+    // Window menu — act on the window we opened; `App::active_window` is nil on
+    // macOS until the app has been activated, and a menu item that silently did
+    // nothing would look like an unimplemented one.
     cx.on_action(|_: &MinimizeWindow, cx: &mut App| {
-        if let Some(handle) = cx.active_window() {
+        if let Some(handle) = window_to_control(cx) {
             let _ = handle.update(cx, |_, window, _| window.minimize_window());
         }
     });
 
     cx.on_action(|_: &ZoomWindow, cx: &mut App| {
-        if let Some(handle) = cx.active_window() {
+        if let Some(handle) = window_to_control(cx) {
             let _ = handle.update(cx, |_, window, _| window.zoom_window());
         }
     });
