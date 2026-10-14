@@ -301,11 +301,8 @@ impl TerminalElement {
     }
 
     fn cell_run_style(&self, cell: &alacritty_terminal::term::cell::Cell, cx: &App) -> TextRun {
-        let mut fg = color_to_hsla(cell.fg, true, cx);
-        let mut bg = color_to_hsla(cell.bg, false, cx);
-        if cell.flags.contains(Flags::INVERSE) {
-            std::mem::swap(&mut fg, &mut bg);
-        }
+        let (fg_color, _) = rendered_colors(cell);
+        let mut fg = color_to_hsla(fg_color, true, cx);
         if cell.flags.contains(Flags::DIM) {
             fg.a *= 0.7;
         }
@@ -372,8 +369,9 @@ impl TerminalElement {
             let selected = self.snapshot.selection.is_some_and(|selection| {
                 selection_contains(selection, render_cell.row, render_cell.col)
             });
-            let bg = color_to_hsla(cell.bg, false, cx);
-            if selected || !is_default_bg(cell.bg) {
+            let (_, bg_color) = rendered_colors(cell);
+            let bg = color_to_hsla(bg_color, false, cx);
+            if selected || !is_default_bg(bg_color) {
                 rects.push(LayoutRect {
                     row: render_cell.row,
                     col: render_cell.col,
@@ -384,8 +382,6 @@ impl TerminalElement {
                     },
                     color: if selected {
                         crate::theme_colors::primary(cx)
-                    } else if cell.flags.contains(Flags::INVERSE) {
-                        color_to_hsla(cell.fg, true, cx)
                     } else {
                         bg
                     },
@@ -699,6 +695,22 @@ fn is_blank(cell: &alacritty_terminal::term::cell::Cell) -> bool {
             .intersects(Flags::ALL_UNDERLINES | Flags::STRIKEOUT)
 }
 
+/// The foreground and background a cell renders with, in alacritty's own terms.
+///
+/// Reverse video is recorded as a flag and both stored colors stay where they are, so
+/// performing the swap is the renderer's job. The glyph pass and the background pass
+/// both have to go through here: a reversed cell whose stored background is the
+/// default one still needs a block painted, and its glyph takes the stored foreground
+/// color. A TUI that hides the hardware cursor draws its own cursor as reverse video,
+/// so a background pass that misses the swap renders that cursor as nothing at all.
+fn rendered_colors(cell: &alacritty_terminal::term::cell::Cell) -> (AnsiColor, AnsiColor) {
+    if cell.flags.contains(Flags::INVERSE) {
+        (cell.bg, cell.fg)
+    } else {
+        (cell.fg, cell.bg)
+    }
+}
+
 fn is_default_bg(color: alacritty_terminal::vte::ansi::Color) -> bool {
     matches!(
         color,
@@ -780,5 +792,53 @@ fn named_color(named: NamedColor, _foreground: bool, cx: &App) -> Hsla {
         NamedColor::DimMagenta => Hsla::from(rgb(0xb48ead)),
         NamedColor::DimCyan => Hsla::from(rgb(0x88c0d0)),
         NamedColor::DimWhite => Hsla::from(rgb(0xe5e9f0)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alacritty_terminal::term::cell::Cell;
+
+    /// The theme's text color, as alacritty hands it over for a default cell.
+    const TEXT: AnsiColor = AnsiColor::Named(NamedColor::Foreground);
+    /// The theme's background color, as alacritty hands it over for a default cell.
+    const CANVAS: AnsiColor = AnsiColor::Named(NamedColor::Background);
+
+    fn styled(fg: AnsiColor, bg: AnsiColor, flags: Flags) -> Cell {
+        Cell {
+            fg,
+            bg,
+            flags,
+            ..Cell::default()
+        }
+    }
+
+    #[test]
+    fn a_plain_cell_keeps_its_stored_colors() {
+        let cell = styled(TEXT, CANVAS, Flags::empty());
+        assert_eq!(rendered_colors(&cell), (TEXT, CANVAS));
+    }
+
+    #[test]
+    fn reverse_video_swaps_the_stored_colors() {
+        let cell = styled(TEXT, CANVAS, Flags::INVERSE);
+        assert_eq!(rendered_colors(&cell), (CANVAS, TEXT));
+    }
+
+    #[test]
+    fn reverse_video_moves_an_explicit_background_onto_the_glyph() {
+        let cell = styled(TEXT, AnsiColor::Named(NamedColor::Red), Flags::INVERSE);
+        assert_eq!(
+            rendered_colors(&cell),
+            (AnsiColor::Named(NamedColor::Red), TEXT)
+        );
+    }
+
+    #[test]
+    fn a_reversed_cell_over_the_default_background_still_needs_a_block() {
+        let cell = styled(TEXT, CANVAS, Flags::INVERSE);
+        let (_, background) = rendered_colors(&cell);
+        assert!(!is_default_bg(background));
     }
 }
