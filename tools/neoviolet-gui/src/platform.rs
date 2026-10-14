@@ -22,6 +22,31 @@ pub fn ime_is_active() -> bool {
     }
 }
 
+/// Which desktop the GUI is running on.
+///
+/// Callers that care pick their layout by this instead of by build tags, so the
+/// unselected layouts stay compilable and testable everywhere.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlatformKind {
+    MacOs,
+    Windows,
+    Linux,
+}
+
+/// The platform this binary was built for.
+///
+/// Anything that is neither Windows nor macOS is treated as Linux, which is
+/// where gpui's supported desktops live.
+pub fn current_platform_kind() -> PlatformKind {
+    if cfg!(target_os = "macos") {
+        PlatformKind::MacOs
+    } else if cfg!(target_os = "windows") {
+        PlatformKind::Windows
+    } else {
+        PlatformKind::Linux
+    }
+}
+
 /// Returns the neoviolet binary name for this platform.
 pub fn binary_name() -> &'static str {
     if cfg!(target_os = "windows") {
