@@ -440,12 +440,9 @@ impl Titlebar {
                 );
         }
 
-        row = row
-            .on_mouse_down(MouseButton::Right, |event, window, _| {
-                window.show_window_menu(event.position);
-            })
-            .border_b_1()
-            .border_color(crate::theme_colors::tertiary(cx));
+        row = row.on_mouse_down(MouseButton::Right, |event, window, _| {
+            window.show_window_menu(event.position);
+        });
         let _ = window;
         row.into_any_element()
     }

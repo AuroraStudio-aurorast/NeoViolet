@@ -433,16 +433,24 @@ pub fn setup(cx: &mut App, neoviolet_path: Option<&str>) {
     // Window menu — act on the window we opened; `App::active_window` is nil on
     // macOS until the app has been activated, and a menu item that silently did
     // nothing would look like an unimplemented one.
-    cx.on_action(|_: &MinimizeWindow, cx: &mut App| {
-        if let Some(handle) = window_to_control(cx) {
-            let _ = handle.update(cx, |_, window, _| window.minimize_window());
-        }
-    });
+    cx.on_action(
+        |_: &MinimizeWindow, cx: &mut App| match window_to_control(cx) {
+            Some(handle) => {
+                if let Err(err) = handle.update(cx, |_, window, _| window.minimize_window()) {
+                    log::warn!("[gui] could not minimize the window: {err}");
+                }
+            }
+            None => log::warn!("[gui] no window to minimize"),
+        },
+    );
 
-    cx.on_action(|_: &ZoomWindow, cx: &mut App| {
-        if let Some(handle) = window_to_control(cx) {
-            let _ = handle.update(cx, |_, window, _| window.zoom_window());
+    cx.on_action(|_: &ZoomWindow, cx: &mut App| match window_to_control(cx) {
+        Some(handle) => {
+            if let Err(err) = handle.update(cx, |_, window, _| window.zoom_window()) {
+                log::warn!("[gui] could not zoom the window: {err}");
+            }
         }
+        None => log::warn!("[gui] no window to zoom"),
     });
 
     cx.on_action(|_: &OpenRepository, _cx: &mut App| {
