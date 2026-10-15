@@ -440,6 +440,45 @@ pub fn start_window_drag() {
     windows_drag::start_window_drag();
 }
 
+/// Use the app's own icons for the caption buttons instead of the system font.
+///
+/// Windows has a caption font and Zed draws its window controls with it, which is
+/// what this app does too; setting the variable to `icons` draws the app's own
+/// shapes instead, for a machine where the system glyphs come out as boxes.
+pub const CAPTION_GLYPHS: &str = "NEOVIOLET_CAPTION_GLYPHS";
+
+/// Whether `value` asks for the app's own icons rather than the system glyphs.
+fn caption_glyphs_are_ours(value: Option<&str>) -> bool {
+    matches!(value, Some("icons"))
+}
+
+/// Whether the caption buttons should draw the app's own icons here.
+pub fn caption_icons_requested() -> bool {
+    caption_glyphs_are_ours(std::env::var(CAPTION_GLYPHS).ok().as_deref())
+}
+
+/// The font this platform draws caption button glyphs with, or `None` where the
+/// buttons use the app's own icons.
+///
+/// The codepoints are the ones Microsoft documents for those buttons —
+/// `ChromeMinimize` `U+E921`, `ChromeMaximize` `U+E922`, `ChromeRestore`
+/// `U+E923` and `ChromeClose` `U+E8BB`, spelled the same in "Segoe MDL2 Assets"
+/// and in "Segoe Fluent Icons" — so a box instead of a glyph means something else
+/// was asked to draw it. [`CAPTION_GLYPHS`] is the way out of that.
+pub fn caption_font() -> Option<&'static str> {
+    if caption_icons_requested() {
+        return None;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Some(windows_drag::caption_font())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        None
+    }
+}
+
 /// Whether a window at `opacity` needs a transparent background.
 ///
 /// Whether the request is honoured is up to the platform backend; the caller
@@ -705,6 +744,13 @@ mod tests {
                 "{kind:?} 只有 Windows 靠控制区命中测试来拖动窗口"
             );
         }
+    }
+
+    #[test]
+    fn the_caption_glyphs_can_be_traded_for_our_own_icons() {
+        assert!(!caption_glyphs_are_ours(None), "the system font by default");
+        assert!(!caption_glyphs_are_ours(Some("system")));
+        assert!(caption_glyphs_are_ours(Some("icons")));
     }
 
     #[test]
