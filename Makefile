@@ -13,12 +13,6 @@ LDFLAGS   = -s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version
 BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
 TEST_FLAGS  ?= -count=1
 
-HAS_OPENMPT := $(shell pkg-config --exists libopenmpt 2>/dev/null && echo 1 || echo 0)
-ifeq ($(HAS_OPENMPT),1)
-	BUILD_FLAGS += -tags openmpt
-	TEST_FLAGS  += -tags openmpt
-endif
-
 HAS_CARGO := $(shell which cargo 2>/dev/null | grep -q . && echo 1 || echo 0)
 
 APECLI_DIR := tools/apecli
@@ -34,7 +28,7 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: all build build/race build/debug build/noopenmpt build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check check/linelength clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
+.PHONY: all build build/race build/debug build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check check/linelength clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
 
 all: build
 
@@ -48,9 +42,6 @@ build/race:
 
 build/debug:
 	$(GO) build -gcflags="all=-N -l" -o $(OUTPUT) ./cmd/$(BINARY)
-
-build/noopenmpt:
-	$(GO) build -ldflags="$(LDFLAGS)" -o $(OUTPUT) ./cmd/$(BINARY)
 
 # --- GUI (Rust + gpui-ce) ---
 
@@ -206,10 +197,9 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Build:"
-	@echo "  build              Build binary (default, with openmpt if available)"
+	@echo "  build              Build binary (default)"
 	@echo "  build/race         Build with race detector"
 	@echo "  build/debug        Build without optimizations (dlv compatible)"
-	@echo "  build/noopenmpt    Build without libopenmpt support"
 	@echo ""
 	@echo "APE (Monkey's Audio):"
 	@echo "  apetools           Build apecli Rust helper (cargo required)"
