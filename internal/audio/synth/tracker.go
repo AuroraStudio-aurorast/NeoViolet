@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/gopxl/beep/v2"
@@ -42,8 +44,46 @@ type TrackerPlayer struct {
 	songFormat string
 }
 
-// NewTrackerPlayer loads a tracker module from disk and creates a player.
+// errTrackerPanic marks a failure that came from a panic inside the tracker
+// engine rather than from an error it returned.
+var errTrackerPanic = errors.New("tracker engine panicked")
+
+// guardTracker runs one tracker engine call. The engine aborts with panic() on
+// input it cannot handle: its loaders panic on read errors and on sample
+// encodings they do not understand, and its effect handlers on commands they
+// have no case for. A panic that escapes would take the whole application down
+// with it, so it is turned into an ordinary error, with its stack logged.
+func guardTracker(op string, fn func() error) (err error) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			// The engine's panic values are formatted messages, some of which end
+			// in a newline; trim it so the message reads well in the status bar.
+			reason := strings.TrimSpace(fmt.Sprint(rec))
+			logger.Error("tracker engine panicked", "operation", op, "panic", reason, "stack", string(debug.Stack()))
+			err = fmt.Errorf("%w during %s: %s", errTrackerPanic, op, reason)
+		}
+	}()
+	return fn()
+}
+
+// NewTrackerPlayer loads a tracker module from disk and creates a player. The
+// engine runs behind guardTracker, because loading is where it panics on the
+// modules it cannot decode.
 func NewTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPlayer, error) {
+	var tp *TrackerPlayer
+	err := guardTracker("module load", func() error {
+		var err error
+		tp, err = buildTrackerPlayer(path, ext, sampleRate)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return tp, nil
+}
+
+// buildTrackerPlayer is NewTrackerPlayer without the panic guard around it.
+func buildTrackerPlayer(path, ext string, sampleRate beep.SampleRate) (*TrackerPlayer, error) {
 	logger.Info("Creating tracker player", "path", path, "ext", ext, "sampleRate", sampleRate)
 
 	// #nosec G304 -- path is the user's own tracker module being loaded.
@@ -178,7 +218,14 @@ func (p *TrackerPlayer) handleSeek(samples [][2]float64, vs float64, elapsed *ti
 		}
 		p.mu.Unlock()
 
-		err := newMach.Tick(newOut)
+		err := guardTracker("rendering", func() error { return newMach.Tick(newOut) })
+		if errors.Is(err, errTrackerPanic) {
+			p.mu.Lock()
+			p.finished = true
+			p.isPlaying = false
+			p.mu.Unlock()
+			return
+		}
 		if errors.Is(err, song.ErrStopSong) {
 			break
 		}
@@ -247,7 +294,17 @@ func (p *TrackerPlayer) fillSamples(samples [][2]float64, vs float64, elapsed *t
 }
 
 func (p *TrackerPlayer) renderOneTick() {
-	err := p.machine.Tick(p.sampler)
+	err := guardTracker("rendering", func() error { return p.machine.Tick(p.sampler) })
+	if errors.Is(err, errTrackerPanic) {
+		// The engine gave up mid-render. Nothing reached receivedPremix, so the
+		// receive below has to be skipped: waiting for it would block the audio
+		// thread for good instead of stopping the player.
+		p.mu.Lock()
+		p.finished = true
+		p.isPlaying = false
+		p.mu.Unlock()
+		return
+	}
 	if errors.Is(err, song.ErrStopSong) {
 		p.finished = true
 		p.isPlaying = false
