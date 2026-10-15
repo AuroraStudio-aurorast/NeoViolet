@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"testing"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 )
 
 func TestVersionCommandOutput(t *testing.T) {
@@ -34,5 +36,15 @@ func TestVersionCommandOutput(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("neoviolet")) {
 		t.Errorf("version output = %q, want prefix 'neoviolet'", string(out))
+	}
+
+	// The command also reports the libopenmpt this run resolved (or that it is
+	// absent), which is what tells a user whether tracker formats will play.
+	if synth.OpenmptAvailable() {
+		if !bytes.Contains(out, []byte("libopenmpt ")) {
+			t.Errorf("version output = %q, want a 'libopenmpt <version>' line", string(out))
+		}
+	} else if !bytes.Contains(out, []byte("libopenmpt not available")) {
+		t.Errorf("version output = %q, want a 'libopenmpt not available' line", string(out))
 	}
 }
