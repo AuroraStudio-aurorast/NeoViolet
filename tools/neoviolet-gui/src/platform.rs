@@ -440,19 +440,6 @@ pub fn start_window_drag() {
     windows_drag::start_window_drag();
 }
 
-/// The font this platform draws caption button glyphs with, or `None` where the
-/// buttons use the app's own icons.
-pub fn caption_font() -> Option<&'static str> {
-    #[cfg(target_os = "windows")]
-    {
-        Some(windows_drag::caption_font())
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        None
-    }
-}
-
 /// Whether a window at `opacity` needs a transparent background.
 ///
 /// Whether the request is honoured is up to the platform backend; the caller

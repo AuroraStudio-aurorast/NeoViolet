@@ -44,16 +44,37 @@ pub fn edge_for_point(
     }
 }
 
+/// Width of the menu icon.
+const HAMBURGER_WIDTH: f32 = 16.0;
+/// Height of one bar of the menu icon.
+const HAMBURGER_BAR: f32 = 2.0;
+/// Height of the whole menu icon.
+const HAMBURGER_HEIGHT: f32 = 12.0;
+/// Where each bar of the menu icon starts, measured from its top.
+const HAMBURGER_BAR_TOPS: [f32; 3] = [0.0, 5.0, 10.0];
+
+/// The menu icon: three bars, placed by hand.
+///
+/// The bars are positioned rather than spread by the layout, because a stack this
+/// small is one stretch or one collapse away from drawing as a single solid block.
 pub fn hamburger_icon(color: Hsla) -> Div {
+    let bar = |top: f32| {
+        div()
+            .absolute()
+            .top(px(top))
+            .left(px(0.0))
+            .w(px(HAMBURGER_WIDTH))
+            .h(px(HAMBURGER_BAR))
+            .rounded(px(HAMBURGER_BAR / 2.0))
+            .bg(color)
+    };
     div()
-        .w(px(16.0))
-        .h(px(14.0))
-        .flex()
-        .flex_col()
-        .justify_between()
-        .child(div().w_full().h(px(2.0)).bg(color))
-        .child(div().w_full().h(px(2.0)).bg(color))
-        .child(div().w_full().h(px(2.0)).bg(color))
+        .relative()
+        .w(px(HAMBURGER_WIDTH))
+        .h(px(HAMBURGER_HEIGHT))
+        .child(bar(HAMBURGER_BAR_TOPS[0]))
+        .child(bar(HAMBURGER_BAR_TOPS[1]))
+        .child(bar(HAMBURGER_BAR_TOPS[2]))
 }
 
 /// Height of the title bar, in points.
@@ -229,7 +250,9 @@ impl Titlebar {
         cx: &mut Context<NeoVioletApp>,
     ) -> AnyElement {
         let kind = current_platform_kind();
-        let left_padding = if kind == PlatformKind::MacOs {
+        // macOS keeps its traffic lights at the leading edge, so everything the
+        // bar draws itself — the menu button first of all — starts after them.
+        let leading_padding = if kind == PlatformKind::MacOs {
             px(72.0)
         } else {
             px(8.0)
@@ -241,7 +264,7 @@ impl Titlebar {
             .items_center()
             .flex_grow()
             .min_w(px(0.0))
-            .pl(left_padding)
+            .pl(px(8.0))
             .child(
                 div()
                     .id("aria:titlebar:title")
@@ -305,7 +328,7 @@ impl Titlebar {
             .flex()
             .flex_row()
             .items_center()
-            .child(drag_area);
+            .pl(leading_padding);
 
         if plan.menu_button {
             let rows = menu_rows(current_platform_kind(), lyrics_overlay_is_on(cx));
@@ -354,16 +377,13 @@ impl Titlebar {
 
             let panel = deferred(
                 anchored()
-                    // The panel hangs off the trigger's bottom-right corner and
-                    // grows leftwards and downwards, which is where a menu at the
-                    // end of a title bar has room. gpui pulls it back inside the
-                    // window when it would not fit; placing a panel by hand is how
-                    // a menu ends up half past the window edge.
-                    .anchor(Corner::TopRight)
-                    .position(anchor_for_panel(
-                        self.trigger_bounds.get(),
-                        window.viewport_size(),
-                    ))
+                    // The panel hangs off the trigger's bottom-left corner and
+                    // grows rightwards and downwards, which is where a menu under
+                    // a leading-edge button has room. gpui pulls it back inside
+                    // the window when it would not fit; placing a panel by hand is
+                    // how a menu ends up half past the window edge.
+                    .anchor(Corner::TopLeft)
+                    .position(anchor_for_panel(self.trigger_bounds.get()))
                     .offset(point(px(0.0), px(MENU_PANEL_GAP)))
                     .snap_to_window_with_margin(px(MENU_PANEL_MARGIN))
                     .child(menu_panel(rows, highlighted, self.menu.clone(), window, cx)),
@@ -419,6 +439,11 @@ impl Titlebar {
                     .when(is_open, |this| this.child(panel)),
             );
         }
+
+        // The drag area comes after the menu button, so the bar reads the way a
+        // title bar does: menu at the leading edge, then the title, and the
+        // window buttons at the end.
+        row = row.child(drag_area);
 
         if plan.window_buttons {
             row = row.child(window_controls::caption_row(
@@ -628,17 +653,15 @@ fn lyrics_overlay_is_on(cx: &App) -> bool {
         .unwrap()
 }
 
-/// Where the panel's top-right corner goes: under the trigger once its bounds are
-/// known, and under the trailing edge of the title bar before that.
-fn anchor_for_panel(trigger: Option<Bounds<Pixels>>, viewport: Size<Pixels>) -> Point<Pixels> {
+/// Where the panel's top-left corner goes: under the trigger once its bounds are
+/// known, and under the leading edge of the title bar before that.
+///
+/// The trigger is at the leading edge now, so the panel opens to the right of it —
+/// the way a menu under a leading-edge button does.
+fn anchor_for_panel(trigger: Option<Bounds<Pixels>>) -> Point<Pixels> {
     trigger
-        .map(|bounds| bounds.corner(Corner::BottomRight))
-        .unwrap_or_else(|| {
-            point(
-                px(f32::from(viewport.width) - MENU_PANEL_MARGIN),
-                px(TITLEBAR_HEIGHT),
-            )
-        })
+        .map(|bounds| bounds.corner(Corner::BottomLeft))
+        .unwrap_or_else(|| point(px(MENU_PANEL_MARGIN), px(TITLEBAR_HEIGHT)))
 }
 
 /// The panel the menu drops down.
@@ -766,8 +789,9 @@ fn menu_panel(
 #[cfg(test)]
 mod tests {
     use super::{
-        MenuRow, TitlebarDoubleClick, anchor_for_panel, double_click_action, drag_needs_the_shell,
-        edge_for_point, edge_strips, menu_rows, next_row_index,
+        HAMBURGER_BAR, HAMBURGER_BAR_TOPS, HAMBURGER_HEIGHT, MenuRow, TitlebarDoubleClick,
+        anchor_for_panel, double_click_action, drag_needs_the_shell, edge_for_point, edge_strips,
+        menu_rows, next_row_index,
     };
     use crate::menus::{MenuAction, MenuEntry};
     use crate::platform::PlatformKind;
@@ -903,17 +927,31 @@ mod tests {
 
     #[test]
     fn the_panel_anchors_under_the_trigger() {
-        let trigger = Bounds::new(point(px(700.0), px(0.0)), size(px(24.0), px(30.0)));
+        let trigger = Bounds::new(point(px(8.0), px(0.0)), size(px(24.0), px(30.0)));
         assert_eq!(
-            anchor_for_panel(Some(trigger), size(px(800.0), px(600.0))),
-            point(px(724.0), px(30.0)),
-            "面板挂在触发器的右下角"
+            anchor_for_panel(Some(trigger)),
+            point(px(8.0), px(30.0)),
+            "面板挂在触发器的左下角，向右展开"
         );
         // Before the trigger has been painted there is still a home for the panel:
-        // the trailing edge of the title bar, a margin's width in.
+        // the leading edge of the title bar, a margin's width in.
+        assert_eq!(anchor_for_panel(None), point(px(8.0), px(30.0)));
+    }
+
+    #[test]
+    fn the_menu_icon_is_three_separate_bars() {
+        // `black_box` keeps the compiler from folding these into constants, which
+        // would turn the assertions into compile-time trivia clippy rejects.
+        let tops = std::hint::black_box(HAMBURGER_BAR_TOPS);
+        let bar = std::hint::black_box(HAMBURGER_BAR);
+        assert!(
+            tops[1] - tops[0] > bar && tops[2] - tops[1] > bar,
+            "the bars do not touch, or the icon reads as one block"
+        );
         assert_eq!(
-            anchor_for_panel(None, size(px(800.0), px(600.0))),
-            point(px(792.0), px(30.0))
+            std::hint::black_box(tops[2] + bar),
+            std::hint::black_box(HAMBURGER_HEIGHT),
+            "the last bar ends where the icon does"
         );
     }
 

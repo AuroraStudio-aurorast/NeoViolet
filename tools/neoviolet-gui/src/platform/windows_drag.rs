@@ -13,8 +13,6 @@
 //! the neighbouring `macos_tis` and `windows_console` modules declare their own).
 
 use std::ffi::c_void;
-use std::mem::size_of;
-use std::sync::OnceLock;
 
 /// A window handle (`HWND`).
 type Hwnd = *mut c_void;
@@ -26,9 +24,6 @@ const HTCAPTION: usize = 2;
 const SW_RESTORE: i32 = 9;
 /// `GA_ROOT`: the top-level window a child belongs to.
 const GA_ROOT: u32 = 2;
-
-/// Windows 11's first build; before it, the caption font has another name.
-const WINDOWS_11_BUILD: u32 = 22_000;
 
 #[link(name = "user32")]
 unsafe extern "system" {
@@ -44,29 +39,12 @@ unsafe extern "system" {
     fn ShowWindow(hwnd: Hwnd, cmd: i32) -> Bool;
 }
 
-#[link(name = "ntdll")]
-unsafe extern "system" {
-    fn RtlGetVersion(info: *mut OsVersionInfo) -> i32;
-}
-
 /// A point in screen coordinates (`POINT`).
 #[repr(C)]
 #[derive(Clone, Copy, Default)]
 struct Point {
     x: i32,
     y: i32,
-}
-
-/// The head of `OSVERSIONINFOW`, which is all we need from it: the build number
-/// says which caption font this Windows has.
-#[repr(C)]
-struct OsVersionInfo {
-    size: u32,
-    major: u32,
-    minor: u32,
-    build: u32,
-    platform_id: u32,
-    service_pack: [u16; 128],
 }
 
 /// Start dragging our window, the way a press on a system caption does.
@@ -111,20 +89,6 @@ pub(super) fn start_window_drag() {
     }
 }
 
-/// The font this Windows draws caption glyphs with.
-pub(super) fn caption_font() -> &'static str {
-    caption_font_for_build(windows_build())
-}
-
-/// Windows 11 renamed the caption font; the glyphs are the same.
-fn caption_font_for_build(build: u32) -> &'static str {
-    if build >= WINDOWS_11_BUILD {
-        "Segoe Fluent Icons"
-    } else {
-        "Segoe MDL2 Assets"
-    }
-}
-
 /// The window a title-bar gesture belongs to, or a warning saying there is none.
 ///
 /// Both gestures are only ever asked for from a pointer press inside our own
@@ -155,20 +119,4 @@ fn our_window(gesture: &'static str) -> Option<Hwnd> {
 /// shell reads back as signed.
 fn pack_point((x, y): (i32, i32)) -> isize {
     (((y as u16) as u32) << 16 | (x as u16) as u32) as isize
-}
-
-fn windows_build() -> u32 {
-    static BUILD: OnceLock<u32> = OnceLock::new();
-    *BUILD.get_or_init(|| {
-        let mut info = OsVersionInfo {
-            size: size_of::<OsVersionInfo>() as u32,
-            major: 0,
-            minor: 0,
-            build: 0,
-            platform_id: 0,
-            service_pack: [0; 128],
-        };
-        let status = unsafe { RtlGetVersion(&mut info) };
-        if status == 0 { info.build } else { 0 }
-    })
 }

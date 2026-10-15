@@ -9,8 +9,8 @@
 //! window behaviour stay in one place.
 
 use gpui::{
-    AnyElement, App, CursorStyle, Hsla, MouseButton, SharedString, WindowControlArea,
-    WindowControls, div, prelude::*, px,
+    AnyElement, App, CursorStyle, Hsla, MouseButton, WindowControlArea, WindowControls, div,
+    prelude::*, px,
 };
 use yororen_ui::headless::icon::{IconSource, icon};
 
@@ -28,15 +28,6 @@ pub enum CaptionButton {
     Close,
 }
 
-/// How a button draws itself.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CaptionIcon {
-    /// A character in the platform's caption font.
-    Glyph(&'static str),
-    /// A named icon from the app's icon set.
-    Svg(&'static str),
-}
-
 /// The measurements a platform's caption buttons are drawn with.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CaptionMetrics {
@@ -50,9 +41,7 @@ pub struct CaptionMetrics {
     pub padding: f32,
     /// Corner radius; half the button height makes it a circle.
     pub rounded: f32,
-    /// Size of a caption glyph.
-    pub glyph_size: f32,
-    /// Size of an icon.
+    /// Size of the icon drawn in a button.
     pub icon_size: f32,
 }
 
@@ -63,7 +52,7 @@ pub const CLOSE_HOVER_RED: u32 = 0x00e8_1123;
 /// the same ones its own title bar would use — and they sit flush against the
 /// trailing edge.
 const WINDOWS_CAPTION_WIDTH: f32 = 36.0;
-const WINDOWS_CAPTION_GLYPH: f32 = 10.0;
+const WINDOWS_CAPTION_ICON: f32 = 12.0;
 
 /// Linux desktops draw small round ghost buttons, with a little air between them
 /// and around the group.
@@ -71,13 +60,6 @@ const LINUX_CAPTION_SIZE: f32 = 20.0;
 const LINUX_CAPTION_GAP: f32 = 12.0;
 const LINUX_CAPTION_PADDING: f32 = 12.0;
 const LINUX_CAPTION_ICON: f32 = 16.0;
-
-/// Glyphs from "Segoe Fluent Icons" (Windows 11) and "Segoe MDL2 Assets"
-/// (Windows 10), which spell the caption the same way.
-const GLYPH_MINIMIZE: &str = "\u{e921}";
-const GLYPH_MAXIMIZE: &str = "\u{e922}";
-const GLYPH_RESTORE: &str = "\u{e923}";
-const GLYPH_CLOSE: &str = "\u{e8bb}";
 
 /// The measurements for one platform's buttons, in a title bar of this height.
 pub fn caption_metrics(kind: PlatformKind, titlebar_height: f32) -> CaptionMetrics {
@@ -88,8 +70,7 @@ pub fn caption_metrics(kind: PlatformKind, titlebar_height: f32) -> CaptionMetri
             gap: 0.0,
             padding: 0.0,
             rounded: 0.0,
-            glyph_size: WINDOWS_CAPTION_GLYPH,
-            icon_size: 0.0,
+            icon_size: WINDOWS_CAPTION_ICON,
         },
         // macOS keeps its own traffic lights, so it never draws these; it is
         // measured like Linux so that the numbers stay defined everywhere.
@@ -99,27 +80,25 @@ pub fn caption_metrics(kind: PlatformKind, titlebar_height: f32) -> CaptionMetri
             gap: LINUX_CAPTION_GAP,
             padding: LINUX_CAPTION_PADDING,
             rounded: LINUX_CAPTION_SIZE / 2.0,
-            glyph_size: 0.0,
             icon_size: LINUX_CAPTION_ICON,
         },
     }
 }
 
-/// How one platform draws a button.
-pub fn caption_icon(kind: PlatformKind, button: CaptionButton) -> CaptionIcon {
-    match kind {
-        PlatformKind::Windows => CaptionIcon::Glyph(match button {
-            CaptionButton::Minimize => GLYPH_MINIMIZE,
-            CaptionButton::Maximize => GLYPH_MAXIMIZE,
-            CaptionButton::Restore => GLYPH_RESTORE,
-            CaptionButton::Close => GLYPH_CLOSE,
-        }),
-        PlatformKind::MacOs | PlatformKind::Linux => CaptionIcon::Svg(match button {
-            CaptionButton::Minimize => "minimize",
-            CaptionButton::Maximize => "maximize-off",
-            CaptionButton::Restore => "maximize-on",
-            CaptionButton::Close => "close",
-        }),
+/// The icon a button is drawn with, from the app's own icon set.
+///
+/// Windows has its own caption font — "Segoe Fluent Icons" on 11, "Segoe MDL2
+/// Assets" before it — and Zed draws its Windows controls with those private-use
+/// codepoints. Rendering one here came out as a missing-glyph box instead, on and
+/// off, so the buttons use the drawn icons everywhere: they cannot go missing,
+/// they look the same on all three platforms, and one set of shapes is one thing
+/// to keep right.
+pub fn caption_icon(button: CaptionButton) -> &'static str {
+    match button {
+        CaptionButton::Minimize => "minimize",
+        CaptionButton::Maximize => "maximize-off",
+        CaptionButton::Restore => "maximize-on",
+        CaptionButton::Close => "close",
     }
 }
 
@@ -231,23 +210,21 @@ fn caption_button(
     cx: &mut App,
 ) -> impl IntoElement {
     let (hover_bg, hover_fg) = hover_colors(kind, button, cx);
-    let icon_color = crate::theme_colors::secondary(cx);
-
-    let glyph_font: Option<SharedString> = crate::platform::caption_font().map(Into::into);
-    let drawn_icon: AnyElement = match caption_icon(kind, button) {
-        CaptionIcon::Glyph(glyph) => div()
-            .text_size(px(metrics.glyph_size))
-            .child(glyph)
-            .into_any_element(),
-        CaptionIcon::Svg(name) => icon(
-            format!("aria:titlebar:{}-icon", caption_id(button)),
-            IconSource::Builtin(name.into()),
-            cx,
-        )
-        .size(px(metrics.icon_size))
-        .color(icon_color)
-        .render(cx),
+    // Windows closes in red under the pointer, where the icon has to stay legible;
+    // everywhere else the icon takes the bar's own quiet colour.
+    let icon_color = if kind == PlatformKind::Windows && button == CaptionButton::Close {
+        gpui::white()
+    } else {
+        crate::theme_colors::secondary(cx)
     };
+    let drawn_icon: AnyElement = icon(
+        format!("aria:titlebar:{}-icon", caption_id(button)),
+        IconSource::Builtin(caption_icon(button).into()),
+        cx,
+    )
+    .size(px(metrics.icon_size))
+    .color(icon_color)
+    .render(cx);
 
     div()
         .id(format!("aria:titlebar:{}", caption_id(button)))
@@ -259,7 +236,6 @@ fn caption_button(
         .rounded(px(metrics.rounded))
         .occlude()
         .text_color(icon_color)
-        .when_some(glyph_font, |this, font| this.font_family(font))
         .cursor(CursorStyle::PointingHand)
         .hover(move |this| this.bg(hover_bg).text_color(hover_fg))
         .active(move |this| this.bg(hover_bg).text_color(hover_fg))
@@ -327,7 +303,7 @@ mod tests {
         );
         assert_eq!(metrics.button_height, 30.0, "and as tall as the title bar");
         assert_eq!(metrics.gap, 0.0, "they sit flush against each other");
-        assert_eq!(metrics.glyph_size, 10.0, "glyphs are drawn at 10px");
+        assert!(metrics.icon_size > 0.0, "the buttons draw an icon");
     }
 
     #[test]
@@ -346,45 +322,32 @@ mod tests {
     }
 
     #[test]
-    fn windows_draws_caption_glyphs_from_the_system_font() {
+    fn every_platform_draws_our_own_icons() {
+        assert_eq!(caption_icon(CaptionButton::Minimize), "minimize");
         assert_eq!(
-            caption_icon(PlatformKind::Windows, CaptionButton::Minimize),
-            CaptionIcon::Glyph("\u{e921}")
-        );
-        assert_eq!(
-            caption_icon(PlatformKind::Windows, CaptionButton::Maximize),
-            CaptionIcon::Glyph("\u{e922}")
-        );
-        assert_eq!(
-            caption_icon(PlatformKind::Windows, CaptionButton::Restore),
-            CaptionIcon::Glyph("\u{e923}")
-        );
-        assert_eq!(
-            caption_icon(PlatformKind::Windows, CaptionButton::Close),
-            CaptionIcon::Glyph("\u{e8bb}")
-        );
-    }
-
-    #[test]
-    fn linux_draws_our_own_icons() {
-        assert_eq!(
-            caption_icon(PlatformKind::Linux, CaptionButton::Minimize),
-            CaptionIcon::Svg("minimize")
-        );
-        assert_eq!(
-            caption_icon(PlatformKind::Linux, CaptionButton::Maximize),
-            CaptionIcon::Svg("maximize-off"),
+            caption_icon(CaptionButton::Maximize),
+            "maximize-off",
             "the plain square is the maximize glyph"
         );
         assert_eq!(
-            caption_icon(PlatformKind::Linux, CaptionButton::Restore),
-            CaptionIcon::Svg("maximize-on"),
+            caption_icon(CaptionButton::Restore),
+            "maximize-on",
             "the doubled square is the restore glyph"
         );
-        assert_eq!(
-            caption_icon(PlatformKind::Linux, CaptionButton::Close),
-            CaptionIcon::Svg("close")
-        );
+        assert_eq!(caption_icon(CaptionButton::Close), "close");
+
+        // The icons are ours, so no button depends on a system icon font being
+        // installed and none of them can come out as a missing-glyph box.
+        for button in [
+            CaptionButton::Minimize,
+            CaptionButton::Maximize,
+            CaptionButton::Close,
+        ] {
+            assert!(
+                !caption_icon(button).is_empty(),
+                "every button has a shape of its own"
+            );
+        }
     }
 
     #[test]
