@@ -1,18 +1,12 @@
-//! Moving and maximizing the window from our own title bar, on Windows.
+//! Moving the window from our own title bar, on Windows.
 //!
-//! gpui has no way to start a window drag here: `start_window_move` is an empty
-//! default on Windows — only macOS and Linux implement it — and `zoom_window` can
-//! only maximize a window, never put one back. Both are reachable through the
-//! shell instead. Dragging a window by its caption is a `WM_NCLBUTTONDOWN` on
-//! `HTCAPTION`, which runs the shell's own move loop; toggling maximize is
-//! `ShowWindow` with `SW_MAXIMIZE` or `SW_RESTORE`.
-//!
-//! The shell has its own opinion about a press in the title bar: gpui hands us
-//! the non-client mouse messages and, when an element does not consume one,
-//! passes it on to `DefWindowProc`, which starts *its own* caption drag. Two move
-//! loops for one press fight over the mouse capture, so the title bar consumes
-//! the press (`WindowControlArea` is declared, but the handler stops
-//! propagation) and this module is the only thing that starts a drag.
+//! Windows moves a window itself, out of the caption area the title bar
+//! declares: gpui hands the non-client mouse messages to the app and, when no
+//! element consumes one, passes it on to `DefWindowProc`, which is what runs the
+//! move. This module only covers the case where that did not happen — gpui
+//! implements `start_window_move` on macOS, X11 and Wayland but leaves it an
+//! empty default on Windows — and a drag started here is a `WM_NCLBUTTONDOWN` on
+//! `HTCAPTION`, which runs the shell's own move loop for us.
 //!
 //! The few declarations needed are written out here rather than taken from the
 //! `windows` crate, so the GUI keeps no extra direct dependency (the same reason
@@ -29,7 +23,6 @@ type Bool = i32;
 
 const WM_NCLBUTTONDOWN: u32 = 0x00a1;
 const HTCAPTION: usize = 2;
-const SW_MAXIMIZE: i32 = 3;
 const SW_RESTORE: i32 = 9;
 /// `GA_ROOT`: the top-level window a child belongs to.
 const GA_ROOT: u32 = 2;
@@ -45,6 +38,8 @@ unsafe extern "system" {
     fn GetAncestor(hwnd: Hwnd, flags: u32) -> Hwnd;
     fn ReleaseCapture() -> Bool;
     fn SendMessageW(hwnd: Hwnd, msg: u32, wparam: usize, lparam: isize) -> isize;
+    /// Only used to put a maximized window back before a fallback drag; the
+    /// window's own maximize and restore are the platform's business.
     fn IsZoomed(hwnd: Hwnd) -> Bool;
     fn ShowWindow(hwnd: Hwnd, cmd: i32) -> Bool;
 }
@@ -113,22 +108,6 @@ pub(super) fn start_window_drag() {
             HTCAPTION,
             pack_point((cursor.x, cursor.y)),
         );
-    }
-}
-
-/// Maximize our window, or put it back if it is already maximized.
-pub(super) fn toggle_zoom() {
-    let Some(hwnd) = our_window("maximize or restore") else {
-        return;
-    };
-    let maximized = unsafe { IsZoomed(hwnd) } != 0;
-    log::debug!(
-        "[gui] {} the window",
-        if maximized { "restoring" } else { "maximizing" }
-    );
-    let command = if maximized { SW_RESTORE } else { SW_MAXIMIZE };
-    unsafe {
-        ShowWindow(hwnd, command);
     }
 }
 

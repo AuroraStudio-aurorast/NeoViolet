@@ -315,6 +315,20 @@ pub fn drawn_menu_requested() -> bool {
     }
 }
 
+/// Ask the shell for the window drag instead of leaving it to the platform.
+///
+/// Windows moves a window itself, out of the caption area the title bar declares,
+/// and that is what the bar relies on. Setting this variable to `shell` takes the
+/// gesture over anyway — the title bar calls the shell for a caption drag of its
+/// own on the first pointer movement — which is what to try on a machine where
+/// the platform's own move does not happen.
+pub const TITLEBAR_DRAG: &str = "NEOVIOLET_TITLEBAR_DRAG";
+
+/// Whether [`TITLEBAR_DRAG`] asks for the shell to run the drag.
+pub fn titlebar_drag_wants_the_shell() -> bool {
+    matches!(std::env::var(TITLEBAR_DRAG).as_deref(), Ok("shell"))
+}
+
 /// What `kind` draws, given the client decorations in play.
 ///
 /// `client_decorations` is what the caller asked for at window creation and what
@@ -349,9 +363,10 @@ fn chrome_plan_for(
             menu_button: drawn_menu,
             drag_via_control_area: false,
         },
-        // No caption, but the frame keeps resizing and snapping, and the caption
-        // controls are ours to draw and route back through the control areas —
-        // this is the one backend that consumes them.
+        // No caption, but the frame keeps resizing and snapping. It is also the
+        // one backend that answers the control areas itself — it runs the move
+        // for a drag and minimize, maximize/restore and close for the buttons —
+        // so the bar declares them and leaves the press alone.
         PlatformKind::Windows => ChromePlan {
             titlebar: true,
             frame: true,
@@ -389,6 +404,12 @@ fn chrome_plan_for(
     plan
 }
 
+/// The plan a platform gets, for tests that only need a realistic `ChromePlan`.
+#[cfg(test)]
+pub fn chrome_plan_for_tests(kind: PlatformKind) -> ChromePlan {
+    chrome_plan_for(kind, kind != PlatformKind::MacOs, false, false)
+}
+
 /// Whether the client can start an edge resize on this platform.
 ///
 /// gpui implements `start_window_resize` on X11 and Wayland only; macOS and
@@ -409,20 +430,14 @@ fn client_side_resize_is_honoured_on(kind: PlatformKind) -> bool {
 /// Start moving the window from a title bar we draw ourselves, on a platform
 /// whose toolkit has no call for it.
 ///
-/// gpui implements `start_window_move` on macOS, X11 and Wayland but not on
-/// Windows, so there the shell's own caption drag — a `WM_NCLBUTTONDOWN` on
-/// `HTCAPTION` — is the only way to move the window from our own bar.
+/// Windows normally moves a window itself, out of the caption area our title bar
+/// declares, and this is only for the case where it did not: gpui implements
+/// `start_window_move` on macOS, X11 and Wayland but leaves it an empty default
+/// on Windows, so there the shell's own caption drag — a `WM_NCLBUTTONDOWN` on
+/// `HTCAPTION` — is the only thing left that can move the window.
 pub fn start_window_drag() {
     #[cfg(target_os = "windows")]
     windows_drag::start_window_drag();
-}
-
-/// Maximize the window, or put it back if it is already maximized, on a platform
-/// whose toolkit can only do the first half: gpui's `zoom_window` maximizes and
-/// has no way to restore.
-pub fn toggle_window_zoom() {
-    #[cfg(target_os = "windows")]
-    windows_drag::toggle_zoom();
 }
 
 /// The font this platform draws caption button glyphs with, or `None` where the

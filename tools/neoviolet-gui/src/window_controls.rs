@@ -9,7 +9,7 @@
 //! window behaviour stay in one place.
 
 use gpui::{
-    AnyElement, App, ClickEvent, CursorStyle, Hsla, MouseButton, SharedString, WindowControlArea,
+    AnyElement, App, CursorStyle, Hsla, MouseButton, SharedString, WindowControlArea,
     WindowControls, div, prelude::*, px,
 };
 use yororen_ui::headless::icon::{IconSource, icon};
@@ -182,6 +182,17 @@ pub fn caption_action(button: CaptionButton) -> CaptionAction {
     }
 }
 
+/// Whether the buttons have to act themselves on this platform.
+///
+/// Windows turns a control area into a real window button — it runs minimize,
+/// maximize/restore and close from the areas declared below, and those are also
+/// what give the buttons their snap layouts and proper activation. Acting here
+/// as well would run every press twice. Everywhere else gpui does none of that,
+/// so the buttons do it.
+pub fn buttons_act_themselves(kind: PlatformKind) -> bool {
+    kind != PlatformKind::Windows
+}
+
 /// Draw the caption buttons for this platform, at the trailing end of the title
 /// bar.
 pub fn caption_row(
@@ -200,10 +211,13 @@ pub fn caption_row(
         .items_center()
         .h_full()
         .gap(px(metrics.gap))
-        .px(px(metrics.padding))
+        .px(px(metrics.padding));
+    if buttons_act_themselves(kind) {
         // A press on a button is a press on a button, not the start of a window
-        // drag.
-        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+        // drag. On Windows the press has to reach the window procedure instead,
+        // which is what answers the control areas declared below.
+        row = row.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
+    }
     for button in buttons {
         row = row.child(caption_button(kind, button, metrics, cx));
     }
@@ -251,27 +265,21 @@ fn caption_button(
         .active(move |this| this.bg(hover_bg).text_color(hover_fg))
         .window_control_area(caption_area(button))
         .child(drawn_icon)
-        .on_click(move |event, window, cx| {
-            // A double click is still one press of this button: acting on both
-            // halves of it would maximize a window and put it straight back.
-            if let ClickEvent::Mouse(mouse) = event
-                && mouse.down.click_count > 1
-            {
-                return;
-            }
-            match caption_action(button) {
-                CaptionAction::Minimize => window.minimize_window(),
-                CaptionAction::ToggleZoom => {
-                    // gpui can only maximize a window; the shell can also put one
-                    // back, so Windows toggles through it.
-                    if kind == PlatformKind::Windows {
-                        crate::platform::toggle_window_zoom();
-                    } else {
-                        window.zoom_window();
-                    }
+        .when(buttons_act_themselves(kind), |this| {
+            // On Windows the platform presses this button for us, out of the
+            // control area declared above, so there is nothing to do here.
+            this.on_click(move |event, window, cx| {
+                // A double click is still one press of this button: acting on both
+                // halves of it would maximize a window and put it straight back.
+                if event.click_count() > 1 {
+                    return;
                 }
-                CaptionAction::RequestClose => request_close(cx),
-            }
+                match caption_action(button) {
+                    CaptionAction::Minimize => window.minimize_window(),
+                    CaptionAction::ToggleZoom => window.zoom_window(),
+                    CaptionAction::RequestClose => request_close(cx),
+                }
+            })
         })
 }
 
@@ -466,5 +474,12 @@ mod tests {
             "restoring and maximizing are the same strip of the window"
         );
         assert_eq!(caption_area(CaptionButton::Close), WindowControlArea::Close);
+    }
+
+    #[test]
+    fn only_windows_lets_the_platform_press_its_buttons() {
+        assert!(!buttons_act_themselves(PlatformKind::Windows));
+        assert!(buttons_act_themselves(PlatformKind::MacOs));
+        assert!(buttons_act_themselves(PlatformKind::Linux));
     }
 }

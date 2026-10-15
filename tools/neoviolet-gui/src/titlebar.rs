@@ -253,26 +253,16 @@ impl Titlebar {
                     .overflow_hidden()
                     .child(title.to_string()),
             );
-        // Windows moves a window through its control areas, and this bar is the
-        // area it should use; the other platforms leave the area alone and are
-        // moved by hand below.
+        // The bar is the window's drag area on every platform. Windows moves a
+        // window through those areas itself, so there this declaration is what
+        // makes the bar draggable and the press has to reach the default window
+        // procedure for that to happen; the other platforms ignore the area and
+        // are moved from here instead.
         drag_area = drag_area
             .window_control_area(WindowControlArea::Drag)
             .on_mouse_down(MouseButton::Left, {
                 let should_move = self.should_move.clone();
-                move |event, window, cx| {
-                    // The press belongs to this bar. Windows hands non-client
-                    // presses to the app and, when nothing consumes one, passes
-                    // it on to DefWindowProc — which would start a move loop of
-                    // its own beside the one this bar drives, and toggle the
-                    // window back on the second half of a double click.
-                    cx.stop_propagation();
-                    if event.click_count > 1 {
-                        toggle_zoom(plan, window);
-                    } else {
-                        should_move.set(true);
-                    }
-                }
+                move |_, _, _| should_move.set(true)
             })
             .on_mouse_up(MouseButton::Left, {
                 let should_move = self.should_move.clone();
@@ -292,9 +282,17 @@ impl Titlebar {
                         return;
                     }
                     should_move.set(false);
-                    if event.pressed_button == Some(MouseButton::Left) {
-                        start_window_drag(plan, window);
-                    }
+                    move_window(event.pressed_button, plan, window);
+                }
+            })
+            .on_click(move |event, window, _| {
+                if event.click_count() != 2 {
+                    return;
+                }
+                match double_click_action(kind, window.window_controls().maximize) {
+                    TitlebarDoubleClick::Nothing => {}
+                    TitlebarDoubleClick::PlatformPreference => window.titlebar_double_click(),
+                    TitlebarDoubleClick::Zoom => window.zoom_window(),
                 }
             });
 
@@ -440,28 +438,58 @@ impl Titlebar {
     }
 }
 
-/// Start moving the window from the drag area.
+/// What a double click on the title bar does.
 ///
-/// Windows has no toolkit call for this at all — `start_window_move` is an empty
-/// default there — so the shell has to run its own caption drag. macOS and Linux
-/// do have the call, and no shell drag to ask for.
-fn start_window_drag(plan: ChromePlan, window: &mut Window) {
-    if plan.drag_via_control_area {
-        crate::platform::start_window_drag();
-    } else {
-        window.start_window_move();
+/// Only Linux has to be told: Windows toggles maximize itself when a caption
+/// area is double clicked, and macOS applies the user's own preference for it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TitlebarDoubleClick {
+    /// Nothing to do here — the platform answers the double click.
+    Nothing,
+    /// Do whatever the user configured the platform to do.
+    PlatformPreference,
+    /// Grow the window, or put it back.
+    Zoom,
+}
+
+pub fn double_click_action(kind: PlatformKind, maximize_supported: bool) -> TitlebarDoubleClick {
+    match kind {
+        PlatformKind::Windows => TitlebarDoubleClick::Nothing,
+        PlatformKind::MacOs => TitlebarDoubleClick::PlatformPreference,
+        PlatformKind::Linux if maximize_supported => TitlebarDoubleClick::Zoom,
+        PlatformKind::Linux => TitlebarDoubleClick::Nothing,
     }
 }
 
-/// Maximize the window, or put it back if it is already maximized.
+/// Whether this drag has to be asked for through the shell.
 ///
-/// gpui can only do the first half; the shell can do both, so on Windows — the
-/// platform we hand the drag area to — the toggle goes through it.
-fn toggle_zoom(plan: ChromePlan, window: &mut Window) {
-    if plan.drag_via_control_area {
-        crate::platform::toggle_window_zoom();
-    } else {
-        window.zoom_window();
+/// Windows moves a window through its caption areas itself, and gpui reports
+/// every move of such a gesture with `pressed_button: None` — it hardcodes that
+/// for non-client moves. A move that still carries the left button is therefore a
+/// client-side one, which means no platform move loop is running and the window
+/// has to be moved from here. `forced` is the [`TITLEBAR_DRAG`] switch, for a
+/// machine where the platform's own move does not happen.
+///
+/// [`TITLEBAR_DRAG`]: crate::platform::TITLEBAR_DRAG
+pub fn drag_needs_the_shell(
+    pressed_button: Option<MouseButton>,
+    plan: ChromePlan,
+    forced: bool,
+) -> bool {
+    plan.drag_via_control_area && (pressed_button.is_some() || forced)
+}
+
+/// Move the window for a drag that the platform left to us.
+///
+/// gpui implements `start_window_move` on macOS, X11 and Wayland but leaves it an
+/// empty default on Windows, where the shell is the only thing that can move a
+/// window that has no caption left.
+fn move_window(pressed_button: Option<MouseButton>, plan: ChromePlan, window: &mut Window) {
+    let forced = crate::platform::titlebar_drag_wants_the_shell();
+    if drag_needs_the_shell(pressed_button, plan, forced) {
+        crate::platform::start_window_drag();
+    } else if pressed_button.is_some() {
+        window.start_window_move();
     }
 }
 
@@ -738,11 +766,12 @@ fn menu_panel(
 #[cfg(test)]
 mod tests {
     use super::{
-        MenuRow, anchor_for_panel, edge_for_point, edge_strips, menu_rows, next_row_index,
+        MenuRow, TitlebarDoubleClick, anchor_for_panel, double_click_action, drag_needs_the_shell,
+        edge_for_point, edge_strips, menu_rows, next_row_index,
     };
     use crate::menus::{MenuAction, MenuEntry};
     use crate::platform::PlatformKind;
-    use gpui::{Bounds, ResizeEdge, point, px, size};
+    use gpui::{Bounds, MouseButton, ResizeEdge, point, px, size};
 
     /// The actions a layout lists, in order, to compare against the rows a panel
     /// would draw.
@@ -1046,6 +1075,48 @@ mod tests {
         assert_eq!(
             edge_for_point(6.0, 150.0, 400.0, 300.0, 6.0),
             Some(ResizeEdge::Left)
+        );
+    }
+
+    #[test]
+    fn a_drag_is_asked_of_the_shell_only_when_the_platform_left_it() {
+        let windows = crate::platform::chrome_plan_for_tests(PlatformKind::Windows);
+        let macos = crate::platform::chrome_plan_for_tests(PlatformKind::MacOs);
+
+        // A client-side move means the platform is not moving the window.
+        assert!(drag_needs_the_shell(
+            Some(MouseButton::Left),
+            windows,
+            false
+        ));
+        // A non-client one is the platform's own move already in flight.
+        assert!(!drag_needs_the_shell(None, windows, false));
+        // macOS and Linux move the window themselves, out of gpui's call.
+        assert!(!drag_needs_the_shell(Some(MouseButton::Left), macos, false));
+        // The switch overrides both, for a machine where the platform's move
+        // does not happen at all.
+        assert!(drag_needs_the_shell(None, windows, true));
+    }
+
+    #[test]
+    fn a_double_click_follows_the_platform() {
+        // Windows answers it through the default window procedure, macOS through
+        // the user's preference, and Linux only when the window can be resized.
+        assert_eq!(
+            double_click_action(PlatformKind::Windows, true),
+            TitlebarDoubleClick::Nothing
+        );
+        assert_eq!(
+            double_click_action(PlatformKind::MacOs, true),
+            TitlebarDoubleClick::PlatformPreference
+        );
+        assert_eq!(
+            double_click_action(PlatformKind::Linux, true),
+            TitlebarDoubleClick::Zoom
+        );
+        assert_eq!(
+            double_click_action(PlatformKind::Linux, false),
+            TitlebarDoubleClick::Nothing
         );
     }
 }
