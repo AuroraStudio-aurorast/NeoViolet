@@ -74,6 +74,11 @@ pub struct AppState {
     pub desktop_lyrics_enabled: Arc<Mutex<bool>>,
     /// Handle to the lyrics overlay window (for programmatic close).
     pub lyrics_window_handle: Arc<Mutex<Option<AnyWindowHandle>>>,
+    /// The window this app opened. Menu actions act on this one instead of on
+    /// whatever the platform calls active: on macOS that is
+    /// `NSApplication.mainWindow`, which is nil until the app has been activated,
+    /// so a menu item that needs a window would silently do nothing.
+    pub main_window_handle: Arc<Mutex<Option<AnyWindowHandle>>>,
 }
 
 impl Global for AppState {}
@@ -100,6 +105,7 @@ impl AppState {
             lyrics_state: Arc::new(Mutex::new(LyricsState::default())),
             desktop_lyrics_enabled: Arc::new(Mutex::new(false)),
             lyrics_window_handle: Arc::new(Mutex::new(None)),
+            main_window_handle: Arc::new(Mutex::new(None)),
         }
     }
 }

@@ -19,7 +19,7 @@ use gpui::{
 
 use crate::app::TerminalApp;
 use crate::terminal::{
-    RenderSnapshot, ViewportSelection,
+    GridCell, RenderSnapshot, ViewportSelection,
     custom_blocks::{is_custom_block_supported, paint_custom_block},
 };
 
@@ -155,6 +155,9 @@ pub struct PrepaintState {
     runs: Vec<BatchedTextRun>,
     custom_blocks: Vec<LayoutCustomBlock>,
     cursor: Option<CursorLayout>,
+    /// Where to draw the composition, which is not the painted cursor: a
+    /// terminal program that draws its own caret hides the cursor entirely.
+    ime_anchor: GridCell,
 }
 
 // ── InputHandler ──
@@ -531,6 +534,7 @@ impl Element for TerminalElement {
             runs,
             custom_blocks,
             cursor: self.cursor_layout(cx),
+            ime_anchor: self.snapshot.ime_anchor,
         }
     }
 
@@ -577,12 +581,12 @@ impl Element for TerminalElement {
             cx,
         );
 
-        if let Some(marked_text) = self.marked_text.as_ref().filter(|text| !text.is_empty())
-            && let Some(cursor) = prepaint.cursor
-        {
+        if let Some(marked_text) = self.marked_text.as_ref().filter(|text| !text.is_empty()) {
             let pos = point(
-                prepaint.bounds.origin.x + prepaint.metrics.cell_width * cursor.col as f32,
-                prepaint.bounds.origin.y + prepaint.metrics.line_height * cursor.row as f32,
+                prepaint.bounds.origin.x
+                    + prepaint.metrics.cell_width * prepaint.ime_anchor.col as f32,
+                prepaint.bounds.origin.y
+                    + prepaint.metrics.line_height * prepaint.ime_anchor.row as f32,
             );
             let mut base_style = self.base_text_style(cx);
             base_style.underline = Some(UnderlineStyle {

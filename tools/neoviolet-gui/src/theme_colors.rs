@@ -49,6 +49,22 @@ pub fn tertiary(cx: &impl ActiveTheme) -> Hsla {
     resolve(cx.theme(), "content.tertiary", 0x6272a4)
 }
 
+/// Raised surfaces, such as the panel of a menu the app draws itself.
+pub fn elevated(cx: &impl ActiveTheme) -> Hsla {
+    resolve(cx.theme(), "surface.base", 0x282a36)
+}
+
+/// A row's background under the pointer or under the keyboard highlight.
+pub fn hover(cx: &impl ActiveTheme) -> Hsla {
+    resolve(cx.theme(), "surface.hover", 0x44475a)
+}
+
+/// Hairlines between surfaces: a drawn panel's edge and the lines that separate
+/// groups of menu rows.
+pub fn border(cx: &impl ActiveTheme) -> Hsla {
+    resolve(cx.theme(), "border.default", 0x44475a)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
