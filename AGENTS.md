@@ -17,8 +17,11 @@ For AI agents. Read [Keeping this file honest](#keeping-this-file-honest) before
 ## Hard constraints
 
 - **`make` only** — never run `go build`/`go test`/`cargo build`/`cargo test` directly; you lose
-  the build tags, `-ldflags` and test flags the Makefile adds.
-- **CGo is required** — check `CGO_ENABLED=1` and a working `CC` before blaming a link error on source.
+  the `-ldflags` and test flags the Makefile adds.
+- **No CGo in this project** — load system libraries at runtime instead of adding cgo bindings:
+  purego/dlopen is the pattern (`internal/power`, `internal/mediactl`, `internal/audio/synth`).
+- **A `CC` is still required while `CGO_ENABLED=1`** — the Go runtime's cgo shim gets compiled, so
+  check `CGO_ENABLED` and a working `CC` before blaming a link error on source.
 - **`make test` is not a Rust build** — it only runs `cargo test`; the release binaries the app
   spawns need `make apetools` / `make gui`.
 - **Rust is optional at runtime** — `apecli` comes from PATH or beside the binary (ffmpeg/macOS

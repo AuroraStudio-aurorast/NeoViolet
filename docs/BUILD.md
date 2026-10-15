@@ -30,13 +30,24 @@ This document describes how to build NeoViolet from source — locally and via C
 - **Go 1.26+** (see `go.mod` for the exact version)
 - **Rust with cargo** — required for building `apecli` (the APE/Monkey's Audio decoder helper) and `neoviolet-gui` (the native GUI wrapper). Without it, `make build` still succeeds (both sub-builds print a warning and exit cleanly). APE playback falls back to ffmpeg or macOS `afconvert`; the GUI binary is simply not produced. Install via [rustup](https://rustup.rs/).
 - **`make`** — used for all build targets
-- **C compiler** — required by CGo dependencies (the audio playback engine uses CGo for system audio)
-- **`pkg-config`** — used to detect `libopenmpt` automatically
-- **`libopenmpt`** (optional) — enables enhanced tracker module playback (`.mptm` and improved MOD/XM/IT/S3M support)
+- **C compiler** — required because `CGO_ENABLED=1` compiles the Go runtime's cgo shim
+- **`pkg-config`** — used by `neoviolet-gui`'s Linux dependencies to locate X11, Wayland, fontconfig and freetype
+- **`libopenmpt`** (optional, runtime) — enables enhanced tracker module playback (`.mptm` and improved MOD/XM/IT/S3M support); loaded from a shared library at runtime, no build-time dependency
 - **SoundFont file** (optional, `.sf2`) — required for MIDI playback (`mid` files) (Recommend SF2: [GeneralUser GS](https://schristiancollins.com/generaluser))
 - **X11 development libraries** (Linux only) — required by the GUI (`gpui-ce`); see [GUI Prerequisites](#gui-prerequisites)
 
-> The Makefile auto-detects `libopenmpt` via `pkg-config`. If found, the `openmpt` build tag is added. If not found, tracker support still works with the built-in `gotracker/playback` library, but some formats (e.g. `mptm`) won't play.
+> `libopenmpt` is loaded at runtime via `dlopen`; `NEOVIOLET_LIBOPENMPT` takes priority when it is set.
+> On macOS and Windows the directory of the `neoviolet` binary is searched first (on macOS also
+> `../Frameworks` inside an app bundle), followed by the usual library directories of that platform
+> (the Homebrew and MacPorts prefixes on macOS). On Linux the library is found through the loader's own
+> search path — `LD_LIBRARY_PATH` and the `ldconfig` cache — so install `libopenmpt.so.0` into a system
+> library directory or point `NEOVIOLET_LIBOPENMPT` at it; `/usr/lib`, `/usr/lib64` and `/usr/local/lib`
+> are tried as well.
+>
+> Without the library, tracker playback falls back to the built-in `gotracker/playback` engine, which
+> understands only MOD, XM, IT and S3M: every other tracker format this player accepts (`.mptm`, `.mo3`,
+> `.mtm`, `.stm`, `.669`, …) does not open. MIDI files (`.mid`, `.midi`) use a separate synth path and
+> are unaffected.
 
 ---
 
@@ -47,7 +58,7 @@ This document describes how to build NeoViolet from source — locally and via C
 git clone https://github.com/AuroraStudio-aurorast/neoviolet.git
 cd neoviolet
 
-# Build (libopenmpt auto-detected if available)
+# Build (libopenmpt is loaded at runtime when present)
 make build
 
 # Binary is placed at ./neoviolet (or ./neoviolet.exe on Windows)
@@ -62,7 +73,6 @@ make build
 | `build`              | Production build with stripped debug info (builds `apecli`, `neoviolet-gui` automatically) |
 | `build/race`         | Build with Go race detector                                                                |
 | `build/debug`        | Build with debug symbols (compatible with `dlv`)                                           |
-| `build/noopenmpt`    | Build without libopenmpt support                                                           |
 | `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
 | `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
 | `apetools/debug`     | Build `apecli` in debug mode                                                               |
@@ -203,7 +213,7 @@ make build                              # production binary
 CGO_ENABLED=1 GOARCH=amd64 make build   # explicit arch target
 ```
 
-Produces `./neoviolet`, `./apecli` (if cargo is available), and `./neoviolet-gui` (if cargo is available). The Go binary is statically linked Go code with dynamically linked system audio and optional libopenmpt.
+Produces `./neoviolet`, `./apecli` (if cargo is available), and `./neoviolet-gui` (if cargo is available). The Go binary is statically linked Go code with dynamically linked system audio; the optional `libopenmpt` is loaded at runtime when present.
 
 ### macOS
 
@@ -213,7 +223,7 @@ Produces `./neoviolet`, `./apecli` (if cargo is available), and `./neoviolet-gui
 brew update
 brew install pkg-config make
 
-# Optional: enhanced tracker module support
+# Optional runtime library: enhanced tracker module support
 brew install libopenmpt
 ```
 
@@ -280,14 +290,15 @@ pacman -S \
   make curl ca-certificates
 ```
 
+> `libopenmpt` (with its `libogg`, `libvorbis`, `zlib` and `mpg123` dependencies) is an optional
+> **runtime** library: it is loaded via `dlopen` when present and is no longer linked at build time.
+
 **Build:**
 
 ```bash
 export CGO_ENABLED=1
 export CC=clang
 export CXX=clang++
-export CGO_CFLAGS="$(pkg-config --cflags libopenmpt)"
-export CGO_LDFLAGS="$(pkg-config --libs libopenmpt)"
 make build
 ```
 
@@ -303,6 +314,11 @@ cp neoviolet-gui.exe dist/ 2>/dev/null || true
 # See .github/workflows/build.yml for the full recursive DLL collection script
 ```
 
+`libopenmpt` is no longer linked into `neoviolet.exe`, so `objdump -p` will not list `libopenmpt-0.dll`:
+the DLL is opened at runtime instead. Copy it into `dist/` explicitly, together with the libraries it
+needs itself (`libogg`, `libvorbis`, `zlib`, `mpg123` — the same set the MSYS2 package list above pulls
+in), otherwise the bundle silently ships without OpenMPT support.
+
 The resulting bundle is `dist/` containing `neoviolet.exe`, `neoviolet-gui.exe` (if built), and all required DLLs.
 
 ---
@@ -316,13 +332,12 @@ make build
 # Step 1: cargo build --release in tools/apecli/     (if cargo is available)
 # Step 2: cargo build --release in tools/neoviolet-gui/ (if cargo is available)
 # Step 3: go build -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
-# With openmpt tag: go build -tags openmpt -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
 ```
 
 - Builds the `apecli` Rust helper automatically (if cargo is available)
 - Builds the `neoviolet-gui` Rust GUI automatically (if cargo is available)
 - Strips debug info (`-s -w`)
-- Auto-detects `libopenmpt` and adds `openmpt` build tag if available
+- Loads the optional `libopenmpt` shared library at runtime (no build tag involved)
 - Output: `./neoviolet`, `./neoviolet-gui`, `./apecli` (or `.exe` on Windows)
 
 ### Debug Build (`make build/debug`)
@@ -347,25 +362,11 @@ make build/race
 - Runtime overhead: ~5-10x slower, ~2x memory
 - Use during development to catch data races
 
-### Without libopenmpt (`make build/noopenmpt`)
-
-```bash
-make build/noopenmpt
-# Equivalent to: go build -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
-```
-
-- Explicitly builds without libopenmpt support
-- Useful when libopenmpt is installed but you want a build without it
-- Tracker playback still works for most formats via `gotracker/playback`
-
 ### Manual Go Build
 
 ```bash
 # Minimum build
 CGO_ENABLED=1 go build -o neoviolet ./cmd/neoviolet
-
-# Full build with openmpt
-CGO_ENABLED=1 go build -tags openmpt -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
 ```
 
 ---
@@ -410,13 +411,13 @@ make test/cover
 
 ## Troubleshooting
 
-### CGo / pkg-config Errors
+### pkg-config Not Found
 
 ```
 pkg-config: exec: "pkg-config": executable file not found in $PATH
 ```
 
-Install `pkg-config`:
+`pkg-config` is used to locate `neoviolet-gui`'s Linux dependencies (X11, Wayland, fontconfig). Install `pkg-config`:
 
 - **macOS**: `brew install pkg-config`
 - **Linux**: `sudo apt install pkg-config` (Debian/Ubuntu)
@@ -424,12 +425,15 @@ Install `pkg-config`:
 
 ### libopenmpt Not Found
 
-```
-# checking: pkg-config --exists libopenmpt → not found
-# Build proceeds without openmpt tag
-```
-
-This is **not an error**. The build succeeds without libopenmpt — only `.mptm` files and some advanced tracker features are unavailable. To install libopenmpt, see [Prerequisites](#prerequisites).
+libopenmpt is optional and is looked up at runtime. When no candidate path resolves, the player logs
+the failure and falls back to the built-in `gotracker/playback` engine, so this is **not an error** —
+but that engine understands only MOD, XM, IT and S3M, so other tracker files (`.mptm`, `.mo3`, `.mtm`,
+`.stm`, `.669`, …) are out of reach: the fallback rejects most of them with an unsupported-format
+error, while a few IT-family files such as `.mptm` have been observed to crash it instead, taking
+the player down with them. Install libopenmpt if you need those formats. MIDI files (`.mid`, `.midi`)
+do not use libopenmpt and keep playing. Set `NEOVIOLET_LIBOPENMPT` to a library path to override the
+search (a path that does not exist disables libopenmpt explicitly). To install libopenmpt, see
+[Prerequisites](#prerequisites).
 
 ### Missing ALSA on Linux
 
@@ -466,6 +470,9 @@ If `neoviolet.exe` fails to launch with a missing DLL error, ensure all transiti
 1. Run `objdump -p neoviolet.exe | grep "DLL Name"` to list dependencies
 2. Copy each from your MSYS2 `$MINGW_PREFIX/bin` directory
 3. Repeat recursively for each non-system DLL
+4. Copy `libopenmpt-0.dll` (and its own dependencies) by hand: it is loaded at runtime, so it never
+   appears in the `objdump -p` output, and a missing DLL only costs OpenMPT support — the app starts
+   without it instead of reporting an error
 
 System DLLs (KERNEL32, ntdll, USER32, etc.) do not need to be bundled.
 
