@@ -3,6 +3,7 @@ package audio
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/speaker"
@@ -32,6 +33,7 @@ var syntheticFormats = map[string]bool{
 	".xm":   true,
 	".s3m":  true,
 	".it":   true,
+	".mptm": true,
 	".stm":  true,
 	".nst":  true,
 	".wow":  true,
@@ -67,6 +69,35 @@ func isSyntheticFormat(ext string) bool {
 // IsSyntheticFormat reports whether ext is a synthesized format (MIDI/tracker)
 // that typically carries no lyrics, so online lyric fetch is skipped for it.
 func IsSyntheticFormat(ext string) bool { return isSyntheticFormat(ext) }
+
+// gotrackerFormats are the extensions the built-in tracker engine decodes.
+var gotrackerFormats = map[string]bool{
+	".mod": true,
+	".xm":  true,
+	".s3m": true,
+	".it":  true,
+}
+
+// gotrackerSupports reports whether the built-in tracker engine may be handed
+// this file; a nil error means it may. The engine decodes MOD/XM/IT/S3M only,
+// and the format detector reports other IT-family containers as ".it" because
+// they carry the IT magic — an MPTM module reached the engine's IT loader that
+// way and made it panic inside its instrument loader. The file's own extension
+// is therefore what decides here. Only tracker formats outside those four are
+// refused; a nameless or unrelated extension is left to the engine, which
+// reports it as unsupported on its own.
+func gotrackerSupports(path string) error {
+	ext := strings.ToLower(filepath.Ext(path))
+	if gotrackerFormats[ext] || !syntheticFormats[ext] {
+		return nil
+	}
+	switch ext {
+	case ".mid", ".midi":
+		// MIDI comes from a SoundFont on its own path, not from this engine.
+		return nil
+	}
+	return fmt.Errorf("%s needs libopenmpt: the built-in tracker engine decodes MOD, XM, IT and S3M only", strings.ToUpper(ext))
+}
 
 func (p *Player) openSynthetic(path, ext string) error {
 	logger.Info("Opening synthetic", "path", path, "ext", ext)
@@ -141,12 +172,18 @@ func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 
 	switch backend {
 	case "gotracker":
+		if err := gotrackerSupports(path); err != nil {
+			return err
+		}
 		ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
 	default:
 		// Try OpenMPT first, then fall back to gotracker.
 		ctrl, err = synth.NewOpenmptPlayer(path, sr) //nolint:staticcheck // SA4023: build-tag dependent (openmpt stub always errors without -tags openmpt).
 		if err != nil {                              //nolint:staticcheck // SA4023: build-tag dependent.
 			logger.Info("openmpt unavailable, falling back to gotracker", "err", err)
+			if gateErr := gotrackerSupports(path); gateErr != nil {
+				return gateErr
+			}
 			ctrl, err = synth.NewTrackerPlayer(path, ext, sr)
 		}
 	}

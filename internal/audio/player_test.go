@@ -9,9 +9,9 @@ import (
 )
 
 func TestIsSyntheticFormat(t *testing.T) {
-	// Core tracker/MIDI formats are always synthetic; openmpt-only extensions
-	// (.mptm etc.) depend on build tags, so they are not asserted here.
-	for _, ext := range []string{".mid", ".midi", ".mod", ".xm", ".s3m", ".it"} {
+	// Tracker and MIDI formats are always synthetic, including the IT-family
+	// containers such as .mptm that only libopenmpt can actually decode.
+	for _, ext := range []string{".mid", ".midi", ".mod", ".xm", ".s3m", ".it", ".mptm"} {
 		if !IsSyntheticFormat(ext) {
 			t.Errorf("IsSyntheticFormat(%q) = false, want true", ext)
 		}
