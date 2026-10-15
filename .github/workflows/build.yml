@@ -120,10 +120,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      # govulncheck type-checks and builds every package, so it needs the same
-      # C system libraries as the test job. Without them the cgo audio backend
-      # fails with "could not import C (no metadata for C)" and the scan never
-      # actually ran — which is why this job has been red since it was added.
+      # govulncheck type-checks and builds every package with CGO_ENABLED=1,
+      # which compiles the Go runtime's cgo shim and so needs a C compiler. The
+      # audio and tracker libraries below are no longer build requirements — the
+      # libopenmpt binding is loaded at run time now — and are kept only to match
+      # the environment the test job builds in.
       - name: Install system dependencies
         run: >-
           sudo apt-get update -qq &&
@@ -316,7 +317,17 @@ jobs:
           BIN_DIR="/${{ matrix.env_prefix }}/bin"
           SYSTEM_DLLS="^(KERNEL32|ntdll|USER32|GDI32|ADVAPI32|SHELL32|OLE32|MSVCRT|VCRUNTIME|api-ms-win|ucrtbase|WS2_32|IPHLPAPI|SETUPAPI|CRYPT32|bcrypt|PSAPI|WINMM|VERSION|combase|RPCRT4|SHLWAPI|oleaut32|IMM32|MSCTF|kernel\.appcore|windows\.storage)\.dll$"
           declare -A seen
+          # libopenmpt is loaded at run time rather than linked, so the walk
+          # below cannot see it. Collect it explicitly and seed the walk with
+          # it so its own libraries (libogg, libvorbis, zlib, mpg123) follow.
+          LIBOPENMPT_DLL="${BIN_DIR}/libopenmpt-0.dll"
+          if [ -f "$LIBOPENMPT_DLL" ]; then
+            cp "$LIBOPENMPT_DLL" dist/
+          fi
           to_process=("neoviolet.exe" "neoviolet-gui.exe")
+          if [ -f dist/libopenmpt-0.dll ]; then
+            to_process+=("dist/libopenmpt-0.dll")
+          fi
           while [ ${#to_process[@]} -gt 0 ]; do
             current="${to_process[0]}"
             to_process=("${to_process[@]:1}")
