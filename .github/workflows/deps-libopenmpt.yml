@@ -1,0 +1,309 @@
+name: Dependencies — libopenmpt
+
+# Standalone dependency pipeline: it builds libopenmpt, the project's one external
+# dependency, and nothing else. It is deliberately independent of the application
+# workflow (build.yml), so rebuilding the dependency never rebuilds the app and
+# the app never depends on this pipeline's timing.
+#
+# One workflow builds every platform the project ships:
+#
+#   macOS universal         libopenmpt.0.dylib            (arm64 + x86_64, minos $MACOS_MIN)
+#   musl x86_64 / arm64     libopenmpt-musl-<arch>.so
+#   Windows x86_64/aarch64  libopenmpt-<ver>-win-<arch>.dll
+#
+# All of them are built from deps/libopenmpt.lock (version, source URLs, sha256,
+# and the per-platform floors), which is the single source of truth, and each
+# artifact is accompanied by a .sha256 file.
+#
+# Why one workflow and not three: the platforms share that lock file and the
+# shared smoke test, and a single run produces one consistent set of artifacts
+# from a single revision of them. Three workflows can drift apart in time, so
+# "the macOS library" and "the Windows library" could silently come from
+# different recipe revisions. The tradeoff is deliberate and accepted: touching
+# anything under deps/ rebuilds every target, so a Windows-only tweak also
+# rebuilds macOS and musl (a few minutes each).
+#
+# Why two jobs instead of one five-leg matrix: a step's shell cannot be an
+# expression ("shell: ${{ matrix.shell }}" is rejected by GitHub), and the
+# Windows legs have to run under the msys2 shell while the others run under bash.
+# The shell is therefore a job-level default and the split is macOS+musl vs
+# Windows — both jobs build the same thing with the same steps, which are written
+# once and shared through YAML anchors, so a change to the fetching, locking or
+# packaging logic is a change in one place. fail-fast is off in both, so no leg
+# blocks another.
+#
+# The per-platform reasoning — build recipe, the traps it works around and the
+# gates it enforces — lives in the scripts, not here:
+#
+#   deps/libopenmpt-build-macos.sh            both slices in one pass, Rosetta smoke
+#   deps/libopenmpt-build-musl.sh             starts the Alpine container below
+#   deps/libopenmpt-build-musl-container.sh   the musl recipe, runs inside it
+#   deps/libopenmpt-build-windows.sh          native MSYS2 clang, no Wine
+#
+# Everything is built under $RUNNER_TEMP, so the checkout is only ever read.
+# Publishing is off by default: a Release is written only by a manual run with
+# publish enabled, and each platform has its own release tag. Every action is
+# pinned to a commit SHA, same policy as build.yml.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach the built libraries to their Releases
+        type: boolean
+        default: false
+  push:
+    paths:
+      - deps/**
+      - .github/workflows/deps-libopenmpt.yml
+  pull_request:
+    paths:
+      - deps/**
+      - .github/workflows/deps-libopenmpt.yml
+
+permissions:
+  contents: read
+
+jobs:
+  # macOS and musl: POSIX hosts that build, run and sign-off with bash.
+  unix:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: macOS universal
+            platform: macos
+            runner: macos-latest
+            arch: arm64 x86_64
+            artifact: libopenmpt-universal
+          - target: musl x86_64
+            platform: musl
+            runner: ubuntu-latest
+            arch: x86_64
+            artifact: libopenmpt-musl-x86_64
+          # Both musl architectures are built natively: GitHub hosts ubuntu
+          # runners for x86_64 and arm64, so no emulation is involved and the
+          # container can execute what it just compiled.
+          - target: musl arm64
+            platform: musl
+            runner: ubuntu-24.04-arm
+            arch: arm64
+            artifact: libopenmpt-musl-arm64
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - &checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - &lock
+        name: Load dependency lock
+        run: |
+          set -euo pipefail
+          # The character class needs digits: keys end in 256, and [A-Z_] would
+          # silently drop both checksums.
+          grep -E '^[A-Z0-9_]+=' deps/libopenmpt.lock >> "$GITHUB_ENV"
+          for key in LIBOPENMPT_VERSION MACOS_MIN MUSL_BASELINE WINDOWS_MIN \
+                     AUTOTOOLS_URL AUTOTOOLS_SHA256 VENDOR_URL VENDOR_SHA256; do
+            grep -qE "^$key=.+" deps/libopenmpt.lock || { echo "::error::lock file is missing $key"; exit 1; }
+          done
+
+      - &prepare
+        name: Prepare the workspace
+        run: |
+          set -euo pipefail
+          # runner.temp is a Windows path on the Windows runners, while every step
+          # that follows runs under the msys2 shell and needs the POSIX form.
+          # cygpath only exists there, so macOS and Linux keep the path as it is.
+          WORK_HOST="${{ runner.temp }}/libopenmpt-deps"
+          case "$WORK_HOST" in
+            *\\* | [A-Za-z]:*) WORK_DIR="$(cygpath -u "$WORK_HOST" 2>/dev/null || printf '%s' "$WORK_HOST")" ;;
+            *) WORK_DIR="$WORK_HOST" ;;
+          esac
+          mkdir -p "$WORK_DIR"
+          echo "WORK_DIR=$WORK_DIR" >> "$GITHUB_ENV"
+          echo "workspace: $WORK_DIR"
+
+      - &fetch
+        name: Fetch and verify sources
+        run: |
+          set -euo pipefail
+          cd "$WORK_DIR"
+          for value in "$LIBOPENMPT_VERSION" "$AUTOTOOLS_URL" "$AUTOTOOLS_SHA256" "$VENDOR_URL" "$VENDOR_SHA256"; do
+            [ -n "$value" ] || { echo "::error::a lock file variable did not reach the environment"; exit 1; }
+          done
+          # Both tarballs are fetched for every target, so the sources and their
+          # checksums are verified in one place. The autotools tarball is the
+          # build skeleton (macOS, musl); the makefile tarball is the one that
+          # carries the vendored decoders, and Windows builds from it alone.
+          curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 20 -o autotools.tar.gz "$AUTOTOOLS_URL"
+          curl -fsSL --retry 3 --retry-delay 5 --connect-timeout 20 -o vendored.tar.gz "$VENDOR_URL"
+          # macOS ships shasum, MSYS2 and Linux ship sha256sum; one small helper
+          # keeps this step free of per-runner branching.
+          hash_of() {
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1" | awk '{print $1}'
+            else
+              shasum -a 256 "$1" | awk '{print $1}'
+            fi
+          }
+          for pair in "autotools.tar.gz $AUTOTOOLS_SHA256" "vendored.tar.gz $VENDOR_SHA256"; do
+            set -- $pair
+            actual="$(hash_of "$1")"
+            [ "$actual" = "$2" ] || {
+              echo "::error::checksum mismatch for $1"
+              echo "expected: $2"
+              echo "actual:   $actual"
+              exit 1
+            }
+            echo "$1 checksum verified"
+          done
+          tar xzf autotools.tar.gz
+          mkdir -p vendored
+          tar xzf vendored.tar.gz -C vendored
+
+      - &build
+        name: Build, verify and package
+        run: |
+          set -euo pipefail
+          # The platform script owns its recipe and its gates; the only thing that
+          # differs here is which name it reads the target architecture from.
+          case "${{ matrix.platform }}" in
+            macos) export ARCHS="${{ matrix.arch }}" ;;
+            musl) export MUSL_ARCH="${{ matrix.arch }}" ;;
+            windows) export WINDOWS_ARCH="${{ matrix.arch }}" ;;
+          esac
+          export WORK="$WORK_DIR"
+          export VERSION="$LIBOPENMPT_VERSION"
+          export SMOKE_SRC="$GITHUB_WORKSPACE/deps/libopenmpt-smoke.c"
+          sh "deps/libopenmpt-build-${{ matrix.platform }}.sh"
+
+      - &upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ runner.temp }}/libopenmpt-deps/out/*
+          if-no-files-found: error
+
+  # Windows: same steps as above, under the msys2 shell that provides the
+  # CLANG64 / CLANGARM64 toolchain. Both arches run their smoke test natively,
+  # so the aarch64 library is verified on real hardware rather than inspected.
+  windows:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: Windows x86_64
+            platform: windows
+            runner: windows-latest
+            msystem: CLANG64
+            pkg_prefix: mingw-w64-clang-x86_64
+            arch: x86_64
+            artifact: libopenmpt-windows-x86_64
+          - target: Windows aarch64
+            platform: windows
+            runner: windows-11-arm
+            msystem: CLANGARM64
+            pkg_prefix: mingw-w64-clang-aarch64
+            arch: aarch64
+            artifact: libopenmpt-windows-aarch64
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - *checkout
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          path-type: inherit
+          # clang pulls in the binutils this recipe needs (objdump, strip, ar),
+          # and the script asserts they are there. The -binutils packages are
+          # deliberately not requested: they are virtual packages, so naming one
+          # risks a non-interactive provider-selection failure.
+          install: >-
+            ${{ matrix.pkg_prefix }}-clang
+            make
+            curl
+            ca-certificates
+
+      - *lock
+
+      - *prepare
+
+      - *fetch
+
+      - *build
+
+      - *upload
+
+  # Off by default: a Release is only written by a manual run with publish
+  # enabled. Each platform has its own release tag, so publishing one of them
+  # never rewrites another.
+  publish:
+    name: publish (${{ matrix.platform }})
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+    needs:
+      - unix
+      - windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos
+            artifacts: libopenmpt-universal
+          - platform: musl
+            artifacts: 'libopenmpt-musl-*'
+          - platform: windows
+            artifacts: 'libopenmpt-windows-*'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Load dependency lock
+        run: grep -E '^[A-Z0-9_]+=' deps/libopenmpt.lock >> "$GITHUB_ENV"
+
+      - name: Collect the artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh run download "$GITHUB_RUN_ID" -p "${{ matrix.artifacts }}" -D out
+
+      - name: Attach to the dependency release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          case "${{ matrix.platform }}" in
+            macos)
+              TAG="deps/libopenmpt-${LIBOPENMPT_VERSION}-macos${MACOS_MIN}"
+              TITLE="libopenmpt ${LIBOPENMPT_VERSION} (macOS ${MACOS_MIN})"
+              NOTES="Self-built slim universal library: system zlib plus vendored minimp3/stb_vorbis, LTO, minos ${MACOS_MIN}, no non-system dependencies."
+              ;;
+            musl)
+              TAG="deps/libopenmpt-${LIBOPENMPT_VERSION}-musl${MUSL_BASELINE}"
+              TITLE="libopenmpt ${LIBOPENMPT_VERSION} (musl ${MUSL_BASELINE})"
+              NOTES="Self-built per-architecture shared library for musl, built in alpine:${MUSL_BASELINE}, LTO and stripped. Needs libstdc++ and libgcc_s at run time, which Alpine provides."
+              ;;
+            windows)
+              TAG="deps/libopenmpt-${LIBOPENMPT_VERSION}-windows"
+              TITLE="libopenmpt ${LIBOPENMPT_VERSION} (Windows)"
+              NOTES="Self-built per-architecture DLL: vendored minimp3, stb_vorbis and miniz, no third-party runtime DLL. Install it next to the executable as libopenmpt.dll."
+              ;;
+          esac
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" \
+            --title "$TITLE" \
+            --notes "$NOTES"
+          # gh run download nests by artifact name, hence the extra level.
+          gh release upload "$TAG" --clobber out/*/*
