@@ -1,0 +1,39 @@
+# libopenmpt dependency lock: the single source of truth for the version this
+# project builds against and for the sources that build it.
+#
+# Plain KEY=VALUE so a workflow can source it straight into its environment.
+# Editing any line here is what triggers the dependency pipeline.
+#
+# Two tarballs of the same upstream release are needed:
+#   autotools — the build skeleton, ships a pre-generated ./configure
+#   makefile  — only for the vendored decoders it carries under include/
+#               (minimp3, stb_vorbis); the autotools tarball has none, and its
+#               configure exposes no switch that would enable them
+#
+# MACOS_MIN is the deployment floor the macOS dependency is built for. The
+# application build and the app bundle are meant to read it from here as well, so
+# "what do we support" has a single answer.
+#
+# Per-platform build flags belong to the per-platform workflow, not to this file.
+# A version bump means updating all four source lines below.
+
+LIBOPENMPT_VERSION=0.8.9
+MACOS_MIN=13.0
+
+# The Alpine release the musl dependency is built in, and therefore the oldest
+# musl libc the artifact is meant to run against: musl has no symbol versioning,
+# so the build environment itself sets the compatibility floor, the way MACOS_MIN
+# does for macOS. The musl workflow builds in alpine:$MUSL_BASELINE.
+MUSL_BASELINE=3.23
+
+# The oldest Windows the dependency is built for. It selects the SDK version the
+# Makefile compiles against (NTDDI_VERSION/_WIN32_WINNT), and it is already
+# implied by the CRT the build uses: the UCRT api sets only exist from Windows 10
+# on, which is why this library imports nothing else.
+WINDOWS_MIN=win10
+
+AUTOTOOLS_URL=https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.9+release.autotools.tar.gz
+AUTOTOOLS_SHA256=d7ce84fd05d686c4bcf66af40eae857afa371442db60eeda3f874bd6cf6fc318
+
+VENDOR_URL=https://lib.openmpt.org/files/libopenmpt/src/libopenmpt-0.8.9+release.makefile.tar.gz
+VENDOR_SHA256=9273b88b67973cc69e54d748ab1b749399d6d07695f1c37d0c59f88b4106074f
