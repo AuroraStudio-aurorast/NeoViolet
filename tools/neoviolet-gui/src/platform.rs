@@ -1,6 +1,58 @@
-//! Cross-platform utilities: binary discovery, font defaults, version check.
+//! Cross-platform utilities: binary discovery, font defaults, version check,
+//! input method detection.
 
 use std::time::Duration;
+
+#[cfg(target_os = "macos")]
+mod macos_tis;
+#[cfg(target_os = "windows")]
+mod windows_ime;
+
+/// Whether a composing input method (Chinese, Japanese, Korean) is selected.
+///
+/// Only macOS implements the detection; elsewhere this reports `false`, which
+/// makes `ImeRouting::Auto` behave like `ImeRouting::Never`. `ImeRouting::Always`
+/// is how a caller asks for the other behaviour regardless of platform.
+pub fn ime_is_active() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos_tis::ime_is_active()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+/// Point the input method's composition and candidate windows at the caret.
+///
+/// `x`, `y` and `cell_height` are the caret cell in window-relative logical pixels —
+/// the rect the candidate window is placed with — and `scale_factor` turns that into
+/// the client-area physical pixels the input method takes, measured from the
+/// window's top-left corner.
+///
+/// gpui computes this rect for every platform but drops it on Windows, where the
+/// input method is positioned only once, when a composition starts; a composition
+/// that is already running keeps that position, which is the corner of the window.
+/// Windows implements the call below; elsewhere the platform positions the
+/// composition itself.
+pub fn follow_ime_caret(x: f32, y: f32, cell_height: f32, scale_factor: f32) {
+    let (x, y) = ime_point(x, y, cell_height, scale_factor);
+    #[cfg(target_os = "windows")]
+    windows_ime::move_caret_to(x, y);
+    #[cfg(not(target_os = "windows"))]
+    let _ = (x, y);
+}
+
+/// The client-area physical pixel an input method should place its windows at: the
+/// caret cell's vertical midpoint, so that a candidate window hangs below the line
+/// being typed on.
+fn ime_point(x: f32, y: f32, cell_height: f32, scale_factor: f32) -> (i32, i32) {
+    (
+        (x * scale_factor) as i32,
+        (y * scale_factor) as i32 + ((cell_height * scale_factor) as i32) / 2,
+    )
+}
 
 /// Returns the neoviolet binary name for this platform.
 pub fn binary_name() -> &'static str {
@@ -127,4 +179,28 @@ fn run_version_command(bin: &str) -> String {
         let _ = tx.send(raw);
     });
     rx.recv_timeout(VERSION_CHECK_TIMEOUT).unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ime_caret_points_are_scaled_to_the_window() {
+        // One logical pixel can be several physical ones, and the input method takes
+        // physical pixels.
+        assert_eq!(ime_point(10.0, 100.0, 20.0, 2.0), (20, 220));
+    }
+
+    #[test]
+    fn ime_caret_points_sit_on_the_midpoint_of_the_caret_cell() {
+        // Placing the windows at the cell's midpoint is what makes a candidate window
+        // hang below the line being typed on instead of covering it.
+        assert_eq!(ime_point(10.0, 100.0, 20.0, 1.0), (10, 110));
+    }
+
+    #[test]
+    fn ime_caret_points_are_whole_pixels() {
+        assert_eq!(ime_point(12.5, 30.25, 18.5, 1.5), (18, 58));
+    }
 }

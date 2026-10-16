@@ -19,7 +19,7 @@ use gpui::{
 
 use crate::app::TerminalApp;
 use crate::terminal::{
-    RenderSnapshot, ViewportSelection,
+    GridCell, RenderSnapshot, ViewportSelection,
     custom_blocks::{is_custom_block_supported, paint_custom_block},
 };
 
@@ -155,6 +155,9 @@ pub struct PrepaintState {
     runs: Vec<BatchedTextRun>,
     custom_blocks: Vec<LayoutCustomBlock>,
     cursor: Option<CursorLayout>,
+    /// Where to draw the composition, which is not the painted cursor: a
+    /// terminal program that draws its own caret hides the cursor entirely.
+    ime_anchor: GridCell,
 }
 
 // ── InputHandler ──
@@ -219,6 +222,18 @@ impl gpui::InputHandler for TerminalInputHandler {
         self.view.update(cx, |view, cx| {
             view.set_terminal_marked_text(new_text.to_string(), window, cx);
         });
+
+        // Keep the input method's windows on the caret while a composition runs; see
+        // `follow_ime_caret` for why Windows needs the reminder. The rect is the one the
+        // candidate window is placed with, anchored at the caret itself.
+        if let Some(bounds) = self.bounds_for_range(0..0, window, cx) {
+            crate::platform::follow_ime_caret(
+                f32::from(bounds.origin.x),
+                f32::from(bounds.origin.y),
+                f32::from(bounds.size.height),
+                window.scale_factor(),
+            );
+        }
     }
 
     fn unmark_text(&mut self, window: &mut Window, cx: &mut App) {
@@ -531,6 +546,7 @@ impl Element for TerminalElement {
             runs,
             custom_blocks,
             cursor: self.cursor_layout(cx),
+            ime_anchor: self.snapshot.ime_anchor,
         }
     }
 
@@ -577,12 +593,12 @@ impl Element for TerminalElement {
             cx,
         );
 
-        if let Some(marked_text) = self.marked_text.as_ref().filter(|text| !text.is_empty())
-            && let Some(cursor) = prepaint.cursor
-        {
+        if let Some(marked_text) = self.marked_text.as_ref().filter(|text| !text.is_empty()) {
             let pos = point(
-                prepaint.bounds.origin.x + prepaint.metrics.cell_width * cursor.col as f32,
-                prepaint.bounds.origin.y + prepaint.metrics.line_height * cursor.row as f32,
+                prepaint.bounds.origin.x
+                    + prepaint.metrics.cell_width * prepaint.ime_anchor.col as f32,
+                prepaint.bounds.origin.y
+                    + prepaint.metrics.line_height * prepaint.ime_anchor.row as f32,
             );
             let mut base_style = self.base_text_style(cx);
             base_style.underline = Some(UnderlineStyle {
