@@ -1,6 +1,26 @@
-//! Cross-platform utilities: binary discovery, font defaults, version check.
+//! Cross-platform utilities: binary discovery, font defaults, version check,
+//! input method detection, URL opening, window appearance.
 
 use std::time::Duration;
+
+#[cfg(target_os = "macos")]
+mod macos_tis;
+
+/// Whether a composing input method (Chinese, Japanese, Korean) is selected.
+///
+/// Only macOS implements the detection; elsewhere this reports `false`, which
+/// makes `ImeRouting::Auto` behave like `ImeRouting::Never`. `ImeRouting::Always`
+/// is how a caller asks for the other behaviour regardless of platform.
+pub fn ime_is_active() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos_tis::ime_is_active()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
 
 /// Returns the neoviolet binary name for this platform.
 pub fn binary_name() -> &'static str {
@@ -45,16 +65,59 @@ pub fn default_monospace_font() -> &'static str {
     }
 }
 
-/// Check whether a font family is installed on the system.
-/// Uses `fontdb` under the hood — queries the system font database.
+/// The system font database, loaded once.
+///
+/// Callers sit on the startup path and ask more than once (terminal font, then
+/// lyric font), and a scan is not free.
+fn system_fonts() -> &'static fontdb::Database {
+    static FONTS: std::sync::OnceLock<fontdb::Database> = std::sync::OnceLock::new();
+    FONTS.get_or_init(|| {
+        let mut database = fontdb::Database::new();
+        database.load_system_fonts();
+        database
+    })
+}
+
+/// The generic font family a name stands for, if any.
+///
+/// Generic names (`Monospace`, `Sans`, …) are resolved by the system's font stack
+/// rather than listed in the family database, so a lookup by name cannot find them
+/// even though they work. Only these names are exempt from the lookup: exempting
+/// every miss would report an uninstalled font as available.
+fn generic_family(family: &str) -> Option<fontdb::Family<'static>> {
+    match family.trim().to_ascii_lowercase().as_str() {
+        "monospace" => Some(fontdb::Family::Monospace),
+        "sans" | "sans-serif" | "sans serif" => Some(fontdb::Family::SansSerif),
+        "serif" => Some(fontdb::Family::Serif),
+        "cursive" => Some(fontdb::Family::Cursive),
+        "fantasy" => Some(fontdb::Family::Fantasy),
+        _ => None,
+    }
+}
+
+/// Whether this platform can resolve `family`, including generic aliases.
 pub fn is_font_available(family: &str) -> bool {
-    let mut db = fontdb::Database::new();
-    db.load_system_fonts();
-    db.query(&fontdb::Query {
+    family_is_available(system_fonts(), family)
+}
+
+/// Whether `database` can resolve `family`.
+///
+/// A generic alias is resolved by the system's font stack rather than by an installed
+/// family, so no font database answers for it: an empty one and a full one give the
+/// same result, and asking anyway made the answer depend on which fonts the machine
+/// happens to have. Aliases are therefore taken as available; only real family names
+/// are looked up, which is what keeps a misspelled or uninstalled family reported as
+/// missing.
+fn family_is_available(database: &fontdb::Database, family: &str) -> bool {
+    if generic_family(family).is_some() {
+        return true;
+    }
+
+    let query = fontdb::Query {
         families: &[fontdb::Family::Name(family)],
         ..Default::default()
-    })
-    .is_some()
+    };
+    database.query(&query).is_some()
 }
 
 // ── CLI version check (async, non-blocking) ──
@@ -115,16 +178,238 @@ fn truncate(s: String, max: usize) -> String {
     }
 }
 
+/// Windows: keep a console program from opening a console window of its own.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 fn run_version_command(bin: &str) -> String {
     let (tx, rx) = std::sync::mpsc::channel();
     let bin = bin.to_string();
     std::thread::spawn(move || {
-        let raw = std::process::Command::new(&bin)
-            .arg("--version")
+        let mut command = std::process::Command::new(&bin);
+        command.arg("--version");
+        // This child is a console program and the GUI has no console of its own,
+        // so Windows would give it a console window to flash at startup.
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            command.creation_flags(CREATE_NO_WINDOW);
+        }
+        let raw = command
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
             .unwrap_or_default();
         let _ = tx.send(raw);
     });
     rx.recv_timeout(VERSION_CHECK_TIMEOUT).unwrap_or_default()
+}
+
+// ── Opening URLs in the desktop's browser ──
+
+/// How this platform hands a URL to the desktop.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UrlOpener {
+    /// macOS: the `open` command.
+    Open,
+    /// Linux and the BSDs: `xdg-open` through the desktop environment.
+    XdgOpen,
+    /// Windows: the Explorer shell.
+    Explorer,
+}
+
+fn url_opener() -> UrlOpener {
+    if cfg!(target_os = "macos") {
+        UrlOpener::Open
+    } else if cfg!(target_os = "windows") {
+        UrlOpener::Explorer
+    } else {
+        UrlOpener::XdgOpen
+    }
+}
+
+/// The program and arguments that open `url` here.
+fn open_command(opener: UrlOpener, url: &str) -> (&'static str, Vec<String>) {
+    match opener {
+        UrlOpener::Open => ("open", vec![url.to_owned()]),
+        UrlOpener::XdgOpen => ("xdg-open", vec![url.to_owned()]),
+        UrlOpener::Explorer => ("explorer", vec![url.to_owned()]),
+    }
+}
+
+/// Opens `url` with the desktop's own handler.
+///
+/// Spawned without a command-line interpreter, so the URL is passed directly
+/// to the platform's desktop handler, and deliberately not waited on: the
+/// browser outlives this call.
+pub fn open_url(url: &str) -> std::io::Result<()> {
+    let (program, args) = open_command(url_opener(), url);
+    std::process::Command::new(program)
+        .args(args)
+        .spawn()
+        .map(|_| ())
+}
+
+// ── Window appearance ──
+
+/// Whether the title bar should blend into the window.
+///
+/// Only the macOS backend draws a window that extends under its title bar.
+pub fn titlebar_appears_transparent() -> bool {
+    cfg!(target_os = "macos")
+}
+
+/// Whether a window at `opacity` needs a transparent background.
+///
+/// Whether the request is honoured is up to the platform backend; the caller
+/// keeps the mapping onto the appearance enum.
+pub fn background_should_be_transparent(opacity: f32) -> bool {
+    opacity < 1.0
+}
+
+// ── Console output ──
+
+#[cfg(target_os = "windows")]
+mod windows_console;
+
+/// Give this process somewhere to write its log when it was started from a console.
+///
+/// Windows builds are GUI programs (see `main.rs`), so Windows never gives them a
+/// console: started from a terminal, the process would otherwise have nowhere to
+/// write. This attaches to that terminal's console. Started from Explorer there is
+/// no console to attach to, and none appears — which is the point of the subsystem.
+pub fn attach_parent_console() {
+    #[cfg(target_os = "windows")]
+    windows_console::attach_parent_console();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn main_declares_the_windows_subsystem() {
+        // Without it the binary links as a console program, and Windows opens a
+        // console window beside the window it was asked for — the reason
+        // `attach_parent_console` has to reattach to a terminal's console by hand.
+        assert!(
+            include_str!("main.rs").contains("windows_subsystem = \"windows\""),
+            "main.rs must declare the Windows subsystem"
+        );
+    }
+
+    #[test]
+    fn the_macos_opener_uses_open() {
+        assert_eq!(
+            open_command(UrlOpener::Open, "https://example.com"),
+            ("open", vec!["https://example.com".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_linux_opener_uses_xdg_open() {
+        assert_eq!(
+            open_command(UrlOpener::XdgOpen, "https://example.com"),
+            ("xdg-open", vec!["https://example.com".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_windows_opener_uses_explorer() {
+        assert_eq!(
+            open_command(UrlOpener::Explorer, "https://example.com"),
+            ("explorer", vec!["https://example.com".to_string()])
+        );
+    }
+
+    #[test]
+    fn the_url_is_always_a_single_argument() {
+        // The command is spawned without a shell, so shell metacharacters in the
+        // URL must stay inside one argument instead of being split or expanded.
+        let url = "https://example.com/?a=1&b=2 file";
+        for opener in [UrlOpener::Open, UrlOpener::XdgOpen, UrlOpener::Explorer] {
+            let (_, args) = open_command(opener, url);
+            assert_eq!(args.iter().filter(|arg| arg.as_str() == url).count(), 1);
+        }
+    }
+
+    #[test]
+    fn opener_programs_are_not_command_interpreters() {
+        let interpreters = [
+            "sh",
+            "bash",
+            "cmd",
+            "cmd.exe",
+            "powershell",
+            "powershell.exe",
+        ];
+        for opener in [UrlOpener::Open, UrlOpener::XdgOpen, UrlOpener::Explorer] {
+            let (program, _) = open_command(opener, "https://example.com");
+            assert!(
+                !interpreters
+                    .iter()
+                    .any(|interpreter| program.eq_ignore_ascii_case(interpreter)),
+                "{program} is a command interpreter"
+            );
+        }
+    }
+
+    #[test]
+    fn generic_family_names_are_recognised() {
+        // The system font stack resolves these itself, so they are absent from the
+        // family database while still naming a usable font.
+        assert_eq!(generic_family("Monospace"), Some(fontdb::Family::Monospace));
+        assert_eq!(
+            generic_family("sans-serif"),
+            Some(fontdb::Family::SansSerif)
+        );
+        assert_eq!(generic_family("SERIF"), Some(fontdb::Family::Serif));
+        assert_eq!(generic_family("Comic Sans MS"), None);
+    }
+
+    #[test]
+    fn a_generic_family_is_available_without_any_font_database() {
+        // An empty database knows no fonts, and no database can answer for a generic
+        // name anyway. Consulting one made this answer depend on the machine's installed
+        // fonts, which is how a check on "Monospace" failed on a minimal font set.
+        assert!(family_is_available(&fontdb::Database::new(), "Monospace"));
+        assert!(family_is_available(&fontdb::Database::new(), "Sans"));
+    }
+
+    #[test]
+    fn an_exact_family_name_is_looked_up_in_the_database() {
+        // The other half of the rule: a real family name still needs the database, so a
+        // misspelled or uninstalled family is reported instead of silently substituted.
+        assert!(!family_is_available(&fontdb::Database::new(), "Menlo"));
+    }
+
+    #[test]
+    fn the_linux_default_font_is_available() {
+        // The Linux default is the generic "Monospace"; treating its absence from the
+        // family database as "not installed" warned on every start and fell back to the
+        // very same name. This has to hold on a machine with no fonts installed.
+        assert!(is_font_available("Monospace"));
+    }
+
+    #[test]
+    fn a_missing_font_family_is_unavailable() {
+        assert!(!is_font_available("Definitely-Not-Installed Font 9000"));
+    }
+
+    #[test]
+    fn blank_font_families_are_unavailable() {
+        assert!(!is_font_available(""));
+        assert!(!is_font_available("   "));
+    }
+
+    #[test]
+    fn transparent_titlebars_are_a_macos_feature() {
+        assert_eq!(titlebar_appears_transparent(), cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn opacity_below_one_asks_for_a_transparent_background() {
+        assert!(background_should_be_transparent(0.5));
+        assert!(background_should_be_transparent(0.99));
+        assert!(!background_should_be_transparent(1.0));
+    }
 }

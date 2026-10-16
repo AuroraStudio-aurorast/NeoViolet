@@ -1,3 +1,8 @@
+// Windows: link as a GUI program, so that no console window appears beside the
+// window. Windows then hands the process no console at all, so a launch from a
+// terminal recovers one through `platform::attach_parent_console`.
+#![windows_subsystem = "windows"]
+
 mod app;
 mod backend;
 mod components;
@@ -27,6 +32,10 @@ use neo_violet_app::NeoVioletApp;
 use state::AppState;
 
 fn main() {
+    // Before anything can write to the standard streams: Windows gives a GUI
+    // program no console, so a terminal launch has to reclaim the one it came from.
+    platform::attach_parent_console();
+
     // Sync macOS launch environment (runs at most once, before any threads).
     #[cfg(target_os = "macos")]
     {
@@ -134,12 +143,12 @@ fn main() {
         // Open window
         let titlebar_opts = Some(TitlebarOptions {
             title: Some("NeoViolet".into()),
-            appears_transparent: cfg!(target_os = "macos"),
+            appears_transparent: platform::titlebar_appears_transparent(),
             traffic_light_position: None,
         });
 
         let config_opacity = gui_config.opacity.clamp(0.1, 1.0);
-        let window_background = if config_opacity < 1.0 {
+        let window_background = if platform::background_should_be_transparent(config_opacity) {
             WindowBackgroundAppearance::Transparent
         } else {
             WindowBackgroundAppearance::Opaque
