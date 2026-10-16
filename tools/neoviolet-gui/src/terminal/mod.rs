@@ -30,6 +30,66 @@ pub enum BackendEvent {
     TerminalTitleChanged { tab_id: String, title: String },
 }
 
+// ── Paste encoding ──
+
+/// Frame opening a bracketed paste.
+pub(crate) const PASTE_START: &[u8] = b"\x1b[200~";
+/// Frame closing a bracketed paste.
+pub(crate) const PASTE_END: &[u8] = b"\x1b[201~";
+
+/// Returns `(cell_width, line_height)` in logical pixels.
+///
+/// Measured values use defensive floors; failed measurements preserve the
+/// historical font-size ratios and their original minimums.
+pub(crate) fn metrics_from_measurement(
+    cell_width: Option<f32>,
+    ascent: Option<f32>,
+    descent: Option<f32>,
+    font_size: f32,
+) -> (f32, f32) {
+    let cell_width = cell_width
+        .filter(|width| width.is_finite() && *width > 0.0)
+        .map(|width| width.max(4.0))
+        .unwrap_or((font_size * 0.646).max(6.0));
+    let line_height = match (ascent, descent) {
+        (Some(ascent), Some(descent)) => {
+            let measured = ascent + descent;
+            if ascent.is_finite() && descent.is_finite() && measured.is_finite() && measured > 0.0 {
+                measured.max(font_size)
+            } else {
+                (font_size * 1.385).max(font_size + 2.0)
+            }
+        }
+        _ => (font_size * 1.385).max(font_size + 2.0),
+    };
+    (cell_width, line_height)
+}
+
+/// Encode pasted text for the PTY.
+///
+/// The text is normalized the way a terminal does for typed input: ESC is
+/// dropped (it cannot be escaped, only removed, and a surviving one would let
+/// the text close its own bracket early) and both CRLF and a lone LF become a
+/// single CR. When the program inside the PTY has enabled bracketed paste, the
+/// body is wrapped in the paste frame so the receiving TUI sees one paste
+/// instead of its line breaks acting as Enter presses.
+pub(crate) fn encode_paste(text: &str, bracketed_paste: bool) -> Vec<u8> {
+    let body = text
+        .replace('\x1b', "")
+        .replace("\r\n", "\r")
+        .replace('\n', "\r");
+
+    if !bracketed_paste {
+        return body.into_bytes();
+    }
+
+    let mut payload = Vec::with_capacity(PASTE_START.len() + body.len() + PASTE_END.len());
+    payload.extend_from_slice(PASTE_START);
+    payload.extend_from_slice(body.as_bytes());
+    payload.extend_from_slice(PASTE_END);
+    payload
+}
+
 #[allow(dead_code)]
 pub struct TerminalTab {
     pub id: String,
@@ -228,14 +288,14 @@ impl TerminalTab {
     }
 
     pub fn paste_text(&mut self, text: &str) {
-        let paste_text = text
-            .replace('\x1b', "")
-            .replace("\r\n", "\r")
-            .replace('\n', "\r");
-
+        // Empty clipboard text has nothing to paste; avoid sending an empty bracketed frame.
+        if text.is_empty() {
+            return;
+        }
+        let bracketed = self.term.mode().contains(TermMode::BRACKETED_PASTE);
         let _ = self
             .backend
-            .send(BackendCommand::Input(paste_text.into_bytes()));
+            .send(BackendCommand::Input(encode_paste(text, bracketed)));
     }
 
     pub fn term_mode(&self) -> TermMode {
@@ -410,7 +470,7 @@ fn zed_like_to_esc_str(
         ("enter", TerminalModifiers::Alt) => Some("\x1b\x0d"),
         ("backspace", TerminalModifiers::None) => Some("\x7f"),
         ("backspace", TerminalModifiers::Ctrl) => Some("\x08"),
-        ("backspace", TerminalModifiers::Alt) => Some("\x1b\x7f"),
+        ("backspace", TerminalModifiers::Alt) => Some("\x1b[27;3;127~"),
         ("backspace", TerminalModifiers::Shift) => Some("\x7f"),
         ("space", TerminalModifiers::Ctrl) => Some("\x00"),
         ("home", TerminalModifiers::None) if app_cursor_mode => Some("\x1bOH"),
@@ -427,6 +487,7 @@ fn zed_like_to_esc_str(
         ("left", TerminalModifiers::None) if !app_cursor_mode => Some("\x1b[D"),
         ("insert", TerminalModifiers::None) => Some("\x1b[2~"),
         ("delete", TerminalModifiers::None) => Some("\x1b[3~"),
+        ("delete", TerminalModifiers::Alt) => Some("\x1b[3;3~"),
         ("pageup", TerminalModifiers::None) => Some("\x1b[5~"),
         ("pagedown", TerminalModifiers::None) => Some("\x1b[6~"),
         ("a", TerminalModifiers::Ctrl) | ("A", TerminalModifiers::CtrlShift) => Some("\x01"),
@@ -462,6 +523,7 @@ fn zed_like_to_esc_str(
         ("^", TerminalModifiers::Ctrl) => Some("\x1e"),
         ("_", TerminalModifiers::Ctrl) => Some("\x1f"),
         ("?", TerminalModifiers::Ctrl) => Some("\x7f"),
+        ("delete", TerminalModifiers::Ctrl) => Some("\x1b[3;5~"),
         _ => None,
     };
     if let Some(esc) = manual_esc_str {
@@ -488,10 +550,13 @@ fn zed_like_to_esc_str(
     }
 
     if !cfg!(target_os = "macos") || option_as_meta {
-        let is_alt_lowercase_ascii =
-            modifiers == TerminalModifiers::Alt && keystroke.key.is_ascii();
-        let is_alt_uppercase_ascii =
-            keystroke.modifiers.alt && keystroke.modifiers.shift && keystroke.key.is_ascii();
+        let is_alt_lowercase_ascii = modifiers == TerminalModifiers::Alt
+            && keystroke.key.is_ascii()
+            && keystroke.key.len() == 1;
+        let is_alt_uppercase_ascii = keystroke.modifiers.alt
+            && keystroke.modifiers.shift
+            && keystroke.key.is_ascii()
+            && keystroke.key.len() == 1;
         if is_alt_lowercase_ascii || is_alt_uppercase_ascii {
             let key = if is_alt_uppercase_ascii {
                 keystroke.key.to_ascii_uppercase()
@@ -525,4 +590,142 @@ fn modifier_code(keystroke: &Keystroke) -> u32 {
         modifier_code |= 1 << 2;
     }
     modifier_code + 1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ctrl_delete_encodes_as_delete_word_forward() {
+        let keystroke = Keystroke::parse("ctrl-delete").expect("parse ctrl-delete");
+        assert_eq!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1b[3;5~".to_vec())
+        );
+    }
+
+    #[test]
+    fn alt_delete_encodes_as_delete_word_forward() {
+        let keystroke = Keystroke::parse("alt-delete").expect("parse alt-delete");
+        assert_eq!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1b[3;3~".to_vec())
+        );
+    }
+
+    #[test]
+    fn alt_backspace_encodes_as_delete_word_backward() {
+        let keystroke = Keystroke::parse("alt-backspace").expect("parse alt-backspace");
+        assert_eq!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1b[27;3;127~".to_vec())
+        );
+    }
+
+    #[test]
+    fn alt_backspace_does_not_encode_the_key_name_as_meta_text() {
+        let keystroke = Keystroke::parse("alt-backspace").expect("parse alt-backspace");
+        assert_ne!(
+            encode_key(&keystroke, false, false),
+            Some(b"\x1bbackspace".to_vec())
+        );
+    }
+
+    #[test]
+    fn encode_paste_frames_when_the_tui_asked_for_bracketed_paste() {
+        assert_eq!(
+            encode_paste("a\nb", true),
+            b"\x1b[200~a\rb\x1b[201~".to_vec()
+        );
+    }
+
+    #[test]
+    fn encode_paste_sends_the_text_bare_when_bracketed_paste_is_off() {
+        assert_eq!(encode_paste("a\nb", false), b"a\rb".to_vec());
+    }
+
+    #[test]
+    fn encode_paste_strips_esc_and_collapses_crlf() {
+        assert_eq!(
+            encode_paste("\x1b[31mred\r\n", false),
+            b"[31mred\r".to_vec()
+        );
+    }
+
+    #[test]
+    fn encode_paste_cannot_be_closed_early_by_its_own_terminator() {
+        // The ESC is stripped, so a pasted "\x1b[201~" reaches the TUI as the
+        // literal text "[201~" instead of ending the bracket early.
+        assert_eq!(
+            encode_paste("\x1b[201~", true),
+            b"\x1b[200~[201~\x1b[201~".to_vec()
+        );
+    }
+
+    #[test]
+    fn alt_tab_does_not_encode_the_key_name_as_meta_text() {
+        let keystroke = Keystroke::parse("alt-tab").expect("parse alt-tab");
+        // Named ASCII keys must not pass the single-character Alt length guard.
+        assert_eq!(encode_key(&keystroke, false, true), None);
+    }
+
+    #[test]
+    fn alt_shift_tab_does_not_encode_the_key_name_as_meta_text() {
+        let keystroke = Keystroke::parse("alt-shift-tab").expect("parse alt-shift-tab");
+        assert_ne!(
+            encode_key(&keystroke, false, true),
+            Some(b"\x1bTAB".to_vec())
+        );
+    }
+
+    #[test]
+    fn measured_metrics_win_over_the_ratio() {
+        let (cell_width, line_height) =
+            metrics_from_measurement(Some(8.43), Some(12.0), Some(3.4), 14.0);
+        assert_eq!(cell_width, 8.43);
+        assert!(
+            (line_height - 15.4).abs() < 1e-3,
+            "line height was {line_height}"
+        );
+    }
+
+    #[test]
+    fn metrics_fall_back_to_the_historical_ratio_when_measurement_fails() {
+        let (cell_width, line_height) = metrics_from_measurement(None, None, None, 14.0);
+        assert_eq!(cell_width, (14.0f32 * 0.646).max(6.0));
+        assert_eq!(line_height, (14.0f32 * 1.385).max(14.0 + 2.0));
+    }
+
+    #[test]
+    fn metrics_reject_non_finite_measurements() {
+        let (cell_width, line_height) =
+            metrics_from_measurement(Some(f32::NAN), Some(f32::INFINITY), Some(0.0), 14.0);
+        assert!(
+            cell_width.is_finite() && cell_width > 0.0,
+            "cell width was {cell_width}"
+        );
+        assert!(
+            line_height.is_finite() && line_height > 0.0,
+            "line height was {line_height}"
+        );
+    }
+
+    #[test]
+    fn metrics_clamp_absurdly_small_measurements() {
+        let (cell_width, line_height) =
+            metrics_from_measurement(Some(0.1), Some(0.1), Some(0.0), 14.0);
+        assert!(cell_width >= 4.0, "cell width was {cell_width}");
+        assert!(line_height >= 14.0, "line height was {line_height}");
+    }
+
+    #[test]
+    fn metrics_follow_the_font_size() {
+        let at14 = metrics_from_measurement(None, None, None, 14.0);
+        let at28 = metrics_from_measurement(None, None, None, 28.0);
+        assert!(
+            at28.0 > at14.0 && at28.1 > at14.1,
+            "metrics did not follow the font size"
+        );
+    }
 }
