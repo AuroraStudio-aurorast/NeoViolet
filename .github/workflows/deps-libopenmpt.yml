@@ -276,6 +276,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Read deps/libopenmpt.lock
+        run: grep -E '^[A-Z0-9_]+=' deps/libopenmpt.lock >> "$GITHUB_ENV"
+
       - name: Download this run's artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -283,11 +286,48 @@ jobs:
           gh run download "$GITHUB_RUN_ID" \
             -p "${{ matrix.artifacts }}" -D out
 
+      - name: Give the assets their published names
+        run: |
+          set -euo pipefail
+          # The build scripts name macOS and musl output after the soname, which
+          # does not change between libopenmpt versions. Rename here so that one
+          # release can hold several versions side by side instead of each new
+          # version overwriting the previous one. Windows output is already
+          # named that way.
+          mkdir -p named
+          case "${{ matrix.target }}" in
+            macOS)
+              prefix="libopenmpt-${LIBOPENMPT_VERSION}-macos${MACOS_MIN}"
+              mv out/*/libopenmpt.0.dylib "named/$prefix-universal.dylib"
+              ;;
+            musl)
+              for src in out/*/libopenmpt-musl-*.so; do
+                arch=$(basename "$src" .so)
+                arch=${arch#libopenmpt-musl-}
+                prefix="libopenmpt-${LIBOPENMPT_VERSION}-musl${MUSL_BASELINE}"
+                mv "$src" "named/$prefix-$arch.so"
+              done
+              ;;
+            Windows)
+              for src in out/*/libopenmpt-*.dll; do
+                mv "$src" "named/$(basename "$src")"
+              done
+              ;;
+          esac
+          # A .sha256 names the file it describes, so they are regenerated
+          # rather than carried over from the build. Written from inside the
+          # directory so the name recorded is the published one, not a path.
+          (
+            cd named
+            for f in *; do shasum -a 256 "$f" > "$f.sha256"; done
+          )
+          ls -l named
+
       - name: Attach them to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Asset names carry the version, so a shared release cannot clash
-          # across versions; --clobber covers rebuilding an existing one.
-          gh release upload deps --clobber out/*/*
+          # Every asset name carries the version, so a shared release cannot
+          # clash across versions; --clobber covers rebuilding an existing one.
+          gh release upload deps --clobber named/*
