@@ -46,24 +46,36 @@ build/debug:
 # --- GUI (Rust + gpui-ce) ---
 
 gui:
-	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, GUI will not be built"; exit 0; fi
-	cd $(GUI_DIR) && cargo build --release $(GUI_FEATURES)
-	@cp $(GUI_BIN) . 2>/dev/null || true
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "Warning: cargo not found, GUI will not be built"; \
+	else \
+		( cd $(GUI_DIR) && cargo build --release $(GUI_FEATURES) ) || exit 1; \
+		cp $(GUI_BIN) . 2>/dev/null || true; \
+	fi
 
 gui/debug:
-	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, GUI will not be built"; exit 0; fi
-	cd $(GUI_DIR) && cargo build $(GUI_FEATURES)
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "Warning: cargo not found, GUI will not be built"; \
+	else \
+		( cd $(GUI_DIR) && cargo build $(GUI_FEATURES) ) || exit 1; \
+	fi
 
 # --- APE toolchain (Rust) ---
 
 apetools:
-	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)"; exit 0; fi
-	cd $(APECLI_DIR) && cargo build --release
-	@cp $(APECLI_BIN) . 2>/dev/null || true
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)"; \
+	else \
+		( cd $(APECLI_DIR) && cargo build --release ) || exit 1; \
+		cp $(APECLI_BIN) . 2>/dev/null || true; \
+	fi
 
 apetools/debug:
-	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, apecli will not be built"; exit 0; fi
-	cd $(APECLI_DIR) && cargo build
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "Warning: cargo not found, apecli will not be built"; \
+	else \
+		( cd $(APECLI_DIR) && cargo build ) || exit 1; \
+	fi
 
 build/osxappbundle:
 	@tools/osx-appbundle-builder/build.sh
@@ -91,14 +103,20 @@ test/short:
 	$(GO) test -short $(TEST_FLAGS) ./...
 
 test/rust:
-	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, skipping Rust tests"; exit 0; fi
-	cd $(APECLI_DIR) && cargo test
-	cd $(GUI_DIR) && cargo test
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "Warning: cargo not found, skipping Rust tests"; \
+	else \
+		( cd $(APECLI_DIR) && cargo test ) || exit 1; \
+		( cd $(GUI_DIR) && cargo test ) || exit 1; \
+	fi
 
 lint/rust:
-	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, skipping Rust lint"; exit 0; fi
-	cd $(APECLI_DIR) && cargo fmt --check && cargo clippy --all-targets -- -D warnings
-	cd $(GUI_DIR) && cargo fmt --check && cargo clippy --all-targets -- -D warnings
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "Warning: cargo not found, skipping Rust lint"; \
+	else \
+		( cd $(APECLI_DIR) && cargo fmt --check && cargo clippy --all-targets -- -D warnings ) || exit 1; \
+		( cd $(GUI_DIR) && cargo fmt --check && cargo clippy --all-targets -- -D warnings ) || exit 1; \
+	fi
 
 test/cover:
 	$(GO) test -coverprofile=coverage.out ./...
