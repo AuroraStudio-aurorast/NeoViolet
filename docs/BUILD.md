@@ -1,6 +1,6 @@
 # Build Guide
 
-This document describes how to build NeoViolet from source — locally and via CI/CD.
+How to build NeoViolet from source.
 
 ---
 
@@ -11,7 +11,7 @@ This document describes how to build NeoViolet from source — locally and via C
 - [Makefile Targets](#makefile-targets)
 - [GUI (neoviolet-gui)](#gui-neoviolet-gui)
   - [GUI Prerequisites](#gui-prerequisites)
-  - [Building](#gui-building)
+  - [Building](#building)
   - [macOS App Bundle](#macos-app-bundle)
 - [APE (Monkey's Audio) Toolchain](#ape-monkeys-audio-toolchain)
 - [Platform-Specific Instructions](#platform-specific-instructions)
@@ -27,27 +27,19 @@ This document describes how to build NeoViolet from source — locally and via C
 
 ## Prerequisites
 
-- **Go 1.26+** (see `go.mod` for the exact version)
-- **Rust with cargo** — required for building `apecli` (the APE/Monkey's Audio decoder helper) and `neoviolet-gui` (the native GUI wrapper). Without it, `make build` still succeeds (both sub-builds print a warning and exit cleanly). APE playback falls back to ffmpeg or macOS `afconvert`; the GUI binary is simply not produced. Install via [rustup](https://rustup.rs/).
-- **`make`** — used for all build targets
-- **C compiler** — required because `CGO_ENABLED=1` compiles the Go runtime's cgo shim
-- **`pkg-config`** — used by `neoviolet-gui`'s Linux dependencies to locate X11, Wayland, fontconfig and freetype
-- **`libopenmpt`** (optional, runtime) — enables enhanced tracker module playback (`.mptm` and improved MOD/XM/IT/S3M support); loaded from a shared library at runtime, no build-time dependency
-- **SoundFont file** (optional, `.sf2`) — required for MIDI playback (`mid` files) (Recommend SF2: [GeneralUser GS](https://schristiancollins.com/generaluser))
-- **X11 development libraries** (Linux only) — required by the GUI (`gpui-ce`); see [GUI Prerequisites](#gui-prerequisites)
-
-> `libopenmpt` is loaded at runtime via `dlopen`; `NEOVIOLET_LIBOPENMPT` takes priority when it is set.
-> On macOS and Windows the directory of the `neoviolet` binary is searched first (on macOS also
-> `../Frameworks` inside an app bundle), followed by the usual library directories of that platform
-> (the Homebrew and MacPorts prefixes on macOS). On Linux the library is found through the loader's own
-> search path — `LD_LIBRARY_PATH` and the `ldconfig` cache — so install `libopenmpt.so.0` into a system
-> library directory or point `NEOVIOLET_LIBOPENMPT` at it; `/usr/lib`, `/usr/lib64` and `/usr/local/lib`
-> are tried as well.
->
-> Without the library, tracker playback falls back to the built-in `gotracker/playback` engine, which
-> understands only MOD, XM, IT and S3M: every other tracker format this player accepts (`.mptm`, `.mo3`,
-> `.mtm`, `.stm`, `.669`, …) does not open. MIDI files (`.mid`, `.midi`) use a separate synth path and
-> are unaffected.
+- **Go 1.26.1+** — the requirement declared in `go.mod`; CI pins the version in `.github/workflows/build.yml`
+- **`make`** — the only build entry point
+- **Rust with cargo** — builds `apecli` and `neoviolet-gui`. Optional: without it `make build` still
+  produces `neoviolet` and prints a warning. Install via [rustup](https://rustup.rs/).
+- **C compiler** — for `make test/race` (the race detector requires cgo) and for the Rust components'
+  native dependencies. The shipped binaries are pure Go.
+- **`pkg-config`** (Linux only) — the GUI's build scripts use it to locate X11, Wayland, fontconfig and
+  freetype
+- **X11/Wayland development libraries** (Linux only) — required by the GUI; see
+  [GUI Prerequisites](#gui-prerequisites)
+- **`libopenmpt`** (optional, runtime) — not a build dependency. It is opened at run time and enables
+  tracker formats the built-in engine cannot decode; `NEOVIOLET_LIBOPENMPT` overrides the search path.
+  Per-platform install commands are in [Platform-Specific Instructions](#platform-specific-instructions).
 
 ---
 
@@ -58,7 +50,7 @@ This document describes how to build NeoViolet from source — locally and via C
 git clone https://github.com/AuroraStudio-aurorast/neoviolet.git
 cd neoviolet
 
-# Build (libopenmpt is loaded at runtime when present)
+# Build
 make build
 
 # Binary is placed at ./neoviolet (or ./neoviolet.exe on Windows)
@@ -105,39 +97,45 @@ make build
 
 ## GUI (neoviolet-gui)
 
-`neoviolet-gui` is a native desktop GUI wrapper that embeds the NeoViolet terminal player in a native window. Built with Rust (`gpui-ce` + `yororen-ui`). It requires the `neoviolet` binary at runtime, searched as a sibling next to the GUI or via `$PATH`.
+A native desktop wrapper around the same player, built with Rust (`gpui-ce` + `yororen-ui`).
 
 ### GUI Prerequisites
 
-In addition to the [core prerequisites](#prerequisites), the GUI requires:
+In addition to the [core prerequisites](#prerequisites):
 
-**Linux** — X11 development libraries:
+**Linux** — X11/Wayland development libraries. The GUI's build scripts look up `x11`, `wayland-client`,
+`fontconfig` and `freetype2` through `pkg-config`, and its build dependency `bindgen` needs libclang:
 
 ```bash
 # Debian / Ubuntu
-sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+                     libx11-dev libwayland-dev libfontconfig1-dev \
+                     llvm-dev libclang-dev pkg-config
 
 # Fedora
-sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel
+sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel \
+                 libX11-devel wayland-devel fontconfig-devel \
+                 clang-devel llvm-devel pkgconf
 
 # Arch Linux
-sudo pacman -S libxcb libxkbcommon libxkbcommon-x11
+sudo pacman -S libxcb libxkbcommon libxkbcommon-x11 \
+               libx11 wayland fontconfig clang pkgconf
 ```
 
-**macOS** — No extra dependencies. The Makefile automatically uses `runtime_shaders` to avoid requiring the Metal Toolchain.
+`freetype2` itself is optional: `freetype-sys` builds its own copy when the system library is absent.
 
-**Windows (MSYS2)** — Covered by the standard [Windows MSYS2 setup](#windows); no extra packages needed.
+**macOS** — nothing extra; the GUI links only system frameworks.
+
+**Windows** — nothing extra beyond the [MSYS2 toolchain](#windows).
 
 ### Building
 
 ```bash
 make gui                # Release build → ./neoviolet-gui
-make gui/debug          # Debug build (no optimizations)
-make build              # Build everything (TUI + APE + GUI) in one step
+make gui/debug          # Debug build
+make build              # TUI + APE + GUI in one step
 make run/gui ARGS=...   # Build GUI and launch it
 ```
-
-If `cargo` is not installed, the GUI targets print a warning and exit cleanly.
 
 ### macOS App Bundle
 
@@ -145,181 +143,185 @@ If `cargo` is not installed, the GUI targets print a warning and exit cleanly.
 make build/osxappbundle
 ```
 
-Packages `neoviolet`, `neoviolet-gui`, and `apecli` into `dist/NeoViolet GUI.app/`. The script (`tools/osx-appbundle-builder/build.sh`) handles icon compilation (require Xcode 26+), `Info.plist`, and ad-hoc code signing.
+Packages `neoviolet`, `neoviolet-gui` and `apecli` into `dist/NeoViolet GUI.app/`. The bundle script
+(`tools/osx-appbundle-builder/build.sh`) writes `Info.plist`, picks the icon (compiling it with
+`actool` only when Xcode 26+ is installed, otherwise using the assets committed to the repo) and signs
+the bundle ad hoc.
 
 ---
 
 ## APE (Monkey's Audio) Toolchain
 
-APE format support requires a separate Rust helper binary (`apecli`) built from `tools/apecli/`. The Makefile handles this automatically.
+`make build` depends on `apetools`, which builds `apecli` from `tools/apecli/` and copies it to the
+repo root so the Go binary finds it.
 
-### How It Works
-
-- **`make build`** depends on **`apetools`**, so `apecli` is built before the Go binary on every production build.
-- The `apetools` target checks for `cargo` — if missing, it prints a warning and exits cleanly; the Go build proceeds and APE playback falls back to ffmpeg or macOS `afconvert`.
-- The built `apecli` binary is copied to the repo root so the Go runtime can find it.
-
-### Build Targets
-
-| Target | Command | Description |
-|---|---|---|
-| `make build` (default) | `make build` | Runs `apetools` → `go build` — one-step build with APE support |
-| `make apetools` | `make apetools` | `cargo build --release` in `tools/apecli/` + copy to repo root |
-| `make apetools/debug` | `make apetools/debug` | `cargo build` (debug) — useful for Rust debugging |
-| `make clean` | `make clean` | Removes `apecli` binary + `cargo clean` |
-
-### Without cargo
-
-If Rust/cargo is not installed, all build targets still work. The build output includes a warning:
+Cargo is optional. Without it the target prints
 
 ```
 Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)
 ```
 
-Install Rust via [rustup](https://rustup.rs/) and run `make apetools` to build `apecli` afterwards.
+and the Go build continues, so APE playback falls back to ffmpeg (or `afconvert` on macOS). Build the
+helper on its own with `make apetools` (release) or `make apetools/debug`; `make clean` also runs
+`cargo clean` in both `tools/` crates.
 
 ---
 
 ## Platform-Specific Instructions
 
+The system packages below exclude Go and Rust — install those separately as described per platform.
+
 ### Linux
 
-**Install dependencies:**
-
-> [!NOTE]
-> Exclude **Go** and **Rust**
+**Build dependencies** — for the Rust GUI and for `make test/race`. The Go binary is built with
+`CGO_ENABLED=0`, so it needs no C toolchain:
 
 ```bash
 # Debian / Ubuntu
 sudo apt-get update
-sudo apt-get install -y clang llvm-dev pkg-config make libasound2-dev
-
-# Optional: enhanced tracker module support
-sudo apt-get install -y libopenmpt-dev
+sudo apt-get install -y gcc make pkg-config llvm-dev libclang-dev \
+    libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
+    libx11-dev libwayland-dev libfontconfig1-dev
 
 # Fedora
-sudo dnf install clang pkg-config make alsa-lib-devel
-sudo dnf install libopenmpt-devel   # optional
+sudo dnf install gcc make pkg-config llvm-devel clang-devel \
+    libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel \
+    libX11-devel wayland-devel fontconfig-devel
 
 # Arch Linux
-sudo pacman -S clang pkg-config make alsa-lib
-sudo pacman -S libopenmpt           # optional
+sudo pacman -S gcc make pkgconf clang \
+    libxcb libxkbcommon libxkbcommon-x11 \
+    libx11 wayland fontconfig
 ```
+
+**Optional runtime libraries** — not needed to build:
+
+```bash
+sudo apt-get install -y libopenmpt0              # Debian 13+ names it libopenmpt0t64
+sudo dnf install libopenmpt                      # Fedora
+sudo pacman -S libopenmpt                        # Arch Linux
+```
+
+Audio output needs the ALSA runtime library (`libasound2` / `alsa-lib`). Without it the app starts,
+plays nothing, and reports no error.
 
 **Build:**
 
 ```bash
 make build                              # production binary
-CGO_ENABLED=1 GOARCH=amd64 make build   # explicit arch target
+CGO_ENABLED=0 GOARCH=amd64 make build   # explicit arch
 ```
 
-Produces `./neoviolet`, `./apecli` (if cargo is available), and `./neoviolet-gui` (if cargo is available). The Go binary is statically linked Go code with dynamically linked system audio; the optional `libopenmpt` is loaded at runtime when present.
+Produces `./neoviolet`, plus `./apecli` and `./neoviolet-gui` when cargo is available.
 
 ### macOS
 
-**Install dependencies:**
+**Install dependencies:** none. Xcode Command Line Tools provide `make`, and the GUI links only system
+frameworks. The only optional package is the runtime library for tracker support:
 
 ```bash
-brew update
-brew install pkg-config make
-
-# Optional runtime library: enhanced tracker module support
 brew install libopenmpt
 ```
 
 **Build:**
 
 ```bash
-make build                              # production binary (auto-detects arch)
-CGO_ENABLED=1 GOARCH=arm64 make build   # Apple Silicon
-CGO_ENABLED=1 GOARCH=amd64 make build   # Intel Mac
+make build                              # production binary (host arch)
+CGO_ENABLED=0 GOARCH=arm64 make build   # Apple Silicon
+CGO_ENABLED=0 GOARCH=amd64 make build   # Intel Mac
 ```
 
 The resulting binary is `./neoviolet`.
 
 > [!NOTE]
-> macOS may display a security warning on first launch for unsigned binaries. To bypass, run:
->
-> ```bash
-> xattr -dr com.apple.quarantine ./neoviolet
-> ```
+> macOS may warn about an unsigned binary on first launch. Clear the quarantine flag with
+> `xattr -dr com.apple.quarantine ./neoviolet`.
 
 ### Windows
 
-> [!NOTE]
-> In theory, this project could use [vcpkg](https://vcpkg.io/en/package/libopenmpt.html) to manage dependencies and compile with MSVC, but this has not yet been explored; here, we are using MSYS2.
+Requires **[MSYS2](https://www.msys2.org/)**, which provides `make` and the clang toolchain. Go and
+Rust come from their own installers.
 
-Building on Windows requires **[MSYS2](https://www.msys2.org/)**.
+1. Install [MSYS2](https://www.msys2.org/) and follow its setup instructions.
+2. Launch the environment matching your architecture: **CLANG64** for x86_64, **CLANGARM64** for Arm64.
 
-**Using MSYS2:**
-
-1. Install [MSYS2](https://www.msys2.org/) and follow the setup instructions.
-2. Launch the appropriate MSYS2 environment (Recommend: CLANG64 for x86_64, CLANGARM64 for Arm64).
-
-**Install dependencies (CLANG64 — amd64):**
+**Build toolchain:**
 
 ```bash
-# Install Go via MSYS2 is recommended!
-pacman -S \
-  mingw-w64-clang-x86_64-clang \
-  mingw-w64-clang-x86_64-pkgconf \
-  mingw-w64-clang-x86_64-libopenmpt \
-  mingw-w64-clang-x86_64-libogg \
-  mingw-w64-clang-x86_64-libvorbis \
-  mingw-w64-clang-x86_64-zlib \
-  mingw-w64-clang-x86_64-mpg123 \
-  mingw-w64-clang-x86_64-go \
-  mingw-w64-clang-x86_64-rust \
-  make curl ca-certificates
+# CLANG64 (amd64)
+pacman -S --needed mingw-w64-clang-x86_64-clang make
+
+# CLANGARM64 (arm64)
+pacman -S --needed mingw-w64-clang-aarch64-clang make
 ```
 
-**Install dependencies (CLANGARM64 — arm64):**
+The `clang` package also brings the C++ runtime (`libc++.dll`, `libunwind.dll`) that the Rust GUI
+links against.
+
+**Go** — from [go.dev](https://go.dev/dl/), at least the version required by `go.mod`. MSYS2's
+`mingw-w64-clang-<arch>-go` package works too.
+
+**Rust** — via [rustup](https://rustup.rs/), using the gnullvm toolchain that matches the clang packages
+above, installed as the host toolchain so a plain `cargo build` targets it:
 
 ```bash
-# Install Go via MSYS2 is recommended!
-pacman -S \
-  mingw-w64-clang-aarch64-clang \
-  mingw-w64-clang-aarch64-pkgconf \
-  mingw-w64-clang-aarch64-libopenmpt \
-  mingw-w64-clang-aarch64-libogg \
-  mingw-w64-clang-aarch64-libvorbis \
-  mingw-w64-clang-aarch64-zlib \
-  mingw-w64-clang-aarch64-mpg123 \
-  mingw-w64-clang-aarch64-go \
-  mingw-w64-clang-aarch64-rust \
-  make curl ca-certificates
+rustup toolchain install 1.98.0-x86_64-pc-windows-gnullvm   # RUST_VERSION from build.yml
+rustup default 1.98.0-x86_64-pc-windows-gnullvm
 ```
 
-> `libopenmpt` (with its `libogg`, `libvorbis`, `zlib` and `mpg123` dependencies) is an optional
-> **runtime** library: it is loaded via `dlopen` when present and is no longer linked at build time.
+Use the `aarch64` variant of that toolchain name in CLANGARM64.
 
 **Build:**
 
 ```bash
-export CGO_ENABLED=1
+export CGO_ENABLED=0
 export CC=clang
 export CXX=clang++
 make build
 ```
 
-**Collect DLLs for distribution:**
+**Optional runtime library:** `pacman -S --needed mingw-w64-clang-x86_64-libopenmpt`, or the `aarch64`
+name in CLANGARM64.
 
-Both `neoviolet.exe` and `neoviolet-gui.exe` (if built) need their transitive DLLs collected:
+**Collect DLLs for distribution:**
 
 ```bash
 mkdir -p dist
 cp neoviolet.exe dist/
 cp neoviolet-gui.exe dist/ 2>/dev/null || true
-# Use objdump to find required DLLs and copy them from $MSYSTEM_PREFIX/bin
-# See .github/workflows/build.yml for the full recursive DLL collection script
+# Then copy the non-system DLLs that objdump reports, recursively:
+objdump -p dist/neoviolet-gui.exe | grep "DLL Name"
 ```
 
-`libopenmpt` is no longer linked into `neoviolet.exe`, so `objdump -p` will not list `libopenmpt-0.dll`:
-the DLL is opened at runtime instead. Copy it into `dist/` explicitly, together with the libraries it
-needs itself (`libogg`, `libvorbis`, `zlib`, `mpg123` — the same set the MSYS2 package list above pulls
-in), otherwise the bundle silently ships without OpenMPT support.
+`libopenmpt` is opened at run time, so `objdump -p` never lists it. Copy it into `dist/` yourself,
+otherwise `dist/` ships without tracker support (the app still starts).
 
-The resulting bundle is `dist/` containing `neoviolet.exe`, `neoviolet-gui.exe` (if built), and all required DLLs.
+Either take the DLL this project builds, or MSYS2's:
+
+```bash
+# Prebuilt: the asset the release build uses, matching your architecture
+case "$(uname -m)" in
+  x86_64)        arch=x86_64 ;;
+  aarch64|arm64) arch=aarch64 ;;
+esac
+gh release download deps --repo AuroraStudio-aurorast/neoviolet \
+  -p "libopenmpt-*-win-${arch}.dll" -D dist
+mv dist/libopenmpt-*-win-${arch}.dll dist/libopenmpt.dll
+
+# MSYS2's copy, whose own imports still have to be collected
+cp "$MINGW_PREFIX"/bin/libopenmpt-0.dll dist/
+objdump -p dist/libopenmpt-0.dll | grep "DLL Name"
+```
+
+The prebuilt DLL compiles its decoders in and needs nothing else; `gh release download deps` also
+carries a matching `.sha256`. MSYS2's `libopenmpt-0.dll` instead pulls in its whole runtime closure
+(`libogg`, `libvorbis`, `libvorbisfile`, `libmpg123`, `zlib1`, `libc++`, `libunwind`), so walk it the
+same recursive way as the executables.
+
+The `deps` release is a pre-release holding the dependency builds for every platform, with the
+libopenmpt version and the architecture in each asset name.
+
+The full recursive collection is in `.github/workflows/build.yml`.
 
 ---
 
@@ -329,16 +331,14 @@ The resulting bundle is `dist/` containing `neoviolet.exe`, `neoviolet-gui.exe` 
 
 ```bash
 make build
-# Step 1: cargo build --release in tools/apecli/     (if cargo is available)
+# Step 1: cargo build --release in tools/apecli/        (if cargo is available)
 # Step 2: cargo build --release in tools/neoviolet-gui/ (if cargo is available)
-# Step 3: go build -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
+# Step 3: go build -ldflags="-s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=<version>" -o neoviolet ./cmd/neoviolet
 ```
 
-- Builds the `apecli` Rust helper automatically (if cargo is available)
-- Builds the `neoviolet-gui` Rust GUI automatically (if cargo is available)
 - Strips debug info (`-s -w`)
-- Loads the optional `libopenmpt` shared library at runtime (no build tag involved)
-- Output: `./neoviolet`, `./neoviolet-gui`, `./apecli` (or `.exe` on Windows)
+- Stamps the version from `git describe --tags --always --dirty` (override with `make build VERSION=...`)
+- Output: `./neoviolet`, `./neoviolet-gui`, `./apecli` (`.exe` on Windows)
 
 ### Debug Build (`make build/debug`)
 
@@ -347,26 +347,25 @@ make build/debug
 # Equivalent to: go build -gcflags="all=-N -l" -o neoviolet ./cmd/neoviolet
 ```
 
-- Disables optimizations and inlining
-- Compatible with `dlv` (Delve debugger)
-- Useful for breakpoint debugging and stack traces
+Disables optimizations and inlining; compatible with `dlv` (Delve).
 
 ### Race Build (`make build/race`)
 
 ```bash
 make build/race
-# Equivalent to: go build -race -ldflags="-s -w" -o neoviolet ./cmd/neoviolet
+# Equivalent to: go build -race -ldflags="-s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=<version>" -o neoviolet ./cmd/neoviolet
 ```
 
-- Enables Go's race detector
-- Runtime overhead: ~5-10x slower, ~2x memory
-- Use during development to catch data races
+Enables Go's race detector. Runtime overhead is roughly 5–10× slower and 2× memory.
 
 ### Manual Go Build
 
 ```bash
 # Minimum build
-CGO_ENABLED=1 go build -o neoviolet ./cmd/neoviolet
+CGO_ENABLED=0 go build -o neoviolet ./cmd/neoviolet
+
+# With the version stamp the Makefile adds
+CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=$(git describe --tags --always --dirty)" -o neoviolet ./cmd/neoviolet
 ```
 
 ---
@@ -374,13 +373,10 @@ CGO_ENABLED=1 go build -o neoviolet ./cmd/neoviolet
 ## Installing
 
 ```bash
-# Install binary to $GOPATH/bin
-make install
-
-# Linux desktop integration (desktop file + icons)
-make install/desktop
-make install/icons
-make install/all        # binary + desktop file
+make install            # binary to $GOPATH/bin
+make install/desktop    # Linux .desktop entry
+make install/icons      # prints where to place the icons
+make install/all        # install + install/desktop
 ```
 
 ---
@@ -388,181 +384,30 @@ make install/all        # binary + desktop file
 ## Testing
 
 ```bash
-# Run all tests
-make test
-
-# With race detector
-make test/race
-
-# Verbose output
-make test/verbose
-
-# Short tests (skips integration/format-heavy tests)
-make test/short
-
-# Coverage report
-make test/cover
-# Produces coverage.out and coverage.html
+make test           # all tests
+make test/race      # with race detector
+make test/verbose   # -v
+make test/short     # skips integration/format-heavy tests
+make test/cover     # writes coverage.out and coverage.html
 ```
 
-> **Note:** `make test` does **not** rebuild `apecli`. If you've modified the Rust source in `tools/apecli/`, run `make apetools` first, then `make test`.
+`make test` does not rebuild `apecli`; run `make apetools` after changing the Rust source.
 
 ---
 
 ## Troubleshooting
 
-### pkg-config Not Found
+### GOARCH=386
 
-```
-pkg-config: exec: "pkg-config": executable file not found in $PATH
-```
-
-`pkg-config` is used to locate `neoviolet-gui`'s Linux dependencies (X11, Wayland, fontconfig). Install `pkg-config`:
-
-- **macOS**: `brew install pkg-config`
-- **Linux**: `sudo apt install pkg-config` (Debian/Ubuntu)
-- **Windows (MSYS2)**: `pacman -S mingw-w64-clang-x86_64-pkgconf`
-
-### libopenmpt Not Found
-
-libopenmpt is optional and is looked up at runtime. When no candidate path resolves, the player logs
-the failure and falls back to the built-in `gotracker/playback` engine, so this is **not an error** —
-but that engine understands only MOD, XM, IT and S3M, so other tracker files (`.mptm`, `.mo3`, `.mtm`,
-`.stm`, `.669`, …) are out of reach: the fallback rejects most of them with an unsupported-format
-error, while a few IT-family files such as `.mptm` have been observed to crash it instead, taking
-the player down with them. Install libopenmpt if you need those formats. MIDI files (`.mid`, `.midi`)
-do not use libopenmpt and keep playing. Set `NEOVIOLET_LIBOPENMPT` to a library path to override the
-search (a path that does not exist disables libopenmpt explicitly). To install libopenmpt, see
-[Prerequisites](#prerequisites).
-
-### Missing ALSA on Linux
-
-```
-#github.com/ebitengine/oto/v3/internal/mux
-... alsa error: libasound.so.2: cannot open shared object file
-```
-
-Install ALSA development headers:
-
-```bash
-sudo apt install libasound2-dev   # Debian/Ubuntu
-sudo dnf install alsa-lib-devel   # Fedora
-```
-
-### macOS Code Signing
-
-```
-"neoviolet" cannot be opened because the developer cannot be verified.
-```
-
-This is expected for locally built unsigned binaries. Either:
-
-```bash
-xattr -dr com.apple.quarantine ./neoviolet   # Remove quarantine flag
-```
-
-Or go to **System Settings → Privacy & Security** and click **Open Anyway**.
-
-### Windows DLL Issues
-
-If `neoviolet.exe` fails to launch with a missing DLL error, ensure all transitive DLLs are collected. The CI workflow resolves this automatically; for local builds:
-
-1. Run `objdump -p neoviolet.exe | grep "DLL Name"` to list dependencies
-2. Copy each from your MSYS2 `$MINGW_PREFIX/bin` directory
-3. Repeat recursively for each non-system DLL
-4. Copy `libopenmpt-0.dll` (and its own dependencies) by hand: it is loaded at runtime, so it never
-   appears in the `objdump -p` output, and a missing DLL only costs OpenMPT support — the app starts
-   without it instead of reporting an error
-
-System DLLs (KERNEL32, ntdll, USER32, etc.) do not need to be bundled.
-
-You can also collect these DLLs manually according to the error messages.
-
-### GOARCH=386 Build Issue
-
-When building a version for the 32-bit x86 architecture (`GOARCH=386`), you may encounter the error like:
+32-bit x86 is not supported. Building with `GOARCH=386` fails in a dependency:
 
 ```
 # github.com/gotracker/playback/instrument
-... ##[error]../../../go/pkg/mod/github.com/gotracker/playback@v1.5.0/instrument/opl2.go:80:27: cannot use math.MaxInt64 (untyped int constant 9223372036854775807) as int value in struct literal (overflows)
+... cannot use math.MaxInt64 (untyped int constant 9223372036854775807) as int value
+in struct literal (overflows)
 ```
 
-Due to dependencies, the project does not support 32-bit architecture. We do not plan to fix this issue; you should compile a 64-bit version, such as x86_64 (`GOARCH=amd64`).
-
-### apecli Build Failure (Rust)
-
-```
-error[E0463]: can't find crate for `ape_decoder`
-```
-
-This means the Rust `ape-decoder` crate failed to download or compile. Ensure:
-
-```bash
-# Verify cargo is installed
-cargo --version
-
-# Test the build directly
-cd tools/apecli && cargo build --release
-```
-
-If `cargo` is missing, install [rustup](https://rustup.rs/) and retry.
-
-### GUI Build Failure — Missing X11 Libraries (Linux)
-
-```
-error: linking with `cc` failed: exit status: 1
-  = note: /usr/bin/ld: cannot find -lxcb
-  = note: /usr/bin/ld: cannot find -lxkbcommon
-```
-
-The GUI (`gpui-ce`) requires X11 development headers on Linux. Install them:
-
-```bash
-# Debian / Ubuntu
-sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
-
-# Fedora
-sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel
-
-# Arch
-sudo pacman -S libxcb libxkbcommon libxkbcommon-x11
-```
-
-After installing, re-run `make gui` or `make build`.
-
-### GUI Build Failure — Metal Shader Compilation (macOS)
-
-```
-error: failed to run `xcrun metal` …
-```
-
-`gpui-ce` compiles GPU shaders ahead of time by default, which requires the full Xcode Metal Toolchain (cannot be detected sometimes even though you have installed). The Makefile avoids this by adding `--no-default-features -F gpui/runtime_shaders` on macOS, compiling shaders at runtime instead via the system Metal framework. If you invoke `cargo build` directly, pass the flag manually:
-
-```bash
-cargo build --release --no-default-features -F gpui/runtime_shaders
-```
-
-### GUI Can't Find neoviolet Binary
-
-```
-Error: neoviolet binary not found
-```
-
-Place `neoviolet` next to `neoviolet-gui` (sibling in the same directory), or ensure it's on `$PATH`:
-
-```bash
-cp neoviolet "$(dirname "$(which neoviolet-gui)")/"
-# Windows (MSYS2):
-cp neoviolet.exe "$(dirname "$(which neoviolet-gui.exe)")/"
-```
-
-### GUI Window Fails to Open (Linux)
-
-```
-Error: X11 connection broken / Wayland protocol error
-```
-
-`gpui-ce` natively supports both X11 and Wayland (both are default features). If the window fails to open, ask related communities for help.
+Build for a 64-bit target instead (`GOARCH=amd64` or `GOARCH=arm64`). This is not going to be fixed.
 
 ### Go Version Mismatch
 
@@ -570,4 +415,35 @@ Error: X11 connection broken / Wayland protocol error
 go: go.mod requires go >= 1.26.1 (running go 1.xx.x)
 ```
 
-Install or update Go from [go.dev](https://go.dev/dl/).
+Install a newer Go from [go.dev](https://go.dev/dl/).
+
+### pkg-config Not Found (Linux)
+
+```
+error: failed to run custom build command for `wayland-sys v0.31.11`
+...
+Try `apt install pkg-config`, or `yum install pkg-config`, or `brew install pkgconf`
+```
+
+Only the Linux GUI needs `pkg-config`; the Go binary and the macOS/Windows builds do not.
+
+```bash
+sudo apt install pkg-config     # Debian/Ubuntu
+sudo dnf install pkgconf        # Fedora
+sudo pacman -S pkgconf          # Arch Linux
+```
+
+### Metal Shader Compilation (macOS)
+
+```
+error: failed to run `xcrun metal` …
+```
+
+`gpui-ce` compiles its shaders ahead of time by default, which requires the full Xcode Metal Toolchain.
+`make gui` avoids that on macOS by passing `--no-default-features -F gpui/runtime_shaders`, so shaders
+are compiled at run time through the system Metal framework instead. If you call `cargo build`
+directly, pass the same flags:
+
+```bash
+cargo build --release --no-default-features -F gpui/runtime_shaders
+```
