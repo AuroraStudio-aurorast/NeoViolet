@@ -1,21 +1,26 @@
 name: Build libopenmpt dependency
 
-# Builds libopenmpt, the project's only external dependency, for every platform
-# the project ships: macOS (universal), musl, and Windows. The version, the source
-# URLs, the checksums and the per-platform floors come from deps/libopenmpt.lock,
-# and each platform's recipe lives in deps/libopenmpt-build-<platform>.sh.
+# Builds libopenmpt, the project's only external dependency, for every
+# platform the project ships: macOS (universal), musl, and Windows. The
+# version, the source URLs, the checksums and the per-platform floors come
+# from deps/libopenmpt.lock, and each platform's recipe lives in
+# deps/libopenmpt-build-<platform>.sh.
 #
-# Two jobs, not one five-entry matrix: a step's shell cannot be an expression, so
-# the shell has to be a job-level default, and the Windows legs need the msys2
-# shell that carries the CLANG64/CLANGARM64 toolchain while the others need bash.
-# Both jobs run the same steps, written once and shared below through YAML anchors.
+# Two jobs, not one five-entry matrix: a step's shell cannot be an
+# expression, so the shell has to be a job-level default, and the Windows
+# legs need the msys2 shell that carries the CLANG64/CLANGARM64 toolchain
+# while the others need bash. Both jobs run the same steps, written once
+# and shared below through YAML anchors.
 #
 # One workflow, not three: the platforms share the lock file and the smoke test,
 # and a single run produces one consistent set of artifacts from one revision of
 # them. The accepted cost is that a change under deps/ rebuilds every platform.
 #
 # Everything is built under $RUNNER_TEMP, so the checkout is only ever read, and
-# publishing is off by default. Every action is pinned to a commit SHA.
+# publishing is off by default. Published artifacts go to a single pre-release
+# tagged `deps`, not to a release per platform and version, so the Releases page
+# keeps listing only the application's own versions. Every action is pinned to a
+# commit SHA.
 
 on:
   workflow_dispatch:
@@ -69,7 +74,10 @@ jobs:
     steps:
       - &checkout
         name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          # Nothing here pushes with git; gh authenticates from GH_TOKEN.
+          persist-credentials: false
 
       - &lock
         name: Read deps/libopenmpt.lock
@@ -77,20 +85,30 @@ jobs:
           set -euo pipefail
           # The character class needs digits: keys end in 256.
           grep -E '^[A-Z0-9_]+=' deps/libopenmpt.lock >> "$GITHUB_ENV"
-          for key in $(sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' deps/libopenmpt.lock); do
-            grep -qE "^$key=.+" deps/libopenmpt.lock || { echo "::error::$key is empty"; exit 1; }
+          keys=$(sed -n 's/^\([A-Z0-9_]*\)=.*/\1/p' deps/libopenmpt.lock)
+          for key in $keys; do
+            if ! grep -qE "^$key=.+" deps/libopenmpt.lock; then
+              echo "::error::$key is empty"
+              exit 1
+            fi
           done
 
       - &prepare
         name: Prepare the build directory
         run: |
           set -euo pipefail
-          # runner.temp is a native Windows path on the Windows runners, while the
-          # steps that follow run under the msys2 shell and need the POSIX form.
-          # The platform scripts read the result as WORK.
+          # runner.temp is a native Windows path on the Windows runners, while
+          # the steps that follow run under the msys2 shell and need the POSIX
+          # form. The platform scripts read the result as WORK.
           WORK_HOST="${{ runner.temp }}/libopenmpt-deps"
           case "$WORK_HOST" in
-            *\\* | [A-Za-z]:*) WORK="$(cygpath -u "$WORK_HOST" 2>/dev/null || printf '%s' "$WORK_HOST")" ;;
+            *\\* | [A-Za-z]:*)
+              if converted="$(cygpath -u "$WORK_HOST" 2>/dev/null)"; then
+                WORK="$converted"
+              else
+                WORK="$WORK_HOST"
+              fi
+              ;;
             *) WORK="$WORK_HOST" ;;
           esac
           mkdir -p "$WORK"
@@ -106,7 +124,7 @@ jobs:
           SMOKE_SRC: ${{ github.workspace }}/deps/libopenmpt-smoke.c
         run: |
           set -euo pipefail
-          # Each platform script reads the target architecture under its own name.
+          # Each platform script reads the arch under its own variable name.
           case "${{ matrix.platform }}" in
             macos)   export ARCHS="${{ matrix.arch }}" ;;
             musl)    export MUSL_ARCH="${{ matrix.arch }}" ;;
@@ -117,7 +135,8 @@ jobs:
 
       - &upload
         name: Upload the artifacts
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        # actions/upload-artifact v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ${{ matrix.artifact }}
           path: ${{ runner.temp }}/libopenmpt-deps/out/*
@@ -159,8 +178,8 @@ jobs:
           msystem: ${{ matrix.msystem }}
           update: true
           path-type: inherit
-          # clang brings the binutils the recipe needs; the -binutils packages are
-          # virtual and can fail non-interactively.
+          # clang brings the binutils the recipe needs; the -binutils
+          # packages are virtual and can fail non-interactively.
           install: >-
             ${{ matrix.pkg_prefix }}-clang
             make
@@ -177,14 +196,66 @@ jobs:
 
       - *upload
 
-  # Off by default. Each platform has its own release, so publishing one of them
-  # never rewrites another.
-  publish:
-    name: Publish ${{ matrix.target }}
+  # Off by default. All three platforms publish into ONE release, tagged `deps`
+  # and marked pre-release: the Releases page is what users read as product
+  # versions, so the dependency artifacts must not appear there as if they were
+  # releases of their own. Versions are told apart by the asset names, which
+  # carry the libopenmpt version, so the single release accumulates them all.
+  # Creating it is a job of its own because the uploads below run in parallel
+  # and cannot race to create it.
+  release:
+    name: Ensure the dependency release
     if: github.event_name == 'workflow_dispatch' && inputs.publish == true
     needs:
       - unix
       - windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
+
+      - name: Read deps/libopenmpt.lock
+        run: grep -E '^[A-Z0-9_]+=' deps/libopenmpt.lock >> "$GITHUB_ENV"
+
+      - name: Create it, unless it already exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view deps >/dev/null 2>&1; then
+            echo "The deps release exists; this run only adds assets to it."
+            exit 0
+          fi
+          # The notes come from stdin so the text can stay readable here.
+          gh release create deps \
+            --prerelease \
+            --title "Bundled dependencies (libopenmpt)" \
+            --notes-file - <<NOTES
+          Prebuilt libopenmpt, the run-time dependency of NeoViolet. This is
+          not a product release: the application's own versions are the v*
+          releases.
+
+          Each asset is named after its libopenmpt version and platform, so
+          this one release accumulates every version that has been built.
+
+          - macOS: universal (arm64 + x86_64), minimum macOS ${MACOS_MIN}
+          - musl: per architecture, built in alpine:${MUSL_BASELINE}
+          - Windows: per architecture; install it as libopenmpt.dll next to the
+            executable
+
+          Every asset has a matching .sha256 file. The version and the platform
+          floors come from deps/libopenmpt.lock in the repository.
+          NOTES
+
+  publish:
+    name: Publish ${{ matrix.target }}
+    if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+    needs:
+      - release
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -195,41 +266,28 @@ jobs:
         include:
           - target: macOS
             artifacts: libopenmpt-universal
-            label: macOS ${MACOS_MIN}
-            tag_suffix: macos${MACOS_MIN}
-            notes: Universal library, minos ${MACOS_MIN}, no non-system dependencies (system zlib plus vendored minimp3 and stb_vorbis).
           - target: musl
             artifacts: 'libopenmpt-musl-*'
-            label: musl ${MUSL_BASELINE}
-            tag_suffix: musl${MUSL_BASELINE}
-            notes: Per-architecture shared library built in alpine:${MUSL_BASELINE}; needs libstdc++ and libgcc_s at run time.
           - target: Windows
             artifacts: 'libopenmpt-windows-*'
-            label: Windows
-            tag_suffix: windows
-            notes: Per-architecture DLL with the vendored decoders and no third-party runtime DLL; install it next to the executable as libopenmpt.dll.
     steps:
       - name: Check out the repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Read deps/libopenmpt.lock
-        run: grep -E '^[A-Z0-9_]+=' deps/libopenmpt.lock >> "$GITHUB_ENV"
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7
+        with:
+          persist-credentials: false
 
       - name: Download this run's artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh run download "$GITHUB_RUN_ID" -p "${{ matrix.artifacts }}" -D out
+        run: |
+          gh run download "$GITHUB_RUN_ID" \
+            -p "${{ matrix.artifacts }}" -D out
 
       - name: Attach them to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # The matrix strings above use shell variable syntax: they are expanded
-          # here, once the lock file has been read.
-          TAG="deps/libopenmpt-${LIBOPENMPT_VERSION}-${{ matrix.tag_suffix }}"
-          TITLE="libopenmpt ${LIBOPENMPT_VERSION} (${{ matrix.label }})"
-          NOTES="${{ matrix.notes }}"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TITLE" --notes "$NOTES"
-          # gh run download nests by artifact name, hence the extra level.
-          gh release upload "$TAG" --clobber out/*/*
+          # Asset names carry the version, so a shared release cannot clash
+          # across versions; --clobber covers rebuilding an existing one.
+          gh release upload deps --clobber out/*/*
