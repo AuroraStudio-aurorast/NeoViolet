@@ -38,7 +38,7 @@
 | `xm` | Extended Module |  |
 | `it` | Impulse Tracker |  |
 | `s3m` | ScreamTracker 3 Module |  |
-| [Tracker](https://openmpt.org/features#modules) | More tracker modules | requires `libopenmpt` |
+| [Tracker](https://openmpt.org/features#modules) | More tracker modules | optional at runtime, loaded automatically |
 
 ### Lyrics File
 
