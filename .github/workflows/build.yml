@@ -10,29 +10,21 @@ on:
   schedule:
     - cron: "0 3 * * 1"
 
-# Pin every toolchain. One of the gates is `make tidy/check`, whose result
-# depends on the Go version, and the linters decide pass/fail themselves, so a
-# floating `stable`/`latest` can turn CI red without a code change.
+# Floating versions can turn CI red without a code change: `make tidy/check`
+# depends on the Go version, and the linters decide pass/fail themselves. The
+# libopenmpt version is deliberately absent; deps/libopenmpt.lock owns it.
 env:
   GO_VERSION: "1.27.2"
   RUST_VERSION: "1.98.0"
   GOLANGCI_VERSION: v2.14.0
   GOVULNCHECK_VERSION: v1.8.0
-  LIBOPENMPT_VERSION: 0.8.7
 
 # Actions are pinned to commit SHAs because a tag is mutable: a retagged or
 # compromised release would otherwise run arbitrary code in this workflow.
-#   actions/checkout@v7               3d3c42e5aac5ba805825da76410c181273ba90b1
-#   actions/setup-go@v7               b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
-#   actions/upload-artifact@v7       043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-#   golangci/golangci-lint-action@v9 ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a
-#   msys2/setup-msys2@v2             66cd2cce69caa17b53920067426061ca1de3a884
-# Least privilege: nothing in this workflow writes to the repository.
 permissions:
   contents: read
 
-# Cancel superseded runs on pull requests only. On main a cancelled run means no
-# green result exists for the commit that landed.
+# On main a cancelled run leaves the landed commit with no green result.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -43,21 +35,19 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
+      # The race detector needs cgo, even though the shipped binaries are
+      # pure Go.
       CGO_ENABLED: 1
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Only what the Rust GUI links against; Go is pure and libopenmpt is
+          # loaded at run time.
           - os: ubuntu-latest
             apt: >-
-              clang pkg-config make libasound2-dev libopenmpt-dev
-              libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
-            install_cmd: >-
-              sudo apt-get update -qq &&
-              sudo apt-get install -y -qq
+              llvm-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
           - os: macos-latest
-            brew: "pkg-config make libopenmpt"
-            install_cmd: "brew install"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -69,18 +59,15 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Install system dependencies
-        run: ${{ matrix.install_cmd }} ${{ matrix.apt || matrix.brew }}
-      # Pinned instead of `stable`; clippy and rustfmt ship with the toolchain.
+        if: matrix.os == 'ubuntu-latest'
+        run: >-
+          sudo apt-get update -qq &&
+          sudo apt-get install -y -qq ${{ matrix.apt }}
       - name: Setup Rust
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal \
             --component clippy,rustfmt
           rustup default "$RUST_VERSION"
-      # Every gate below is a `make` target, so CI and a developer's machine run
-      # the same commands. The previous inline `go vet ./...` step is gone: it
-      # could not honour //nolint, so the Linux-only MPRIS code failed it on
-      # every pull request — including Rust-only ones — and masked the five
-      # steps that followed.
       - name: Go tests (race)
         run: make test/race
       - name: Lint (golangci-lint)
@@ -91,9 +78,8 @@ jobs:
         run: make test/rust
       - name: Rust fmt + clippy
         run: make lint/rust
-      # These three are platform-independent, and the coverage run recompiles
-      # every package with instrumentation, so paying for them twice doubled the
-      # test job's runtime. Linux runs them; macOS skips them.
+      # The coverage run recompiles every package with instrumentation, so
+      # running these three twice only doubled the job's runtime.
       - name: Coverage gate
         if: matrix.os == 'ubuntu-latest'
         run: make test/coverage
@@ -107,9 +93,10 @@ jobs:
   security:
     name: govulncheck
     runs-on: ubuntu-latest
-    # Also runs on pull requests, so a new vulnerability surfaces before merge
-    # instead of only on the weekly schedule.
     timeout-minutes: 15
+    env:
+      # The shipped package set is pure Go, so no C toolchain is needed.
+      CGO_ENABLED: 0
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -120,16 +107,6 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
-      # govulncheck type-checks and builds every package with CGO_ENABLED=1,
-      # which compiles the Go runtime's cgo shim and so needs a C compiler. The
-      # audio and tracker libraries below are no longer build requirements — the
-      # libopenmpt binding is loaded at run time now — and are kept only to match
-      # the environment the test job builds in.
-      - name: Install system dependencies
-        run: >-
-          sudo apt-get update -qq &&
-          sudo apt-get install -y -qq clang pkg-config make libasound2-dev
-          libopenmpt-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
       - name: govulncheck
         run: >-
           go run
@@ -141,7 +118,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
-      CGO_ENABLED: 1
+      CGO_ENABLED: 0
       GOOS: ${{ matrix.os == 'macos' && 'darwin' || 'linux' }}
     strategy:
       fail-fast: false
@@ -150,39 +127,19 @@ jobs:
           - os: linux
             goarch: amd64
             runner: ubuntu-latest
-            cc: clang
-            cxx: clang++
-            pkgs: >-
-              clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev
-              libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
-            install_cmd: >-
-              sudo apt-get update -qq &&
-              sudo apt-get install -y -qq
+            apt: >-
+              llvm-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
           - os: linux
             goarch: arm64
             runner: ubuntu-24.04-arm
-            cc: clang
-            cxx: clang++
-            pkgs: >-
-              clang llvm-dev pkg-config make libasound2-dev libopenmpt-dev
-              libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
-            install_cmd: >-
-              sudo apt-get update -qq &&
-              sudo apt-get install -y -qq
+            apt: >-
+              llvm-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
           - os: macos
             goarch: amd64
             runner: macos-15-intel
-            cc: clang
-            cxx: clang++
-            pkgs: "pkg-config make libopenmpt"
-            install_cmd: "brew update && brew install"
           - os: macos
             goarch: arm64
             runner: macos-latest
-            cc: clang
-            cxx: clang++
-            pkgs: "pkg-config make libopenmpt"
-            install_cmd: "brew update && brew install"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -194,17 +151,18 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
       - name: Install system dependencies
-        run: ${{ matrix.install_cmd }} ${{ matrix.pkgs }}
-      # Pinned instead of `stable`, matching the test job.
+        if: matrix.os == 'linux'
+        run: >-
+          sudo apt-get update -qq &&
+          sudo apt-get install -y -qq ${{ matrix.apt }}
       - name: Setup Rust
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal
           rustup default "$RUST_VERSION"
       - name: Set version info
         run: |
-          # Use the runner's environment variables instead of GitHub expression
-          # interpolation: a tag name is repository-controlled text, and
-          # interpolating it into a shell script is a script-injection vector.
+          # A tag name is repository-controlled text; interpolating it into a
+          # shell script would be an injection vector.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
           else
@@ -215,8 +173,6 @@ jobs:
         run: |
           set -eux
           export GOARCH=${{ matrix.goarch }}
-          export CC="${{ matrix.cc }}"
-          export CXX="${{ matrix.cxx }}"
           make build
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -233,34 +189,26 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
-      CGO_ENABLED: 1
+      CGO_ENABLED: 0
       GOOS: windows
     strategy:
       fail-fast: false
       matrix:
         include:
+          # MSYS2 supplies make and clang; Go, Rust and libopenmpt come from
+          # setup-go, rustup and this repository's dependency pipeline.
           - goarch: amd64
             runner: windows-latest
             msystem: CLANG64
             env_prefix: clang64
             pkg_prefix: mingw-w64-clang-x86_64
-            compiler_pkg: mingw-w64-clang-x86_64-clang
-            libopenmpt_pkg: mingw-w64-clang-x86_64-libopenmpt
-            go_pkg: mingw-w64-clang-x86_64-go
-            rust_pkg: mingw-w64-clang-x86_64-rust
-            cc: clang
-            cxx: clang++
+            rust_host: x86_64-pc-windows-gnullvm
           - goarch: arm64
             runner: windows-11-arm
             msystem: CLANGARM64
             env_prefix: clangarm64
             pkg_prefix: mingw-w64-clang-aarch64
-            compiler_pkg: mingw-w64-clang-aarch64-clang
-            libopenmpt_pkg: mingw-w64-clang-aarch64-libopenmpt
-            go_pkg: mingw-w64-clang-aarch64-go
-            rust_pkg: mingw-w64-clang-aarch64-rust
-            cc: clang
-            cxx: clang++
+            rust_host: aarch64-pc-windows-gnullvm
     defaults:
       run:
         shell: msys2 {0}
@@ -269,43 +217,74 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+      # `path-type: inherit` lets this shell see setup-go's and rustup's
+      # installs; without it neither is on PATH.
       - name: Setup MSYS2
         uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e
         with:
           msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            ${{ matrix.compiler_pkg }}
-            ${{ matrix.pkg_prefix }}-pkgconf
-            ${{ matrix.libopenmpt_pkg }}
-            ${{ matrix.pkg_prefix }}-libogg
-            ${{ matrix.pkg_prefix }}-libvorbis
-            ${{ matrix.pkg_prefix }}-zlib
-            ${{ matrix.pkg_prefix }}-mpg123
-            ${{ matrix.go_pkg }}
-            ${{ matrix.rust_pkg }}
+            ${{ matrix.pkg_prefix }}-clang
             make
-            curl
-            ca-certificates
           path-type: inherit
+      - name: Setup Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      # Installed as the *host* toolchain so cargo's output stays in
+      # target/release, which is where the Makefile looks for it.
+      - name: Setup Rust
+        run: |
+          rustup toolchain install "$RUST_VERSION-${{ matrix.rust_host }}" \
+            --profile minimal
+          rustup default "$RUST_VERSION-${{ matrix.rust_host }}"
       - name: Set version info
         run: |
-          # Same reasoning as the unix job: prefer env vars over interpolation.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
           else
             sha=$(git rev-parse --short HEAD)
             echo "VERSION=dev-r${GITHUB_RUN_ID}-$sha" >> $GITHUB_ENV
           fi
+      # LoadLibrary searches the executable's own directory first, so the
+      # library ships beside neoviolet.exe. Fetched before the build so a
+      # missing release fails in seconds rather than minutes.
+      - name: Download libopenmpt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          version=$(sed -n 's/^LIBOPENMPT_VERSION=//p' deps/libopenmpt.lock)
+          case "${{ matrix.goarch }}" in
+            amd64) arch=x86_64 ;;
+            arm64) arch=aarch64 ;;
+          esac
+          tag="deps"
+          asset="libopenmpt-${version}-win-${arch}.dll"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            echo "::error::the '$tag' release with the dependency libraries" \
+              "does not exist yet. Run the 'Build libopenmpt dependency'" \
+              "workflow once with publish enabled."
+            exit 1
+          fi
+          mkdir -p dist
+          gh release download "$tag" -p "$asset" -p "${asset}.sha256" -D dist
+          expected=$(awk '{print $1}' "dist/${asset}.sha256")
+          actual=$(sha256sum "dist/${asset}" | awk '{print $1}')
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::checksum mismatch for $asset"
+            exit 1
+          fi
+          rm -f "dist/${asset}.sha256"
+          mv "dist/${asset}" dist/libopenmpt.dll
       - name: Build binary
         run: |
           set -eux
           go version
+          rustc --version
           export GOARCH=${{ matrix.goarch }}
-          export CC="${{ matrix.cc }}"
-          export CXX="${{ matrix.cxx }}"
-          export CGO_CFLAGS="$(pkg-config --cflags libopenmpt)"
-          export CGO_LDFLAGS="$(pkg-config --libs libopenmpt)"
           make build
       - name: Collect DLLs
         run: |
@@ -317,17 +296,10 @@ jobs:
           BIN_DIR="/${{ matrix.env_prefix }}/bin"
           SYSTEM_DLLS="^(KERNEL32|ntdll|USER32|GDI32|ADVAPI32|SHELL32|OLE32|MSVCRT|VCRUNTIME|api-ms-win|ucrtbase|WS2_32|IPHLPAPI|SETUPAPI|CRYPT32|bcrypt|PSAPI|WINMM|VERSION|combase|RPCRT4|SHLWAPI|oleaut32|IMM32|MSCTF|kernel\.appcore|windows\.storage)\.dll$"
           declare -A seen
-          # libopenmpt is loaded at run time rather than linked, so the walk
-          # below cannot see it. Collect it explicitly and seed the walk with
-          # it so its own libraries (libogg, libvorbis, zlib, mpg123) follow.
-          LIBOPENMPT_DLL="${BIN_DIR}/libopenmpt-0.dll"
-          if [ -f "$LIBOPENMPT_DLL" ]; then
-            cp "$LIBOPENMPT_DLL" dist/
-          fi
+          # The Rust binaries link the C++ runtime from this toolchain, so copy
+          # every non-Windows import. libopenmpt needs only the C runtime, so
+          # it does not seed the walk.
           to_process=("neoviolet.exe" "neoviolet-gui.exe")
-          if [ -f dist/libopenmpt-0.dll ]; then
-            to_process+=("dist/libopenmpt-0.dll")
-          fi
           while [ ${#to_process[@]} -gt 0 ]; do
             current="${to_process[0]}"
             to_process=("${to_process[@]:1}")
