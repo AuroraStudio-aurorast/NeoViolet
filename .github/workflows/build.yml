@@ -135,10 +135,7 @@ jobs:
             apt: >-
               llvm-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
           - os: macos
-            goarch: amd64
-            runner: macos-15-intel
-          - os: macos
-            goarch: arm64
+            goarch: universal
             runner: macos-latest
     steps:
       - name: Checkout
@@ -159,6 +156,9 @@ jobs:
         run: |
           rustup toolchain install "$RUST_VERSION" --profile minimal
           rustup default "$RUST_VERSION"
+      - name: Add the Intel Rust target
+        if: matrix.os == 'macos'
+        run: rustup target add x86_64-apple-darwin
       - name: Set version info
         run: |
           # A tag name is repository-controlled text; interpolating it into a
@@ -172,8 +172,13 @@ jobs:
       - name: Build binary
         run: |
           set -eux
-          export GOARCH=${{ matrix.goarch }}
-          make build
+          if [ "${{ matrix.os }}" = macos ]; then
+            # Both slices here, merged with lipo: no Intel runner needed.
+            make build/macos
+          else
+            export GOARCH=${{ matrix.goarch }}
+            make build
+          fi
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
