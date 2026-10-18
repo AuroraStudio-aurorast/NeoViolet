@@ -13,9 +13,11 @@ LDFLAGS   = -s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version
 BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
 TEST_FLAGS  ?= -count=1
 
-# Oldest macOS the universal binaries claim to support. Fed to both toolchains,
-# because an unset MACOSX_DEPLOYMENT_TARGET makes the Intel slice of a Rust build
-# record a legacy minimum instead of the same one as the Apple silicon slice.
+# Oldest macOS the universal binaries claim to support. Exported as
+# MACOSX_DEPLOYMENT_TARGET for both Rust slices (unset, the Intel slice would
+# record a legacy minimum) and reused by the app bundle for its plist and icon
+# asset. The Go slices carry the toolchain's own default instead, so this must
+# not be set below it.
 MACOS_MIN ?= 13.0
 
 HAS_CARGO := $(shell which cargo 2>/dev/null | grep -q . && echo 1 || echo 0)
@@ -291,22 +293,3 @@ help:
 	@echo "  install/icons      Print where to place the icons"
 	@echo "  install/all        install + install/desktop"
 	@echo "  help               Show this message"
-	@echo "  test/verbose       Run tests verbosely"
-	@echo "  test/cover         Run tests with coverage report"
-	@echo ""
-	@echo "Code quality:"
-	@echo "  vet                Run go vet"
-	@echo "  lint               Run golangci-lint (fallback: go vet)"
-	@echo "  tidy               Run go mod tidy"
-	@echo "  check              Run vet + lint + Rust checks + tests (CI gate)"
-	@echo "  test/rust          Run Rust unit tests (GUI + apecli)"
-	@echo "  lint/rust          Run cargo fmt --check + clippy -D warnings"
-	@echo ""
-	@echo "GUI (gpui-ce + yororen-ui):"
-	@echo "  gui                Build neoviolet-gui (cargo required)"
-	@echo "  gui/debug          Build neoviolet-gui in debug mode"
-	@echo "  run/gui ARGS=...   Build GUI and run with optional arguments"
-	@echo ""
-	@echo "Other:"
-	@echo "  clean              Remove build artifacts"
-	@echo "  install            Install binary to GOPATH/bin"
