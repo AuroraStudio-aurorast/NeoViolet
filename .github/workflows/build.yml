@@ -43,9 +43,9 @@ jobs:
       matrix:
         include:
           # Only what the Rust GUI links against; Go is pure and libopenmpt is
-          # loaded at run time.
+          # loaded at run time. Anchored so the unix job reuses this list.
           - os: ubuntu-latest
-            apt: >-
+            apt: &gui_dev >-
               llvm-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
           - os: macos-latest
     steps:
@@ -127,13 +127,11 @@ jobs:
           - os: linux
             goarch: amd64
             runner: ubuntu-latest
-            apt: >-
-              llvm-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+            apt: *gui_dev
           - os: linux
             goarch: arm64
             runner: ubuntu-24.04-arm
-            apt: >-
-              llvm-dev libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev
+            apt: *gui_dev
           - os: macos
             goarch: universal
             runner: macos-latest
@@ -160,7 +158,7 @@ jobs:
         if: matrix.os == 'macos'
         run: rustup target add x86_64-apple-darwin
       - name: Set version info
-        run: |
+        run: &version_stamp |
           # A tag name is repository-controlled text; interpolating it into a
           # shell script would be an injection vector.
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
@@ -246,13 +244,7 @@ jobs:
             --profile minimal
           rustup default "$RUST_VERSION-${{ matrix.rust_host }}"
       - name: Set version info
-        run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_ENV
-          else
-            sha=$(git rev-parse --short HEAD)
-            echo "VERSION=dev-r${GITHUB_RUN_ID}-$sha" >> $GITHUB_ENV
-          fi
+        run: *version_stamp
       # LoadLibrary searches the executable's own directory first, so the
       # library ships beside neoviolet.exe. Fetched before the build so a
       # missing release fails in seconds rather than minutes.
@@ -299,19 +291,21 @@ jobs:
           cp apecli.exe dist/ 2>/dev/null || true
           cp neoviolet-gui.exe dist/ 2>/dev/null || true
           BIN_DIR="/${{ matrix.env_prefix }}/bin"
-          SYSTEM_DLLS="^(KERNEL32|ntdll|USER32|GDI32|ADVAPI32|SHELL32|OLE32|MSVCRT|VCRUNTIME|api-ms-win|ucrtbase|WS2_32|IPHLPAPI|SETUPAPI|CRYPT32|bcrypt|PSAPI|WINMM|VERSION|combase|RPCRT4|SHLWAPI|oleaut32|IMM32|MSCTF|kernel\.appcore|windows\.storage)\.dll$"
+          # Windows reports these names in lower case, so the match has to be
+          # case-insensitive or the list silently stops applying.
+          SYSTEM_DLLS="^(kernel32|ntdll|user32|gdi32|advapi32|shell32|ole32|msvcrt|vcruntime|(api|ext)-ms-win-[a-z0-9-]*|ucrtbase|ws2_32|iphlpapi|setupapi|crypt32|bcrypt|bcryptprimitives|psapi|winmm|version|combase|rpcrt4|shlwapi|oleaut32|imm32|msctf|comctl32|d3d11|dcomp|dwmapi|dwrite|dxgi|icu(uc|in)?|kernel\.appcore|windows\.storage)\.dll$"
           declare -A seen
           # The Rust binaries link the C++ runtime from this toolchain, so copy
           # every non-Windows import. libopenmpt needs only the C runtime, so
           # it does not seed the walk.
-          to_process=("neoviolet.exe" "neoviolet-gui.exe")
+          to_process=("neoviolet.exe" "neoviolet-gui.exe" "apecli.exe")
           while [ ${#to_process[@]} -gt 0 ]; do
             current="${to_process[0]}"
             to_process=("${to_process[@]:1}")
             deps=$(objdump -p "$current" | grep "DLL Name" | awk '{print $3}' \
               | sort -u)
             for dll in $deps; do
-              if [[ "$dll" =~ $SYSTEM_DLLS ]] || [[ -v seen[$dll] ]]; then
+              if [[ "${dll,,}" =~ $SYSTEM_DLLS ]] || [[ -v seen[$dll] ]]; then
                 continue
               fi
               seen["$dll"]=1
