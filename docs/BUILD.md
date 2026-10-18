@@ -210,10 +210,12 @@ plays nothing, and reports no error.
 
 ```bash
 make build                              # production binary
-CGO_ENABLED=0 GOARCH=amd64 make build   # explicit arch
 ```
 
 Produces `./neoviolet`, plus `./apecli` and `./neoviolet-gui` when cargo is available.
+
+`GOARCH=amd64 make build` cross-compiles only the Go binary; the Rust helpers are always built for the
+host architecture.
 
 ### macOS
 
