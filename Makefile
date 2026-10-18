@@ -13,6 +13,11 @@ LDFLAGS   = -s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version
 BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
 TEST_FLAGS  ?= -count=1
 
+# Oldest macOS the universal binaries claim to support. Fed to both toolchains,
+# because an unset MACOSX_DEPLOYMENT_TARGET makes the Intel slice of a Rust build
+# record a legacy minimum instead of the same one as the Apple silicon slice.
+MACOS_MIN ?= 13.0
+
 HAS_CARGO := $(shell which cargo 2>/dev/null | grep -q . && echo 1 || echo 0)
 
 APECLI_DIR := tools/apecli
@@ -28,7 +33,7 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: all build build/race build/debug build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check check/linelength clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
+.PHONY: all build build/race build/debug build/macos build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check check/linelength clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
 
 all: build
 
@@ -42,6 +47,32 @@ build/race:
 
 build/debug:
 	$(GO) build -gcflags="all=-N -l" -o $(OUTPUT) ./cmd/$(BINARY)
+
+# Universal macOS build: every slice is compiled here and merged with lipo, so a
+# single Apple silicon host produces one artifact that runs on both CPUs.
+build/macos:
+	@if [ "$(GOOS)" != darwin ]; then \
+		echo "error: build/macos is macOS only" >&2; exit 1; \
+	fi
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "error: build/macos needs cargo for the GUI and apecli" >&2; exit 1; \
+	fi
+	@if [ ! -d "$$(rustc --print target-libdir --target x86_64-apple-darwin 2>/dev/null)" ]; then \
+		echo "error: build/macos needs the Intel target: rustup target add x86_64-apple-darwin" >&2; exit 1; \
+	fi
+	@set -eu; tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
+		CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(BUILD_FLAGS) -o "$$tmp/arm64" ./cmd/$(BINARY); \
+		CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(BUILD_FLAGS) -o "$$tmp/amd64" ./cmd/$(BINARY); \
+		lipo -create "$$tmp/arm64" "$$tmp/amd64" -output $(OUTPUT)
+	@set -eu; export MACOSX_DEPLOYMENT_TARGET=$(MACOS_MIN); \
+		( cd $(APECLI_DIR) && cargo build --release --target aarch64-apple-darwin && cargo build --release --target x86_64-apple-darwin ); \
+		lipo -create $(APECLI_DIR)/target/aarch64-apple-darwin/release/apecli \
+			$(APECLI_DIR)/target/x86_64-apple-darwin/release/apecli -output apecli
+	@set -eu; export MACOSX_DEPLOYMENT_TARGET=$(MACOS_MIN); \
+		( cd $(GUI_DIR) && cargo build --release --target aarch64-apple-darwin $(GUI_FEATURES) && cargo build --release --target x86_64-apple-darwin $(GUI_FEATURES) ); \
+		lipo -create $(GUI_DIR)/target/aarch64-apple-darwin/release/neoviolet-gui \
+			$(GUI_DIR)/target/x86_64-apple-darwin/release/neoviolet-gui -output $(GUI_OUT)
+	@echo "Built $(OUTPUT), $(GUI_OUT) and apecli for arm64 + amd64"
 
 # --- GUI (Rust + gpui-ce) ---
 
@@ -218,6 +249,7 @@ help:
 	@echo "  build              Build binary (default)"
 	@echo "  build/race         Build with race detector"
 	@echo "  build/debug        Build without optimizations (dlv compatible)"
+	@echo "  build/macos        Build universal macOS binaries (arm64 + amd64)"
 	@echo ""
 	@echo "APE (Monkey's Audio):"
 	@echo "  apetools           Build apecli Rust helper (cargo required)"

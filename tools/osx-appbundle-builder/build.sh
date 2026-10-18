@@ -28,9 +28,9 @@ ICON_NAME="NeoViolet"
 PRE_COMPILED="$GUI_ASSETS/pre-compiled"
 
 # ── Build ──────────────────────────────────────────────────────────────────
-echo "Building (make build) …"
+echo "Building (make build/macos) …"
 cd "$PROJECT_ROOT"
-make build
+make build/macos
 
 # ── Bundle skeleton ────────────────────────────────────────────────────────
 rm -rf "$APP_DIR"
@@ -98,7 +98,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <key>CFBundleVersion</key>
   <string>$BUILD</string>
   <key>LSMinimumSystemVersion</key>
-  <string>12.0</string>
+  <string>13.0</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>CFBundleDocumentTypes</key>
