@@ -65,6 +65,7 @@ make build
 | `build`              | Production build with stripped debug info (builds `apecli`, `neoviolet-gui` automatically) |
 | `build/race`         | Build with Go race detector                                                                |
 | `build/debug`        | Build with debug symbols (compatible with `dlv`)                                           |
+| `build/macos`        | Universal binaries for Apple silicon and Intel (`arm64` + `amd64`, merged with `lipo`)     |
 | `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
 | `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
 | `apetools/debug`     | Build `apecli` in debug mode                                                               |
@@ -226,12 +227,21 @@ brew install libopenmpt
 **Build:**
 
 ```bash
-make build                              # production binary (host arch)
-CGO_ENABLED=0 GOARCH=arm64 make build   # Apple Silicon
-CGO_ENABLED=0 GOARCH=amd64 make build   # Intel Mac
+make build        # host architecture: the fast path while developing
+make build/macos  # universal, arm64 + amd64 merged with lipo
 ```
 
-The resulting binary is `./neoviolet`.
+`make build/macos` needs the Intel Rust target, which rustup does not install by default:
+
+```bash
+rustup target add x86_64-apple-darwin
+```
+
+It compiles both slices on the machine it runs on and merges them, so a single Apple silicon host
+produces binaries that also run on Intel Macs. `MACOS_MIN` (default `13.0`) is the oldest macOS those
+slices claim.
+
+The binaries land in the repository root: `./neoviolet`, `./neoviolet-gui`, `./apecli`.
 
 > [!NOTE]
 > macOS may warn about an unsigned binary on first launch. Clear the quarantine flag with
