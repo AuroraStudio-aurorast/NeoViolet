@@ -14,7 +14,7 @@ on:
 # depends on the Go version, and the linters decide pass/fail themselves. The
 # libopenmpt version is deliberately absent; deps/libopenmpt.lock owns it.
 env:
-  GO_VERSION: "1.27.2"
+  GO_VERSION: "1.27.3"
   RUST_VERSION: "1.98.0"
   GOLANGCI_VERSION: v2.14.0
   GOVULNCHECK_VERSION: v1.8.0
