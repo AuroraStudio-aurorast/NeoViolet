@@ -11,7 +11,6 @@ import (
 )
 
 const (
-	mprisBusName     = "org.mpris.MediaPlayer2.neoviolet"
 	mprisObjectPath  = dbus.ObjectPath("/org/mpris/MediaPlayer2")
 	mprisRootIface   = "org.mpris.MediaPlayer2"
 	mprisPlayerIface = "org.mpris.MediaPlayer2.Player"
@@ -25,6 +24,7 @@ type linuxController struct {
 	state    PlayState
 	trackID  string
 	trackSeq int
+	busName  string
 	done     chan struct{}
 	closed   bool
 }
@@ -32,6 +32,7 @@ type linuxController struct {
 func newController() (Controller, error) {
 	return &linuxController{
 		trackID: "/neoviolet/track/0",
+		busName: mprisBusName(),
 		done:    make(chan struct{}),
 	}, nil
 }
@@ -55,16 +56,16 @@ func (c *linuxController) connect() error {
 		return fmt.Errorf("mediactl: connect session bus: %w", err)
 	}
 
-	reply, err := conn.RequestName(mprisBusName, dbus.NameFlagDoNotQueue)
+	reply, err := conn.RequestName(c.busName, dbus.NameFlagDoNotQueue)
 	if err != nil {
 		// Discarding this connection: its close error cannot change the outcome,
 		// and the request-name error is the one worth reporting.
 		_ = conn.Close()
-		return fmt.Errorf("mediactl: request name %s: %w", mprisBusName, err)
+		return fmt.Errorf("mediactl: request name %s: %w", c.busName, err)
 	}
 	if reply != dbus.RequestNameReplyPrimaryOwner {
 		_ = conn.Close()
-		return fmt.Errorf("mediactl: name %s already taken", mprisBusName)
+		return fmt.Errorf("mediactl: name %s already taken", c.busName)
 	}
 
 	rootObj := &mprisRoot{}
