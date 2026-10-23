@@ -45,6 +45,12 @@ pub struct DesktopLyricsConfig {
 fn default_zoom_via_scroll() -> bool {
     false
 }
+fn default_option_as_meta() -> bool {
+    false
+}
+fn default_ime_routing() -> ImeRouting {
+    ImeRouting::Auto
+}
 fn default_desktop_lyrics_enabled() -> bool {
     false
 }
@@ -100,6 +106,42 @@ impl Default for DesktopLyricsConfig {
     }
 }
 
+/// How printable keys are routed while an input method (IME) is in play.
+///
+/// A composing input method only ever receives a keystroke the application did
+/// not consume, so leaving printable keys to the terminal makes Chinese,
+/// Japanese and Korean input impossible: every keystroke of a composition would
+/// be inserted as raw Latin text. Leaving them to the input method instead costs
+/// raw key delivery for as long as a composing input source is selected, which
+/// is what [`ImeRouting::Auto`] limits itself to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ImeRouting {
+    /// Leave printable keys to the input method only while a composing input
+    /// source (Chinese, Japanese, Korean) is active, so ordinary keyboard
+    /// layouts keep sending raw keys.
+    Auto,
+    /// Always leave printable keys to the input method. The escape hatch for
+    /// input methods that the platform detection misses; raw keys are then only
+    /// available after switching back to a non-composing input source.
+    Always,
+    /// Never leave printable keys to the input method: raw keys always reach the
+    /// terminal, and composition does not work.
+    Never,
+}
+
+impl ImeRouting {
+    /// Whether printable keys should be left for the input method, given the
+    /// platform's answer for whether a composing input source is active.
+    pub fn defers_printable_keys(self, ime_active: bool) -> bool {
+        match self {
+            Self::Auto => ime_active,
+            Self::Always => true,
+            Self::Never => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GuiConfig {
     pub monospace_font: String,
@@ -111,6 +153,13 @@ pub struct GuiConfig {
     /// Enable zoom via Ctrl+scroll (non-macOS) or Cmd+scroll (macOS).
     #[serde(default = "default_zoom_via_scroll")]
     pub zoom_via_scroll: bool,
+    /// Send Option as an ESC-prefixed meta key instead of a composed character
+    /// (macOS only; ignored elsewhere because Alt already sends ESC there).
+    #[serde(default = "default_option_as_meta")]
+    pub option_as_meta: bool,
+    /// Leave printable keys to the input method so that IME composition works.
+    #[serde(default = "default_ime_routing")]
+    pub ime_routing: ImeRouting,
     #[serde(default)]
     pub desktop_lyrics: DesktopLyricsConfig,
 }
@@ -125,6 +174,8 @@ impl Default for GuiConfig {
             opacity: 1.0,
             neoviolet_path: None,
             zoom_via_scroll: false,
+            option_as_meta: false,
+            ime_routing: ImeRouting::Auto,
             desktop_lyrics: DesktopLyricsConfig::default(),
         }
     }
@@ -186,20 +237,41 @@ pub fn load_or_create() -> GuiConfig {
 /// Returns the config directory path (same as the CLI's --xdg-config path).
 ///
 /// Resolution order:
-/// 1. `$XDG_CONFIG_HOME/neoviolet/`
+/// 1. `$XDG_CONFIG_HOME/neoviolet/` — only when it is an absolute path, which
+///    is the rule the CLI applies
 /// 2. `~/.config/neoviolet/`
-/// 3. OS config directory /neoviolet/ (fallback)
-/// 4. `~/.config/neoviolet/` (ultimate fallback)
+/// 3. `<os config dir>/neoviolet/` (fallback when there is no home dir)
+/// 4. `.config/neoviolet/` (ultimate fallback when neither is available)
 pub fn config_dir_path() -> std::path::PathBuf {
-    std::env::var("XDG_CONFIG_HOME")
-        .ok()
-        .filter(|p| !p.is_empty())
+    resolve_config_dir(
+        std::env::var("XDG_CONFIG_HOME").ok().as_deref(),
+        dirs::home_dir(),
+        dirs::config_dir(),
+    )
+}
+
+/// `$XDG_CONFIG_HOME` only counts when it is an absolute path.
+///
+/// The CLI only accepts an absolute value and otherwise uses `~/.config`, and
+/// both sides have to agree: the GUI and the CLI it launches must write to the
+/// same directory or a user ends up with two diverging configs.
+fn is_absolute_config_home(value: &str) -> bool {
+    !value.is_empty() && std::path::Path::new(value).is_absolute()
+}
+
+/// Resolves the config directory from its inputs, so the rules can be tested
+/// without touching the process environment.
+pub(crate) fn resolve_config_dir(
+    xdg_config_home: Option<&str>,
+    home: Option<std::path::PathBuf>,
+    os_config: Option<std::path::PathBuf>,
+) -> std::path::PathBuf {
+    xdg_config_home
+        .filter(|value| is_absolute_config_home(value))
         .map(std::path::PathBuf::from)
-        .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
-        .unwrap_or_else(|| {
-            dirs::config_dir()
-                .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join(".config"))
-        })
+        .or_else(|| home.map(|home| home.join(".config")))
+        .or(os_config)
+        .unwrap_or_else(|| std::path::PathBuf::from(".config"))
         .join("neoviolet")
 }
 
@@ -213,6 +285,78 @@ mod tests {
         assert!(!c.desktop_lyrics.enabled);
         assert!(c.desktop_lyrics.font_size > 0);
         assert!(c.desktop_lyrics.opacity > 0.0 && c.desktop_lyrics.opacity <= 1.0);
+    }
+
+    #[test]
+    fn option_as_meta_defaults_to_off() {
+        assert!(!GuiConfig::default().option_as_meta);
+    }
+
+    #[test]
+    fn option_as_meta_falls_back_when_the_file_omits_it() {
+        let text = toml::to_string_pretty(&GuiConfig::default()).expect("serialize defaults");
+        let without = text
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("option_as_meta"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed: GuiConfig = toml::from_str(&without).expect("parse without option_as_meta");
+        assert!(!parsed.option_as_meta);
+    }
+
+    #[test]
+    fn ime_routing_defaults_to_auto() {
+        assert_eq!(GuiConfig::default().ime_routing, ImeRouting::Auto);
+    }
+
+    #[test]
+    fn ime_routing_falls_back_when_the_file_omits_it() {
+        let text = toml::to_string_pretty(&GuiConfig::default()).expect("serialize defaults");
+        let without = text
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("ime_routing"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed: GuiConfig = toml::from_str(&without).expect("parse without ime_routing");
+        assert_eq!(parsed.ime_routing, ImeRouting::Auto);
+    }
+
+    #[test]
+    fn ime_routing_writes_and_reads_its_documented_values() {
+        // These strings are the public contract of the config file; renaming one
+        // silently invalidates existing user configs.
+        for (value, text) in [
+            (ImeRouting::Auto, "auto"),
+            (ImeRouting::Always, "always"),
+            (ImeRouting::Never, "never"),
+        ] {
+            let config = GuiConfig {
+                ime_routing: value,
+                ..GuiConfig::default()
+            };
+            let serialized = toml::to_string_pretty(&config).expect("serialize");
+            assert!(
+                serialized.contains(&format!("ime_routing = \"{text}\"")),
+                "expected `ime_routing = \"{text}\"` in:\n{serialized}"
+            );
+            let parsed: GuiConfig = toml::from_str(&serialized).expect("parse back");
+            assert_eq!(parsed.ime_routing, value);
+        }
+    }
+
+    #[test]
+    fn ime_routing_decides_when_printable_keys_defer() {
+        // Auto follows the platform: an ordinary layout keeps raw keys, a
+        // composing input source takes them.
+        assert!(!ImeRouting::Auto.defers_printable_keys(false));
+        assert!(ImeRouting::Auto.defers_printable_keys(true));
+        // Always is the escape hatch for input methods the detection misses, so
+        // it must not depend on the platform answer at all.
+        assert!(ImeRouting::Always.defers_printable_keys(false));
+        assert!(ImeRouting::Always.defers_printable_keys(true));
+        // Never restores the raw-key behaviour unconditionally.
+        assert!(!ImeRouting::Never.defers_printable_keys(false));
+        assert!(!ImeRouting::Never.defers_printable_keys(true));
     }
 
     #[test]
@@ -241,6 +385,8 @@ mod tests {
         assert_eq!(parsed.font_size, original.font_size);
         assert_eq!(parsed.opacity, original.opacity);
         assert_eq!(parsed.zoom_via_scroll, original.zoom_via_scroll);
+        assert_eq!(parsed.option_as_meta, original.option_as_meta);
+        assert_eq!(parsed.ime_routing, original.ime_routing);
         assert_eq!(
             parsed.desktop_lyrics.opacity,
             original.desktop_lyrics.opacity
@@ -289,5 +435,49 @@ mod tests {
                 "desktop lyrics opacity {value} lost precision, file was: {text}",
             );
         }
+    }
+
+    #[test]
+    fn a_relative_xdg_config_home_falls_back_to_the_home_directory() {
+        // The CLI rejects a relative value and uses ~/.config instead; if the GUI
+        // kept using it verbatim, the two would write to different directories.
+        let home = std::path::PathBuf::from("/home/someone");
+        assert_eq!(
+            resolve_config_dir(Some("relative/path"), Some(home.clone()), None),
+            home.join(".config").join("neoviolet")
+        );
+        assert_eq!(
+            resolve_config_dir(Some("./cfg"), Some(home.clone()), None),
+            home.join(".config").join("neoviolet")
+        );
+    }
+
+    #[test]
+    fn an_absolute_xdg_config_home_is_used_as_is() {
+        let xdg_config_home = std::env::temp_dir();
+        let xdg_config_home_str = xdg_config_home
+            .to_str()
+            .expect("temporary directory path must be valid UTF-8");
+        assert_eq!(
+            resolve_config_dir(Some(xdg_config_home_str), None, None),
+            xdg_config_home.join("neoviolet")
+        );
+    }
+
+    #[test]
+    fn an_empty_xdg_config_home_falls_back_to_the_home_directory() {
+        let home = std::path::PathBuf::from("/home/someone");
+        assert_eq!(
+            resolve_config_dir(Some(""), Some(home.clone()), None),
+            home.join(".config").join("neoviolet")
+        );
+    }
+
+    #[test]
+    fn the_os_config_directory_is_the_fallback_without_a_home_directory() {
+        assert_eq!(
+            resolve_config_dir(None, None, Some(std::path::PathBuf::from("/os/config"))),
+            std::path::PathBuf::from("/os/config/neoviolet")
+        );
     }
 }

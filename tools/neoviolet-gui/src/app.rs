@@ -5,13 +5,14 @@ use std::{
 
 use alacritty_terminal::{index::Side, selection::SelectionType};
 use gpui::{
-    App, Bounds, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Pixels, Point, Render, ScrollDelta, ScrollWheelEvent, SharedString, Styled,
-    Window, div, point, px, size,
+    App, Bounds, ClipboardItem, Context, EventEmitter, FocusHandle, Focusable, Font, FontStyle,
+    FontWeight, InteractiveElement, IntoElement, KeyDownEvent, MouseButton, MouseDownEvent,
+    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, Point, Render, ScrollDelta,
+    ScrollWheelEvent, SharedString, Styled, Subscription, TextRun, Window, div, point, px, size,
 };
 
 use crate::backend;
+use crate::platform;
 use crate::state::AppState;
 use crate::terminal::{
     self, BackendCommand, BackendEvent, TerminalTab,
@@ -28,7 +29,11 @@ pub struct TerminalApp {
     terminal_marked_text: Option<String>,
     pub terminal_font_size: f32,
     pub terminal_font_family: SharedString,
+    terminal_metrics: (f32, f32),
+    terminal_metrics_key: Option<(SharedString, u32)>,
     pub focus_handle: FocusHandle,
+    /// Keeps the focus-loss listener alive for as long as this terminal does.
+    focus_observer: Option<Subscription>,
     pub(crate) pending_resize: Option<(u16, u16)>,
     /// Buffer for recent PTY output (for bad-args crash diagnostics)
     recent_output: Arc<Mutex<Vec<u8>>>,
@@ -131,8 +136,11 @@ impl TerminalApp {
             terminal_selecting: false,
             terminal_marked_text: None,
             terminal_font_size: font_size,
-            terminal_font_family: font_family.into(),
+            terminal_font_family: font_family.clone().into(),
+            terminal_metrics: terminal::metrics_from_measurement(None, None, None, font_size),
+            terminal_metrics_key: None,
             focus_handle: cx.focus_handle(),
+            focus_observer: None,
             pending_resize: None,
             recent_output,
         }
@@ -181,11 +189,11 @@ impl TerminalApp {
     // ── Metrics ──
 
     pub fn terminal_cell_width(&self) -> f32 {
-        (self.terminal_font_size * 0.646).max(6.0)
+        self.terminal_metrics.0
     }
 
     pub fn terminal_line_height(&self) -> f32 {
-        (self.terminal_font_size * 1.385).max(self.terminal_font_size + 2.0)
+        self.terminal_metrics.1
     }
 
     // ── IME support ──
@@ -248,12 +256,13 @@ impl TerminalApp {
         cell_width: f32,
         line_height: f32,
     ) -> Option<Bounds<Pixels>> {
-        let snapshot = self.tab.render_snapshot();
-        let cursor = snapshot.cursor?;
+        // Anchored to the terminal cursor even while it is hidden, which is the
+        // normal state for a text-UI that draws its own caret.
+        let anchor = self.tab.ime_anchor();
         let x = element_bounds.origin.x
-            + px(cell_width) * cursor.col as f32
+            + px(cell_width) * anchor.col as f32
             + px(cell_width) * range_utf16.start as f32;
-        let y = element_bounds.origin.y + px(line_height) * cursor.row as f32;
+        let y = element_bounds.origin.y + px(line_height) * anchor.row as f32;
         Some(Bounds::new(
             point(x, y),
             size(px(cell_width), px(line_height)),
@@ -289,9 +298,22 @@ impl TerminalApp {
             return;
         }
 
-        // Character input — defer to the IME/InputHandler system.
-        // The EntityInputHandler will commit the final text via replace_text_in_range.
+        // A keystroke that produced a character is delivered as text rather than
+        // as a keystroke on some platforms; letting it through keeps composed
+        // input working there.
         if event.prefer_character_input {
+            return;
+        }
+
+        // A composing input method only ever receives a keystroke the application
+        // did not consume, so a printable key encoded here can never start a
+        // composition: typing Chinese or Japanese would insert raw Latin letters
+        // instead. Which keys that applies to is decided in `is_composable_key`;
+        // the committed text comes back through `replace_text_in_range`.
+        let routing = cx.global::<AppState>().config.ime_routing;
+        if terminal::is_composable_key(&event.keystroke)
+            && routing.defers_printable_keys(platform::ime_is_active())
+        {
             return;
         }
 
@@ -300,9 +322,11 @@ impl TerminalApp {
         }
         self.tab.clear_selection();
 
-        if let Some(bytes) =
-            terminal::encode_key(&event.keystroke, self.tab.app_cursor_mode(), false)
-        {
+        if let Some(bytes) = terminal::encode_key(
+            &event.keystroke,
+            self.tab.app_cursor_mode(),
+            cx.global::<AppState>().config.option_as_meta,
+        ) {
             let _ = self.tab.backend.send(BackendCommand::Input(bytes));
             window.prevent_default();
             cx.stop_propagation();
@@ -593,13 +617,67 @@ impl Focusable for TerminalApp {
 }
 
 impl Render for TerminalApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A composition interrupted by a focus change must not keep its marked
+        // range alive: while it does, the platform keeps routing every key to the
+        // input method and the preedit stays painted at a stale position.
+        if self.focus_observer.is_none() {
+            let subscription =
+                cx.on_blur(&self.focus_handle.clone(), window, |this, window, cx| {
+                    this.clear_terminal_marked_text(window, cx);
+                });
+            self.focus_observer = Some(subscription);
+        }
+
         // Process pending events
         self.drain_events();
 
         let snapshot = self.tab.render_snapshot();
         let font_family = self.terminal_font_family.clone();
         let font_size = px(self.terminal_font_size);
+        let metrics_key = (font_family.clone(), self.terminal_font_size.to_bits());
+        if self.terminal_metrics_key.as_ref() != Some(&metrics_key) {
+            let font = Font {
+                family: font_family.clone(),
+                weight: FontWeight::NORMAL,
+                style: FontStyle::Normal,
+                ..Font::default()
+            };
+            let text_system = window.text_system();
+            let font_id = text_system.resolve_font(&font);
+            let cell_width = text_system
+                .advance(font_id, font_size, 'M')
+                .ok()
+                .map(|size| f32::from(size.width));
+            let run = TextRun {
+                len: 1,
+                font,
+                ..TextRun::default()
+            };
+            let layout = text_system.layout_line("M", font_size, &[run], None);
+            let ascent = f32::from(layout.ascent);
+            let descent = f32::from(layout.descent);
+            let measurement_valid = cell_width
+                .is_some_and(|width| width.is_finite() && width > 0.0)
+                && ascent.is_finite()
+                && descent.is_finite()
+                && (ascent + descent).is_finite()
+                && ascent + descent > 0.0;
+            if !measurement_valid {
+                log::warn!(
+                    "[terminal] font measurement failed for '{}' at {}px; using fallback metrics",
+                    font_family,
+                    self.terminal_font_size
+                );
+            }
+            self.terminal_metrics = terminal::metrics_from_measurement(
+                cell_width,
+                Some(ascent),
+                Some(descent),
+                self.terminal_font_size,
+            );
+            self.terminal_metrics_key = Some(metrics_key);
+        }
         let line_height = px(self.terminal_line_height());
         let cell_width = px(self.terminal_cell_width());
         let marked_text = self.terminal_marked_text.clone();
