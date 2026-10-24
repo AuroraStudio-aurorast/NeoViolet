@@ -79,6 +79,17 @@ func Run() (*config.Config, error) {
 		selected = IconNerd
 	}
 
+	form := newSetupForm(&selected, &sfPath, home)
+	if err := form.Run(); err != nil {
+		return nil, err
+	}
+	cfg := config.DefaultConfig()
+	cfg.IconTheme = selected.ConfigValue()
+	cfg.SoundfontPath = sfPath
+	return &cfg, nil
+}
+
+func newSetupForm(selected *iconOption, sfPath *string, home string) *setupForm {
 	descriptions := map[iconOption]string{
 		IconNerd:     "Nerd Font: Requires a Nerd Font. (Recommended)",
 		IconEmoji:    "Emoji:     Uses emoji characters. No special font needed.",
@@ -102,30 +113,23 @@ func Run() (*config.Config, error) {
 		return s
 	}
 
+	welcome := huh.NewNote().Title(logo)
+	picker := huh.NewFilePicker().
+		Title("Choose a SoundFont file (optional)").
+		Description("Pick a .sf2 file for MIDI playback, or leave empty to skip.").
+		AllowedTypes([]string{".sf2"}).
+		CurrentDirectory(home).
+		Height(8).
+		Value(sfPath)
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewNote().Title(logo),
+			welcome,
 			huh.NewSelect[iconOption]().
 				Title("Select your favorite icon theme (also based on your terminal)").
 				Options(opts...).
-				Value(&selected),
-			huh.NewFilePicker().
-				Title("Choose a SoundFont file (optional)").
-				Description("Pick a .sf2 file for MIDI playback, or leave empty to skip.").
-				AllowedTypes([]string{".sf2"}).
-				CurrentDirectory(home).
-				Height(8).
-				Value(&sfPath),
+				Value(selected),
+			picker,
 		),
 	).WithTheme(huh.ThemeFunc(compact))
-
-	err := form.Run()
-	if err != nil {
-		return nil, err
-	}
-
-	cfg := config.DefaultConfig()
-	cfg.IconTheme = selected.ConfigValue()
-	cfg.SoundfontPath = sfPath
-	return &cfg, nil
+	return &setupForm{form: form, welcome: welcome, picker: picker, logo: logo}
 }

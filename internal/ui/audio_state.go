@@ -92,6 +92,7 @@ func (a *AudioState) UpdatePosition() {
 	if a.Player == nil {
 		return
 	}
+	a.IsPlaying = a.Player.IsPlaying()
 	pos := a.Player.Position()
 	dur := a.Player.Duration()
 

@@ -202,7 +202,13 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~
 
-### github.com/jpodeszfa/go-meltysynth/meltysynth
+### SoundFont synthesis (go-meltysynth)
+
+`internal/audio/soundfont` is an adapted in-repository copy of
+[go-meltysynth](https://github.com/jpodeszfa/go-meltysynth) v1.0.1, based on
+[MeltySynth](https://github.com/sinshu/go-meltysynth). Its source provenance and
+license are retained alongside the engine. MIDI parsing and scheduling are
+maintained separately by NeoViolet.
 
 Licensed under **MIT License**
 

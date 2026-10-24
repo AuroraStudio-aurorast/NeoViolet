@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/soundfont"
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/speaker"
-	"github.com/jpodeszfa/go-meltysynth/meltysynth"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
@@ -108,6 +108,7 @@ func (p *Player) openSynthetic(path, ext string) error {
 		p.synthCtrl = nil
 	}
 	p.synthActive = false
+	p.synthRegistered = false
 
 	sr := speakerSampleRate
 	if sr == 0 {
@@ -136,7 +137,7 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 		return fmt.Errorf("soundfont_path not configured for MIDI playback")
 	}
 
-	var cachedSF *meltysynth.SoundFont
+	var cachedSF *soundfont.SoundFont
 	if p.cachedSF != nil && p.cachedSFPath == p.sfPath {
 		cachedSF = p.cachedSF
 	}
@@ -208,14 +209,19 @@ func (p *Player) playSynthetic() error {
 		return fmt.Errorf("no synth controller")
 	}
 
-	if !p.isPlaying {
-		logger.Info("Synth playback start")
-		speaker.Play(p.synthCtrl.Streamer())
+	if err := p.synthCtrl.Play(); err != nil {
+		return err
 	}
-
-	speaker.Lock()
-	_ = p.synthCtrl.Play()
-	speaker.Unlock()
+	reusable, ok := p.synthCtrl.(interface{ ReusableStream() bool })
+	reusableMIDI := ok && reusable.ReusableStream()
+	if !p.synthRegistered || (!reusableMIDI && !p.isPlaying) {
+		if p.registerSynth != nil {
+			p.registerSynth(p.synthCtrl.Streamer())
+		} else {
+			speaker.Play(p.synthCtrl.Streamer())
+		}
+		p.synthRegistered = true
+	}
 
 	p.isPlaying = true
 	p.isPaused = false

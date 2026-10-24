@@ -409,6 +409,67 @@ make test/cover
 
 ---
 
+## MIDI and SoundFont playback
+
+MIDI playback uses the built-in MIT SoundFont engine; no MIDI system service or
+external synthesizer is required. Configure `soundfont_path` with a user-provided
+SF2 file. SoundFonts are not bundled, and their licenses are separate from the
+engine license.
+
+The player supports SMF formats 0/1, PPQN and SMPTE timing, independent MIDI
+Ports, bank/program selection and SF2 instrument/preset modulators. Up to 32
+ports have private controller, voice and effects state while sharing one PCM
+array. Each port has a 256-voice budget: layered instruments and release tails
+can still steal voices under pressure. Events are dispatched on 64-frame DSP
+boundaries. A fixed two-second release window follows the content; longer
+releases or reverb may end at that boundary. MIDI output is mixed linearly,
+then user volume and a final [-1,1] limit are applied. Loud banks may require a
+lower volume to avoid limiting.
+
+Seeking restores a complete DSP checkpoint and synthesizes only the remaining
+prefix on a cancellable background worker. Playback starts background indexing
+at roughly five-second intervals; snapshots include voices, filters, envelopes,
+effect delay lines and partially consumed DSP blocks, sharing immutable samples.
+The per-player retained-cache budget is 64 MiB by conservative size accounting;
+intervals double when it fills. Live/working renderers, temporary copies, allocator
+metadata and the SoundFont are additional memory. Very large port counts may
+leave too little budget for a snapshot and use the original prefix replay.
+Only the newest request is published; pending playback is silent and its displayed
+position stays at the requested target. Indexing yields periodically and shares
+one worker with seeks, which take priority. A first jump into an unindexed region
+can still take seconds; that replay also builds checkpoints for future requests.
+Stop halts indexing but retains reusable checkpoints; Close or changing tracks
+releases them. This is an in-memory cache, not a persistent disk cache.
+
+GM/GM2, GS and XG resets and basic percussion-part selection are recognized.
+This is not a complete MU1000 or XG/GS hardware emulation: vendor effects,
+NRPN extensions, linked/reserved SF2 modulators and unknown SysEx are diagnosed
+rather than emulated. SF3 is unsupported. SF2 `sm24` low bytes are ignored, so
+those banks render at 16-bit precision. Invalid local loops fall back to one-shot
+playback; empty instruments keep their identity and remain silent. Structural
+table corruption still fails loading. Loading is bounded to 1 GiB of 16-bit PCM
+and 16 MiB of parameter tables; SMF input is bounded to 64 MiB, two million
+retained events and 1 MiB per SysEx message.
+
+Generated fixtures run with `make test/midi`. Additional local checks are opt-in:
+
+```bash
+make test/midi/bench
+make test/midi/fuzz MIDI_FUZZ_PACKAGE=./internal/audio/midi MIDI_FUZZ=FuzzParseSMF
+make test/midi/fuzz MIDI_FUZZ_PACKAGE=./internal/audio/soundfont MIDI_FUZZ=FuzzLoadSoundFont
+NEOVIOLET_MIDI_TEST_FILE=/path/to/song.mid \
+NEOVIOLET_SF2_TEST_FILE=/path/to/bank.sf2 make test/midi/integration
+```
+
+Set `NEOVIOLET_MIDI_CHECKPOINTS=1` to compare checkpoint-restored output with
+linear rendering, log cache size/seek time and exercise the player's automatic
+background index and seek path with those same local assets.
+
+Set `NEOVIOLET_SF2_SWEEP=1` for an additional all-key/five-velocity short safety
+sweep and per-preset long-loop/bend spot check. These numerical checks do not
+replace listening or guarantee hardware-identical timbres. CI needs no user
+assets, sound device or network for the generated MIDI/SF2 regressions.
+
 ## Troubleshooting
 
 ### pkg-config Not Found
