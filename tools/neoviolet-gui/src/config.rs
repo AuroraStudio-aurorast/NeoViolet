@@ -45,6 +45,9 @@ pub struct DesktopLyricsConfig {
 fn default_zoom_via_scroll() -> bool {
     false
 }
+fn default_option_as_meta() -> bool {
+    false
+}
 fn default_desktop_lyrics_enabled() -> bool {
     false
 }
@@ -111,6 +114,10 @@ pub struct GuiConfig {
     /// Enable zoom via Ctrl+scroll (non-macOS) or Cmd+scroll (macOS).
     #[serde(default = "default_zoom_via_scroll")]
     pub zoom_via_scroll: bool,
+    /// Send Option as an ESC-prefixed meta key instead of a composed character
+    /// (macOS only; ignored elsewhere because Alt already sends ESC there).
+    #[serde(default = "default_option_as_meta")]
+    pub option_as_meta: bool,
     #[serde(default)]
     pub desktop_lyrics: DesktopLyricsConfig,
 }
@@ -125,6 +132,7 @@ impl Default for GuiConfig {
             opacity: 1.0,
             neoviolet_path: None,
             zoom_via_scroll: false,
+            option_as_meta: false,
             desktop_lyrics: DesktopLyricsConfig::default(),
         }
     }
@@ -216,6 +224,23 @@ mod tests {
     }
 
     #[test]
+    fn option_as_meta_defaults_to_off() {
+        assert!(!GuiConfig::default().option_as_meta);
+    }
+
+    #[test]
+    fn option_as_meta_falls_back_when_the_file_omits_it() {
+        let text = toml::to_string_pretty(&GuiConfig::default()).expect("serialize defaults");
+        let without = text
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("option_as_meta"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed: GuiConfig = toml::from_str(&without).expect("parse without option_as_meta");
+        assert!(!parsed.option_as_meta);
+    }
+
+    #[test]
     fn malformed_toml_falls_back_to_defaults() {
         let cfg = toml::from_str::<GuiConfig>("not valid toml [[[").unwrap_or_default();
         assert!(cfg.desktop_lyrics.font_size > 0);
@@ -241,6 +266,7 @@ mod tests {
         assert_eq!(parsed.font_size, original.font_size);
         assert_eq!(parsed.opacity, original.opacity);
         assert_eq!(parsed.zoom_via_scroll, original.zoom_via_scroll);
+        assert_eq!(parsed.option_as_meta, original.option_as_meta);
         assert_eq!(
             parsed.desktop_lyrics.opacity,
             original.desktop_lyrics.opacity
