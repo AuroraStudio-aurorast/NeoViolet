@@ -11,12 +11,7 @@ use gpui::{App, Entity};
 use crate::app::TerminalApp;
 use crate::backend::PTY_READY_STATUS;
 use crate::state::AppState;
-use crate::terminal::BackendCommand;
-
-/// Frame opening a bracketed paste.
-const PASTE_START: &[u8] = b"\x1b[200~";
-/// Frame closing a bracketed paste.
-const PASTE_END: &[u8] = b"\x1b[201~";
+use crate::terminal::{BackendCommand, PASTE_END, PASTE_START};
 
 /// Drop every ESC from a path. The escape set cannot cover ESC itself (it
 /// cannot be escaped, only removed) and a surviving ESC would let a path close
