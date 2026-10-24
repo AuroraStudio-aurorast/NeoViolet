@@ -1,3 +1,8 @@
+// Windows: link as a GUI program, so that no console window appears beside the
+// window. Windows then hands the process no console at all, so a launch from a
+// terminal recovers one through `platform::attach_parent_console`.
+#![windows_subsystem = "windows"]
+
 mod app;
 mod backend;
 mod components;
@@ -14,7 +19,9 @@ mod platform;
 mod state;
 mod terminal;
 mod theme_colors;
+mod titlebar;
 mod util;
+mod window_controls;
 
 use gpui::*;
 #[cfg(target_os = "macos")]
@@ -27,6 +34,10 @@ use neo_violet_app::NeoVioletApp;
 use state::AppState;
 
 fn main() {
+    // Before anything can write to the standard streams: Windows gives a GUI
+    // program no console, so a terminal launch has to reclaim the one it came from.
+    platform::attach_parent_console();
+
     // Sync macOS launch environment (runs at most once, before any threads).
     #[cfg(target_os = "macos")]
     {
@@ -131,15 +142,22 @@ fn main() {
         // Menu setup
         menus::setup(cx, gui_config.neoviolet_path.as_deref());
 
+        // The window does not exist yet, so this is what we ask for: client
+        // decorations everywhere but macOS, and not fullscreen because the window
+        // opens windowed. The render side re-runs this with the decorations the
+        // window actually got.
+        let kind = platform::current_platform_kind();
+        let chrome = platform::chrome_plan(kind, kind != platform::PlatformKind::MacOs, false);
+
         // Open window
         let titlebar_opts = Some(TitlebarOptions {
             title: Some("NeoViolet".into()),
-            appears_transparent: cfg!(target_os = "macos"),
+            appears_transparent: chrome.titlebar,
             traffic_light_position: None,
         });
 
         let config_opacity = gui_config.opacity.clamp(0.1, 1.0);
-        let window_background = if config_opacity < 1.0 {
+        let window_background = if platform::background_should_be_transparent(config_opacity) {
             WindowBackgroundAppearance::Transparent
         } else {
             WindowBackgroundAppearance::Opaque
@@ -155,6 +173,11 @@ fn main() {
                     ),
                 ))),
                 titlebar: titlebar_opts,
+                window_decorations: if chrome.frame {
+                    Some(WindowDecorations::Client)
+                } else {
+                    None
+                },
                 window_background,
                 ..Default::default()
             },
@@ -217,12 +240,19 @@ fn main() {
                 root_entity
             },
         );
-        if let Err(err) = opened {
-            // With no window there is nothing left to drive the run loop, so
-            // report and quit rather than unwinding through the callback with a
-            // backtrace.
-            log::error!("[gui] could not open the main window: {err}");
-            cx.quit();
+        match opened {
+            Ok(handle) => {
+                // Remember the window itself: menu actions that need a window must
+                // not depend on the platform's notion of the active one.
+                *cx.global::<AppState>().main_window_handle.lock().unwrap() = Some(handle.into());
+            }
+            Err(err) => {
+                // With no window there is nothing left to drive the run loop, so
+                // report and quit rather than unwinding through the callback with
+                // a backtrace.
+                log::error!("[gui] could not open the main window: {err}");
+                cx.quit();
+            }
         }
     });
 }
