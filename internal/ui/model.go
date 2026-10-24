@@ -34,10 +34,15 @@ func loadAudio(filePath, sfPath, trackerBackend string, generation int) tea.Msg 
 
 	// Stdin mode: load audio data from pipe
 	if filePath == "-" {
-		return loadAudioFromStdin(player, generation)
+		result := loadAudioFromStdin(player, generation)
+		if _, ok := result.(ErrorMsg); ok {
+			_ = player.Close()
+		}
+		return result
 	}
 
 	if err := player.Open(filePath); err != nil {
+		_ = player.Close()
 		logger.Error("Failed to load audio", "path", filePath, "err", err)
 		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180, Generation: generation}
 	}

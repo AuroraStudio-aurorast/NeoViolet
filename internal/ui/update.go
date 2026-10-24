@@ -235,6 +235,9 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	// Ignore stale load results from a superseded track switch
 	if msg.Generation != m.loadGeneration {
 		logger.Debug("Ignoring stale AudioLoadedMsg", "msgGen", msg.Generation, "modelGen", m.loadGeneration)
+		if msg.Player != nil {
+			_ = msg.Player.Close()
+		}
 		return m, nil
 	}
 
@@ -361,9 +364,10 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 		m.MediaCtl.Update(m.buildPlayState())
 	}
 
+	generation, sfPath, backend := m.loadGeneration, m.Config.SoundfontPath, m.Config.TrackerBackend
 	loadCmd := func() tea.Msg {
 		fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
-		return loadAudio(msg.Path, m.Config.SoundfontPath, m.Config.TrackerBackend, m.loadGeneration)
+		return loadAudio(msg.Path, sfPath, backend, generation)
 	}
 
 	// An animation that was showing follows the new track to its own sidecar,

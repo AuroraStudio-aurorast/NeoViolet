@@ -90,6 +90,22 @@ test/verbose:
 test/short:
 	$(GO) test -short $(TEST_FLAGS) ./...
 
+.PHONY: test/midi test/midi/bench test/midi/fuzz test/midi/integration
+test/midi:
+	$(GO) test $(TEST_FLAGS) ./internal/audio/... ./internal/ui
+
+test/midi/bench:
+	$(GO) test $(TEST_FLAGS) -run '^$$' -bench . -benchmem ./internal/audio/soundfont ./internal/audio/midi ./internal/audio/synth
+
+MIDI_FUZZ_PACKAGE ?= ./internal/audio/midi
+MIDI_FUZZ ?= FuzzParseSMF
+MIDI_FUZZ_TIME ?= 30s
+test/midi/fuzz:
+	$(GO) test $(TEST_FLAGS) -run '^$$' -fuzz '$(MIDI_FUZZ)' -fuzztime '$(MIDI_FUZZ_TIME)' $(MIDI_FUZZ_PACKAGE)
+
+test/midi/integration:
+	$(GO) test $(TEST_FLAGS) -timeout 20m -v -run '^Test(MIDIIntegration|SoundFontIntegration)' ./internal/audio/midi ./internal/audio/soundfont ./internal/audio/synth
+
 test/rust:
 	@if [ $(HAS_CARGO) -eq 0 ]; then echo "Warning: cargo not found, skipping Rust tests"; exit 0; fi
 	cd $(APECLI_DIR) && cargo test

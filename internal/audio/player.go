@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/soundfont"
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/speaker"
-	"github.com/jpodeszfa/go-meltysynth/meltysynth"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
@@ -37,29 +37,31 @@ func ensureSpeakerInit(sampleRate beep.SampleRate) error {
 // optional synthetic (MIDI/tracker) controller behind a single mutex-guarded
 // API used by the UI.
 type Player struct {
-	mu             sync.Mutex
-	streamer       beep.StreamSeekCloser
-	ctrl           *beep.Ctrl
-	volume         *effects.Volume
-	format         beep.Format
-	isPaused       bool
-	isPlaying      bool
-	file           io.Closer
-	path           string
-	linearVolume   float64
-	title          string
-	artist         string
-	album          string
-	coverImage     image.Image
-	decoder        *format.Decoder
-	tagReader      *format.MetadataReader
-	synthCtrl      synth.Controller
-	synthActive    bool
-	sfPath         string
-	cachedSF       *meltysynth.SoundFont
-	cachedSFPath   string
-	trackerBackend string
-	tempFiles      []string // temp files to clean up in Close()
+	mu              sync.Mutex
+	streamer        beep.StreamSeekCloser
+	ctrl            *beep.Ctrl
+	volume          *effects.Volume
+	format          beep.Format
+	isPaused        bool
+	isPlaying       bool
+	file            io.Closer
+	path            string
+	linearVolume    float64
+	title           string
+	artist          string
+	album           string
+	coverImage      image.Image
+	decoder         *format.Decoder
+	tagReader       *format.MetadataReader
+	synthCtrl       synth.Controller
+	synthActive     bool
+	synthRegistered bool
+	registerSynth   func(beep.Streamer)
+	sfPath          string
+	cachedSF        *soundfont.SoundFont
+	cachedSFPath    string
+	trackerBackend  string
+	tempFiles       []string // temp files to clean up in Close()
 }
 
 // NewPlayer creates a Player with the default format decoder and metadata reader.
@@ -192,6 +194,12 @@ func (p *Player) Open(path string) error {
 
 // closeStreamer stops playback and closes the file/streamer resources. Caller must hold p.mu.
 func (p *Player) closeStreamer() {
+	if p.synthCtrl != nil {
+		_ = p.synthCtrl.Close()
+		p.synthCtrl = nil
+	}
+	p.synthActive = false
+	p.synthRegistered = false
 	// Clear unconditionally: it stops playback and, because beep holds the
 	// speaker lock for the duration of a Stream call, it also guarantees no
 	// decoder is being read by the time the streamer is closed.
@@ -292,8 +300,7 @@ func (p *Player) Resume() {
 
 	if p.isSynthActive() {
 		logger.Debug("Synth resume")
-		_ = p.synthCtrl.Play()
-		p.isPaused = false
+		_ = p.playSynthetic()
 		return
 	}
 
@@ -397,6 +404,11 @@ func (p *Player) Seek(position time.Duration) error {
 func (p *Player) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.isSynthActive() {
+		if state, ok := p.synthCtrl.(interface{ IsPlaying() bool }); ok {
+			return state.IsPlaying()
+		}
+	}
 	return p.isPlaying && !p.isPaused
 }
 
@@ -431,14 +443,19 @@ func (p *Player) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if p.isSynthActive() {
-		logger.Debug("Player.Close (synth)")
-		return p.synthCtrl.Close()
+	var closeErr error
+	if p.synthCtrl != nil {
+		closeErr = p.synthCtrl.Close()
+		p.synthCtrl = nil
 	}
-
-	logger.Debug("Player.Close (audio)")
-	p.closeStreamer()
+	if p.streamer != nil || p.file != nil {
+		p.closeStreamer()
+	}
+	p.synthActive = false
+	p.synthRegistered = false
+	p.isPlaying = false
 	p.isPaused = true
+	p.path = ""
 
 	// Clean up any temp files created by OpenReader
 	for _, tmpPath := range p.tempFiles {
@@ -451,7 +468,7 @@ func (p *Player) Close() error {
 	p.cachedSF = nil
 	p.cachedSFPath = ""
 
-	return nil
+	return closeErr
 }
 
 // Format returns the sample format of the current stream.
