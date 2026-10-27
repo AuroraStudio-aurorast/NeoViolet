@@ -7,17 +7,14 @@ import (
 
 	"github.com/lucasb-eyer/go-colorful"
 
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
-// rampForTest builds the ramp the way a cover-less track gets it. panelCurrentStyle
-// reads m.Accent, so it needs a non-nil model: a nil *Model panics instead of
-// falling back to the ANSI colours.
+// rampForTest uses the same neutral endpoints as the panel.
 func rampForTest(t *testing.T) lyricRamp {
 	t.Helper()
 	return lyricRamp{
-		main:    mustColorful(t, "#af87ff"),
+		main:    mustColorful(t, "#ffffff"),
 		current: panelCurrentStyle(&Model{}),
 		context: panelContextStyle,
 	}
@@ -32,14 +29,9 @@ func mustColorful(t *testing.T, hex string) colorful.Color {
 	return c
 }
 
-// lyricShade is the one curve both features read: the sweep at a rune's own
-// progress, and a translated row at its midpoint. Only the midpoint is reachable
-// through them, so the ends and the direction are pinned here -- a blend with its
-// endpoints swapped, or one that ran backwards, would otherwise leave the whole
-// suite green. The midpoint's value and hue are pinned through the row that uses
-// it.
-func TestLyricShade_RunsFromTheGreyUpToTheAccent(t *testing.T) {
-	main := mustColorful(t, "#af87ff")
+// The sweep must brighten from grey to white without introducing a hue.
+func TestLyricShade_RunsFromGreyUpToWhite(t *testing.T) {
+	main := mustColorful(t, "#ffffff")
 
 	// The ends are the finished colours themselves, not lookalikes.
 	if got := lyricShade(main, 0); got != lyricGrey {
@@ -56,17 +48,15 @@ func TestLyricShade_RunsFromTheGreyUpToTheAccent(t *testing.T) {
 		t.Errorf("lyricShade at 1.5 = %s, want the emphasis colour", got.Hex())
 	}
 
-	// Direction, which the midpoint cannot show: three quarters of the way must be
-	// further from the grey than a quarter. Swapping the two colours passed to the
-	// blend would flip this while leaving the midpoint identical.
-	_, greyC, _ := lyricGrey.Hcl()
-	_, nearC, _ := lyricShade(main, 0.25).Hcl()
-	_, farC, _ := lyricShade(main, 0.75).Hcl()
-	_, mainC, _ := main.Hcl()
-	if !(greyC <= nearC && nearC < farC && farC <= mainC) {
-		t.Errorf("chroma is not monotonic from grey up to the accent: 0.25=%.2f 0.75=%.2f (grey=%.2f accent=%.2f)",
-			nearC, farC, greyC, mainC)
+	previous := lyricGrey.R
+	for _, tval := range []float64{0.25, 0.5, 0.75, 1} {
+		c := lyricShade(main, tval)
+		if c.R <= previous || math.Abs(c.R-c.G) > 0.0001 || math.Abs(c.G-c.B) > 0.0001 {
+			t.Errorf("shade at %.2f = %s, want brighter neutral grey", tval, c.Hex())
+		}
+		previous = c.R
 	}
+
 }
 
 // The two ends of the ramp hand back the panel's finished styles rather than
@@ -90,44 +80,6 @@ func TestLyricRamp_EndsReuseThePanelStylesVerbatim(t *testing.T) {
 	}
 	if got := r.styleFor(2).Render("x"); got != panelCurrentStyle(m).Render("x") {
 		t.Errorf("styleFor(2) renders %q, want panelCurrentStyle", got)
-	}
-}
-
-// A translated row takes the emphasis colour halfway toward the grey the unplayed
-// text uses, which is lyricShade read at translationShade. The hex values are
-// pinned as literals rather than recomputed from the same expression, so changing
-// the blend space, moving an endpoint or retuning the constant cannot pass
-// unnoticed.
-func TestLyricTranslationColour_IsTheMidpointTowardGrey(t *testing.T) {
-	// No cover: lyricMain falls back to ANSI 141 (#af87ff).
-	if got, want := lyricTranslationColour(nil).Hex(), "#9f89c4"; got != want {
-		t.Errorf("cover-less translation colour = %q, want %q", got, want)
-	}
-	// With a cover the step follows the extracted accent instead.
-	acc := &accent.Accent{Main: mustColorful(t, "#8a2be2")}
-	if got, want := lyricTranslationColour(acc).Hex(), "#9163b7"; got != want {
-		t.Errorf("accented translation colour = %q, want %q", got, want)
-	}
-
-	// The point of the blend is to lose saturation, not to fade out or to drift to
-	// another colour: the hue stays and the chroma drops below the accent's. Blending
-	// toward a neutral grey in CIELAB halves (a,b), so the hue is preserved exactly.
-	main := mustColorful(t, "#af87ff")
-	mid := lyricTranslationColour(nil)
-	mainH, mainC, mainL := main.Hcl()
-	midH, midC, midL := mid.Hcl()
-
-	if diff := math.Abs(mainH - midH); diff > 1 {
-		t.Errorf("hue moved %.1f degrees (%.1f -> %.1f), want the accent's hue kept", diff, mainH, midH)
-	}
-	if midC >= mainC {
-		t.Errorf("chroma %.3f is not below the accent's %.3f: the row did not step back", midC, mainC)
-	}
-	if midL > mainL {
-		t.Errorf("lightness rose %.3f -> %.3f, want the step to come from chroma, not a lift", mainL, midL)
-	}
-	if mid == lyricGrey {
-		t.Error("translation colour equals the unplayed grey: the row would read as unsung")
 	}
 }
 

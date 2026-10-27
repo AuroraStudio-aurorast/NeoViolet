@@ -63,7 +63,7 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 	// line never counts down.
 	if !highlight {
 		if text, ok := lyricCountdownDots(m); ok {
-			dots := panelRow{spans: []styledSpan{{Text: text, Style: panelCurrentStyle(m)}}}
+			dots := panelRow{spans: []styledSpan{{Text: text, Style: panelCountdownStyle(m)}}}
 			if currentTime > m.Audio.Elapsed {
 				cur = append([]panelRow{dots}, cur...)
 			} else {
@@ -206,7 +206,7 @@ func partLine(line lyrics.LyricLine, i int) lyrics.LyricLine {
 }
 
 // panelLineSpans styles a lyric line. The highlighted line is shaded from the
-// unplayed grey into the accent when the format carries word timings that tile the
+// unplayed grey into white when the format carries word timings that tile the
 // text. showAgent adds the "NAME: " label; the panel shows it only where the singer
 // changes, so when it is due it stays out of the shading. translated marks a part
 // that renders the line being sung in another language rather than continuing it.

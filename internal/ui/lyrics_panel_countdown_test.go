@@ -79,8 +79,8 @@ func TestPanelWindow_GapDimsTheHeldLine(t *testing.T) {
 	if len(dots.spans) != 1 {
 		t.Fatalf("countdown row has %d spans, want 1", len(dots.spans))
 	}
-	if got, want := dots.spans[0].Style.Render("x"), panelCurrentStyle(m).Render("x"); got != want {
-		t.Errorf("countdown style = %q, want the current style %q", got, want)
+	if got, want := dots.spans[0].Style.Render("x"), panelCountdownStyle(m).Render("x"); got != want {
+		t.Errorf("countdown style = %q, want the countdown style %q", got, want)
 	}
 }
 
