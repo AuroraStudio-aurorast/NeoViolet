@@ -113,7 +113,7 @@ func assertFrameBackgrounds(t *testing.T, m *Model) {
 	t.Helper()
 	raw := frameBackgrounds(t, renderMainView(m).Content)
 	painted := frameBackgrounds(t, m.View().Content)
-	wash := backgroundGradient(m.Accent, m.UI.Height)
+	wash := frameBackground(m)
 	if len(painted) != m.UI.Height {
 		t.Fatalf("frame height = %d, want %d", len(painted), m.UI.Height)
 	}

@@ -96,50 +96,57 @@ func TestBackgroundGradient_NearbyAccentsHaveNearbyBackgrounds(t *testing.T) {
 	}
 }
 
-func TestBackgroundGradient_ContrastAndMonotonicity(t *testing.T) {
-	// Independent sRGB calculation, including byte quantisation. Do not derive
-	// expected contrast from the production luminance or tint functions.
-	luminance := func(c color.RGBA) float64 {
-		result := 0.0
-		for i, v := range []uint8{c.R, c.G, c.B} {
-			x := float64(v) / 255
-			vlin := x / 12.92
-			if x > 0.04045 {
-				vlin = math.Pow((x+0.055)/1.055, 2.4)
-			}
-			result += vlin * []float64{0.2126, 0.7152, 0.0722}[i]
-		}
-		return result
-	}
-	for _, hex := range []string{"#af87ff", "#60b5a6", "#df9b67", "#b86782", "#485b80", "#000000", "#ffffff", "#ffff00", "#558036", "#a8634e", "#876d6e"} {
+func TestBackgroundGradient_NormalizedLightnessAndMonotonicity(t *testing.T) {
+	for _, hex := range []string{"#af87ff", "#46536b", "#3b5b89", "#265c5a", "#564c94", "#b1623d", "#8baeca", "#098fc8", "#d19756", "#62cc9b", "#000000", "#ffffff", "#ffff00", "#ff0000", "#0000ff"} {
 		t.Run(hex, func(t *testing.T) {
-			main := mustColorful(t, hex)
-			r, g, b, _ := main.RGBA()
-			mainLum := luminance(color.RGBA{R: uint8((r >> 8) & 0xff), G: uint8((g >> 8) & 0xff), B: uint8((b >> 8) & 0xff), A: 255})
-			original := (mainLum + 0.05) / 0.05
-			// All accents keep at least 80% of their contrast on black;
-			// dark accents keep at least 95%.
-			limit := original * 0.8
-			if original <= 3 {
-				limit = original * 0.95
-			}
 			for _, height := range []int{17, 24, 30, 60, 300} {
+				rows := backgroundGradient(&accent.Accent{Main: mustColorful(t, hex)}, height)
+				bottom := rows[len(rows)-1]
+				// Accepted HTML target is 0.0098079; allow one-byte RGB rounding.
+				if delta := math.Abs(testLuminance(bottom) - 0.00980790543); delta > 0.0006 {
+					t.Errorf("%s height %d luminance %.6f, want near 0.009808", hex, height, testLuminance(bottom))
+				}
 				previous := color.RGBA{A: 255}
-				rows := backgroundGradient(&accent.Accent{Main: main}, height)
 				for y, c := range rows {
-					ratio := (mainLum + 0.05) / (luminance(c) + 0.05)
-					if ratio+1e-9 < limit {
-						t.Fatalf("height %d row %d contrast %.5f below %.5f", height, y, ratio, limit)
-					}
 					if c.R < previous.R || c.G < previous.G || c.B < previous.B {
-						t.Fatalf("height %d row %d retreats %v -> %v", height, y, previous, c)
-					}
-					if float64(c.R) > math.Round(float64(r>>8)*0.16) || float64(c.G) > math.Round(float64(g>>8)*0.16) || float64(c.B) > math.Round(float64(b>>8)*0.16) {
-						t.Fatalf("row %d exceeds 16%% tint: %v", y, c)
+						t.Fatalf("row %d retreats %v -> %v", y, previous, c)
 					}
 					previous = c
 				}
 			}
 		})
+	}
+}
+
+// Independent sRGB calculation for assertions over the bytes sent to terminals.
+func testLuminance(c color.RGBA) float64 {
+	result := 0.0
+	for i, v := range []uint8{c.R, c.G, c.B} {
+		x := float64(v) / 255
+		linear := x / 12.92
+		if x > 0.04045 {
+			linear = math.Pow((x+0.055)/1.055, 2.4)
+		}
+		result += linear * []float64{0.2126, 0.7152, 0.0722}[i]
+	}
+	return result
+}
+
+func TestBackgroundGradient_MatchesAcceptedHTMLColours(t *testing.T) {
+	cases := map[string]color.RGBA{
+		"#af87ff": {R: 28, G: 22, B: 41, A: 255},
+		"#46536b": {R: 24, G: 25, B: 28, A: 255},
+		"#3b5b89": {R: 21, G: 26, B: 31, A: 255},
+		"#265c5a": {R: 21, G: 26, B: 26, A: 255},
+		"#564c94": {R: 25, G: 24, B: 34, A: 255},
+		"#558036": {R: 22, G: 27, B: 19, A: 255},
+		"#b1623d": {R: 33, G: 23, B: 19, A: 255},
+		"#098fc8": {R: 7, G: 27, B: 37, A: 255},
+	}
+	for hex, want := range cases {
+		rows := backgroundGradient(&accent.Accent{Main: mustColorful(t, hex)}, 30)
+		if got := rows[len(rows)-1]; got != want {
+			t.Errorf("%s bottom=%v, want HTML %v", hex, got, want)
+		}
 	}
 }

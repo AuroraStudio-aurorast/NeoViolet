@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"charm.land/lipgloss/v2"
+	"github.com/lucasb-eyer/go-colorful"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 )
@@ -15,41 +16,83 @@ const (
 	backgroundCurve  = 2.4
 )
 
+var backgroundReference = color.RGBA{R: 28, G: 22, B: 41, A: 255}
+
+func backgroundAccent(a *accent.Accent) color.RGBA {
+	r, g, b, _ := lipgloss.Color(accentOrDefault(a, "#af87ff")).RGBA()
+	return color.RGBA{R: uint8((r >> 8) & 0xff), G: uint8((g >> 8) & 0xff), B: uint8((b >> 8) & 0xff), A: 255}
+}
+
+// normalizedBackground keeps the cover hue and limits its chroma while matching
+// the accepted purple background's lightness. Out-of-gamut colours lose chroma,
+// not hue, until they fit sRGB. go-colorful uses Lab values scaled by 1/100.
+func normalizedBackground(main color.RGBA) color.RGBA {
+	seed, _ := colorful.MakeColor(tintedBackground(main, backgroundTint))
+	reference, _ := colorful.MakeColor(backgroundReference)
+	light, ra, rb := reference.Lab()
+	_, a, b := seed.Lab()
+	chroma := math.Hypot(a, b)
+	if capChroma := math.Hypot(ra, rb); chroma > capChroma {
+		a, b = a*capChroma/chroma, b*capChroma/chroma
+	}
+	for range 120 {
+		c := colorful.Lab(light, a, b)
+		if c.IsValid() {
+			r, g, b := c.RGB255()
+			return color.RGBA{R: r, G: g, B: b, A: 255}
+		}
+		a, b = a*.95, b*.95
+	}
+	red, green, blue := colorful.Lab(light, 0, 0).Clamped().RGB255()
+	return color.RGBA{R: red, G: green, B: blue, A: 255}
+}
+
 // backgroundGradient uses screen rows, so adjacent panels share one continuous
-// wash. OSC 11 stays black; every visible cell carries its own row's colour.
+// wash. Panel keeps the complete normalized ramp; OSC 11 remains black.
 func backgroundGradient(a *accent.Accent, height int) []color.RGBA {
 	rows := make([]color.RGBA, max(height, 0))
-	if height <= 1 {
-		for i := range rows {
-			rows[i] = color.RGBA{A: 255}
+	main := backgroundAccent(a)
+	bottom := normalizedBackground(main)
+	for y := range rows {
+		amount := 0.0
+		if height > 1 {
+			p := clampUnit((float64(y)/float64(height-1) - (1 - backgroundHeight)) / backgroundHeight)
+			amount = math.Pow(p, backgroundCurve)
 		}
+		// Preserve the accepted purple ramp exactly, including its byte rounding.
+		if main == (color.RGBA{R: 175, G: 135, B: 255, A: 255}) {
+			rows[y] = tintedBackground(main, backgroundTint*amount)
+		} else {
+			rows[y] = tintedBackground(bottom, amount)
+		}
+	}
+	return rows
+}
+
+// frameBackground darkens only the visible One-line lyric and its adjacent rows.
+// The position comes from the same layout as the footer, including resize and
+// automatic Panel fallback. Hidden lyrics leave the complete wash in place.
+func frameBackground(m *Model) []color.RGBA {
+	rows := backgroundGradient(m.Accent, m.UI.Height)
+	plan := m.layoutPlan()
+	if plan.LyricMode != lyricModeOneLine || !m.oneLineVisible() {
 		return rows
 	}
-	r, g, b, _ := lipgloss.Color(accentOrDefault(a, "#af87ff")).RGBA()
-	main := color.RGBA{R: uint8((r >> 8) & 0xff), G: uint8((g >> 8) & 0xff), B: uint8((b >> 8) & 0xff), A: 255}
-	mainLuminance := backgroundLuminance(main)
-	base := (mainLuminance + 0.05) / 0.05
-	// Fade the allowed contrast loss from 5% for dark accents to 20% for
-	// bright ones. An absolute 4.5 floor would collapse the wash just above
-	// that threshold, even though a slightly darker accent kept its tint.
+	main := backgroundAccent(m.Accent)
+	mainLum := backgroundLuminance(main)
+	base := (mainLum + .05) / .05
 	transition := clampUnit((base - 3) / 4)
 	transition = transition * transition * (3 - 2*transition)
-	target := base * (0.95 - 0.15*transition)
-	// Choose the endpoint first, then spread the entire ramp over the screen.
-	// Clipping individual rows would leave a flat band at the bottom.
-	ceiling := backgroundTint
-	for ceiling > 0 {
-		bg := tintedBackground(main, ceiling)
-		if (mainLuminance+0.05)/(backgroundLuminance(bg)+0.05) >= target {
-			break
+	target := base * (.95 - .15*transition)
+	lyricY := plan.Height - helpHeight - 2
+	for y := max(0, lyricY-1); y <= min(len(rows)-1, lyricY+1); y++ {
+		original := rows[y]
+		scale := 1.0
+		for scale > 0 && (mainLum+.05)/(backgroundLuminance(tintedBackground(original, scale))+.05) < target {
+			scale = max(0, scale-.001)
 		}
-		ceiling = max(0, ceiling-0.001)
-	}
-	for y := range rows {
-		position := float64(y) / float64(height-1)
-		p := clampUnit((position - (1 - backgroundHeight)) / backgroundHeight)
-		tint := ceiling * math.Pow(p, backgroundCurve)
-		rows[y] = tintedBackground(main, tint)
+		weight := 1 - math.Abs(float64(y-lyricY))/2
+		rows[y] = tintedBackground(original, 1-weight*(1-scale))
 	}
 	return rows
 }
@@ -66,10 +109,10 @@ func tintedBackground(main color.RGBA, tint float64) color.RGBA {
 func backgroundLuminance(c color.RGBA) float64 {
 	linear := func(v uint8) float64 {
 		s := float64(v) / 255
-		if s <= 0.04045 {
+		if s <= .04045 {
 			return s / 12.92
 		}
-		return math.Pow((s+0.055)/1.055, 2.4)
+		return math.Pow((s+.055)/1.055, 2.4)
 	}
-	return 0.2126*linear(c.R) + 0.7152*linear(c.G) + 0.0722*linear(c.B)
+	return .2126*linear(c.R) + .7152*linear(c.G) + .0722*linear(c.B)
 }

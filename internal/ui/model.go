@@ -349,7 +349,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) View() tea.View {
 	view := renderMainView(m)
 	if view.AltScreen && !m.isGUI() {
-		view.Content = paintBackground(view.Content, backgroundGradient(m.Accent, m.UI.Height))
+		view.Content = paintBackground(view.Content, frameBackground(m))
 		view.BackgroundColor = uiBackground
 		view.ForegroundColor = uiForeground
 	}
