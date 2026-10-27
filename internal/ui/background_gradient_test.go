@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"testing"
@@ -41,6 +42,60 @@ func TestBackgroundGradient_DegenerateHeights(t *testing.T) {
 	}
 }
 
+// Fixed accents from real covers exercise the old contrast cliff without the
+// cover extractor's random seeds changing the test input.
+func TestBackgroundGradient_RealCoverAccentsKeepTheirWash(t *testing.T) {
+	for _, hex := range []string{"#558036", "#a8634e", "#886f6f", "#29818e"} {
+		t.Run(hex, func(t *testing.T) {
+			rows := backgroundGradient(&accent.Accent{Main: mustColorful(t, hex)}, 30)
+			bottom := rows[len(rows)-1]
+			if max(bottom.R, bottom.G, bottom.B) < 14 {
+				t.Errorf("bottom %v lost the cover wash", bottom)
+			}
+			unique := map[color.RGBA]bool{}
+			for _, c := range rows {
+				unique[c] = true
+			}
+			if len(unique) < 10 {
+				t.Errorf("only %d row colours, want a complete ramp", len(unique))
+			}
+		})
+	}
+}
+
+func TestBackgroundGradient_ConstrainedRampHasNoClippedTail(t *testing.T) {
+	rows := backgroundGradient(&accent.Accent{Main: mustColorful(t, "#485b80")}, 30)
+	for y := 25; y < len(rows); y++ {
+		if rows[y] == rows[y-1] {
+			t.Errorf("rows %d/%d repeat %v: the bottom of the ramp was clipped", y-1, y, rows[y])
+		}
+	}
+}
+
+func TestBackgroundGradient_NearbyAccentsHaveNearbyBackgrounds(t *testing.T) {
+	for _, hex := range []string{"#558036", "#a8634e", "#886f6f"} {
+		main := mustColorful(t, hex)
+		r, g, b := main.RGB255()
+		previous := color.RGBA{}
+		for delta := -3; delta <= 3; delta++ {
+			// These fixed mid-range fixtures stay inside byte bounds.
+			neighbour := fmt.Sprintf("#%02x%02x%02x", int(r)+delta, int(g)+delta, int(b)+delta)
+			parsed := mustColorful(t, neighbour)
+			rows := backgroundGradient(&accent.Accent{Main: parsed}, 30)
+			bottom := rows[len(rows)-1]
+			if delta > -3 {
+				for i, v := range []uint8{bottom.R, bottom.G, bottom.B} {
+					before := []uint8{previous.R, previous.G, previous.B}[i]
+					if math.Abs(float64(v)-float64(before)) > 1 {
+						t.Errorf("%s delta %d: background jumps %v -> %v", hex, delta, previous, bottom)
+					}
+				}
+			}
+			previous = bottom
+		}
+	}
+}
+
 func TestBackgroundGradient_ContrastAndMonotonicity(t *testing.T) {
 	// Independent sRGB calculation, including byte quantisation. Do not derive
 	// expected contrast from the production luminance or tint functions.
@@ -56,15 +111,17 @@ func TestBackgroundGradient_ContrastAndMonotonicity(t *testing.T) {
 		}
 		return result
 	}
-	for _, hex := range []string{"#af87ff", "#60b5a6", "#df9b67", "#b86782", "#485b80", "#000000", "#ffffff", "#ffff00"} {
+	for _, hex := range []string{"#af87ff", "#60b5a6", "#df9b67", "#b86782", "#485b80", "#000000", "#ffffff", "#ffff00", "#558036", "#a8634e", "#876d6e"} {
 		t.Run(hex, func(t *testing.T) {
 			main := mustColorful(t, hex)
 			r, g, b, _ := main.RGBA()
 			mainLum := luminance(color.RGBA{R: uint8((r >> 8) & 0xff), G: uint8((g >> 8) & 0xff), B: uint8((b >> 8) & 0xff), A: 255})
 			original := (mainLum + 0.05) / 0.05
-			limit := original * 0.95
-			if original >= 4.5 {
-				limit = math.Max(4.5, original*0.8)
+			// All accents keep at least 80% of their contrast on black;
+			// dark accents keep at least 95%.
+			limit := original * 0.8
+			if original <= 3 {
+				limit = original * 0.95
 			}
 			for _, height := range []int{17, 24, 30, 60, 300} {
 				previous := color.RGBA{A: 255}

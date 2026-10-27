@@ -29,12 +29,14 @@ func backgroundGradient(a *accent.Accent, height int) []color.RGBA {
 	main := color.RGBA{R: uint8((r >> 8) & 0xff), G: uint8((g >> 8) & 0xff), B: uint8((b >> 8) & 0xff), A: 255}
 	mainLuminance := backgroundLuminance(main)
 	base := (mainLuminance + 0.05) / 0.05
-	target := base * 0.95
-	if base >= 4.5 {
-		target = max(4.5, base*0.8)
-	}
-	// Find one ceiling for the palette: capping every row at the same tint also
-	// keeps quantisation from making the constrained bottom rows alternate shades.
+	// Fade the allowed contrast loss from 5% for dark accents to 20% for
+	// bright ones. An absolute 4.5 floor would collapse the wash just above
+	// that threshold, even though a slightly darker accent kept its tint.
+	transition := clampUnit((base - 3) / 4)
+	transition = transition * transition * (3 - 2*transition)
+	target := base * (0.95 - 0.15*transition)
+	// Choose the endpoint first, then spread the entire ramp over the screen.
+	// Clipping individual rows would leave a flat band at the bottom.
 	ceiling := backgroundTint
 	for ceiling > 0 {
 		bg := tintedBackground(main, ceiling)
@@ -46,7 +48,7 @@ func backgroundGradient(a *accent.Accent, height int) []color.RGBA {
 	for y := range rows {
 		position := float64(y) / float64(height-1)
 		p := clampUnit((position - (1 - backgroundHeight)) / backgroundHeight)
-		tint := min(ceiling, backgroundTint*math.Pow(p, backgroundCurve))
+		tint := ceiling * math.Pow(p, backgroundCurve)
 		rows[y] = tintedBackground(main, tint)
 	}
 	return rows
