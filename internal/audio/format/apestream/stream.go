@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 
@@ -63,11 +62,9 @@ type Streamer struct {
 // Decode opens an APE file and returns a beep.StreamSeekCloser. It tries each
 // available backend in priority order: apecli (Rust binary), ffmpeg, mac.
 func Decode(_ *os.File, path string) (*Streamer, beep.Format, error) {
-	backends := probeBackends()
+	backends, problems := probeBackends()
 	if len(backends) == 0 {
-		return nil, beep.Format{}, fmt.Errorf(
-			"ape: no decoder backend found — install ffmpeg or mac, or build apecli (requires cargo)",
-		)
+		return nil, beep.Format{}, noBackendError(problems)
 	}
 
 	var (
@@ -103,6 +100,17 @@ func Decode(_ *os.File, path string) (*Streamer, beep.Format, error) {
 	return nil, beep.Format{}, fmt.Errorf("ape: all backends failed: %w", err)
 }
 
+// noBackendError explains that no decoder is available. problems, when present,
+// names decoders that were found but could not be used, so the hint does not
+// send the user looking for something they already have.
+func noBackendError(problems []string) error {
+	const hint = "install ffmpeg or mac, or build apecli (requires cargo)"
+	if len(problems) == 0 {
+		return fmt.Errorf("ape: no decoder backend found — %s", hint)
+	}
+	return fmt.Errorf("ape: no decoder backend found (%s) — %s", strings.Join(problems, "; "), hint)
+}
+
 // sanitizeFileArg prefixes a user-supplied file path with "./" when it
 // begins with "-", preventing it from being interpreted as a command-line
 // flag by subprocess backends (ffmpeg, ffprobe, apecli, mac).
@@ -113,12 +121,18 @@ func sanitizeFileArg(path string) string {
 	return path
 }
 
-// probeBackends discovers available backends in priority order.
-func probeBackends() []Backend {
-	var backends []Backend
+// probeBackends discovers available backends in priority order. The returned
+// problems explain any backend that was found but could not be used.
+func probeBackends() ([]Backend, []string) {
+	var (
+		backends []Backend
+		problems []string
+	)
 
 	// 1. apecli — built from tools/apecli/, searched in PATH and next to binary
-	if binary := findApeCLI(); binary != "" {
+	binary, apeProblems := findApeCLI()
+	problems = append(problems, apeProblems...)
+	if binary != "" {
 		backends = append(backends, newApeCLIBackend(binary))
 	}
 
@@ -132,43 +146,7 @@ func probeBackends() []Backend {
 		backends = append(backends, &macBackend{})
 	}
 
-	return backends
-}
-
-// findApeCLI locates the apecli helper binary. Search order:
-//  1. NEOVIOLET_APECLI env var
-//  2. Next to the running executable
-//  3. System PATH
-func findApeCLI() string {
-	if env := os.Getenv("NEOVIOLET_APECLI"); env != "" {
-		// #nosec G703 -- env is a user-configured path to the apecli helper
-		// binary; checking its existence is the documented config mechanism.
-		if _, err := os.Stat(env); err == nil {
-			return env
-		}
-		return ""
-	}
-
-	// Try next to executable, then dev build dir, then system PATH.
-	// exec.LookPath handles platform-specific binary extensions (.exe on Windows).
-	exe, err := os.Executable()
-	if err == nil {
-		dir := filepath.Dir(exe)
-		for _, c := range []string{
-			filepath.Join(dir, "apecli"),
-			filepath.Join(dir, "tools", "apecli", "target", "release", "apecli"),
-		} {
-			if path, err := exec.LookPath(c); err == nil {
-				return path
-			}
-		}
-	}
-
-	if path, err := exec.LookPath("apecli"); err == nil {
-		return path
-	}
-
-	return ""
+	return backends, problems
 }
 
 // Streamer methods
