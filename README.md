@@ -1,18 +1,8 @@
-~~~
-███╗   ██╗███████╗ ██████╗
-████╗  ██║██╔════╝██╔═══██╗
-██╔██╗ ██║█████╗  ██║   ██║
-██║╚██╗██║██╔══╝  ██║   ██║
-██║ ╚████║███████╗╚██████╔╝
-╚═╝  ╚═══╝╚══════╝ ╚═════╝
-
-██╗   ██╗██╗ ██████╗ ██╗     ███████╗████████╗
-██║   ██║██║██╔═══██╗██║     ██╔════╝╚══██╔══╝
-██║   ██║██║██║   ██║██║     █████╗     ██║
-╚██╗ ██╔╝██║██║   ██║██║     ██╔══╝     ██║
- ╚████╔╝ ██║╚██████╔╝███████╗███████╗   ██║
-  ╚═══╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝   ╚═╝
-~~~
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./docs/images/NeoVioletLight.png">
+  <source media="(prefers-color-scheme: light)" srcset="./docs/images/NeoVioletDark.png">
+  <img src="./docs/images/NeoVioletDark.png" alt="NeoViolet" width="380" height="210">
+</picture>
 
 # NeoViolet - A Terminal Music Player
 
