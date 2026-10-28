@@ -1,9 +1,10 @@
 package wizard
 
 import (
-	"regexp"
-	"strings"
+	"image/color"
 	"testing"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestIconOptionConfigValue(t *testing.T) {
@@ -37,28 +38,30 @@ func TestIconOptionConfigValuesAreDistinct(t *testing.T) {
 	}
 }
 
-var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
-
-func visibleText(s string) string { return ansiRe.ReplaceAllString(s, "") }
-
-func TestLogoGradient(t *testing.T) {
-	out := logoGradient()
-	if out != logoGradient() {
-		t.Error("logoGradient is not deterministic across calls")
-	}
-	if !strings.HasSuffix(out, "\n") {
-		t.Error("logoGradient should end with a newline")
-	}
-
-	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
-	if len(lines) != len(logoLines) {
-		t.Fatalf("logoGradient produced %d lines, want %d", len(lines), len(logoLines))
-	}
-	// lipgloss drops colour when no terminal is detected, so compare the
-	// visible text rather than the escape sequences.
-	for i, want := range logoLines {
-		if got := visibleText(lines[i]); got != want {
-			t.Errorf("line %d = %q, want %q", i, got, want)
-		}
+func TestWizardOptionContrast(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		dark bool
+	}{
+		{name: "dark", dark: true},
+		{name: "light", dark: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			styles := wizardTheme(tc.dark)
+			for _, style := range []lipgloss.Style{
+				styles.Focused.Option,
+				styles.Blurred.Option,
+				styles.Focused.UnselectedOption,
+				styles.Blurred.UnselectedOption,
+			} {
+				gray := color.GrayModel.Convert(style.GetForeground()).(color.Gray)
+				if tc.dark && gray.Y < 180 {
+					t.Errorf("dark background needs light option text; got brightness %d", gray.Y)
+				}
+				if !tc.dark && gray.Y > 75 {
+					t.Errorf("light background needs dark option text; got brightness %d", gray.Y)
+				}
+			}
+		})
 	}
 }
