@@ -5,7 +5,6 @@ import (
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/lucasb-eyer/go-colorful"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
@@ -29,41 +28,6 @@ func (o iconOption) ConfigValue() string {
 		return "fallback"
 	}
 	return "nerd"
-}
-
-var logoLines = []string{
-	"",
-	"███╗   ██╗███████╗ ██████╗",
-	"████╗  ██║██╔════╝██╔═══██╗",
-	"██╔██╗ ██║█████╗  ██║   ██║",
-	"██║╚██╗██║██╔══╝  ██║   ██║",
-	"██║ ╚████║███████╗╚██████╔╝",
-	"╚═╝  ╚═══╝╚══════╝ ╚═════╝",
-	"",
-	"██╗   ██╗██╗ ██████╗ ██╗     ███████╗████████╗",
-	"██║   ██║██║██╔═══██╗██║     ██╔════╝╚══██╔══╝",
-	"██║   ██║██║██║   ██║██║     █████╗     ██║",
-	"╚██╗ ██╔╝██║██║   ██║██║     ██╔══╝     ██║",
-	" ╚████╔╝ ██║╚██████╔╝███████╗███████╗   ██║",
-	"  ╚═══╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝   ╚═╝",
-}
-
-func logoGradient() string {
-	start, _ := colorful.Hex("#c77dff")
-	end, _ := colorful.Hex("#5a00b3")
-	n := len(logoLines)
-	var out string
-	for i, line := range logoLines {
-		if line == "" {
-			out += "\n"
-			continue
-		}
-		t := float64(i) / float64(n-1)
-		c := start.BlendHcl(end, t)
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex())).Bold(true)
-		out += style.Render(line) + "\n"
-	}
-	return out
 }
 
 // Run shows the first-run setup wizard and returns the resulting config.
@@ -91,20 +55,9 @@ func Run() (*config.Config, error) {
 		huh.NewOption(descriptions[IconFallback], IconFallback),
 	}
 
-	logo := logoGradient() + "\nWelcome to NeoViolet \u2014 a terminal music player."
-
-	compact := func(isDark bool) *huh.Styles {
-		s := huh.ThemeCharm(isDark)
-		s.FieldSeparator = lipgloss.NewStyle().SetString("\n")
-		s.Focused.NoteTitle = s.Focused.NoteTitle.MarginBottom(0)
-		s.Focused.Card = s.Focused.Base.Padding(0, 0)
-		s.Blurred.Card = s.Blurred.Base.Padding(0, 0)
-		return s
-	}
-
 	form := huh.NewForm(
 		huh.NewGroup(
-			huh.NewNote().Title(logo),
+			newLogoNote(),
 			huh.NewSelect[iconOption]().
 				Title("Select your favorite icon theme (also based on your terminal)").
 				Options(opts...).
@@ -117,7 +70,7 @@ func Run() (*config.Config, error) {
 				Height(8).
 				Value(&sfPath),
 		),
-	).WithTheme(huh.ThemeFunc(compact))
+	).WithTheme(huh.ThemeFunc(wizardTheme))
 
 	err := form.Run()
 	if err != nil {
@@ -128,4 +81,16 @@ func Run() (*config.Config, error) {
 	cfg.IconTheme = selected.ConfigValue()
 	cfg.SoundfontPath = sfPath
 	return &cfg, nil
+}
+
+func wizardTheme(isDark bool) *huh.Styles {
+	// Huh v2.0.3 supplies LightDark's two palettes in reverse order.
+	// Invert only this theme input; terminal detection and the logo keep isDark.
+	s := huh.ThemeCharm(!isDark)
+	s.FieldSeparator = lipgloss.NewStyle().SetString("\n")
+	s.Focused.NoteTitle = lipgloss.NewStyle()
+	s.Blurred.NoteTitle = lipgloss.NewStyle()
+	s.Focused.Card = s.Focused.Base.Padding(0, 0)
+	s.Blurred.Card = s.Blurred.Base.Padding(0, 0)
+	return s
 }
