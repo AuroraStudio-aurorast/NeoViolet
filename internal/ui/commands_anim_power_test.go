@@ -258,8 +258,8 @@ func TestPowerWarnPanel_FitsItsBox(t *testing.T) {
 // it says what the charge is, what an animation costs, and how to answer.
 func TestPowerWarnDetail_TalksToWhoeverIsListening(t *testing.T) {
 	var text strings.Builder
-	for _, line := range powerWarnDetail(power.Status{Percent: 18, OnBattery: true, Known: true}, 20) {
-		text.WriteString(line.Text)
+	for _, line := range powerWarnDetail(power.Status{Percent: 18, OnBattery: true, Known: true}, 20, newAnimWarningPalette(nil)) {
+		text.WriteString(ansi.Strip(line.Text))
 		text.WriteString("\n")
 	}
 

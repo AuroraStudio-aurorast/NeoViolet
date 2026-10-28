@@ -50,11 +50,6 @@ var (
 			Foreground(lipgloss.Color("196")).
 			Bold(true)
 
-	// Input styling
-	inputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("57")).
-			Bold(true)
-
 	// Info/success styling (green text on dark background)
 	infoStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("46")).
