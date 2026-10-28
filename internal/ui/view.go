@@ -319,11 +319,13 @@ func renderCompletion(m *Model, plan layoutPlan) string {
 	}
 	width := plan.Width // the list spans the frame
 	start := completionWindowStart(m, rows)
+	palette := newInteractionPalette(m.Accent)
 
 	lines := make([]string, 0, rows)
 	for i := 0; i < rows; i++ {
 		index := start + i
-		lines = append(lines, completionRow(m.completionCandidates[index], index == m.completionIndex, width))
+		styles := palette.completion(i, rows, index == m.completionIndex)
+		lines = append(lines, completionRow(m.completionCandidates[index], index == m.completionIndex, width, styles))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -366,7 +368,8 @@ func overlayCompletion(m *Model, plan layoutPlan, frame string, rows int) string
 // part of the row, so the tier checks budget for it: every row comes out
 // exactly avail wide, which is what keeps the composited list the same size as
 // the frame underneath it.
-func completionRow(cand candidate, selected bool, avail int) string {
+func completionRow(cand candidate, selected bool, avail int, styles completionStyles) string {
+	rowStyle, descStyle := styles.text, styles.description
 	value, desc := cand.Value, cand.Desc
 	budget := avail - markerWidth
 	if w := lipgloss.Width(value); w > budget {
@@ -377,10 +380,8 @@ func completionRow(cand candidate, selected bool, avail int) string {
 	}
 
 	marker := "  "
-	rowStyle, descStyle := completionRowStyle, completionDescStyle
 	if selected {
 		marker = "▸ "
-		rowStyle, descStyle = completionSelectedStyle, completionSelectedDescStyle
 	}
 
 	head := marker + value
@@ -450,7 +451,7 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.Error.Message != "" && m.Error.Visible {
-		return errorStyle.Width(m.UI.Width).Render(" " + m.Error.Message)
+		return renderInteractionError(m)
 	}
 
 	return m.Components.Help.View(keys)
