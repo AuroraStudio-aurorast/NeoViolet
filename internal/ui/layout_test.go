@@ -38,9 +38,9 @@ func TestAutoPanelWidth(t *testing.T) {
 		want    int
 		wantFit bool
 	}{
-		// min(48, w-28) < 24: no room for a usable panel next to a minWidth content area.
+		// min(48, w-68) < 24: no room for a usable panel next to a minWidth content area.
 		{68, 0, false}, {80, 0, false}, {91, 0, false},
-		// w-28 binds in this narrow band (0.3w meets w-28 at w = 97).
+		// w-68 binds in this narrow band (0.3w meets w-68 at w = 97).
 		{92, config.MinPanelWidth, true}, {96, 28, true}, {97, 29, true},
 		// 30% binds from here on.
 		{100, 30, true}, {110, 33, true}, {120, 36, true}, {140, 42, true},

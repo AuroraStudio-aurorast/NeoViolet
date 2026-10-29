@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"charm.land/lipgloss/v2"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -9,6 +8,7 @@ import (
 
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
