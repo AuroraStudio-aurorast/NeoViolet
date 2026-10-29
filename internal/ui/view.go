@@ -7,19 +7,20 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
-
-// loadingFrames is the animated spinner shown during track loading.
-var loadingFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 var appLayoutStyle = lipgloss.NewStyle()
 
 func renderMainView(m *Model) tea.View {
 	if m.Loading && !m.switchingTrack {
-		// Full-screen loading: only for initial startup load.
+		// Normal-screen loading: only for initial startup load.
 		// Runtime track switches keep the main UI visible.
-		idx := m.loadingTick / 6 % len(loadingFrames)
-		return tea.NewView(loadingStyle.Render(loadingFrames[idx] + " Loading..."))
+		text := renderLoadingText(m, "Loading audio", loadingStyle)
+		if m.UI.Width > 0 {
+			text = ansi.Truncate(text, m.UI.Width, "…")
+		}
+		return tea.NewView(text)
 	}
 
 	if m.UI.Width < minWidth || m.UI.Height < minHeight {
@@ -414,8 +415,9 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.switchingTrack {
-		idx := m.loadingTick / 6 % len(loadingFrames)
-		return infoStyle.Width(m.UI.Width).Render(" " + loadingFrames[idx] + " Loading...")
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("#bcb2ca"))
+		text := " " + renderLoadingText(m, "Loading audio", style)
+		return lipgloss.NewStyle().Width(m.UI.Width).Render(clampRowWidth(text, m.UI.Width))
 	}
 
 	if m.Info.Message != "" && m.Info.Visible {

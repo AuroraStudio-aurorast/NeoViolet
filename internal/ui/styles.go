@@ -31,7 +31,7 @@ var (
 
 	// Loading & warning styles
 	loadingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("57")).
+			Foreground(lipgloss.Color("#af87ff")).
 			Bold(true)
 
 	warnStyle = lipgloss.NewStyle().

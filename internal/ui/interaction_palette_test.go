@@ -138,7 +138,7 @@ func TestErrorPreservesWrappingAndHelpPriority(t *testing.T) {
 		t.Error("info no longer takes precedence over errors")
 	}
 	m.switchingTrack = true
-	if !strings.Contains(stripANSI(renderHelp(m)), "Loading...") {
+	if !strings.Contains(stripANSI(renderHelp(m)), "Loading audio") {
 		t.Error("loading no longer takes precedence over messages")
 	}
 	m.UI.Mode = ModeCommand
