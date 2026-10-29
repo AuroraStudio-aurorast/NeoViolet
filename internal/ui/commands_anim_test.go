@@ -61,14 +61,14 @@ func TestWarnPanel_FitsItsBox(t *testing.T) {
 		{"narrowest reachable box", 38, 4},
 		{"smallest usable terminal", 62, 4},
 		{"one row more than the compact tier needs", 62, 5},
-		{"exactly the detail threshold", 64, warnDetailRows},
+		{"the detailed warning fits exactly", 64, 14},
 		{"typical", 64, 17},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			lines := warnCompact(readings, newAnimWarningPalette(nil))
-			if tc.h >= warnDetailRows {
+			if tc.h >= 14 {
 				lines = warnDetail(readings, newAnimWarningPalette(nil))
 			}
 			got := layoutWarnLines(lines, tc.w, tc.h)
@@ -84,7 +84,7 @@ func TestWarnPanel_FitsItsBox(t *testing.T) {
 			}
 			// The choice has to survive: it is the point of the gate, so it is
 			// written before the provenance line that a cramped box drops.
-			if !strings.Contains(got, "esc") {
+			if !strings.Contains(got, "Esc") {
 				t.Errorf("the way out was lost:\n%s", got)
 			}
 			t.Logf("%dx%d:\n%s", tc.w, tc.h, got)
@@ -113,6 +113,11 @@ func TestWarnReason_NamesTheReadingThatObjected(t *testing.T) {
 			"only the file objected",
 			anim.Photosensitivity{Declared: player.Warning{Verdict: player.VerdictFail}, Assessment: missing},
 			"could not run",
+		},
+		{
+			"the file objected but analysis passed",
+			anim.Photosensitivity{Declared: player.Warning{Verdict: player.VerdictFail}, Assessment: passed},
+			"our analysis passed",
 		},
 		{
 			"only our analysis objected, nothing declared",
@@ -391,7 +396,7 @@ func TestContent_GateTakesTheSameBox(t *testing.T) {
 	if !ok {
 		t.Fatal("the gate did not claim the content box")
 	}
-	if !strings.Contains(body, "PHOTOSENSITIVITY") {
+	if !strings.Contains(body, "Photosensitivity") {
 		t.Errorf("the gate is not what was drawn:\n%s", body)
 	}
 	if rows := strings.Split(body, "\n"); len(rows) != plan.ContentInnerH {

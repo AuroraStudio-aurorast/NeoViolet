@@ -13,11 +13,6 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
-// warnDetailRows is the box height at which the photosensitivity gate can show
-// what it measured rather than only what it concluded. Below this it says the
-// worst number and offers the same choice. TestWarnPanel_FitsItsBox checks the
-// tall layout against this figure, so the two cannot drift apart.
-
 // syncAnim keeps the animation aligned with the audio and sized for its box.
 //
 // It runs on the tick rather than from a resize or panel hook because the box
