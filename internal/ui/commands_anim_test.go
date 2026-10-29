@@ -67,9 +67,9 @@ func TestWarnPanel_FitsItsBox(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			lines := warnCompact(readings)
+			lines := warnCompact(readings, newAnimWarningPalette(nil))
 			if tc.h >= warnDetailRows {
-				lines = warnDetail(readings)
+				lines = warnDetail(readings, newAnimWarningPalette(nil))
 			}
 			got := layoutWarnLines(lines, tc.w, tc.h)
 

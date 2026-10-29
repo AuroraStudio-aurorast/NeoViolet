@@ -26,10 +26,11 @@ const warnDetailRows = 14
 // see it.
 func renderAnimWarning(m *Model, plan layoutPlan) string {
 	readings := m.Anim.Warning()
+	palette := newAnimWarningPalette(m.Accent)
 	if plan.ContentInnerH >= warnDetailRows {
-		return layoutWarnLines(warnDetail(readings), plan.ContentInnerW, plan.ContentInnerH)
+		return layoutWarnLines(warnDetail(readings, palette), plan.ContentInnerW, plan.ContentInnerH)
 	}
-	return layoutWarnLines(warnCompact(readings), plan.ContentInnerW, plan.ContentInnerH)
+	return layoutWarnLines(warnCompact(readings, palette), plan.ContentInnerW, plan.ContentInnerH)
 }
 
 // renderAnimPowerWarning draws the battery gate. Like the photosensitivity gate
@@ -37,10 +38,11 @@ func renderAnimWarning(m *Model, plan layoutPlan) string {
 // reading comes from the machine rather than from the file.
 func renderAnimPowerWarning(m *Model, plan layoutPlan) string {
 	reading := m.Anim.Reading()
+	palette := newAnimWarningPalette(m.Accent)
 	if plan.ContentInnerH >= warnDetailRows {
-		return layoutWarnLines(powerWarnDetail(reading, m.warnBelow()), plan.ContentInnerW, plan.ContentInnerH)
+		return layoutWarnLines(powerWarnDetail(reading, m.warnBelow(), palette), plan.ContentInnerW, plan.ContentInnerH)
 	}
-	return layoutWarnLines(powerWarnCompact(reading, m.warnBelow()), plan.ContentInnerW, plan.ContentInnerH)
+	return layoutWarnLines(powerWarnCompact(reading, m.warnBelow(), palette), plan.ContentInnerW, plan.ContentInnerH)
 }
 
 // powerWarnDetail is the battery gate when there is room to say what it costs.
@@ -48,25 +50,25 @@ func renderAnimPowerWarning(m *Model, plan layoutPlan) string {
 // It is written for whoever is playing music, so it names no setting and says
 // nothing about how the program works: the charge, what an animation costs, and
 // the way out.
-func powerWarnDetail(reading power.Status, warnBelow int) []warnLine {
+func powerWarnDetail(reading power.Status, warnBelow int, palette animWarningPalette) []warnLine {
 	return []warnLine{
-		{Text: "LOW BATTERY WARNING", Style: warnStyle},
+		{Text: "LOW BATTERY WARNING", Style: palette.title},
 		{},
-		{Text: fmt.Sprintf("Battery at %d%%, below %d%%.", reading.Percent, warnBelow)},
+		{Text: palette.battery(reading.Percent, warnBelow, false)},
 		{},
-		{Text: "Playing the animation may drain the battery faster."},
+		{Text: "Playing the animation may drain the battery faster.", Style: palette.body},
 		{},
-		{Text: inputStyle.Render("[enter]") + "  play anyway      " + inputStyle.Render("[esc]") + "  cancel"},
+		{Text: palette.keys(false)},
 	}
 }
 
 // powerWarnCompact is the battery gate for the smallest usable box: the charge,
 // what it costs, and the way out, in three rows.
-func powerWarnCompact(reading power.Status, warnBelow int) []warnLine {
+func powerWarnCompact(reading power.Status, warnBelow int, palette animWarningPalette) []warnLine {
 	return []warnLine{
-		{Text: "LOW BATTERY WARNING", Style: warnStyle},
-		{Text: fmt.Sprintf("Battery at %d%%, below %d%%; the animation drains it faster.", reading.Percent, warnBelow)},
-		{Text: inputStyle.Render("[enter]") + " play anyway   " + inputStyle.Render("[esc]") + " cancel"},
+		{Text: "LOW BATTERY WARNING", Style: palette.title},
+		{Text: palette.battery(reading.Percent, warnBelow, true)},
+		{Text: palette.keys(true)},
 	}
 }
 
@@ -81,33 +83,50 @@ type warnLine struct {
 // Both readings are listed because they can disagree, and the limit row is what
 // makes the others mean anything: a flash rate without the threshold it broke is
 // not something a viewer can weigh.
-func warnDetail(p anim.Photosensitivity) []warnLine {
+func warnDetail(p anim.Photosensitivity, palette animWarningPalette) []warnLine {
 	lines := []warnLine{
-		{Text: "PHOTOSENSITIVITY WARNING", Style: warnStyle},
+		{Text: "PHOTOSENSITIVITY WARNING", Style: palette.title},
 		{},
 	}
 	for _, reason := range strings.Split(warnReason(p), "\n") {
-		lines = append(lines, warnLine{Text: reason})
+		lines = append(lines, warnLine{Text: reason, Style: palette.body})
 	}
 	lines = append(lines, warnLine{})
 
+	areaLimit := int(photosensitivity.DefaultAreaThreshold * 1000)
+	if p.Analysed() {
+		areaLimit = p.Assessment.AreaThresholdPermille
+	}
 	for _, row := range warnTable(p) {
-		style := lipgloss.NewStyle()
-		if strings.HasPrefix(row, "  limit") {
-			style = panelContextStyle
+		style := palette.body
+		switch {
+		case strings.HasPrefix(row, "  limit"):
+			style = palette.muted
+		case strings.HasPrefix(row, "  the file says"):
+			row = palette.measurements(row, [3]bool{
+				p.Declared.General > photosensitivity.FlashLimitPerSecond,
+				p.Declared.Red > photosensitivity.FlashLimitPerSecond,
+				p.Declared.HasArea && float64(p.Declared.Area) > float64(areaLimit),
+			})
+		case strings.HasPrefix(row, "  our analysis"):
+			row = palette.measurements(row, [3]bool{
+				p.Assessment.GeneralFlashesPerSecond > photosensitivity.FlashLimitPerSecond,
+				p.Assessment.RedFlashesPerSecond > photosensitivity.FlashLimitPerSecond,
+				p.Assessment.MaxFlashAreaPermille > areaLimit,
+			})
 		}
 		lines = append(lines, warnLine{Text: row, Style: style})
 	}
 
 	lines = append(lines,
 		warnLine{},
-		warnLine{Text: "The animation is not playing yet."},
+		warnLine{Text: "The animation is not playing yet.", Style: palette.body},
 		warnLine{},
 		warnLine{
-			Text:  inputStyle.Render("[enter]") + "  play anyway      " + inputStyle.Render("[esc]") + "  cancel",
-			Style: lipgloss.NewStyle(),
+			Text:  palette.keys(false),
+			Style: palette.body,
 		},
-		warnLine{Text: warnProvenance(p), Style: panelContextStyle},
+		warnLine{Text: warnProvenance(p), Style: palette.muted},
 	)
 	return lines
 }
@@ -115,12 +134,12 @@ func warnDetail(p anim.Photosensitivity) []warnLine {
 // warnCompact is the gate for a box with no room for the table. Below the detail
 // threshold the smallest usable terminal leaves four rows, and the reason, the
 // worst number and the way out all have to fit in them.
-func warnCompact(p anim.Photosensitivity) []warnLine {
+func warnCompact(p anim.Photosensitivity, palette animWarningPalette) []warnLine {
 	return []warnLine{
-		{Text: "PHOTOSENSITIVITY WARNING", Style: warnStyle},
-		{Text: warnCompactReason(p)},
-		{Text: "The animation is not playing yet."},
-		{Text: inputStyle.Render("[enter]") + " play anyway   " + inputStyle.Render("[esc]") + " cancel"},
+		{Text: "PHOTOSENSITIVITY WARNING", Style: palette.title},
+		{Text: warnCompactReason(p, palette)},
+		{Text: "The animation is not playing yet.", Style: palette.body},
+		{Text: palette.keys(true)},
 	}
 }
 
@@ -142,7 +161,7 @@ func warnReason(p anim.Photosensitivity) string {
 
 // warnCompactReason is the one-line version: the worst flash rate against the
 // limit it broke.
-func warnCompactReason(p anim.Photosensitivity) string {
+func warnCompactReason(p anim.Photosensitivity, palette animWarningPalette) string {
 	general := 0
 	if p.Analysed() {
 		general = p.Assessment.GeneralFlashesPerSecond
@@ -151,7 +170,12 @@ func warnCompactReason(p anim.Photosensitivity) string {
 		// container stores unsigned and no plausible file makes large.
 		general = int(p.Declared.General)
 	}
-	return fmt.Sprintf("Up to %d flashes/s (limit %d/s).", general, photosensitivity.FlashLimitPerSecond)
+	style := palette.body
+	if general > photosensitivity.FlashLimitPerSecond {
+		style = palette.risk
+	}
+	return palette.body.Render("Up to ") + style.Render(fmt.Sprintf("%d", general)) +
+		palette.body.Render(fmt.Sprintf(" flashes/s (limit %d/s).", photosensitivity.FlashLimitPerSecond))
 }
 
 // warnTable is the header and one row per reading, then the limits. Area is

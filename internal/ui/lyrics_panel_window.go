@@ -63,7 +63,7 @@ func panelWindow(m *Model, plan layoutPlan) []panelRow {
 	// line never counts down.
 	if !highlight {
 		if text, ok := lyricCountdownDots(m); ok {
-			dots := panelRow{spans: []styledSpan{{Text: text, Style: panelCurrentStyle(m)}}}
+			dots := panelRow{spans: []styledSpan{{Text: text, Style: panelCountdownStyle(m)}}}
 			if currentTime > m.Audio.Elapsed {
 				cur = append([]panelRow{dots}, cur...)
 			} else {
@@ -206,7 +206,7 @@ func partLine(line lyrics.LyricLine, i int) lyrics.LyricLine {
 }
 
 // panelLineSpans styles a lyric line. The highlighted line is shaded from the
-// unplayed grey into the accent when the format carries word timings that tile the
+// unplayed grey into white when the format carries word timings that tile the
 // text. showAgent adds the "NAME: " label; the panel shows it only where the singer
 // changes, so when it is due it stays out of the shading. translated marks a part
 // that renders the line being sung in another language rather than continuing it.
@@ -218,10 +218,10 @@ func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent, trans
 		// A translated part carries the original line's word timings rather than its
 		// own, so sweeping it rune by rune would track the wrong text. The row is
 		// styled whole and one step quieter than the line it translates.
-		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: lyricTranslationStyle(m)}}
+		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: lyricTranslationStyle()}}
 	}
 
-	current := panelCurrentStyle(m)
+	current := panelCurrentStyle()
 	if len(line.Words) == 0 {
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}
@@ -241,7 +241,7 @@ func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent, trans
 			spans = append(spans, styledSpan{Text: prefix, Style: current})
 		}
 	}
-	return append(spans, newLyricRamp(m).spans(line, m.Audio.Elapsed)...)
+	return append(spans, newLyricRamp().spans(line, m.Audio.Elapsed)...)
 }
 
 // splitWordsAt splits a line's text at the word fragment covering elapsed.

@@ -6,7 +6,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/lucasb-eyer/go-colorful"
 
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
@@ -20,28 +19,7 @@ var lyricGrey = colorful.Color{
 	B: float64(0x8a) * (1.0 / 255.0),
 }
 
-// lyricFallbackMain is ANSI 141, the emphasis colour accentOrDefault falls back
-// to when the track has no cover.
-var lyricFallbackMain = colorful.Color{
-	R: float64(0xaf) * (1.0 / 255.0),
-	G: float64(0x87) * (1.0 / 255.0),
-	B: float64(0xff) * (1.0 / 255.0),
-}
-
-// lyricMain returns the emphasis colour as RGB. It mirrors accentOrDefault: the
-// extracted accent when there is one, the ANSI 141 fallback otherwise. The
-// fallback is resolved by hand because the blend needs RGB while
-// accentOrDefault hands back the ANSI index as a string.
-func lyricMain(a *accent.Accent) colorful.Color {
-	if a == nil {
-		return lyricFallbackMain
-	}
-	c, err := colorful.Hex(a.HexMain())
-	if err != nil {
-		return lyricFallbackMain
-	}
-	return c
-}
+var lyricWhite = colorful.Color{R: 1, G: 1, B: 1}
 
 // lyricRune is one display rune of a line with the cell it starts at and the
 // sweep weight it carries. width is the rune's cell count, except that it is
@@ -162,25 +140,10 @@ func lyricShade(main colorful.Color, t float64) colorful.Color {
 	}
 }
 
-// translationShade is where a translated row sits on the sweep's curve. The
-// midpoint recedes by halving the chroma rather than by dimming, so the row stays
-// readable while sitting a clear step below the line it translates.
-const translationShade = 0.5
-
-// lyricTranslationColour returns the emphasis colour of a translated row. It reads
-// the same curve the sweep shades with, at translationShade, so a translation and
-// an unsung rune cannot disagree where that curve crosses.
-func lyricTranslationColour(a *accent.Accent) colorful.Color {
-	return lyricShade(lyricMain(a), translationShade)
-}
-
-// lyricTranslationStyle styles a whole translated row. Bold is deliberately
-// absent: weight would pull the row back up toward the emphasis it is meant to sit
-// below, and most terminals render SGR 1 as a brightening that would partly undo
-// the step down.
-func lyricTranslationStyle(m *Model) lipgloss.Style {
-	return lipgloss.NewStyle().
-		Foreground(lipgloss.Color(lyricTranslationColour(m.Accent).Hex()))
+// lyricTranslationStyle keeps the current translation below the white original
+// and above the surrounding grey. It carries no bold or word-timing sweep.
+func lyricTranslationStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("#c8c8c8"))
 }
 
 func clampUnit(v float64) float64 {
@@ -201,11 +164,11 @@ type lyricRamp struct {
 	context lipgloss.Style
 }
 
-// newLyricRamp collects the styling the ramp needs from the model.
-func newLyricRamp(m *Model) lyricRamp {
+// newLyricRamp collects the panel's neutral sweep styles.
+func newLyricRamp() lyricRamp {
 	return lyricRamp{
-		main:    lyricMain(m.Accent),
-		current: panelCurrentStyle(m),
+		main:    lyricWhite,
+		current: panelCurrentStyle(),
 		context: panelContextStyle,
 	}
 }
