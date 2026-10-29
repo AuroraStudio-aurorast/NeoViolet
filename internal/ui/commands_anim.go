@@ -209,17 +209,6 @@ func animBody(m *Model, plan layoutPlan) (string, bool) {
 	return "", false
 }
 
-// renderAnimLoading fills the box while a sidecar is being read. The vectors in
-// testdata load instantly; a full-length animation does not, and an empty box
-// would read as a failure.
-func renderAnimLoading(m *Model, plan layoutPlan) string {
-	idx := m.loadingTick / 6 % len(loadingFrames)
-	return layoutWarnLines([]warnLine{{
-		Text:  loadingFrames[idx] + " Loading animation...",
-		Style: infoStyle,
-	}}, plan.ContentInnerW, plan.ContentInnerH)
-}
-
 // animSkippedMessage says why an animation nobody asked for did not appear. It
 // names the way to overrule the answer, because the only other place the battery
 // is mentioned is a warning that was never opened.
