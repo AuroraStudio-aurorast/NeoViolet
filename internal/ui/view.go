@@ -454,5 +454,7 @@ func renderHelp(m *Model) string {
 		return renderInteractionError(m)
 	}
 
-	return m.Components.Help.View(keys)
+	h := m.Components.Help
+	h.SetWidth(m.UI.Width)
+	return h.ShortHelpView(shortHelpBindings(m))
 }
