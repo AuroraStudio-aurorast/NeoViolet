@@ -142,7 +142,7 @@ func lyricShade(main colorful.Color, t float64) colorful.Color {
 
 // lyricTranslationStyle keeps the current translation below the white original
 // and above the surrounding grey. It carries no bold or word-timing sweep.
-func lyricTranslationStyle(_ *Model) lipgloss.Style {
+func lyricTranslationStyle() lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color("#c8c8c8"))
 }
 
@@ -164,11 +164,11 @@ type lyricRamp struct {
 	context lipgloss.Style
 }
 
-// newLyricRamp collects the styling the ramp needs from the model.
-func newLyricRamp(m *Model) lyricRamp {
+// newLyricRamp collects the panel's neutral sweep styles.
+func newLyricRamp() lyricRamp {
 	return lyricRamp{
 		main:    lyricWhite,
-		current: panelCurrentStyle(m),
+		current: panelCurrentStyle(),
 		context: panelContextStyle,
 	}
 }

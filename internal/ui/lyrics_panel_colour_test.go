@@ -17,13 +17,13 @@ func TestPanelColours_StayNeutralAcrossAccents(t *testing.T) {
 			if hex != "" {
 				m.Accent = &accent.Accent{Main: mustColorful(t, hex)}
 			}
-			if got := panelCurrentStyle(m).GetForeground(); got != lipgloss.Color("#ffffff") {
+			if got := panelCurrentStyle().GetForeground(); got != lipgloss.Color("#ffffff") {
 				t.Errorf("original colour = %v, want white", got)
 			}
-			if got := lyricTranslationStyle(m).GetForeground(); got != lipgloss.Color("#c8c8c8") {
+			if got := lyricTranslationStyle().GetForeground(); got != lipgloss.Color("#c8c8c8") {
 				t.Errorf("translation colour = %v, want #c8c8c8", got)
 			}
-			ramp := newLyricRamp(m)
+			ramp := newLyricRamp()
 			for _, progress := range []float64{0.25, 0.5, 0.75, 1} {
 				r, g, b, _ := ramp.styleFor(progress).GetForeground().RGBA()
 				if r != g || g != b {
@@ -37,7 +37,7 @@ func TestPanelColours_StayNeutralAcrossAccents(t *testing.T) {
 			if got := panelCountdownStyle(m).GetForeground(); got != wantCountdown {
 				t.Errorf("countdown colour = %v, want %v", got, wantCountdown)
 			}
-			if !panelCurrentStyle(m).GetBold() || lyricTranslationStyle(m).GetBold() {
+			if !panelCurrentStyle().GetBold() || lyricTranslationStyle().GetBold() {
 				t.Error("original must stay bold and translation must stay regular")
 			}
 		})

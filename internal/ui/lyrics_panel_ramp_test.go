@@ -15,7 +15,7 @@ func rampForTest(t *testing.T) lyricRamp {
 	t.Helper()
 	return lyricRamp{
 		main:    mustColorful(t, "#ffffff"),
-		current: panelCurrentStyle(&Model{}),
+		current: panelCurrentStyle(),
 		context: panelContextStyle,
 	}
 }
@@ -65,20 +65,19 @@ func TestLyricShade_RunsFromGreyUpToWhite(t *testing.T) {
 // stops the gradient's truecolor grey from reaching whole lines that the terminal
 // would otherwise render through its own 245 profile.
 func TestLyricRamp_EndsReuseThePanelStylesVerbatim(t *testing.T) {
-	m := &Model{}
-	r := newLyricRamp(m)
+	r := newLyricRamp()
 
 	if got, want := r.styleFor(0).Render("x"), panelContextStyle.Render("x"); got != want {
 		t.Errorf("styleFor(0) renders %q, want panelContextStyle's %q", got, want)
 	}
-	if got, want := r.styleFor(1).Render("x"), panelCurrentStyle(m).Render("x"); got != want {
+	if got, want := r.styleFor(1).Render("x"), panelCurrentStyle().Render("x"); got != want {
 		t.Errorf("styleFor(1) renders %q, want panelCurrentStyle's %q", got, want)
 	}
 	// The clamped ends land on the same two styles.
 	if got := r.styleFor(-1).Render("x"); got != panelContextStyle.Render("x") {
 		t.Errorf("styleFor(-1) renders %q, want panelContextStyle", got)
 	}
-	if got := r.styleFor(2).Render("x"); got != panelCurrentStyle(m).Render("x") {
+	if got := r.styleFor(2).Render("x"); got != panelCurrentStyle().Render("x") {
 		t.Errorf("styleFor(2) renders %q, want panelCurrentStyle", got)
 	}
 }

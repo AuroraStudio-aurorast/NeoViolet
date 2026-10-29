@@ -31,7 +31,7 @@ func TestPanelWindow_TranslationRowIsQuieter(t *testing.T) {
 	if got, want := panelRowText(translated), "我听见雨滴落在青青草地"; got != want {
 		t.Fatalf("row %d = %q, want %q", anchor+1, got, want)
 	}
-	if got, want := sung.spans[0].Style.Render("x"), panelCurrentStyle(m).Render("x"); got != want {
+	if got, want := sung.spans[0].Style.Render("x"), panelCurrentStyle().Render("x"); got != want {
 		t.Errorf("sung row style changed: rendered %q, want %q", got, want)
 	}
 	if got, want := translated.spans[0].Style.GetForeground(), lipgloss.Color("#c8c8c8"); got != want {

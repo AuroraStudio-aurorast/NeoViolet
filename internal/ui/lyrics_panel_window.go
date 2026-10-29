@@ -218,10 +218,10 @@ func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent, trans
 		// A translated part carries the original line's word timings rather than its
 		// own, so sweeping it rune by rune would track the wrong text. The row is
 		// styled whole and one step quieter than the line it translates.
-		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: lyricTranslationStyle(m)}}
+		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: lyricTranslationStyle()}}
 	}
 
-	current := panelCurrentStyle(m)
+	current := panelCurrentStyle()
 	if len(line.Words) == 0 {
 		return []styledSpan{{Text: panelLineText(m.Audio.Lyrics, line, showAgent), Style: current}}
 	}
@@ -241,7 +241,7 @@ func panelLineSpans(m *Model, line lyrics.LyricLine, highlight, showAgent, trans
 			spans = append(spans, styledSpan{Text: prefix, Style: current})
 		}
 	}
-	return append(spans, newLyricRamp(m).spans(line, m.Audio.Elapsed)...)
+	return append(spans, newLyricRamp().spans(line, m.Audio.Elapsed)...)
 }
 
 // splitWordsAt splits a line's text at the word fragment covering elapsed.

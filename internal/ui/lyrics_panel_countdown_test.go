@@ -71,7 +71,7 @@ func TestPanelWindow_GapDimsTheHeldLine(t *testing.T) {
 	if len(held.spans) != 1 {
 		t.Fatalf("held row has %d spans, want 1", len(held.spans))
 	}
-	if got, dim, lit := held.spans[0].Style.Render("x"), panelContextStyle.Render("x"), panelCurrentStyle(m).Render("x"); got != dim || got == lit {
+	if got, dim, lit := held.spans[0].Style.Render("x"), panelContextStyle.Render("x"), panelCurrentStyle().Render("x"); got != dim || got == lit {
 		t.Errorf("held line style = %q, want the context style %q (current is %q)", got, dim, lit)
 	}
 
@@ -142,7 +142,7 @@ func TestPanelWindow_CountdownAtSongStart(t *testing.T) {
 	m.Audio.Elapsed = 8 * time.Second
 	m.Audio.UpdateLyricIndex()
 	equalRows(t, panelTexts(t, m), []string{"first", "second"})
-	if got, want := panelRowStyle(t, panelWindow(m, m.layoutPlan()), "first"), panelCurrentStyle(m).Render("x"); got != want {
+	if got, want := panelRowStyle(t, panelWindow(m, m.layoutPlan()), "first"), panelCurrentStyle().Render("x"); got != want {
 		t.Errorf("first line style = %q, want the current style %q once it starts", got, want)
 	}
 }

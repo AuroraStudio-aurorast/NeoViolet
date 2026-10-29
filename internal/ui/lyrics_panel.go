@@ -78,7 +78,7 @@ func panelPlaceholderRows(text string, innerH, innerW int) []string {
 
 // panelCurrentStyle styles the current line: white and bold, and
 // deliberately not italic (the panel repaints on every tick).
-func panelCurrentStyle(_ *Model) lipgloss.Style {
+func panelCurrentStyle() lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#ffffff")).
 		Bold(true)

@@ -27,24 +27,9 @@ func backgroundAccent(a *accent.Accent) color.RGBA {
 // the accepted purple background's lightness. Out-of-gamut colours lose chroma,
 // not hue, until they fit sRGB. go-colorful uses Lab values scaled by 1/100.
 func normalizedBackground(main color.RGBA) color.RGBA {
-	seed, _ := colorful.MakeColor(tintedBackground(main, backgroundTint))
 	reference, _ := colorful.MakeColor(backgroundReference)
-	light, ra, rb := reference.Lab()
-	_, a, b := seed.Lab()
-	chroma := math.Hypot(a, b)
-	if capChroma := math.Hypot(ra, rb); chroma > capChroma {
-		a, b = a*capChroma/chroma, b*capChroma/chroma
-	}
-	for range 120 {
-		c := colorful.Lab(light, a, b)
-		if c.IsValid() {
-			r, g, b := c.RGB255()
-			return color.RGBA{R: r, G: g, B: b, A: 255}
-		}
-		a, b = a*.95, b*.95
-	}
-	red, green, blue := colorful.Lab(light, 0, 0).Clamped().RGB255()
-	return color.RGBA{R: red, G: green, B: blue, A: 255}
+	light, _, _ := reference.Lab()
+	return accentTone(main, light, 1)
 }
 
 // backgroundGradient uses screen rows, so adjacent panels share one continuous

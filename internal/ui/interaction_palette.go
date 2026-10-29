@@ -35,33 +35,11 @@ func newInteractionPalette(a *accent.Accent) interactionPalette {
 // interactionTone retains the normalized background's hue/chroma policy but
 // uses the lightness of an opaque input surface. Lab values use a 1/100 scale.
 func interactionTone(main color.RGBA, y, chromaScale float64) color.RGBA {
-	seed, _ := colorful.MakeColor(tintedBackground(main, backgroundTint))
-	ref, _ := colorful.MakeColor(backgroundReference)
-	_, a, b := seed.Lab()
-	_, ra, rb := ref.Lab()
-	chroma := math.Hypot(a, b)
-	scale := chromaScale
-	if capChroma := math.Hypot(ra, rb); chroma > capChroma {
-		scale *= capChroma / chroma
-	}
-	a, b = a*scale, b*scale
 	light := 1.16*math.Cbrt(y) - .16
 	if y <= 216.0/24389 {
 		light = (24389.0 / 27) * y / 100
 	}
-	for range 120 {
-		c := colorful.Lab(light, a, b)
-		if c.IsValid() {
-			return interactionRGB(c)
-		}
-		a, b = a*.95, b*.95
-	}
-	return interactionRGB(colorful.Lab(light, 0, 0).Clamped())
-}
-
-func interactionRGB(c colorful.Color) color.RGBA {
-	r, g, b := c.RGB255()
-	return color.RGBA{R: r, G: g, B: b, A: 255}
+	return accentTone(main, light, chromaScale)
 }
 
 func interactionPrompt(main, bg color.RGBA) color.RGBA {
@@ -71,7 +49,7 @@ func interactionPrompt(main, bg color.RGBA) color.RGBA {
 		a, b = a*.45/chroma, b*.45/chroma
 	}
 	for light = max(.68, light); light <= .95; light += .01 {
-		fg := interactionRGB(colorful.Lab(light, a, b).Clamped())
+		fg := paletteRGB(colorful.Lab(light, a, b).Clamped())
 		if interactionContrast(fg, bg) >= 4.5 {
 			return fg
 		}
