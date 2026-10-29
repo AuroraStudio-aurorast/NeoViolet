@@ -200,9 +200,8 @@ type State struct {
 
 	CommandNotice string
 
-	Width    int
-	Height   int
-	tabWidth int
+	Width  int
+	Height int
 }
 
 // ComponentState holds the Bubble Tea component models used by the view.

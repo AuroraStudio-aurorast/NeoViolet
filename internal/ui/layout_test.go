@@ -10,7 +10,7 @@ import (
 
 // testPanelWidth is a fixed width for the layout tables; auto widths have
 // their own cases in TestAutoPanelWidth.
-const testPanelWidth = 32 // inner width 28 columns
+const testPanelWidth = 32 // inner width 29 columns
 
 func input(mode string, showLyrics, oneLineVisible bool) layoutInput {
 	return layoutInput{
@@ -38,9 +38,9 @@ func TestAutoPanelWidth(t *testing.T) {
 		want    int
 		wantFit bool
 	}{
-		// min(48, w-68) < 24: no room for a usable panel next to a minWidth content area.
+		// min(48, w-28) < 24: no room for a usable panel next to a minWidth content area.
 		{68, 0, false}, {80, 0, false}, {91, 0, false},
-		// w-68 binds in this narrow band (0.3w meets w-68 at w = 97).
+		// w-28 binds in this narrow band (0.3w meets w-28 at w = 97).
 		{92, config.MinPanelWidth, true}, {96, 28, true}, {97, 29, true},
 		// 30% binds from here on.
 		{100, 30, true}, {110, 33, true}, {120, 36, true}, {140, 42, true},
@@ -140,11 +140,11 @@ func TestComputeLayout_Invariants(t *testing.T) {
 							t.Errorf("ContentInnerH = %d, want %d", p.ContentInnerH, want)
 						}
 						if p.PanelShown {
-							if p.PanelInnerW != p.PanelWidth-4 {
-								t.Errorf("PanelInnerW = %d, want %d", p.PanelInnerW, p.PanelWidth-4)
+							if p.PanelInnerW != p.PanelWidth-3 {
+								t.Errorf("PanelInnerW = %d, want %d", p.PanelInnerW, p.PanelWidth-3)
 							}
-							if p.PanelInnerH != p.ContentHeight-2 {
-								t.Errorf("PanelInnerH = %d, want %d", p.PanelInnerH, p.ContentHeight-2)
+							if p.PanelInnerH != p.ContentHeight {
+								t.Errorf("PanelInnerH = %d, want %d", p.PanelInnerH, p.ContentHeight)
 							}
 							if p.LyricMode != lyricModePanel {
 								t.Errorf("LyricMode = %d, want panel", p.LyricMode)
@@ -159,8 +159,8 @@ func TestComputeLayout_Invariants(t *testing.T) {
 							if p.LyricMode != lyricModeOneLine {
 								t.Errorf("LyricMode = %d, want one_line", p.LyricMode)
 							}
-							if p.OneLineLyricWidth != w-6 {
-								t.Errorf("OneLineLyricWidth = %d, want %d", p.OneLineLyricWidth, w-6)
+							if p.OneLineLyricWidth != w-2 {
+								t.Errorf("OneLineLyricWidth = %d, want %d", p.OneLineLyricWidth, w-2)
 							}
 						}
 					})
@@ -170,9 +170,8 @@ func TestComputeLayout_Invariants(t *testing.T) {
 	}
 }
 
-// TestComputeLayout_MatchesToday pins the numbers the pre-panel layout produced,
-// so the refactor cannot silently shift the content area by a row.
-func TestComputeLayout_MatchesToday(t *testing.T) {
+// The content and footer share every row left by the two-row navigation and help.
+func TestComputeLayout_RegionHeights(t *testing.T) {
 	cases := []struct {
 		name        string
 		w, h        int
@@ -180,9 +179,9 @@ func TestComputeLayout_MatchesToday(t *testing.T) {
 		wantContent int
 		wantFooter  int
 	}{
-		{"80x24 with a lyric row", 80, 24, true, 14, 6},
-		{"80x24 without lyrics", 80, 24, false, 15, 5},
-		{"68x17 with a lyric row", 68, 17, true, 7, 6},
+		{"80x24 with a lyric row", 80, 24, true, 16, 5},
+		{"80x24 without lyrics", 80, 24, false, 17, 4},
+		{"68x17 with a lyric row", 68, 17, true, 9, 5},
 	}
 
 	for _, tc := range cases {
@@ -216,10 +215,10 @@ func TestComputeLayout_ContentInnerBox(t *testing.T) {
 		// 68x17 is minWidth x minHeight: no panel fits, so the content area gets
 		// the whole terminal and only the footer's lyric row can take a line away
 		// from it.
-		{"smallest terminal", 68, 17, testPanelWidth, false, 62, 4},
-		{"smallest with a lyric row", 68, 17, testPanelWidth, true, 62, 3},
-		// A 30-column panel beside it leaves 70 columns and 21 rows of content.
-		{"with the lyric panel", 100, 30, 30, false, 64, 17},
+		{"smallest terminal", 68, 17, testPanelWidth, false, 66, 10},
+		{"smallest with a lyric row", 68, 17, testPanelWidth, true, 66, 9},
+		// A 30-column panel beside it leaves 70 columns and 23 rows of content.
+		{"with the lyric panel", 100, 30, 30, false, 68, 23},
 	}
 
 	for _, tc := range cases {

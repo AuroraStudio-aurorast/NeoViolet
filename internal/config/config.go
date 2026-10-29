@@ -88,8 +88,8 @@ const (
 	PanelModeOff  = "off"
 
 	// Panel width bounds. The default is PanelWidthAuto (see PanelWidth).
-	MinPanelWidth = 24 // inner width 20 columns
-	MaxPanelWidth = 48 // inner width 44 columns
+	MinPanelWidth = 24 // inner width 21 columns
+	MaxPanelWidth = 48 // inner width 45 columns
 
 	// DefaultPanelContextLines is 0, i.e. no cap: the panel fills its box with
 	// as many lyric lines as fit.
@@ -328,7 +328,7 @@ func DefaultConfig() Config {
 			Fill:           []string{"▰", "▱"},
 		},
 		ProgressBar: ProgressBarConfig{
-			Scaled:         true,
+			Scaled:         false,
 			ShowPercentage: false,
 			Fill:           []string{"▮", "▯"},
 		},

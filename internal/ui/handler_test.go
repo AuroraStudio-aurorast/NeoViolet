@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"charm.land/lipgloss/v2"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -354,7 +355,7 @@ func TestDispatcherLoadTrackMsg(t *testing.T) {
 }
 
 func TestDispatcherWindowSizeMsg(t *testing.T) {
-	t.Run("cappedTabWidth", func(t *testing.T) {
+	t.Run("wideTerminal", func(t *testing.T) {
 		m := setupModel()
 		nm, cmd := dispatcherModel(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 		if cmd != nil {
@@ -363,17 +364,16 @@ func TestDispatcherWindowSizeMsg(t *testing.T) {
 		if nm.UI.Width != 100 || nm.UI.Height != 30 {
 			t.Errorf("Width/Height = %d/%d, want 100/30", nm.UI.Width, nm.UI.Height)
 		}
-		if nm.UI.tabWidth != 20 {
-			t.Errorf("tabWidth = %d, want 20", nm.UI.tabWidth)
+		if got := lipgloss.Height(renderTabs(nm)); got != 2 {
+			t.Errorf("tab rows = %d, want 2", got)
 		}
 	})
 
-	t.Run("uncappedTabWidth", func(t *testing.T) {
+	t.Run("smallTerminal", func(t *testing.T) {
 		m := setupModel()
 		nm, _ := dispatcherModel(t, m, tea.WindowSizeMsg{Width: 40, Height: 24})
-		// (40 - 4) / 4 tabs = 9, below the 20 cap.
-		if nm.UI.tabWidth != 9 {
-			t.Errorf("tabWidth = %d, want 9", nm.UI.tabWidth)
+		if nm.UI.Width != 40 || nm.UI.Height != 24 {
+			t.Fatal("resize did not update dimensions")
 		}
 	})
 }

@@ -51,7 +51,6 @@ func renderMainView(m *Model) tea.View {
 
 	view := tea.NewView(frame)
 	view.AltScreen = true
-	view.AltScreen = true
 
 	if m.Audio.CurrentSong != "" {
 		song := m.Audio.CurrentSong
@@ -67,35 +66,6 @@ func renderMainView(m *Model) tea.View {
 	return view
 }
 
-func renderTabs(m *Model) string {
-	tabIcons := []string{m.Icons.Home, m.Icons.Playlist, m.Icons.Effects, m.Icons.Settings}
-	var tabs []string
-
-	for i, name := range m.UI.Tabs {
-		prefix := tabIcons[i]
-		tabContent := " " + prefix
-		if prefix != "" {
-			tabContent += " "
-		}
-		tabContent += name + " "
-		// The animation is not on a tab: it borrows the content area, so no tab
-		// claims to be the one showing. Focus still brightens the row, because
-		// that says where the keyboard is rather than what is on screen.
-		if i == m.UI.ActiveTab && !m.animVisible() {
-			accented := activeTabStyle.BorderForeground(lipgloss.Color(accentOrDefault(m.Accent, "57")))
-			tabs = append(tabs, accented.Width(m.UI.tabWidth).Render(tabContent))
-		} else {
-			s := tabStyle
-			if m.UI.Focus == FocusTabBar {
-				s = s.BorderForeground(lipgloss.Color("15"))
-			}
-			tabs = append(tabs, s.Width(m.UI.tabWidth).Render(tabContent))
-		}
-	}
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-}
-
 // contentDescriptions says what each tab is for. It is written once because it
 // is the same for every frame.
 var contentDescriptions = map[int]string{
@@ -107,10 +77,6 @@ var contentDescriptions = map[int]string{
 
 func renderContent(m *Model, plan layoutPlan) string {
 	s := contentStyle
-	if m.UI.Focus == FocusContent {
-		s = s.BorderForeground(lipgloss.Color("15"))
-	}
-
 	// The animation borrows this box while it shows. An .nvaa file is a sidecar
 	// of the track, like its lyrics, so it takes the content area rather than a
 	// page of its own -- and it fills the interior exactly, which is what lets it
@@ -119,10 +85,12 @@ func renderContent(m *Model, plan layoutPlan) string {
 		return contentBox(s, frame, plan)
 	}
 
-	content := fmt.Sprintf("[ %s ]\n\n%s",
-		m.UI.Tabs[m.UI.ActiveTab],
-		contentDescriptions[m.UI.ActiveTab],
-	)
+	heading := contentHeadingStyle
+	if m.UI.Focus == FocusContent {
+		heading = heading.Foreground(lipgloss.Color("15")).Bold(true)
+	}
+	content := heading.Render(fmt.Sprintf("[ %s ]", m.UI.Tabs[m.UI.ActiveTab])) +
+		"\n\n" + contentDescriptions[m.UI.ActiveTab]
 	if body, ok := animBody(m, plan); ok {
 		content = body
 	}
@@ -150,13 +118,13 @@ func renderFooter(m *Model, plan layoutPlan) string {
 	} else {
 		songLine = fmt.Sprintf("%s  No audio loaded", m.Icons.Music)
 	}
-	songLine = truncateLine(songLine, plan.Width-4)
+	songLine = truncateLine(songLine, plan.Width-2)
 
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
 
 	// Set progress bar width based on available space
 	timeWidth := lipgloss.Width(timeDisplay)
-	pbWidth := plan.Width - 4 - timeWidth - 1
+	pbWidth := plan.Width - 2 - timeWidth - 1
 	if pbWidth < 10 {
 		pbWidth = 10
 	}
@@ -181,15 +149,16 @@ func renderFooter(m *Model, plan layoutPlan) string {
 		" ",
 		nextText,
 	)
-	volumeLabel := footerTextStyle.Render(m.Icons.Volume + " ")
-	volumeBar := m.Components.VolumeBar.ViewAs(m.Audio.Volume)
+	volumeStyle, volumeModel := volumeAppearance(m)
+	volumeLabel := volumeStyle.Render(m.Icons.Volume + " ")
+	volumeBar := volumeModel.ViewAs(m.Audio.Volume)
 	volumeSection := lipgloss.JoinHorizontal(lipgloss.Left,
 		volumeLabel,
 		volumeBar,
 	)
 
 	// Combine play/pause icon (left) and volume section (right-aligned) on one line
-	availableWidth := plan.Width - 4
+	availableWidth := plan.Width - 2
 	playWidth := lipgloss.Width(statusLine)
 	volumeWidth := lipgloss.Width(volumeSection)
 	spaceCount := availableWidth - playWidth - volumeWidth
@@ -250,9 +219,8 @@ func truncateLine(s string, maxWidth int) string {
 	return s
 }
 
-// maxCompletionRows caps the candidate overlay height. It stays at or below
-// footerBaseRows on purpose: the list replaces the footer band, so it never
-// asks for a row the frame does not have.
+// maxCompletionRows caps the overlay; completionRows also bounds it by the
+// available footer rows so the list never covers content.
 const maxCompletionRows = 5
 
 // minCompactWidth is the narrowest row that still gets a middle ellipsis.
@@ -281,8 +249,7 @@ func completionRows(m *Model, plan layoutPlan) int {
 // completionTop is the frame row the candidate list starts on: the bottom rows
 // of the footer band, directly above the command line.
 //
-// The rows are what make the position safe. maxCompletionRows <= footerBaseRows
-// keeps the list inside the footer band on every terminal, so the content box
+// The row budget keeps the list inside the footer band on every terminal, so the content
 // and the lyrics panel are never covered — only the footer is, and only while a
 // list is up. The list spans the frame's columns: appLayoutStyle adds neither
 // border nor padding, so every column is usable and the offsets are absolute.
@@ -359,6 +326,11 @@ func overlayCompletion(m *Model, plan layoutPlan, frame string, rows int) string
 	// The band is replaced in place: the rows above it (header, content, panel)
 	// and below it (the command line) never reach the compositor.
 	composited := strings.Split(stack.Render(), "\n")
+	for i, line := range composited {
+		if pad := plan.Width - lipgloss.Width(line); pad > 0 {
+			composited[i] = line + strings.Repeat(" ", pad)
+		}
+	}
 	tail := lines[bandTop+plan.FooterRows:]
 	return strings.Join(append(append(lines[:bandTop:bandTop], composited...), tail...), "\n")
 }

@@ -37,14 +37,14 @@ func lyricFooterModel() *Model {
 }
 
 // footerLyricRow returns the plain text of the footer's lyric row, i.e. the row
-// just above the bottom border.
+// immediately above help.
 func footerLyricRow(t *testing.T, m *Model) string {
 	t.Helper()
 	lines := strings.Split(renderFooter(m, m.layoutPlan()), "\n")
 	if len(lines) < 2 {
 		t.Fatalf("footer rendered %d rows", len(lines))
 	}
-	return lines[len(lines)-2]
+	return lines[len(lines)-1]
 }
 
 func TestRenderFooter_LyricRowPresence(t *testing.T) {
@@ -69,13 +69,13 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 		{
 			name:     "active line",
 			mutate:   func(*Model) {},
-			wantRows: 6,
+			wantRows: 5,
 			want:     []string{"可是我没有听见你的声音"},
 		},
 		{
 			name:     "lyrics off drops the row",
 			mutate:   func(m *Model) { m.Audio.ShowLyrics = false },
-			wantRows: 5,
+			wantRows: 4,
 			absent:   []string{"可是我没有听见你的声音"},
 		},
 		{
@@ -84,7 +84,7 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 				m.Audio.Lyrics = nil
 				m.Audio.ActiveLyricLines = nil
 			},
-			wantRows: 5,
+			wantRows: 4,
 		},
 		{
 			name: "fetching shows a placeholder row",
@@ -93,7 +93,7 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 				m.Audio.ActiveLyricLines = nil
 				m.LyricsFetching = true
 			},
-			wantRows: 6,
+			wantRows: 5,
 			want:     []string{"[Fetching lyrics...]"},
 		},
 		{
@@ -103,7 +103,7 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 				m.Audio.Elapsed = 9500 * time.Millisecond
 				m.Audio.UpdateLyricIndex()
 			},
-			wantRows: 6,
+			wantRows: 5,
 			want: []string{
 				icons.LyricEmpty + " " + icons.LyricEmpty + " " + icons.LyricFilled,
 				"next",
@@ -116,7 +116,7 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 				m.Audio.Elapsed = 6 * time.Second
 				m.Audio.UpdateLyricIndex()
 			},
-			wantRows: 6,
+			wantRows: 5,
 			want:     []string{"-"},
 			absent:   []string{"next"},
 		},
@@ -259,9 +259,7 @@ func TestRenderMainView_FrameInvariants(t *testing.T) {
 					m.panelMode = mode
 					st.mutate(m)
 
-					// Feed the real resize path so tabWidth tracks the terminal,
-					// exactly as the running app does. Setting UI.Width directly
-					// would leave tabWidth at its default and wrap the tab row.
+					// Exercise the same resize path as the running app.
 					_, _ = handleResize(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 
 					plan := m.layoutPlan()
@@ -275,15 +273,13 @@ func TestRenderMainView_FrameInvariants(t *testing.T) {
 						}
 					}
 
-					// Every body row carries one box per region: two rounded
-					// top-left corners when the panel is shown, one otherwise.
-					wantCorners := 1
+					// Only the lyric divider separates the two body regions.
+					wantDividers := 0
 					if plan.PanelShown {
-						wantCorners = 2
+						wantDividers = 1
 					}
-					topRow := lines[tabsHeight]
-					if got := strings.Count(topRow, "╭"); got != wantCorners {
-						t.Errorf("body top row has %d top-left corners, want %d", got, wantCorners)
+					if got := strings.Count(stripANSI(lines[tabsHeight]), "│"); got != wantDividers {
+						t.Errorf("body has %d dividers, want %d", got, wantDividers)
 					}
 				})
 			}

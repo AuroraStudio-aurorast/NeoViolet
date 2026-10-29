@@ -30,7 +30,7 @@ func TestFrameBackground_OneLineDarkensOnlyLyricNeighbourhood(t *testing.T) {
 		m.panelMode = config.PanelModeOff
 		m.Accent = &accent.Accent{Main: mustColorful(t, "#46536b")}
 		rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height)
-		lyricY := m.UI.Height - 3
+		lyricY := m.UI.Height - 2
 		if testLuminance(rows[lyricY]) >= testLuminance(plain[lyricY]) {
 			t.Fatal("One-line lyric was not darkened")
 		}
@@ -78,7 +78,7 @@ func TestFrameBackground_AutoPanelFallbackAndModeSwitch(t *testing.T) {
 	for _, width := range []int{120, 80, 120} {
 		m = sized(t, m, width, 30)
 		rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height)
-		dimmed := rows[27] != plain[27]
+		dimmed := rows[28] != plain[28]
 		if dimmed == m.layoutPlan().PanelShown {
 			t.Errorf("width %d: Panel=%v darkened=%v", width, m.layoutPlan().PanelShown, dimmed)
 		}
@@ -87,7 +87,7 @@ func TestFrameBackground_AutoPanelFallbackAndModeSwitch(t *testing.T) {
 	m.panelMode = config.PanelModeOff
 	m.LyricsFetching = true
 	m.Audio.ShowLyrics = false
-	if rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height); rows[27] == plain[27] {
+	if rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height); rows[28] == plain[28] {
 		t.Error("visible fetching row must get contrast protection")
 	}
 }

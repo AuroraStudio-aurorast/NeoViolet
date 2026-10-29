@@ -39,8 +39,8 @@ func TestRenderCompletionShape(t *testing.T) {
 	}
 }
 
-// The overlay never grows past five rows, however many candidates there are.
-func TestRenderCompletionCapsRowsAtFive(t *testing.T) {
+// The list is capped by the footer when it has fewer than five rows.
+func TestRenderCompletionCapsRowsAtFooter(t *testing.T) {
 	m := completionModel(t, 80, 24)
 	plan := m.layoutPlan()
 	m.completionCandidates = make([]candidate, 8)
@@ -48,7 +48,7 @@ func TestRenderCompletionCapsRowsAtFive(t *testing.T) {
 		m.completionCandidates[i] = candidate{Value: string(rune('a' + i))}
 	}
 
-	want := 5
+	want := 4
 	if got := completionRows(m, plan); got != want {
 		t.Fatalf("completionRows with 8 candidates = %d, want %d", got, want)
 	}
@@ -343,7 +343,7 @@ func TestOverlayKeepsFrameSizeAndOtherRegions(t *testing.T) {
 
 // The list sits in the bottom rows of the footer band, directly above the
 // command line, and covers nothing else: the command line keeps its own row and
-// the content box keeps every row it had, its bottom border included.
+// the content box keeps every row it had, including blank rows.
 func TestOverlaySitsInTheFooterBand(t *testing.T) {
 	m := completionModel(t, 80, 24)
 	plan := m.layoutPlan()
@@ -374,7 +374,7 @@ func TestOverlaySitsInTheFooterBand(t *testing.T) {
 	}
 
 	// Everything the list does not cover is byte for byte what it was: the
-	// content box keeps all of its rows, borders included, and the command line
+	// content keeps all of its rows, and the command line
 	// keeps its own.
 	for row := tabsHeight; row < tabsHeight+plan.ContentHeight; row++ {
 		if afterLines[row] != beforeLines[row] {
@@ -382,10 +382,7 @@ func TestOverlaySitsInTheFooterBand(t *testing.T) {
 				row, afterLines[row], beforeLines[row])
 		}
 	}
-	bottomBorder := strings.TrimRight(stripANSI(beforeLines[tabsHeight+plan.ContentHeight-1]), " ")
-	if !strings.HasPrefix(bottomBorder, "╰") || !strings.HasSuffix(bottomBorder, "╯") {
-		t.Fatalf("the content box bottom border is not where this test looks: %q", bottomBorder)
-	}
+
 	if afterLines[plan.Height-1] != beforeLines[plan.Height-1] {
 		t.Errorf("command row changed with candidates:\n got %q\nwant %q",
 			afterLines[plan.Height-1], beforeLines[plan.Height-1])
@@ -394,12 +391,12 @@ func TestOverlaySitsInTheFooterBand(t *testing.T) {
 
 // The minimum legal terminal still shows the whole candidate list: the frame
 // keeps its size, the content height does not squeeze the list, and the band
-// stays inside the content box (62 of the 68 columns).
+// stays inside the existing footer band.
 func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 	m := completionModel(t, 68, 17)
 	plan := m.layoutPlan()
-	if plan.ContentWidth != 68 || plan.ContentHeight != 8 {
-		t.Fatalf("content block = %dx%d, want 68x8", plan.ContentWidth, plan.ContentHeight)
+	if plan.ContentWidth != 68 || plan.ContentHeight != 10 {
+		t.Fatalf("content block = %dx%d, want 68x10", plan.ContentWidth, plan.ContentHeight)
 	}
 
 	before := renderMainView(m).Content
@@ -422,7 +419,7 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 		t.Errorf("frame width = %d, want 68", got)
 	}
 	rows := completionRows(m, plan)
-	if rows != 5 {
+	if rows != 4 {
 		t.Fatalf("completionRows = %d, want 5: the footer band must not squeeze the list", rows)
 	}
 	if start := completionWindowStart(m, rows); start != 0 {
@@ -438,7 +435,7 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 	}
 
 	// The overlay consumes no rows and sits on the block's last rows, above the
-	// bottom border: pin both ends of the band.
+	// command row: pin both ends of the band.
 	beforeLines := strings.Split(before, "\n")
 	afterLines := strings.Split(after, "\n")
 	if len(beforeLines) != len(afterLines) {

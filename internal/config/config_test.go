@@ -39,7 +39,7 @@ func TestDefaultConfig(t *testing.T) {
 		{"Lyrics.Fetch.InsecureTLS", cfg.Lyrics.Fetch.InsecureTLS, false},
 		{"VolumeBar.Width", cfg.VolumeBar.Width, 16},
 		{"VolumeBar.ShowPercentage", cfg.VolumeBar.ShowPercentage, true},
-		{"ProgressBar.Scaled", cfg.ProgressBar.Scaled, true},
+		{"ProgressBar.Scaled", cfg.ProgressBar.Scaled, false},
 		{"ProgressBar.ShowPercentage", cfg.ProgressBar.ShowPercentage, false},
 		{"CommandHistory.Max", cfg.CommandHistory.Max, 50},
 		{"Error.Duration", cfg.Error.Duration, 90},

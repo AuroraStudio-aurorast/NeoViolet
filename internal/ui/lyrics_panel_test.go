@@ -56,7 +56,7 @@ func panelSongs(t *testing.T, contextLines, n, cur int) *Model {
 }
 
 // panelAnchor is the row the current line group starts on: one third of the
-// inner height, i.e. row 4 of the 13-row box the default panel has at 100x24.
+// inner height, i.e. row 5 of the 17-row region the default panel has at 100x24.
 func panelAnchor(innerH int) int { return innerH / 3 }
 
 // panelRowWidths asserts the hard contract that no row exceeds the box.
@@ -75,8 +75,8 @@ func TestRenderLyricsPanel_BoxGeometry(t *testing.T) {
 	if !plan.PanelShown {
 		t.Fatalf("panel must be shown at 100x24: %+v", plan)
 	}
-	if plan.PanelWidth != 32 || plan.PanelInnerW != 28 || plan.PanelInnerH != 13 {
-		t.Fatalf("panel geometry = {%d %d %d}, want {32 28 13}",
+	if plan.PanelWidth != 32 || plan.PanelInnerW != 29 || plan.PanelInnerH != 17 {
+		t.Fatalf("panel geometry = {%d %d %d}, want {32 29 17}",
 			plan.PanelWidth, plan.PanelInnerW, plan.PanelInnerH)
 	}
 
@@ -97,27 +97,18 @@ func TestRenderLyricsPanel_BoxGeometry(t *testing.T) {
 func TestPanelWindow_WrappedContextLineKeepsRowOrder(t *testing.T) {
 	m := panelSongs(t, 0, 40, 20)
 	// Make the line directly above the current one wrap to two rows.
-	m.Audio.Lyrics.Lines[19].Text = strings.Repeat("字", 30) // 60 cells > 2*28
+	m.Audio.Lyrics.Lines[19].Text = strings.Repeat("字", 30) // 60 cells > 2*29
 	m.Audio.Elapsed = m.Audio.Lyrics.Lines[20].Time
 	m.Audio.UpdateLyricIndex()
 
 	plan := m.layoutPlan()
 	rows := panelWindow(m, plan)
 
-	if got := panelRowText(rows[0]); got != "line 18" {
-		t.Errorf("row 0 = %q, want the farthest context line", got)
-	}
-	if got := panelRowText(rows[1]); got != "line 19" {
-		t.Errorf("row 1 = %q, want the line before the wrapped one", got)
-	}
-	if got := panelRowText(rows[2]); got != strings.Repeat("字", 14) {
-		t.Errorf("row 2 = %q, want the first half of the wrapped context line", got)
-	}
-	if got := panelRowText(rows[3]); got != strings.Repeat("字", 13)+"…" {
-		t.Errorf("row 3 = %q, want the second half, ellipsis included", got)
-	}
-	if got := panelRowText(rows[4]); got != "line 21" {
-		t.Errorf("row 4 = %q, want the current line", got)
+	want := []string{"line 17", "line 18", "line 19", strings.Repeat("字", 14), strings.Repeat("字", 14) + "…", "line 21"}
+	for i, text := range want {
+		if got := panelRowText(rows[i]); got != text {
+			t.Errorf("row %d = %q, want %q", i, got, text)
+		}
 	}
 	panelRowWidths(t, rows, plan.PanelInnerW)
 }
@@ -149,8 +140,8 @@ func TestPanelWindow_ShortSongKeepsItsAnchor(t *testing.T) {
 func TestPanelWindow_ContextCapKeepsCompactWindow(t *testing.T) {
 	m := panelSongs(t, 2, 40, 20)
 	plan := m.layoutPlan()
-	if plan.PanelInnerH != 13 {
-		t.Fatalf("inner height = %d, want 13", plan.PanelInnerH)
+	if plan.PanelInnerH != 17 {
+		t.Fatalf("inner height = %d, want 17", plan.PanelInnerH)
 	}
 	anchor := panelAnchor(plan.PanelInnerH)
 	rows := panelWindow(m, plan)
@@ -211,15 +202,14 @@ func TestPanelWindow_FillsEveryRow(t *testing.T) {
 	m := panelSongs(t, 0, 40, 20)
 	plan := m.layoutPlan()
 	rows := panelWindow(m, plan)
-	if anchor := panelAnchor(plan.PanelInnerH); anchor != 4 {
-		t.Fatalf("anchor = %d, want 4 for a 13-row box", anchor)
+	if anchor := panelAnchor(plan.PanelInnerH); anchor != 5 {
+		t.Fatalf("anchor = %d, want 5 for a 17-row region", anchor)
 	}
 
 	want := []string{
-		"line 17", "line 18", "line 19", "line 20", // above the group
-		"line 21", // the current line, on row 4
-		"line 22", "line 23", "line 24", "line 25",
-		"line 26", "line 27", "line 28", "line 29", // below
+		"line 16", "line 17", "line 18", "line 19", "line 20",
+		"line 21", "line 22", "line 23", "line 24", "line 25", "line 26",
+		"line 27", "line 28", "line 29", "line 30", "line 31", "line 32",
 	}
 	if len(want) != plan.PanelInnerH {
 		t.Fatalf("fixture expects %d rows, box has %d", len(want), plan.PanelInnerH)
@@ -278,7 +268,7 @@ func TestPanelWindow_LongLineWrapsToTwoRows(t *testing.T) {
 	m := panelModel(t, 2)
 	m.Audio.Lyrics = &lyrics.Data{Lines: []lyrics.LyricLine{
 		{Time: 0, Text: "我听见雨滴落在青青草地"},
-		{Time: 5 * time.Second, Text: strings.Repeat("字", 30)}, // 60 cells > 2*28
+		{Time: 5 * time.Second, Text: strings.Repeat("字", 30)}, // 60 cells > 2*29
 	}}
 	m.Audio.Elapsed = 5 * time.Second
 	m.Audio.UpdateLyricIndex()
@@ -290,10 +280,10 @@ func TestPanelWindow_LongLineWrapsToTwoRows(t *testing.T) {
 	if got := panelRowText(rows[anchor]); got != strings.Repeat("字", 14) {
 		t.Errorf("row %d = %q, want 14 glyphs", anchor, got)
 	}
-	// 2 rows of 28 cells cannot hold 60 cells: the second one is truncated and
+	// 2 rows of 29 cells cannot hold 60 cells: the second one is truncated and
 	// gives up one cell so the ellipsis fits inside the box.
-	if got := panelRowText(rows[anchor+1]); got != strings.Repeat("字", 13)+"…" {
-		t.Errorf("row %d = %q, want 13 glyphs plus an ellipsis", anchor+1, got)
+	if got := panelRowText(rows[anchor+1]); got != strings.Repeat("字", 14)+"…" {
+		t.Errorf("row %d = %q, want 14 glyphs plus an ellipsis", anchor+1, got)
 	}
 	for _, i := range []int{anchor, anchor + 1} {
 		if w := spansWidth(rows[i].spans); w > plan.PanelInnerW {
@@ -568,8 +558,8 @@ func TestRenderLyricsPanel_ExtremeSizes(t *testing.T) {
 			m := panelModel(t, 2)
 			plan := layoutPlan{
 				Width: 100, Height: 24, PanelShown: true,
-				PanelWidth: innerW + 4, PanelInnerW: innerW, PanelInnerH: innerH,
-				ContentWidth: 100 - innerW - 4, ContentHeight: innerH + 2,
+				PanelWidth: innerW + 3, PanelInnerW: innerW, PanelInnerH: innerH,
+				ContentWidth: 100 - innerW - 3, ContentHeight: innerH,
 				FooterRows: footerBaseRows, LyricMode: lyricModePanel,
 			}
 			out := renderLyricsPanel(m, plan)

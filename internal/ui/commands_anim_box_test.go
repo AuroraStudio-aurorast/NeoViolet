@@ -102,43 +102,6 @@ func TestContentBox_BlanksAFrameWithNothingInIt(t *testing.T) {
 	}
 }
 
-// The border is the one part of the box that carries a colour of its own, and a
-// box whose border lost it would pass a comparison of its glyphs.
-func TestContentBox_KeepsTheBorderColour(t *testing.T) {
-	plan := boxPlan()
-	block := denseFrame(plan.ContentInnerW, plan.ContentInnerH)
-
-	for _, focused := range []bool{false, true} {
-		style := contentStyle
-		if focused {
-			style = style.BorderForeground(lipgloss.Color("15"))
-		}
-
-		// The ink is whatever the style drew with, taken from the style's own
-		// render rather than named here, so the test cannot disagree with it.
-		ink := borderInk(styledBox(style, block, plan))
-		if ink == "" {
-			t.Fatalf("focused=%v: the style drew no colour on its border", focused)
-		}
-		if got := contentBox(style, block, plan); !strings.Contains(got, ink) {
-			t.Fatalf("focused=%v: the border was not drawn in %q", focused, ink)
-		}
-	}
-}
-
-// borderInk is the escape sequence the box draws its left border with.
-func borderInk(box string) string {
-	glyph := strings.Index(box, "│")
-	if glyph <= 0 {
-		return ""
-	}
-	start := strings.LastIndex(box[:glyph], "\x1b[")
-	if start < 0 {
-		return ""
-	}
-	return box[start : glyph+len("│")]
-}
-
 // The command takes no arguments: ":anim on" is a typo, and answering it by
 // toggling the animation would be the wrong thing to do about a typo.
 func TestAnimCommand_TakesNoArguments(t *testing.T) {

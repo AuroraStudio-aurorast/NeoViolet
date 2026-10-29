@@ -164,31 +164,13 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 		activeIcons = NerdIcons
 	}
 
-	pbOpts := []progress.Option{
-		progress.WithColors(
-			lipgloss.Color("#DA70D6"),
-			lipgloss.Color("#8A2BE2"),
-		),
-		progress.WithFillCharacters([]rune(cfg.ProgressBar.Fill[0])[0], []rune(cfg.ProgressBar.Fill[1])[0]),
-		progress.WithScaled(cfg.ProgressBar.Scaled),
-	}
-	if !cfg.ProgressBar.ShowPercentage {
-		pbOpts = append(pbOpts, progress.WithoutPercentage())
-	}
-	pb := progress.New(pbOpts...)
-
-	vbOpts := []progress.Option{
-		progress.WithColors(
-			lipgloss.Color("#00FF00"),
-			lipgloss.Color("#FF0000"),
-		),
+	pb := newPlaybackProgress(cfg, nil)
+	vb := progress.New(
+		progress.WithColors(lipgloss.Color("#af87ff")),
 		progress.WithFillCharacters([]rune(cfg.VolumeBar.Fill[0])[0], []rune(cfg.VolumeBar.Fill[1])[0]),
 		progress.WithScaled(false),
-	}
-	if !cfg.VolumeBar.ShowPercentage {
-		vbOpts = append(vbOpts, progress.WithoutPercentage())
-	}
-	vb := progress.New(vbOpts...)
+	)
+	vb.ShowPercentage = cfg.VolumeBar.ShowPercentage
 	vb.SetWidth(cfg.VolumeBar.Width)
 
 	h := help.New()
@@ -224,7 +206,6 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 			Tabs:       []string{"Home", "Playlists", "Effects", "Settings"},
 			Width:      80,
 			Height:     24,
-			tabWidth:   20,
 		},
 		Components: &ComponentState{
 			ProgressBar:  pb,
@@ -445,27 +426,7 @@ func loadAccentCmd(player audio.AudioPlayer) tea.Cmd {
 }
 
 func (m *Model) rebuildProgressBar() {
-	cfg := m.Config
-	progressA := lipgloss.Color("#DA70D6")
-	progressB := lipgloss.Color("#8A2BE2")
-
-	if m.Accent != nil {
-		progressA = lipgloss.Color(m.Accent.HexProgressA())
-		progressB = lipgloss.Color(m.Accent.HexProgressB())
-	}
-
-	pbOpts := []progress.Option{
-		progress.WithColors(progressA, progressB),
-		progress.WithFillCharacters([]rune(cfg.ProgressBar.Fill[0])[0], []rune(cfg.ProgressBar.Fill[1])[0]),
-	}
-	if cfg.ProgressBar.Scaled {
-		pbOpts = append(pbOpts, progress.WithScaled(true))
-	}
-	if !cfg.ProgressBar.ShowPercentage {
-		pbOpts = append(pbOpts, progress.WithoutPercentage())
-	}
-
-	pb := progress.New(pbOpts...)
+	pb := newPlaybackProgress(m.Config, m.Accent)
 	pb.SetPercent(m.Audio.Progress)
 	m.Components.ProgressBar = pb
 }
