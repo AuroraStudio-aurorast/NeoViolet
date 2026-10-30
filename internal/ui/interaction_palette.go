@@ -100,5 +100,5 @@ func interactionRow(row string, width int, bg color.RGBA) string {
 }
 
 func renderInteractionError(m *Model) string {
-	return renderStatus(m.Error, m.UI.Width, true)
+	return renderStatus(m, m.Error, true)
 }

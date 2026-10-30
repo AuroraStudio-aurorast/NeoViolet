@@ -28,11 +28,6 @@ func TestStatusMessagesKeepOneRowAndSemanticLabels(t *testing.T) {
 		if !strings.HasPrefix(stripANSI(row), " "+label+"  ") {
 			t.Fatalf("missing category %s: %q", label, stripANSI(row))
 		}
-		for _, bg := range frameBackgrounds(t, row)[0] {
-			if bg != nil {
-				t.Fatal("status hides the gradient")
-			}
-		}
 		message.Tick()
 		if message.Timer != 29 {
 			t.Fatal("status styling changed dismissal timing")

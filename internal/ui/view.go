@@ -398,7 +398,7 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.Info.Message != "" && m.Info.Visible {
-		return renderStatus(m.Info, m.UI.Width, false)
+		return renderStatus(m, m.Info, false)
 	}
 
 	if m.Error.Message != "" && m.Error.Visible {

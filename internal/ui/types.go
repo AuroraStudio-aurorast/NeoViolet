@@ -215,16 +215,18 @@ type ComponentState struct {
 // MessageState shows a transient text message that auto-dismisses.
 // Used for error, informational and save-confirmation status updates.
 type MessageState struct {
-	Message string
-	Timer   int
-	Visible bool
-	Success bool
+	Message  string
+	Timer    int
+	Visible  bool
+	Success  bool
+	duration int
 }
 
 // Set displays a message with a countdown timer.
 func (e *MessageState) Set(msg string, timer int) {
 	e.Message = msg
 	e.Timer = timer
+	e.duration = timer
 	e.Visible = true
 	e.Success = false
 }

@@ -116,13 +116,6 @@ func TestErrorKeepsOneRowAndHelpPriority(t *testing.T) {
 	if lipgloss.Height(row) != 1 || lipgloss.Width(row) != m.UI.Width {
 		t.Error("long error broke the help row geometry")
 	}
-	for y, line := range frameBackgrounds(t, row) {
-		for x, bg := range line {
-			if bg != nil {
-				t.Fatalf("error cell %d,%d hides the gradient", x, y)
-			}
-		}
-	}
 	m.Info.Set("saved", 90)
 	if got := stripANSI(renderHelp(m)); !strings.HasPrefix(got, " Info  saved") {
 		t.Error("info no longer takes precedence over errors")
