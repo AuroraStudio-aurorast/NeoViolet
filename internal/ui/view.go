@@ -407,5 +407,9 @@ func renderHelp(m *Model) string {
 
 	h := m.Components.Help
 	h.SetWidth(m.UI.Width)
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.Color("#d9d9d9")).Bold(true)
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("#b4b4b4"))
+	h.Styles.ShortSeparator = lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8a8a"))
+	h.Styles.Ellipsis = h.Styles.ShortSeparator
 	return h.ShortHelpView(shortHelpBindings(m))
 }
