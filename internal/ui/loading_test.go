@@ -23,7 +23,7 @@ func TestStartupLoadingUsesDefaultPurpleSweepWithoutChangingScreen(t *testing.T)
 	if first.AltScreen || first.BackgroundColor != nil || first.ForegroundColor != nil || strings.Contains(first.Content, "\n") {
 		t.Fatal("startup loading changed the normal screen lifecycle")
 	}
-	assertWarningInk(t, first.Content, "Loading audio", color.RGBA{R: 175, G: 135, B: 255, A: 255})
+	assertWarningInk(t, first.Content, "Loading audio", color.RGBA{R: 180, G: 180, B: 180, A: 255})
 	m.loadingTick = 10
 	later := m.View()
 	if later.Content == first.Content || ansi.Strip(later.Content) != ansi.Strip(first.Content) {
@@ -89,5 +89,35 @@ func TestTrackLoadingHelpStaysReadableThroughoutSweep(t *testing.T) {
 	m.UI.Mode = ModeCommand
 	if got := renderHelp(m); got != renderCommandLine(m) {
 		t.Fatal("loading replaced the active command input")
+	}
+}
+
+func TestLoadingRestingTextIsNeutralAcrossThemes(t *testing.T) {
+	m := setupModel()
+	m.UI.Width, m.UI.Height = 80, 24
+	m.switchingTrack = true
+	for _, hex := range []string{"#af87ff", "#55ccb4", "#ef83b1"} {
+		m.Accent = &accent.Accent{Main: mustColorful(t, hex)}
+		m.loadingTick = 0
+		frames := []string{
+			renderHelp(m),
+			renderFetchingLyrics(m, 66, 1),
+			renderAnimLoading(m, layoutPlan{ContentInnerW: 78, ContentInnerH: 17}),
+		}
+		for _, frame := range frames {
+			plain, inks := warningForegrounds(t, frame)
+			for i, char := range plain {
+				if char == ' ' || char == '\n' {
+					continue
+				}
+				if inks[i] == nil {
+					t.Fatal("missing loading foreground")
+				}
+				r, g, b, _ := inks[i].RGBA()
+				if r != g || g != b {
+					t.Fatalf("%s resting text is tinted: %v", hex, inks[i])
+				}
+			}
+		}
 	}
 }

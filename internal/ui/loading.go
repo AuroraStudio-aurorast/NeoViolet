@@ -16,7 +16,7 @@ func renderFetchingLyrics(m *Model, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
-	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#bcb2ca"))
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#b4b4b4"))
 	text := ansi.Truncate(renderLoadingText(m, "Fetching lyrics", style), width, "")
 	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, text)
 }
@@ -28,7 +28,7 @@ func renderAnimLoading(m *Model, plan layoutPlan) string {
 	if plan.ContentInnerW <= 0 || plan.ContentInnerH <= 0 {
 		return ""
 	}
-	text := renderLoadingText(m, "Loading animation", lipgloss.NewStyle().Foreground(lipgloss.Color("#aaa2b2")))
+	text := renderLoadingText(m, "Loading animation", lipgloss.NewStyle().Foreground(lipgloss.Color("#a4a4a4")))
 	line := ansi.Truncate(text, plan.ContentInnerW, "")
 	return lipgloss.Place(plan.ContentInnerW, plan.ContentInnerH, lipgloss.Center, lipgloss.Center, line)
 }

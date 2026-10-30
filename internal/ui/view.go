@@ -415,7 +415,7 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.switchingTrack {
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color("#bcb2ca"))
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("#b4b4b4"))
 		text := " " + renderLoadingText(m, "Loading audio", style)
 		return lipgloss.NewStyle().Width(m.UI.Width).Render(clampRowWidth(text, m.UI.Width))
 	}
