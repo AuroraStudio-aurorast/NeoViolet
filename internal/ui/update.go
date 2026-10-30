@@ -216,10 +216,13 @@ func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Only the startup loader draws on the normal screen. Clearing a row while
+	// switching tracks would erase the helpbar behind the renderer's back.
+	if m.Loading && !m.switchingTrack {
+		fmt.Fprint(os.Stdout, "\033[2K\r")
+	}
 	m.Loading = false
 	m.switchingTrack = false
-	// Clear loading line from normal screen
-	fmt.Fprint(os.Stdout, "\033[2K\r")
 	// Hide ConEmu progress bar
 	fmt.Fprint(os.Stdout, "\033]9;4;0;0\a")
 	m.Error.Set(msg.Message, msg.Timer)
@@ -233,12 +236,14 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Runtime loads keep the main UI visible, so the renderer owns cleanup.
+	if m.Loading && !m.switchingTrack {
+		fmt.Fprint(os.Stdout, "\033[2K\r")
+	}
 	m.Loading = false
 	m.switchingTrack = false
 	// Clear any in-flight lyric fetch indicator from a previous track.
 	m.LyricsFetching = false
-	// Clear loading line from normal screen
-	fmt.Fprint(os.Stdout, "\033[2K\r")
 	// Hide ConEmu progress bar
 	fmt.Fprint(os.Stdout, "\033]9;4;0;0\a")
 	m.Audio.Player = msg.Player
