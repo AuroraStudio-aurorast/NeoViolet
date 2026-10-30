@@ -503,7 +503,7 @@ func TestPanelPlaceholderText(t *testing.T) {
 			m.Audio.Lyrics = nil
 			m.Audio.ActiveLyricLines = nil
 			m.LyricsFetching = true
-		}, func(*Model) string { return "[Fetching lyrics...]" }, true},
+		}, func(*Model) string { return "Fetching lyrics" }, true},
 		{"no lyrics", func(m *Model) {
 			m.Audio.Lyrics = nil
 			m.Audio.ActiveLyricLines = nil

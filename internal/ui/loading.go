@@ -12,6 +12,15 @@ import (
 
 const loadingCycle = 1400 * time.Millisecond
 
+func renderFetchingLyrics(m *Model, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("#bcb2ca"))
+	text := ansi.Truncate(renderLoadingText(m, "Fetching lyrics", style), width, "")
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, text)
+}
+
 // renderAnimLoading sweeps a narrow foreground highlight across a stationary
 // label. The existing tick drives it; leaving room at both ends gives the
 // highlight time to leave before the next pass, without reversing direction.

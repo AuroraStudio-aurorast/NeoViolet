@@ -73,7 +73,7 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	m.Error.Tick()
 	m.Info.Tick()
 
-	if m.Loading || (m.Anim != nil && m.Anim.Loading) {
+	if m.Loading || m.LyricsFetching || (m.Anim != nil && m.Anim.Loading) {
 		m.loadingTick++
 	}
 

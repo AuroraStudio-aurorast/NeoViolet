@@ -27,7 +27,11 @@ func renderLyricsPanel(m *Model, plan layoutPlan) string {
 	rows := make([]string, 0, innerH)
 
 	if text, ok := panelPlaceholderText(m); ok {
-		rows = append(rows, panelPlaceholderRows(text, innerH, innerW)...)
+		if text == "Fetching lyrics" && innerH > 0 && innerW > 0 {
+			rows = append(rows, strings.Split(renderFetchingLyrics(m, innerW, innerH), "\n")...)
+		} else {
+			rows = append(rows, panelPlaceholderRows(text, innerH, innerW)...)
+		}
 	} else {
 		for _, r := range panelWindow(m, plan) {
 			rows = append(rows, renderPanelRow(r, innerW))
@@ -50,7 +54,7 @@ func panelPlaceholderText(m *Model) (string, bool) {
 	case m.Audio.Player == nil:
 		return m.Icons.Music + " No track", true
 	case m.Audio.Lyrics == nil && m.LyricsFetching:
-		return "[Fetching lyrics...]", true
+		return "Fetching lyrics", true
 	case m.Audio.Lyrics == nil:
 		return m.Icons.Music + " No lyrics", true
 	case len(m.Audio.Lyrics.VisibleLines()) == 0:

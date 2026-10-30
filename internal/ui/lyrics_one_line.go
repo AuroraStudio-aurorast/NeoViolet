@@ -23,6 +23,9 @@ const lyricGapDotsThreshold = 5 * time.Second
 // there is nothing to show, which is also what removes the row and gives its
 // height back to the content area.
 func renderOneLineLyrics(m *Model, maxWidth int) (string, bool) {
+	if m.LyricsFetching && (m.Audio.Lyrics == nil || !m.Audio.ShowLyrics) {
+		return renderFetchingLyrics(m, maxWidth, 1), true
+	}
 	text := oneLineLyricText(m)
 	if text == "" {
 		return "", false
@@ -35,7 +38,7 @@ func renderOneLineLyrics(m *Model, maxWidth int) (string, bool) {
 // "-" as a placeholder. An empty return means "no row".
 func oneLineLyricText(m *Model) string {
 	if m.LyricsFetching && (m.Audio.Lyrics == nil || !m.Audio.ShowLyrics) {
-		return "[Fetching lyrics...]"
+		return "Fetching lyrics"
 	}
 	if m.Audio.Lyrics == nil || !m.Audio.ShowLyrics {
 		return ""

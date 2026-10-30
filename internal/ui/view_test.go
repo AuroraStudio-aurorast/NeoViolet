@@ -94,7 +94,7 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 				m.LyricsFetching = true
 			},
 			wantRows: 5,
-			want:     []string{"[Fetching lyrics...]"},
+			want:     []string{"Fetching lyrics"},
 		},
 		{
 			name: "long gap shows countdown dots and the next line",
@@ -135,7 +135,7 @@ func TestRenderFooter_LyricRowPresence(t *testing.T) {
 				t.Errorf("footer width = %d, want %d", got, m.UI.Width)
 			}
 
-			row := footerLyricRow(t, m)
+			row := stripANSI(footerLyricRow(t, m))
 			for _, want := range tc.want {
 				if !strings.Contains(row, want) {
 					t.Errorf("lyric row %q does not contain %q", row, want)
