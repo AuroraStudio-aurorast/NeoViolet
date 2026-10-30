@@ -168,7 +168,7 @@ func TestRenderSingleLyricLine_Width(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		got := renderSingleLyricLine(tc.text, tc.maxWidth, tc.offset, nil)
+		got := renderSingleLyricLine(tc.text, tc.maxWidth, tc.offset)
 		if w := lipgloss.Width(got); w != tc.maxWidth {
 			t.Errorf("text=%q offset=%d: width = %d, want %d", tc.text, tc.offset, w, tc.maxWidth)
 		}

@@ -292,7 +292,7 @@ func renderCompletion(m *Model, plan layoutPlan) string {
 	lines := make([]string, 0, rows)
 	for i := 0; i < rows; i++ {
 		index := start + i
-		styles := palette.completion(i, rows, index == m.completionIndex)
+		styles := palette.completion(index == m.completionIndex)
 		lines = append(lines, completionRow(m.completionCandidates[index], index == m.completionIndex, width, styles))
 	}
 	return strings.Join(lines, "\n")
@@ -301,39 +301,16 @@ func renderCompletion(m *Model, plan layoutPlan) string {
 // overlayCompletion draws the candidate list over the footer band, at the row
 // completionTop returns.
 //
-// Only the footer rows go through the compositor: compositing re-renders a line
-// and re-encodes its SGR sequences, and the header, the content box, the lyrics
-// panel and the command line all have to come through byte for byte what they
-// were. The list never leaves the footer band, so nothing outside it has to be
-// touched. The stack is sized to the band and the list sits inside it, so the
-// frame keeps its size and the overlay consumes no rows.
-//
-// The layers go through a compositor rather than a plain canvas: a layer's Draw
-// paints at the area it is handed, so only the compositor applies the offsets
-// set with Y and X.
+// Only the footer rows are replaced. Headers, content, lyrics and command input
+// pass through byte for byte; the overlay consumes no extra screen rows.
 func overlayCompletion(m *Model, plan layoutPlan, frame string, rows int) string {
 	top := completionTop(plan, rows)
 
-	bandTop := plan.Height - helpHeight - plan.FooterRows
 	lines := strings.Split(frame, "\n")
-	band := strings.Join(lines[bandTop:bandTop+plan.FooterRows], "\n")
-
-	stack := lipgloss.NewCompositor(
-		lipgloss.NewLayer(band),
-		lipgloss.NewLayer(renderCompletion(m, plan)).
-			Y(top-bandTop).
-			Z(1),
-	)
-	// The band is replaced in place: the rows above it (header, content, panel)
-	// and below it (the command line) never reach the compositor.
-	composited := strings.Split(stack.Render(), "\n")
-	for i, line := range composited {
-		if pad := plan.Width - lipgloss.Width(line); pad > 0 {
-			composited[i] = line + strings.Repeat(" ", pad)
-		}
-	}
-	tail := lines[bandTop+plan.FooterRows:]
-	return strings.Join(append(append(lines[:bandTop:bandTop], composited...), tail...), "\n")
+	// Every candidate fills its row, including trailing spaces, so replacing
+	// rows erases transport text while preserving the frame background.
+	copy(lines[top:top+rows], strings.Split(renderCompletion(m, plan), "\n"))
+	return strings.Join(lines, "\n")
 }
 
 // completionRow renders one row, padded to avail. Three tiers:
@@ -354,7 +331,7 @@ func completionRow(cand candidate, selected bool, avail int, styles completionSt
 
 	marker := "  "
 	if selected {
-		marker = "▸ "
+		marker = "> "
 	}
 
 	head := marker + value
@@ -421,7 +398,7 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.Info.Message != "" && m.Info.Visible {
-		return infoStyle.Width(m.UI.Width).Render(" " + m.Info.Message)
+		return renderStatus(m.Info, m.UI.Width, false)
 	}
 
 	if m.Error.Message != "" && m.Error.Visible {

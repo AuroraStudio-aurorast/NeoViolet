@@ -16,7 +16,6 @@ type interactionPalette struct {
 	main     color.RGBA
 	command  color.RGBA
 	selected color.RGBA
-	failure  color.RGBA
 	prompt   color.RGBA
 }
 
@@ -26,7 +25,6 @@ func newInteractionPalette(a *accent.Accent) interactionPalette {
 		main:     main,
 		command:  interactionTone(main, .018, 1),
 		selected: interactionTone(main, .045, 1),
-		failure:  interactionTone(main, .018, .45),
 	}
 	p.prompt = interactionPrompt(main, p.command)
 	return p
@@ -64,21 +62,16 @@ func interactionContrast(a, b color.RGBA) float64 {
 
 type completionStyles struct{ text, description lipgloss.Style }
 
-func (p interactionPalette) completion(row, count int, selected bool) completionStyles {
+func (p interactionPalette) completion(selected bool) completionStyles {
 	if selected {
 		return completionStyles{
-			text:        lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Background(p.selected).Bold(true),
-			description: lipgloss.NewStyle().Foreground(lipgloss.Color("#dddde4")).Background(p.selected),
+			text:        lipgloss.NewStyle().Foreground(p.prompt).Bold(true),
+			description: lipgloss.NewStyle().Foreground(lipgloss.Color("#969696")),
 		}
 	}
-	progress := 1.0
-	if count > 1 {
-		progress = float64(row) / float64(count-1)
-	}
-	bg := interactionTone(p.main, .010+.008*clampUnit(progress), 1)
 	return completionStyles{
-		text:        lipgloss.NewStyle().Foreground(lipgloss.Color("#eeeef2")).Background(bg),
-		description: lipgloss.NewStyle().Foreground(lipgloss.Color("#b5b5be")).Background(bg),
+		text:        lipgloss.NewStyle().Foreground(lipgloss.Color("#d9d9d9")),
+		description: lipgloss.NewStyle().Foreground(lipgloss.Color("#969696")),
 	}
 }
 
@@ -107,8 +100,5 @@ func interactionRow(row string, width int, bg color.RGBA) string {
 }
 
 func renderInteractionError(m *Model) string {
-	p := newInteractionPalette(m.Accent)
-	row := lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb4b4")).Background(p.failure).
-		Width(m.UI.Width).Render(" " + m.Error.Message)
-	return interactionRow(row, m.UI.Width, p.failure)
+	return renderStatus(m.Error, m.UI.Width, true)
 }

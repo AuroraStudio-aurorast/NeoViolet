@@ -498,7 +498,7 @@ func TestPanelPlaceholderText(t *testing.T) {
 		ok     bool
 	}{
 		{"no player", func(m *Model) { m.Audio.Player = nil },
-			func(m *Model) string { return m.Icons.Music + " No track" }, true},
+			func(*Model) string { return "No track loaded" }, true},
 		{"fetching", func(m *Model) {
 			m.Audio.Lyrics = nil
 			m.Audio.ActiveLyricLines = nil
@@ -507,10 +507,10 @@ func TestPanelPlaceholderText(t *testing.T) {
 		{"no lyrics", func(m *Model) {
 			m.Audio.Lyrics = nil
 			m.Audio.ActiveLyricLines = nil
-		}, func(m *Model) string { return m.Icons.Music + " No lyrics" }, true},
+		}, func(*Model) string { return "No lyrics for this track" }, true},
 		{"all lines blank", func(m *Model) {
 			m.Audio.Lyrics = &lyrics.Data{Lines: []lyrics.LyricLine{{Time: 0, Text: " "}}}
-		}, func(m *Model) string { return m.Icons.Music + " No lyrics" }, true},
+		}, func(*Model) string { return "No lyrics for this track" }, true},
 		{"real lyrics", func(*Model) {}, func(*Model) string { return "" }, false},
 	}
 
@@ -538,10 +538,10 @@ func TestRenderLyricsPanel_PlaceholderIsCentred(t *testing.T) {
 	out := renderLyricsPanel(m, plan)
 	lines := strings.Split(out, "\n")
 
-	mid := plan.ContentHeight / 2
-	msg := m.Icons.Music + " No lyrics"
+	mid := (plan.ContentHeight - 2) / 2
+	msg := "No lyrics for this track"
 	want := strings.Repeat(" ", (plan.PanelInnerW-lipgloss.Width(msg))/2) + msg
-	if !strings.Contains(lines[mid], want) {
+	if !strings.Contains(stripANSI(lines[mid]), want) {
 		t.Errorf("row %d = %q, want a centred %q", mid, lines[mid], want)
 	}
 	for i, line := range lines {

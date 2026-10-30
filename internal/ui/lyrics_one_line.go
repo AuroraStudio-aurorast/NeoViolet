@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
-
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // This file holds the one_line lyric display mode: a single footer row that
@@ -30,7 +29,18 @@ func renderOneLineLyrics(m *Model, maxWidth int) (string, bool) {
 	if text == "" {
 		return "", false
 	}
-	return renderSingleLyricLine(text, maxWidth, m.Audio.LyricScrollOffset, m.Accent), true
+	if m.Audio.Lyrics != nil && m.Audio.ShowLyrics && len(m.Audio.ActiveLyricLines) > 0 {
+		var active []string
+		for _, line := range m.Audio.ActiveLyricLines {
+			var styled strings.Builder
+			for _, span := range panelLineSpans(m, line, true, true, false) {
+				styled.WriteString(span.Style.Render(span.Text))
+			}
+			active = append(active, styled.String())
+		}
+		text = strings.Join(active, " | ")
+	}
+	return renderSingleLyricLine(text, maxWidth, m.Audio.LyricScrollOffset), true
 }
 
 // oneLineLyricText builds the text of the single lyric row: the active line(s)
@@ -86,8 +96,11 @@ func lyricCountdownDots(m *Model) (string, bool) {
 }
 
 // renderSingleLyricLine renders a single lyric line with marquee scroll support.
-func renderSingleLyricLine(lineText string, maxWidth int, scrollOffset int, accent *accent.Accent) string {
-	runes := []rune(lineText)
+func renderSingleLyricLine(lineText string, maxWidth int, scrollOffset int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	runes := []rune(ansi.Strip(lineText))
 	displayWidth := lipgloss.Width(lineText)
 	if displayWidth > maxWidth {
 		start := scrollOffset
@@ -107,17 +120,17 @@ func renderSingleLyricLine(lineText string, maxWidth int, scrollOffset int, acce
 			}
 			w += cw
 		}
-		visible := string(runes[runeStart:runeEnd])
+		left := lipgloss.Width(string(runes[:runeStart]))
+		right := left + lipgloss.Width(string(runes[runeStart:runeEnd]))
+		visible := ansi.Cut(lineText, left, right)
 		padWidth := maxWidth - lipgloss.Width(visible)
 		if padWidth > 0 {
 			visible += fmt.Sprintf("%*s", padWidth, "")
 		}
 		return lyricStyle.
-			Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
 			Width(maxWidth).Render(visible)
 	}
 	return lyricStyle.
-		Foreground(lipgloss.Color(accentOrDefault(accent, "141"))).
 		Width(maxWidth).Render(lineText)
 }
 

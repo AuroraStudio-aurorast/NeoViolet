@@ -38,15 +38,9 @@ var (
 			Foreground(lipgloss.Color("196")).
 			Bold(true)
 
-	// Info/success styling (green text on dark background)
-	infoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("46")).
-			Background(lipgloss.Color("236"))
-
 	// Lyric styling
 	lyricStyle = lipgloss.NewStyle().
-			Italic(true).
-			Foreground(lipgloss.Color("141"))
+			Foreground(lipgloss.Color("#8a8a8a"))
 
 	// Lyrics panel (right-hand sidebar). The panel is not focusable, so its
 	// border never highlights.

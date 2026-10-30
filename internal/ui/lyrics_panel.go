@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // This file holds the panel lyric display mode: a bordered box to the right of
@@ -30,7 +31,7 @@ func renderLyricsPanel(m *Model, plan layoutPlan) string {
 		if text == "Fetching lyrics" && innerH > 0 && innerW > 0 {
 			rows = append(rows, strings.Split(renderFetchingLyrics(m, innerW, innerH), "\n")...)
 		} else {
-			rows = append(rows, panelPlaceholderRows(text, innerH, innerW)...)
+			rows = append(rows, panelEmptyStateRows(m, text, innerH, innerW)...)
 		}
 	} else {
 		for _, r := range panelWindow(m, plan) {
@@ -52,16 +53,44 @@ func renderLyricsPanel(m *Model, plan layoutPlan) string {
 func panelPlaceholderText(m *Model) (string, bool) {
 	switch {
 	case m.Audio.Player == nil:
-		return m.Icons.Music + " No track", true
+		return "No track loaded", true
 	case m.Audio.Lyrics == nil && m.LyricsFetching:
 		return "Fetching lyrics", true
 	case m.Audio.Lyrics == nil:
-		return m.Icons.Music + " No lyrics", true
+		return "No lyrics for this track", true
 	case len(m.Audio.Lyrics.VisibleLines()) == 0:
-		return m.Icons.Music + " No lyrics", true
+		return "No lyrics for this track", true
 	default:
 		return "", false
 	}
+}
+
+func panelEmptyStateRows(m *Model, title string, height, width int) []string {
+	rows := panelPlaceholderRows("", height, width)
+	if height <= 0 || width <= 0 {
+		return rows
+	}
+	action := "Try :lrc switch online"
+	if m.Audio.Player == nil {
+		action = "Use :open <path> to load audio"
+	}
+	titleRows := strings.Split(lipgloss.Wrap(title, width, ""), "\n")
+	actionRows := strings.Split(lipgloss.Wrap(action, width, ""), "\n")
+	titleCount := len(titleRows)
+	block := append([]string{}, titleRows...)
+	block = append(block, actionRows...)
+	start := max(0, (height-len(block))/2)
+	for i, line := range block {
+		if start+i >= height {
+			break
+		}
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("#d9d9d9"))
+		if i >= titleCount {
+			style = style.Foreground(newInteractionPalette(m.Accent).prompt)
+		}
+		rows[start+i] = centerLine(style.Render(line), width)
+	}
+	return rows
 }
 
 // panelPlaceholderRows returns innerH blank rows with text centred in the middle
@@ -120,7 +149,7 @@ func centerLine(s string, width int) string {
 		return ""
 	}
 	if lipgloss.Width(s) > width {
-		s = truncateLine(s, width)
+		s = ansi.Truncate(s, width, "…")
 	}
 	gap := width - lipgloss.Width(s)
 	left := gap / 2
