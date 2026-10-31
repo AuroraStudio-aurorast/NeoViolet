@@ -20,7 +20,7 @@ TEST_FLAGS  ?= -count=1
 # not be set below it.
 MACOS_MIN ?= 13.0
 
-HAS_CARGO := $(shell which cargo 2>/dev/null | grep -q . && echo 1 || echo 0)
+HAS_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 
 APECLI_DIR := tools/apecli
 APECLI_BIN := $(APECLI_DIR)/target/release/apecli$(shell [ "$(GOOS)" = windows ] && echo ".exe")
@@ -35,16 +35,22 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: all build build/race build/debug build/macos build/osxappbundle run test test/race test/verbose test/short test/cover test/rust lint lint/rust check check/linelength clean vet tidy install apetools apetools/debug gui gui/debug run/gui help
+.PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
+.PHONY: run run/gui gui gui/debug apetools apetools/debug
+.PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
+.PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
+.PHONY: install help
 
 all: build
 
 # --- Build ---
 
-build: apetools gui
+build: build/tui gui
+
+build/tui: apetools
 	$(GO) build $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
-build/race:
+build/race: check/cgo
 	$(GO) build -race $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
 build/debug:
@@ -83,7 +89,7 @@ gui:
 		echo "Warning: cargo not found, GUI will not be built"; \
 	else \
 		( cd $(GUI_DIR) && cargo build --release $(GUI_FEATURES) ) || exit 1; \
-		cp $(GUI_BIN) . 2>/dev/null || true; \
+		cp "$(GUI_BIN)" "$(GUI_OUT)"; \
 	fi
 
 gui/debug:
@@ -100,7 +106,7 @@ apetools:
 		echo "Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)"; \
 	else \
 		( cd $(APECLI_DIR) && cargo build --release ) || exit 1; \
-		cp $(APECLI_BIN) . 2>/dev/null || true; \
+		cp "$(APECLI_BIN)" .; \
 	fi
 
 apetools/debug:
@@ -115,18 +121,25 @@ build/osxappbundle:
 
 # --- Run ---
 
-run: build
+run: build/tui
 	./$(OUTPUT) $(ARGS)
 
-run/gui: gui
+ifeq ($(HAS_CARGO),1)
+run/gui: build
 	./$(GUI_OUT) $(ARGS)
+else
+run/gui:
+	@echo "error: run/gui needs cargo to build the GUI" >&2; exit 1
+endif
 
 # --- Test ---
 
-test: test/rust
+test: test/go test/rust
+
+test/go:
 	$(GO) test $(TEST_FLAGS) ./...
 
-test/race:
+test/race: check/cgo
 	$(GO) test -race $(TEST_FLAGS) ./...
 
 test/verbose:
@@ -152,7 +165,7 @@ lint/rust:
 	fi
 
 test/cover:
-	$(GO) test -coverprofile=coverage.out ./...
+	$(GO) test -coverprofile=coverage.out $(TEST_FLAGS) ./...
 	$(GO) tool cover -html=coverage.out -o coverage.html
 
 # Lower bound on total coverage. CI runs this same target, so raising it here is
@@ -182,8 +195,9 @@ lint:
 		golangci-lint run ./...; \
 	else \
 		echo "WARNING: golangci-lint not found, falling back to go vet + gofmt"; \
-		$(GO) vet ./... || exit 1; \
-		unformatted="$$(find . -type f -name '*.go' -exec gofmt -l {} +)"; \
+		$(MAKE) vet || exit 1; \
+		unformatted="$$(find . -type d \( -name .git -o -name .worktrees -o -name target \) -prune \
+			-o -type f -name '*.go' -exec gofmt -l {} +)" || exit 1; \
 		if [ -n "$$unformatted" ]; then \
 			echo "gofmt: these files are not formatted:"; \
 			echo "$$unformatted"; \
@@ -191,17 +205,27 @@ lint:
 		fi; \
 	fi
 
-# Aggregate quality gate used by CI and local dev.
-check: vet lint lint/rust test check/linelength
+# Local aggregate of the code quality gates CI runs individually.
+check: vet lint lint/rust test/rust test/race test/coverage tidy/check check/linelength
 	@echo "All checks passed."
+
+check/cgo:
+	@if [ "$$($(GO) env CGO_ENABLED)" != 1 ]; then \
+		echo "error: race targets need CGO_ENABLED=1 and a working C compiler" >&2; exit 1; \
+	fi
+	@race_cc="$$($(GO) env CC)" && $$race_cc --version >/dev/null 2>&1 || { \
+		echo "error: race targets need a working CC (see go env CC)" >&2; exit 1; \
+	}
 
 check/linelength:
 	@fail=0; \
-	for f in $$(find . -type f -name "*.go" -print | grep -v '_test\.go$$'); do \
+	for f in $$(find . -type d \( -name .git -o -name .worktrees -o -name target \) -prune \
+		-o -type f -name "*.go" ! -name "*_test.go" -print); do \
 		lines=$$(wc -l < "$$f"); \
 		if [ $$lines -gt 500 ]; then echo "$$f: $$lines lines (>500)"; fail=1; fi; \
 	done; \
-	for f in $$(find . -type f -name "*_test.go" -print); do \
+	for f in $$(find . -type d \( -name .git -o -name .worktrees -o -name target \) -prune \
+		-o -type f -name "*_test.go" -print); do \
 		lines=$$(wc -l < "$$f"); \
 		if [ $$lines -gt 800 ]; then echo "$$f: $$lines lines (>800)"; fail=1; fi; \
 	done; \
@@ -219,10 +243,16 @@ tidy/check:
 # --- Clean ---
 
 clean:
-	rm -f $(BINARY) $(BINARY).exe apecli apecli.exe $(GUI_OUT)
+	rm -f $(BINARY) $(BINARY).exe apecli apecli.exe neoviolet-gui neoviolet-gui.exe $(GUI_OUT)
 	rm -f coverage.out coverage.html
-	-cd $(APECLI_DIR) && cargo clean 2>/dev/null || true
-	-cd $(GUI_DIR) && cargo clean 2>/dev/null || true
+
+clean/all: clean
+	@if [ $(HAS_CARGO) -eq 0 ]; then \
+		echo "Warning: cargo not found, skipping Rust cache cleanup"; \
+	else \
+		( cd $(APECLI_DIR) && cargo clean ) || exit 1; \
+		( cd $(GUI_DIR) && cargo clean ) || exit 1; \
+	fi
 
 # --- Install ---
 
@@ -248,7 +278,8 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Build:"
-	@echo "  build              Build binary (default)"
+	@echo "  build              Build TUI, apecli and GUI (default; Rust components optional)"
+	@echo "  build/tui          Build TUI and optional apecli, without GUI"
 	@echo "  build/race         Build with race detector"
 	@echo "  build/debug        Build without optimizations (dlv compatible)"
 	@echo "  build/macos        Build universal macOS binaries (arm64 + amd64)"
@@ -261,22 +292,24 @@ help:
 	@echo "  build/osxappbundle    Build macOS .app bundle (macOS only)"
 	@echo ""
 	@echo "Run:"
-	@echo "  run ARGS=...       Build and run with optional arguments"
+	@echo "  run ARGS=...       Build TUI and optional apecli, then run TUI"
 	@echo ""
 	@echo "Test:"
-	@echo "  test               Run all tests"
-	@echo "  test/race          Run tests with race detector"
-	@echo "  test/verbose       Run tests verbosely"
-	@echo "  test/short         Run short tests (skips integration)"
-	@echo "  test/cover         Run tests with coverage report"
-	@echo "  test/coverage      Run tests and enforce the COVERAGE_MIN gate"
+	@echo "  test               Run Go and Rust tests (Rust skipped without cargo)"
+	@echo "  test/go            Run Go tests only"
+	@echo "  test/race          Run Go tests with race detector (requires cgo and CC)"
+	@echo "  test/verbose       Run Go tests verbosely"
+	@echo "  test/short         Run short Go tests (skips integration)"
+	@echo "  test/cover         Run Go tests with coverage report"
+	@echo "  test/coverage      Run Go tests and enforce the COVERAGE_MIN gate"
 	@echo "  test/rust          Run Rust unit tests (GUI + apecli)"
 	@echo ""
 	@echo "Code quality:"
 	@echo "  vet                Run go vet"
-	@echo "  lint               Run golangci-lint (fallback: go vet)"
+	@echo "  lint               Run golangci-lint (fallback: make vet + gofmt)"
 	@echo "  lint/rust          Run cargo fmt --check + clippy -D warnings"
-	@echo "  check              Run vet + lint + Rust checks + tests (CI gate)"
+	@echo "  check              Run lint, vet, Rust tests, race, coverage, tidy and size gates"
+	@echo "  check/cgo          Check cgo and CC prerequisites for race targets"
 	@echo "  check/linelength   Enforce the per-file line limits"
 	@echo "  tidy               Run go mod tidy"
 	@echo "  tidy/check         Read-only go mod tidy -diff (what CI runs)"
@@ -284,10 +317,11 @@ help:
 	@echo "GUI (gpui-ce + yororen-ui):"
 	@echo "  gui                Build neoviolet-gui (cargo required)"
 	@echo "  gui/debug          Build neoviolet-gui in debug mode"
-	@echo "  run/gui ARGS=...   Build GUI and run with optional arguments"
+	@echo "  run/gui ARGS=...   Build TUI, apecli and GUI, then run GUI (cargo required)"
 	@echo ""
 	@echo "Other:"
-	@echo "  clean              Remove build artifacts"
+	@echo "  clean              Remove root binaries and coverage reports; keep Rust cache"
+	@echo "  clean/all          Also remove Rust compilation caches (when cargo is available)"
 	@echo "  install            Install binary to GOPATH/bin"
 	@echo "  install/desktop    Install the .desktop entry"
 	@echo "  install/icons      Print where to place the icons"
