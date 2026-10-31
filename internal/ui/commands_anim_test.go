@@ -467,9 +467,8 @@ func animFixturePath(t *testing.T, fixture string) string {
 	return filepath.Join(dir, "track.flac")
 }
 
-// A track named on the command line never goes through handleLoadTrack, so the
-// animation has a second entry point at Init. Without it, "play animations on
-// their own" would miss the one track that is certain to be there.
+// Startup and runtime replacements both start their sidecar only once audio
+// has loaded successfully.
 func TestAnimAuto_StartsTheTrackNamedOnTheCommandLine(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -488,11 +487,13 @@ func TestAnimAuto_StartsTheTrackNamedOnTheCommandLine(t *testing.T) {
 			m.Config.TickRate = 30
 			m.pendingPath = animFixturePath(t, animPlainFixture)
 
+			path := m.pendingPath
 			m.Init()
+			if m.Anim.Loading {
+				t.Error("animation started before startup audio was accepted")
+			}
+			handleAudioLoaded(m, AudioLoadedMsg{Player: &mockPlayer{path: path}, Path: path})
 
-			// LoadFor marks the surface loading before it returns its command, so
-			// this says whether a load was started without running the batch, and
-			// without opening the audio file the other command in it names.
 			if got := m.Anim.Loading; got != tc.wantStart {
 				t.Errorf("animation loading = %v, want %v", got, tc.wantStart)
 			}
@@ -515,7 +516,12 @@ func TestAnimAuto_FollowsATrackChange(t *testing.T) {
 			m.Anim = anim.New()
 			m.Config.Anim.Auto = tc.auto
 
-			handleLoadTrack(m, LoadTrackMsg{Path: animFixturePath(t, animPlainFixture)})
+			path := animFixturePath(t, animPlainFixture)
+			handleLoadTrack(m, LoadTrackMsg{Path: path})
+			if m.Anim.Loading {
+				t.Error("animation started before replacement audio was accepted")
+			}
+			handleAudioLoaded(m, AudioLoadedMsg{Player: &mockPlayer{path: path}, Path: path, Generation: m.loadGeneration})
 
 			if got := m.Anim.Loading; got != tc.wantStart {
 				t.Errorf("animation loading = %v, want %v", got, tc.wantStart)

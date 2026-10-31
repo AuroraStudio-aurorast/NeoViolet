@@ -11,8 +11,8 @@ import "sync/atomic"
 // goroutine is inside Stream, so CurrentSample and Closed are atomic — reading
 // them never blocks and never races. The decoded buffer itself (Buf,
 // BufSamples, Pos) is only touched by Stream and Seek, which the caller must
-// serialise; beep provides that by holding the speaker lock (speaker.Lock,
-// speaker.Clear) around all Stream activity, and a streamer embedding this
+// serialise; the player detaches its output under speaker.Lock before seeking
+// or closing, and a streamer embedding this
 // Core may add its own mutex to enforce it for direct callers.
 type Core struct {
 	Pos           int          // sample position within Buf

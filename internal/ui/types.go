@@ -51,9 +51,15 @@ type (
 
 	// ErrorMsg reports an error to the UI with an auto-dismiss timer.
 	ErrorMsg struct {
+		Message string
+		Timer   int
+	}
+
+	// AudioLoadFailedMsg ends only the matching audio load, including startup.
+	AudioLoadFailedMsg struct {
 		Message    string
 		Timer      int
-		Generation int // 0 for non-load errors (always shown); >0 checked against Model.loadGeneration
+		Generation int
 	}
 
 	// AudioLoadedMsg signals that a track finished loading.
@@ -61,6 +67,7 @@ type (
 		Player     audio.AudioPlayer
 		Path       string
 		Generation int // matches Model.loadGeneration; stale messages are ignored
+		load       *audioLoad
 	}
 
 	// VolumeMsg carries a volume level and change delta.
@@ -77,7 +84,8 @@ type (
 
 	// AccentApplyMsg carries a newly extracted accent color.
 	AccentApplyMsg struct {
-		Accent *accent.Accent
+		Accent     *accent.Accent
+		Generation int // identifies the accepted track, not an in-flight load
 	}
 
 	// FetchLyricsResultMsg carries the outcome of an async online lyric fetch.
@@ -271,9 +279,12 @@ type Model struct {
 	preferredLyricFormat string
 
 	// loadGeneration is incremented each time a new track load is initiated.
-	// AudioLoadedMsg and ErrorMsg with a mismatched generation are ignored,
+	// AudioLoadedMsg and AudioLoadFailedMsg with a mismatched generation are ignored,
 	// preventing stale load results from corrupting state on rapid switches.
-	loadGeneration int
+	loadGeneration   int
+	activeGeneration int
+	pendingLoad      *audioLoad
+	exiting          bool
 
 	// switchingTrack is true during a runtime track switch (stdin/:open).
 	// When set, the view stays on the main UI and shows a loading indicator

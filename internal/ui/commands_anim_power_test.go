@@ -137,7 +137,9 @@ func TestBatteryAnswer_LastsTheRun(t *testing.T) {
 		t.Error("the warning asks again after being answered")
 	}
 
-	handleLoadTrack(m, LoadTrackMsg{Path: animFixturePath(t, animPlainFixture)})
+	path := animFixturePath(t, animPlainFixture)
+	handleLoadTrack(m, LoadTrackMsg{Path: path})
+	handleAudioLoaded(m, AudioLoadedMsg{Player: &mockPlayer{path: path}, Path: path, Generation: m.loadGeneration})
 	if m.Anim.Held() {
 		t.Error("the answered warning held the next track back")
 	}
@@ -152,7 +154,12 @@ func TestAnimAuto_StandsDownOnALowBattery(t *testing.T) {
 	m := batteryModel(t, animPlainFixture, 18)
 	m.Config.Anim.Auto = true
 
-	_, cmd := handleLoadTrack(m, LoadTrackMsg{Path: animFixturePath(t, animPlainFixture)})
+	path := animFixturePath(t, animPlainFixture)
+	_, cmd := handleLoadTrack(m, LoadTrackMsg{Path: path})
+	if m.Info.Message != "" {
+		t.Error("animation warning appeared before audio was accepted")
+	}
+	handleAudioLoaded(m, AudioLoadedMsg{Player: &mockPlayer{path: path}, Path: path, Generation: m.loadGeneration})
 
 	if m.Anim.Held() || m.Anim.Loading {
 		t.Error("an animation nobody asked for was held back or started")
@@ -164,9 +171,7 @@ func TestAnimAuto_StandsDownOnALowBattery(t *testing.T) {
 		t.Errorf("info = %q, want it to say why the animation was skipped", m.Info.Message)
 	}
 
-	// Asking for it is what opens the warning. A track change leaves no player
-	// behind until the new audio arrives, so the model gets one back first.
-	m.Audio.Player = &mockPlayer{path: animFixturePath(t, animPlainFixture)}
+	// Asking for it is what opens the warning for the accepted track.
 	runAnim(m, invocation{})
 	if !m.Anim.Held() {
 		t.Error("asking for the animation did not reach the battery gate")
@@ -197,7 +202,9 @@ func TestAnimAuto_StandsDownAtStartup(t *testing.T) {
 	m.Config.TickRate = 30
 	m.pendingPath = animFixturePath(t, animPlainFixture)
 
+	path := m.pendingPath
 	m.Init()
+	handleAudioLoaded(m, AudioLoadedMsg{Player: &mockPlayer{path: path}, Path: path})
 
 	if m.Anim.Held() || m.Anim.Loading {
 		t.Error("an animation nobody asked for was held back or started")

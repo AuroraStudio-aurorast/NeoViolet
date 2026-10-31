@@ -43,7 +43,7 @@ const (
 	// millisecond after the pipe has data, so a gap this long means the process
 	// is wedged (deadlock, stuck filesystem, killed without closing the pipe).
 	// Waiting forever instead would freeze playback and every later
-	// speaker.Clear() call, so the generation is aborted and playback reports
+	// output detach, so the generation is aborted and playback reports
 	// end of stream.
 	pipeReadTimeout = 15 * time.Second
 )

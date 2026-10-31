@@ -59,8 +59,8 @@ func TestDispatcherErrorMsg(t *testing.T) {
 	if nm.Error.Timer != 120 || !nm.Error.Visible {
 		t.Errorf("Error timer/visible = %d/%v, want 120/true", nm.Error.Timer, nm.Error.Visible)
 	}
-	if nm.Loading || nm.switchingTrack {
-		t.Errorf("Loading/switchingTrack = %v/%v, want false/false", nm.Loading, nm.switchingTrack)
+	if !nm.Loading || !nm.switchingTrack {
+		t.Error("generic errors must leave pending audio loads running")
 	}
 }
 
@@ -70,7 +70,7 @@ func TestDispatcherErrorMsg_StaleGeneration(t *testing.T) {
 	m.Loading = true
 	m.Error.Set("old", 60)
 
-	nm, cmd := dispatcherModel(t, m, ErrorMsg{Message: "stale", Timer: 120, Generation: 3})
+	nm, cmd := dispatcherModel(t, m, AudioLoadFailedMsg{Message: "stale", Timer: 120, Generation: 3})
 	if cmd != nil {
 		t.Errorf("cmd = %v, want nil", cmd)
 	}

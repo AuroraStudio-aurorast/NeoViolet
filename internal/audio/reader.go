@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gopxl/beep/v2/speaker"
-
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/cover"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
@@ -69,13 +67,7 @@ func (p *Player) OpenReader(name string, data []byte) error {
 	}
 
 	// Standard audio formats: decode from memory
-	if p.isPlaying {
-		speaker.Clear()
-		p.isPlaying = false
-	}
-	if p.streamer != nil && p.file != nil {
-		_ = p.file.Close()
-	}
+	_ = p.closeStreamer()
 
 	// Read metadata from the buffer FIRST, before decoding.
 	// Use a separate reader so we never touch the decoder's internal reader.
@@ -102,6 +94,7 @@ func (p *Player) OpenReader(name string, data []byte) error {
 	}
 
 	if err := ensureSpeakerInit(format.SampleRate); err != nil {
+		_ = streamer.Close()
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 

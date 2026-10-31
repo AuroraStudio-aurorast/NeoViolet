@@ -1,9 +1,7 @@
 package ui
 
 import (
-	"fmt"
 	"image"
-	"io"
 	"os"
 	"time"
 
@@ -23,70 +21,6 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
 )
-
-func loadAudio(filePath, sfPath, trackerBackend string, generation int) tea.Msg {
-	logger.Info("Loading audio file", "path", filePath)
-	player := audio.NewPlayer()
-	if sfPath != "" {
-		player.SetSoundfontPath(sfPath)
-	}
-	player.SetTrackerBackend(trackerBackend)
-
-	// Stdin mode: load audio data from pipe
-	if filePath == "-" {
-		return loadAudioFromStdin(player, generation)
-	}
-
-	if err := player.Open(filePath); err != nil {
-		logger.Error("Failed to load audio", "path", filePath, "err", err)
-		return ErrorMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180, Generation: generation}
-	}
-	return AudioLoadedMsg{Player: player, Path: filePath, Generation: generation}
-}
-
-// loadAudioFromStdin reads audio data from os.Stdin and opens it via the player.
-// os.Stdin is only read when it's a pipe (not a terminal); BubbleTea uses
-// /dev/tty for terminal input so there is no conflict. Stdin is closed after
-// reading to prevent accidental reuse.
-func loadAudioFromStdin(player *audio.Player, generation int) tea.Msg {
-	// Check if stdin is a pipe (not a terminal)
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		logger.Error("Failed to stat stdin", "err", err)
-		return ErrorMsg{Message: "Failed to read stdin", Timer: 120, Generation: generation}
-	}
-	if info.Mode()&os.ModeNamedPipe == 0 && info.Mode()&os.ModeCharDevice != 0 {
-		return ErrorMsg{
-			Message:    "stdin is a terminal; pipe audio data or provide a file path",
-			Timer:      180,
-			Generation: generation,
-		}
-	}
-
-	// Limit stdin read to 500 MB to prevent memory exhaustion from
-	// accidentally piped large files or /dev/zero.
-	const maxStdinSize = 500 * 1024 * 1024
-	data, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinSize+1))
-	_ = os.Stdin.Close()
-	if err != nil {
-		logger.Error("Failed to read stdin", "err", err)
-		return ErrorMsg{Message: fmt.Sprintf("Failed to read stdin: %v", err), Timer: 120, Generation: generation}
-	}
-	if len(data) > maxStdinSize {
-		return ErrorMsg{
-			Message:    "Stdin input exceeds 500 MB limit",
-			Timer:      180,
-			Generation: generation,
-		}
-	}
-
-	if err := player.OpenReader("stdin", data); err != nil {
-		logger.Error("Failed to load audio from stdin", "err", err)
-		return ErrorMsg{Message: fmt.Sprintf("Failed to load from stdin: %v", err), Timer: 180, Generation: generation}
-	}
-
-	return AudioLoadedMsg{Player: player, Path: "stdin", Generation: generation}
-}
 
 // Global key bindings
 var keys = KeyMap{
@@ -292,29 +226,8 @@ func (m *Model) Init() tea.Cmd {
 
 	if m.pendingPath != "" {
 		path := m.pendingPath
-		sfPath := m.Config.SoundfontPath
-		backend := m.Config.TrackerBackend
 		m.pendingPath = ""
-		gen := m.loadGeneration
-		cmds = append(cmds, func() tea.Msg {
-			// Start ConEmu progress bar (OSC 9;4) with indeterminate state
-			fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
-			return loadAudio(path, sfPath, backend, gen)
-		})
-
-		// A track named on the command line never goes through handleLoadTrack,
-		// so an animation that plays on its own has to be started here as well or
-		// it would miss the one track that is certain to be there. It is loaded
-		// with no box: the terminal has not reported its size yet, and the first
-		// tick sizes the animation anyway. A battery too low to start one nobody
-		// asked for says so instead.
-		if m.Anim != nil && m.animAuto() {
-			if reading, low := m.Anim.LowBattery(m.warnBelow()); low {
-				m.Info.Set(animSkippedMessage(reading.Percent), m.Config.Error.Duration)
-			} else {
-				cmds = append(cmds, m.Anim.LoadFor(anim.Load{Path: path, GateMode: m.gateMode()}))
-			}
-		}
+		cmds = append(cmds, m.startAudioLoad(path))
 	}
 
 	// Accept GUI IPC connection in the background
@@ -362,6 +275,9 @@ func (m *Model) togglePlayback() {
 }
 
 func (m *Model) cleanup() {
+	m.exiting = true
+	m.pendingLoad.cancel()
+	m.pendingLoad = nil
 	logger.Debug("Cleanup: closing player")
 	m.Audio.Close()
 	if m.MediaCtl != nil {
@@ -429,18 +345,18 @@ func (m *Model) updatePlaybackState() tea.Cmd {
 	return m.Components.ProgressBar.SetPercent(m.Audio.Progress)
 }
 
-func loadAccentCmd(player audio.AudioPlayer) tea.Cmd {
+func loadAccentCmd(player audio.AudioPlayer, generation int) tea.Cmd {
 	return func() tea.Msg {
 		img := player.CoverImage()
 		if img == nil {
-			return AccentApplyMsg{Accent: nil}
+			return AccentApplyMsg{Generation: generation}
 		}
 		a, err := accent.FromImage(img)
 		if err != nil {
 			logger.Debug("Failed to extract accent", "err", err)
-			return AccentApplyMsg{Accent: nil}
+			return AccentApplyMsg{Generation: generation}
 		}
-		return AccentApplyMsg{Accent: &a}
+		return AccentApplyMsg{Accent: &a, Generation: generation}
 	}
 }
 

@@ -3,8 +3,6 @@ package ui
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"charm.land/bubbles/v2/progress"
@@ -13,7 +11,6 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -34,6 +31,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleSeek(m, msg)
 	case ErrorMsg:
 		return handleError(m, msg)
+	case AudioLoadFailedMsg:
+		return handleAudioLoadFailed(m, msg)
 	case AudioLoadedMsg:
 		return handleAudioLoaded(m, msg)
 	case AccentApplyMsg:
@@ -215,187 +214,15 @@ func handleSeek(m *Model, msg SeekMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
-	// Ignore stale errors from a superseded track switch (Generation > 0 only)
-	if msg.Generation > 0 && msg.Generation != m.loadGeneration {
-		logger.Debug("Ignoring stale ErrorMsg", "msgGen", msg.Generation, "modelGen", m.loadGeneration)
-		return m, nil
-	}
-
-	m.Loading = false
-	m.switchingTrack = false
-	// Clear loading line from normal screen
-	fmt.Fprint(os.Stdout, "\033[2K\r")
-	// Hide ConEmu progress bar
-	fmt.Fprint(os.Stdout, "\033]9;4;0;0\a")
 	m.Error.Set(msg.Message, msg.Timer)
 	return m, nil
 }
 
-func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
-	// Ignore stale load results from a superseded track switch
-	if msg.Generation != m.loadGeneration {
-		logger.Debug("Ignoring stale AudioLoadedMsg", "msgGen", msg.Generation, "modelGen", m.loadGeneration)
+func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {
+	if m.exiting || msg.Generation != m.activeGeneration {
 		return m, nil
 	}
-
-	m.Loading = false
-	m.switchingTrack = false
-	// Clear any in-flight lyric fetch indicator from a previous track.
-	m.LyricsFetching = false
-	// Clear loading line from normal screen
-	fmt.Fprint(os.Stdout, "\033[2K\r")
-	// Hide ConEmu progress bar
-	fmt.Fprint(os.Stdout, "\033]9;4;0;0\a")
-	m.Audio.Player = msg.Player
-	m.Audio.Duration = msg.Player.Duration()
-
-	if msg.Player.Title() != "" {
-		m.Audio.CurrentSong = msg.Player.Title()
-		logger.Info("Audio loaded", "title", msg.Player.Title(), "artist", msg.Player.Artist())
-	} else {
-		m.Audio.CurrentSong = filepath.Base(msg.Path)
-		logger.Info("Audio loaded (no tags)", "file", filepath.Base(msg.Path))
-	}
-	if msg.Player.Artist() != "" {
-		m.Audio.Artist = msg.Player.Artist()
-	} else {
-		m.Audio.Artist = "Unknown Artist"
-	}
-	if msg.Player.Album() != "" {
-		m.Audio.Album = msg.Player.Album()
-	}
-
-	msg.Player.SetVolume(m.Audio.Volume)
-
-	if err := msg.Player.Play(); err != nil {
-		m.Error.Set(fmt.Sprintf("Failed to start playback: %v", err), 180)
-	} else {
-		m.Audio.IsPlaying = true
-	}
-
-	// Apply --seek flag: seek to initial position after playing starts
-	if m.pendingSeek > 0 {
-		seekPos := m.pendingSeek
-		if seekPos > m.Audio.Duration {
-			seekPos = m.Audio.Duration
-		}
-		logger.Info("Initial seek", "to", seekPos)
-		_ = m.Audio.SeekPlayer(seekPos)
-		m.pendingSeek = 0
-	}
-
-	if m.Config.Lyrics.Enabled {
-		preferred := m.preferredLyricFormat
-		m.preferredLyricFormat = ""
-		data, err := lyrics.FindAndParsePreferred(msg.Path, m.Config.Lyrics.FormatPriority, preferred)
-		if err != nil {
-			m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
-		} else if data != nil {
-			m.Audio.Lyrics = data
-			m.Audio.LyricIndex = -1
-			m.Audio.ShowLyrics = true
-		} else if cmd := m.maybeFetchLyrics(msg.Path); cmd != nil {
-			m.fetchCmd = cmd
-		}
-	}
-
-	if m.Config.Accent.IsEnabled() {
-		accentCmd := loadAccentCmd(msg.Player)
-		if m.fetchCmd != nil {
-			cmd := tea.Batch(m.fetchCmd, accentCmd)
-			m.fetchCmd = nil
-			return m, cmd
-		}
-		return m, accentCmd
-	}
-
-	// Push initial track metadata to OS media control layer
-	if m.MediaCtl != nil {
-		m.MediaCtl.Update(m.buildPlayState())
-	}
-
-	cmd := m.fetchCmd
-	m.fetchCmd = nil
-	return m, cmd
-}
-
-func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {
 	m.Accent = msg.Accent
 	m.rebuildProgressBar()
 	return m, nil
-}
-
-// handleLoadTrack switches to a new audio track at runtime.
-// It releases the current player, preserves volume/playback settings,
-// and synchronizes lyrics with a preference for the same format used
-// by the previous track.
-func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
-	logger.Info("Loading new track", "path", msg.Path)
-
-	// Increment generation to invalidate any in-flight load from a previous track
-	m.loadGeneration++
-
-	// Remember the current lyrics format to try it first on the new track
-	if m.Audio.Lyrics != nil && m.Audio.Lyrics.Format != "" {
-		m.preferredLyricFormat = m.Audio.Lyrics.Format
-	} else {
-		m.preferredLyricFormat = ""
-	}
-
-	// Release current player
-	m.Audio.Close()
-
-	// Reset audio state but preserve volume
-	m.Audio.Reset()
-
-	// Reset accent
-	m.Accent = nil
-	m.rebuildProgressBar()
-
-	m.Loading = true
-	m.loadingTick = 0
-	m.switchingTrack = true
-
-	// Update media control with cleared metadata
-	if m.MediaCtl != nil {
-		m.MediaCtl.Update(m.buildPlayState())
-	}
-
-	loadCmd := func() tea.Msg {
-		fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
-		return loadAudio(msg.Path, m.Config.SoundfontPath, m.Config.TrackerBackend, m.loadGeneration)
-	}
-
-	// An animation that was showing follows the new track to its own sidecar,
-	// and closes if the new track has none. So does one that the config plays on
-	// its own. Reloading here rather than after the audio arrives means the
-	// sidecar is read while the track is still loading.
-	if m.animVisible() || m.animAuto() {
-		plan := m.layoutPlan()
-		load := anim.Load{
-			Path:     msg.Path,
-			Columns:  plan.ContentInnerW,
-			Lines:    plan.ContentInnerH,
-			GateMode: m.gateMode(),
-		}
-		m.animRequested = false
-
-		if reading, low := m.Anim.LowBattery(m.warnBelow()); low {
-			if m.Anim.Held() {
-				// The warning is already up for the track that was playing, and
-				// follows this one: answering it starts the animation the track
-				// changed to.
-				m.Anim.Hold(reading, load)
-				return m, loadCmd
-			}
-			// Nobody asked for this one, so it stands down rather than opening a
-			// warning nobody is waiting to read.
-			m.Info.Set(animSkippedMessage(reading.Percent), m.Config.Error.Duration)
-			return m, loadCmd
-		}
-
-		return m, tea.Batch(loadCmd, m.Anim.LoadFor(load))
-	}
-
-	return m, loadCmd
 }
