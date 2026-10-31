@@ -23,14 +23,14 @@ func statusCountdownCells(t *testing.T, m *Model) int {
 	if len(row) != m.UI.Width {
 		t.Fatalf("help width = %d, want %d", len(row), m.UI.Width)
 	}
-	wash := frameBackground(m)
-	base := wash[len(wash)-1]
 	filled, ended := 0, false
 	for x, bg := range row {
 		if bg == nil {
 			t.Fatalf("cell %d lost its background", x)
 		}
-		if sameRGB(bg, base) {
+		c := color.RGBAModel.Convert(bg).(color.RGBA)
+		// The quiet track and frame wash sit below the fill's luminance band.
+		if testLuminance(c) < .02 {
 			ended = true
 			continue
 		}
@@ -40,6 +40,71 @@ func statusCountdownCells(t *testing.T, m *Model) int {
 		filled++
 	}
 	return filled
+}
+
+func TestStatusCountdownTrackSharesFillHueUntilDismissal(t *testing.T) {
+	for _, kind := range []string{"info", "saved", "error"} {
+		for _, hex := range []string{"#af87ff", "#60b5a6", "#df9b67"} {
+			t.Run(kind+hex, func(t *testing.T) {
+				m := sized(t, setupModel(), 80, 24)
+				m.Config.TickRate = 30
+				m.Accent = &accent.Accent{Main: mustColorful(t, hex)}
+				message := m.Info
+				if kind == "error" {
+					message = m.Error
+				}
+				message.Set("Status test", 90)
+				if kind == "saved" {
+					message.SetSuccess("Status test", 90)
+				}
+				for range 45 {
+					message.Tick()
+				}
+				rows := frameBackgrounds(t, m.View().Content)
+				fill := color.RGBAModel.Convert(rows[23][0]).(color.RGBA)
+				track := color.RGBAModel.Convert(rows[23][79]).(color.RGBA)
+				if sameRGB(track, frameBackground(m)[23]) {
+					t.Fatal("countdown reveals the page background instead of a status track")
+				}
+				if testLuminance(fill) <= testLuminance(track) {
+					t.Fatal("remaining time is not brighter than the empty track")
+				}
+				// Matching channel ratios preserve the hue while reducing brightness.
+				ratio := float64(int(track.R)+int(track.G)+int(track.B)) / float64(int(fill.R)+int(fill.G)+int(fill.B))
+				for _, pair := range [][2]uint8{{fill.R, track.R}, {fill.G, track.G}, {fill.B, track.B}} {
+					if math.Abs(float64(pair[1])-float64(pair[0])*ratio) > 1 {
+						t.Fatalf("fill %v and track %v use different hues", fill, track)
+					}
+				}
+				for _, bg := range []color.RGBA{fill, track} {
+					for _, fg := range []color.RGBA{
+						{R: 222, G: 222, B: 222, A: 255}, {R: 217, G: 217, B: 217, A: 255},
+						{R: 143, G: 208, B: 162, A: 255}, {R: 255, G: 180, B: 180, A: 255},
+					} {
+						if contrast := (testLuminance(fg) + .05) / (testLuminance(bg) + .05); contrast < 4.5 {
+							t.Fatalf("status text contrast = %.2f on %v", contrast, bg)
+						}
+					}
+				}
+				for range 40 {
+					message.Tick()
+				}
+				for x, bg := range frameBackgrounds(t, m.View().Content)[23] {
+					if !sameRGB(bg, track) {
+						t.Fatalf("empty endpoint lost its track at cell %d", x)
+					}
+				}
+				for range 5 {
+					message.Tick()
+				}
+				for x, bg := range frameBackgrounds(t, m.View().Content)[23] {
+					if !sameRGB(bg, frameBackground(m)[23]) {
+						t.Fatalf("track leaked into normal help at cell %d", x)
+					}
+				}
+			})
+		}
+	}
 }
 
 func TestStatusCountdownDrainsBeforeDismissal(t *testing.T) {

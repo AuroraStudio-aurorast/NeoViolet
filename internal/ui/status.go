@@ -10,7 +10,7 @@ import (
 )
 
 // renderStatus keeps feedback and its dismissal countdown in one row. The
-// shrinking surface reveals the frame's gradient without changing text ink.
+// fill and darker track share a hue without changing the text's ink.
 func renderStatus(m *Model, message *MessageState, failure bool) string {
 	width := m.UI.Width
 	if width <= 0 {
@@ -28,8 +28,16 @@ func renderStatus(m *Model, message *MessageState, failure bool) string {
 		lipgloss.NewStyle().Foreground(lipgloss.Color("#dedede")).Render("  "+text)
 	row = ansi.Truncate(row, width, "…")
 	row += strings.Repeat(" ", max(0, width-lipgloss.Width(row)))
+	bg := interactionTone(backgroundAccent(m.Accent), .035, 1)
+	if message.Success {
+		bg = color.RGBA{R: 37, G: 58, B: 45, A: 255}
+	}
+	if failure {
+		bg = color.RGBA{R: 66, G: 36, B: 43, A: 255}
+	}
+	track := []color.RGBA{tintedBackground(bg, .6)}
 	if message.duration <= 1 || message.Timer <= 0 {
-		return row
+		return paintBackground(row, track)
 	}
 	rate := 30
 	if m.Config != nil && m.Config.TickRate > 0 {
@@ -41,17 +49,10 @@ func renderStatus(m *Model, message *MessageState, failure bool) string {
 	remaining := clampUnit(float64(message.Timer-hold) / float64(message.duration-hold))
 	filled := int(math.Round(float64(width) * remaining))
 	if filled == 0 {
-		return row
-	}
-	bg := interactionTone(backgroundAccent(m.Accent), .035, 1)
-	if message.Success {
-		bg = color.RGBA{R: 37, G: 58, B: 45, A: 255}
-	}
-	if failure {
-		bg = color.RGBA{R: 66, G: 36, B: 43, A: 255}
+		return paintBackground(row, track)
 	}
 	// Snap the boundary before a wide grapheme so the sweep never cuts text.
 	head := ansi.Truncate(row, filled, "")
 	tail := ansi.Cut(row, lipgloss.Width(head), width)
-	return paintBackground(head, []color.RGBA{bg}) + "\x1b[49m" + tail
+	return paintBackground(paintBackground(head, []color.RGBA{bg})+"\x1b[49m"+tail, track)
 }
