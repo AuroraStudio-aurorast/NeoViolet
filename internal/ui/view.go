@@ -7,19 +7,20 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
-
-// loadingFrames is the animated spinner shown during track loading.
-var loadingFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 var appLayoutStyle = lipgloss.NewStyle()
 
 func renderMainView(m *Model) tea.View {
 	if m.Loading && !m.switchingTrack {
-		// Full-screen loading: only for initial startup load.
+		// Normal-screen loading: only for initial startup load.
 		// Runtime track switches keep the main UI visible.
-		idx := m.loadingTick / 6 % len(loadingFrames)
-		return tea.NewView(loadingStyle.Render(loadingFrames[idx] + " Loading..."))
+		text := renderLoadingText(m, "Loading audio", loadingStyle)
+		if m.UI.Width > 0 {
+			text = ansi.Truncate(text, m.UI.Width, "…")
+		}
+		return tea.NewView(text)
 	}
 
 	if m.UI.Width < minWidth || m.UI.Height < minHeight {
@@ -51,7 +52,6 @@ func renderMainView(m *Model) tea.View {
 
 	view := tea.NewView(frame)
 	view.AltScreen = true
-	view.AltScreen = true
 
 	if m.Audio.CurrentSong != "" {
 		song := m.Audio.CurrentSong
@@ -67,35 +67,6 @@ func renderMainView(m *Model) tea.View {
 	return view
 }
 
-func renderTabs(m *Model) string {
-	tabIcons := []string{m.Icons.Home, m.Icons.Playlist, m.Icons.Effects, m.Icons.Settings}
-	var tabs []string
-
-	for i, name := range m.UI.Tabs {
-		prefix := tabIcons[i]
-		tabContent := " " + prefix
-		if prefix != "" {
-			tabContent += " "
-		}
-		tabContent += name + " "
-		// The animation is not on a tab: it borrows the content area, so no tab
-		// claims to be the one showing. Focus still brightens the row, because
-		// that says where the keyboard is rather than what is on screen.
-		if i == m.UI.ActiveTab && !m.animVisible() {
-			accented := activeTabStyle.BorderForeground(lipgloss.Color(accentOrDefault(m.Accent, "57")))
-			tabs = append(tabs, accented.Width(m.UI.tabWidth).Render(tabContent))
-		} else {
-			s := tabStyle
-			if m.UI.Focus == FocusTabBar {
-				s = s.BorderForeground(lipgloss.Color("15"))
-			}
-			tabs = append(tabs, s.Width(m.UI.tabWidth).Render(tabContent))
-		}
-	}
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
-}
-
 // contentDescriptions says what each tab is for. It is written once because it
 // is the same for every frame.
 var contentDescriptions = map[int]string{
@@ -107,10 +78,6 @@ var contentDescriptions = map[int]string{
 
 func renderContent(m *Model, plan layoutPlan) string {
 	s := contentStyle
-	if m.UI.Focus == FocusContent {
-		s = s.BorderForeground(lipgloss.Color("15"))
-	}
-
 	// The animation borrows this box while it shows. An .nvaa file is a sidecar
 	// of the track, like its lyrics, so it takes the content area rather than a
 	// page of its own -- and it fills the interior exactly, which is what lets it
@@ -119,10 +86,12 @@ func renderContent(m *Model, plan layoutPlan) string {
 		return contentBox(s, frame, plan)
 	}
 
-	content := fmt.Sprintf("[ %s ]\n\n%s",
-		m.UI.Tabs[m.UI.ActiveTab],
-		contentDescriptions[m.UI.ActiveTab],
-	)
+	heading := contentHeadingStyle
+	if m.UI.Focus == FocusContent {
+		heading = heading.Foreground(lipgloss.Color("15")).Bold(true)
+	}
+	content := heading.Render(fmt.Sprintf("[ %s ]", m.UI.Tabs[m.UI.ActiveTab])) +
+		"\n\n" + contentDescriptions[m.UI.ActiveTab]
 	if body, ok := animBody(m, plan); ok {
 		content = body
 	}
@@ -150,13 +119,13 @@ func renderFooter(m *Model, plan layoutPlan) string {
 	} else {
 		songLine = fmt.Sprintf("%s  No audio loaded", m.Icons.Music)
 	}
-	songLine = truncateLine(songLine, plan.Width-4)
+	songLine = truncateLine(songLine, plan.Width-2)
 
 	timeDisplay := formatDuration(m.Audio.Elapsed) + " / " + formatDuration(m.Audio.Duration)
 
 	// Set progress bar width based on available space
 	timeWidth := lipgloss.Width(timeDisplay)
-	pbWidth := plan.Width - 4 - timeWidth - 1
+	pbWidth := plan.Width - 2 - timeWidth - 1
 	if pbWidth < 10 {
 		pbWidth = 10
 	}
@@ -181,15 +150,16 @@ func renderFooter(m *Model, plan layoutPlan) string {
 		" ",
 		nextText,
 	)
-	volumeLabel := footerTextStyle.Render(m.Icons.Volume + " ")
-	volumeBar := m.Components.VolumeBar.ViewAs(m.Audio.Volume)
+	volumeStyle, volumeModel := volumeAppearance(m)
+	volumeLabel := volumeStyle.Render(m.Icons.Volume + " ")
+	volumeBar := volumeModel.ViewAs(m.Audio.Volume)
 	volumeSection := lipgloss.JoinHorizontal(lipgloss.Left,
 		volumeLabel,
 		volumeBar,
 	)
 
 	// Combine play/pause icon (left) and volume section (right-aligned) on one line
-	availableWidth := plan.Width - 4
+	availableWidth := plan.Width - 2
 	playWidth := lipgloss.Width(statusLine)
 	volumeWidth := lipgloss.Width(volumeSection)
 	spaceCount := availableWidth - playWidth - volumeWidth
@@ -250,9 +220,8 @@ func truncateLine(s string, maxWidth int) string {
 	return s
 }
 
-// maxCompletionRows caps the candidate overlay height. It stays at or below
-// footerBaseRows on purpose: the list replaces the footer band, so it never
-// asks for a row the frame does not have.
+// maxCompletionRows caps the overlay; completionRows also bounds it by the
+// available footer rows so the list never covers content.
 const maxCompletionRows = 5
 
 // minCompactWidth is the narrowest row that still gets a middle ellipsis.
@@ -281,8 +250,7 @@ func completionRows(m *Model, plan layoutPlan) int {
 // completionTop is the frame row the candidate list starts on: the bottom rows
 // of the footer band, directly above the command line.
 //
-// The rows are what make the position safe. maxCompletionRows <= footerBaseRows
-// keeps the list inside the footer band on every terminal, so the content box
+// The row budget keeps the list inside the footer band on every terminal, so the content
 // and the lyrics panel are never covered — only the footer is, and only while a
 // list is up. The list spans the frame's columns: appLayoutStyle adds neither
 // border nor padding, so every column is usable and the offsets are absolute.
@@ -324,7 +292,7 @@ func renderCompletion(m *Model, plan layoutPlan) string {
 	lines := make([]string, 0, rows)
 	for i := 0; i < rows; i++ {
 		index := start + i
-		styles := palette.completion(i, rows, index == m.completionIndex)
+		styles := palette.completion(index == m.completionIndex)
 		lines = append(lines, completionRow(m.completionCandidates[index], index == m.completionIndex, width, styles))
 	}
 	return strings.Join(lines, "\n")
@@ -333,34 +301,16 @@ func renderCompletion(m *Model, plan layoutPlan) string {
 // overlayCompletion draws the candidate list over the footer band, at the row
 // completionTop returns.
 //
-// Only the footer rows go through the compositor: compositing re-renders a line
-// and re-encodes its SGR sequences, and the header, the content box, the lyrics
-// panel and the command line all have to come through byte for byte what they
-// were. The list never leaves the footer band, so nothing outside it has to be
-// touched. The stack is sized to the band and the list sits inside it, so the
-// frame keeps its size and the overlay consumes no rows.
-//
-// The layers go through a compositor rather than a plain canvas: a layer's Draw
-// paints at the area it is handed, so only the compositor applies the offsets
-// set with Y and X.
+// Only the footer rows are replaced. Headers, content, lyrics and command input
+// pass through byte for byte; the overlay consumes no extra screen rows.
 func overlayCompletion(m *Model, plan layoutPlan, frame string, rows int) string {
 	top := completionTop(plan, rows)
 
-	bandTop := plan.Height - helpHeight - plan.FooterRows
 	lines := strings.Split(frame, "\n")
-	band := strings.Join(lines[bandTop:bandTop+plan.FooterRows], "\n")
-
-	stack := lipgloss.NewCompositor(
-		lipgloss.NewLayer(band),
-		lipgloss.NewLayer(renderCompletion(m, plan)).
-			Y(top-bandTop).
-			Z(1),
-	)
-	// The band is replaced in place: the rows above it (header, content, panel)
-	// and below it (the command line) never reach the compositor.
-	composited := strings.Split(stack.Render(), "\n")
-	tail := lines[bandTop+plan.FooterRows:]
-	return strings.Join(append(append(lines[:bandTop:bandTop], composited...), tail...), "\n")
+	// Every candidate fills its row, including trailing spaces, so replacing
+	// rows erases transport text while preserving the frame background.
+	copy(lines[top:top+rows], strings.Split(renderCompletion(m, plan), "\n"))
+	return strings.Join(lines, "\n")
 }
 
 // completionRow renders one row, padded to avail. Three tiers:
@@ -381,7 +331,7 @@ func completionRow(cand candidate, selected bool, avail int, styles completionSt
 
 	marker := "  "
 	if selected {
-		marker = "▸ "
+		marker = "> "
 	}
 
 	head := marker + value
@@ -442,12 +392,13 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.switchingTrack {
-		idx := m.loadingTick / 6 % len(loadingFrames)
-		return infoStyle.Width(m.UI.Width).Render(" " + loadingFrames[idx] + " Loading...")
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color("#b4b4b4"))
+		text := " " + renderLoadingText(m, "Loading audio", style)
+		return lipgloss.NewStyle().Width(m.UI.Width).Render(clampRowWidth(text, m.UI.Width))
 	}
 
 	if m.Info.Message != "" && m.Info.Visible {
-		return infoStyle.Width(m.UI.Width).Render(" " + m.Info.Message)
+		return renderStatus(m, m.Info, false)
 	}
 
 	if m.Error.Message != "" && m.Error.Visible {
@@ -456,5 +407,9 @@ func renderHelp(m *Model) string {
 
 	h := m.Components.Help
 	h.SetWidth(m.UI.Width)
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.Color("#d9d9d9")).Bold(true)
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("#b4b4b4"))
+	h.Styles.ShortSeparator = lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8a8a"))
+	h.Styles.Ellipsis = h.Styles.ShortSeparator
 	return h.ShortHelpView(shortHelpBindings(m))
 }

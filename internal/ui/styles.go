@@ -14,27 +14,15 @@ func accentOrDefault(a *accent.Accent, fallback string) string {
 }
 
 var (
-	// Tab styling
-	tabStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Padding(0, 1).
-			MarginRight(1)
+	// Tabs share a baseline; the current page and focus get palette colours.
+	tabStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	tabBaselineStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 
-	activeTabStyle = tabStyle.
-			BorderForeground(lipgloss.Color("57")).
-			Bold(true)
+	contentHeadingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	contentStyle        = lipgloss.NewStyle().Padding(0, 1)
 
-	// Content area styling
-	contentStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Padding(1, 2).
-			Width(80)
-
-	// Footer styling
 	footerStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.NormalBorder(), true, false, false, false).
 			BorderForeground(lipgloss.Color("240")).
 			Padding(0, 1)
 
@@ -43,27 +31,21 @@ var (
 
 	// Loading & warning styles
 	loadingStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("57")).
+			Foreground(lipgloss.Color("#b4b4b4")).
 			Bold(true)
 
 	warnStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")).
 			Bold(true)
 
-	// Info/success styling (green text on dark background)
-	infoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("46")).
-			Background(lipgloss.Color("236"))
-
 	// Lyric styling
 	lyricStyle = lipgloss.NewStyle().
-			Italic(true).
-			Foreground(lipgloss.Color("141"))
+			Foreground(lipgloss.Color("#8a8a8a"))
 
 	// Lyrics panel (right-hand sidebar). The panel is not focusable, so its
 	// border never highlights.
 	panelStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.NormalBorder(), false, false, false, true).
 			BorderForeground(lipgloss.Color("240")).
 			Padding(0, 1)
 

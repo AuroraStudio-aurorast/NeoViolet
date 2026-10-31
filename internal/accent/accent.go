@@ -110,13 +110,7 @@ func derive(seed colorful.Color) Accent {
 	main := liftToVisible(seed)
 	h, chroma, l := main.Hcl()
 
-	paL := math.Min(l*1.25, 0.88)
-	paC := math.Min(chroma*1.1, 0.5)
-	pa := colorful.Hcl(h, paC, paL)
-
-	pbL := math.Max(l*0.65, 0.25)
-	pbC := math.Max(chroma*0.55, 0.05)
-	pb := colorful.Hcl(h, pbC, pbL)
+	pa, pb := ProgressColors(main)
 
 	lyL := math.Min(l*1.55, 0.93)
 	lyC := math.Max(chroma*0.15, 0.02)

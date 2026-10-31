@@ -200,9 +200,8 @@ type State struct {
 
 	CommandNotice string
 
-	Width    int
-	Height   int
-	tabWidth int
+	Width  int
+	Height int
 }
 
 // ComponentState holds the Bubble Tea component models used by the view.
@@ -214,18 +213,28 @@ type ComponentState struct {
 }
 
 // MessageState shows a transient text message that auto-dismisses.
-// Used for both error (red) and info (green) status updates.
+// Used for error, informational and save-confirmation status updates.
 type MessageState struct {
-	Message string
-	Timer   int
-	Visible bool
+	Message  string
+	Timer    int
+	Visible  bool
+	Success  bool
+	duration int
 }
 
 // Set displays a message with a countdown timer.
 func (e *MessageState) Set(msg string, timer int) {
 	e.Message = msg
 	e.Timer = timer
+	e.duration = timer
 	e.Visible = true
+	e.Success = false
+}
+
+// SetSuccess displays a completed save with the same dismissal timing as info.
+func (e *MessageState) SetSuccess(msg string, timer int) {
+	e.Set(msg, timer)
+	e.Success = true
 }
 
 // Tick decrements the message timer and dismisses the message when it expires.

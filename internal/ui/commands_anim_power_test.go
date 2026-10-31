@@ -241,7 +241,7 @@ func TestPowerWarnPanel_FitsItsBox(t *testing.T) {
 			}
 
 			plain := ansi.Strip(box)
-			for _, want := range []string{"LOW BATTERY WARNING", "Battery at 18%, below 20%", "[enter]", "[esc]"} {
+			for _, want := range []string{"Low battery", "Battery at 18%", "Enter", "Esc"} {
 				if !strings.Contains(plain, want) {
 					t.Errorf("the box does not say %q:\n%s", want, plain)
 				}
@@ -264,10 +264,10 @@ func TestPowerWarnDetail_TalksToWhoeverIsListening(t *testing.T) {
 	}
 
 	for _, want := range []string{
-		"LOW BATTERY WARNING",
-		"Battery at 18%, below 20%",
+		"Low battery",
+		"Battery at 18%",
 		"may drain the battery faster",
-		"play anyway", "cancel",
+		"Play anyway", "Cancel",
 	} {
 		if !strings.Contains(text.String(), want) {
 			t.Errorf("the warning does not say %q:\n%s", want, text.String())

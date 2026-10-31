@@ -13,11 +13,6 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
-// warnDetailRows is the box height at which the photosensitivity gate can show
-// what it measured rather than only what it concluded. Below this it says the
-// worst number and offers the same choice. TestWarnPanel_FitsItsBox checks the
-// tall layout against this figure, so the two cannot drift apart.
-
 // syncAnim keeps the animation aligned with the audio and sized for its box.
 //
 // It runs on the tick rather than from a resize or panel hook because the box
@@ -154,7 +149,7 @@ func animFrame(m *Model, plan layoutPlan) (string, bool) {
 // show for it, and it is the heaviest work a frame does. A dense animation is tens
 // of thousands of bytes of escape sequences, and lipgloss walks every one of them
 // to find where the lines end, once for this box and again for each box it is
-// joined into. An empty box of the same shape has the same border, the same
+// joined into. An empty surface of the same shape has the same
 // padding and the same interior rows, and costs almost nothing to measure, so the
 // frame's own lines are spliced into that instead.
 func contentBox(style lipgloss.Style, block string, plan layoutPlan) string {
@@ -166,39 +161,21 @@ func contentBox(style lipgloss.Style, block string, plan layoutPlan) string {
 		return paint(block)
 	}
 
-	// What the frame needs from the style is what sits either side of it: the
-	// border colour, the border glyphs, and the padding. Every interior row has the
-	// same ones, so a box one interior row tall says what the whole box says, and
-	// painting it costs the width of the box rather than its area. One space is
-	// placeholder enough: the style pads what is short.
-	shallow := strings.Split(style.Width(plan.ContentWidth).
-		Height(contentBorderH+2*contentPaddingV+1).
-		Render(" "), "\n")
-
-	// The left edge is half the border, the two sides together being
-	// contentBorderW.
-	row := 1 + contentPaddingV
-	edge := contentBorderW/2 + contentPaddingH
-	if len(shallow) <= row {
-		return paint(block)
-	}
-	left := ansi.Truncate(shallow[row], edge, "")
-	right := ansi.TruncateLeft(shallow[row], edge+plan.ContentInnerW, "")
-
-	// That row, repeated between the two border rows, is the box the frame goes
-	// into.
+	// Measure one blank row to capture padding and styles, then splice the
+	// already-sized animation bytes without measuring the dense frame again.
+	shallow := style.Width(plan.ContentWidth).Height(1).Render(" ")
+	edge := contentPaddingH
+	left := ansi.Truncate(shallow, edge, "")
+	right := ansi.TruncateLeft(shallow, edge+plan.ContentInnerW, "")
 	interior := left + strings.Repeat(" ", plan.ContentInnerW) + right
-	box := make([]string, 0, plan.ContentHeight)
-	box = append(box, shallow[0])
-	for range plan.ContentHeight - contentBorderH {
-		box = append(box, interior)
+	box := make([]string, plan.ContentHeight)
+	for i := range box {
+		box[i] = interior
 	}
-	box = append(box, shallow[len(shallow)-1])
-
 	lines := strings.Split(block, "\n")
 	for i := 0; i < plan.ContentInnerH && i < len(lines); i++ {
 		if lines[i] != "" {
-			box[row+i] = left + lines[i] + right
+			box[i] = left + lines[i] + right
 		}
 	}
 	return strings.Join(box, "\n")
@@ -226,21 +203,10 @@ func animBody(m *Model, plan layoutPlan) (string, bool) {
 	case m.Anim.Visible:
 		// The animation owns the box but has nothing to put in it yet: the box
 		// changed and the player has not been resized to it. One blank frame is
-		// better than a frame that overflows the border.
+		// better than a frame that overflows its region.
 		return "", true
 	}
 	return "", false
-}
-
-// renderAnimLoading fills the box while a sidecar is being read. The vectors in
-// testdata load instantly; a full-length animation does not, and an empty box
-// would read as a failure.
-func renderAnimLoading(m *Model, plan layoutPlan) string {
-	idx := m.loadingTick / 6 % len(loadingFrames)
-	return layoutWarnLines([]warnLine{{
-		Text:  loadingFrames[idx] + " Loading animation...",
-		Style: infoStyle,
-	}}, plan.ContentInnerW, plan.ContentInnerH)
 }
 
 // animSkippedMessage says why an animation nobody asked for did not appear. It
