@@ -55,10 +55,6 @@ func (c *darwinCtrl) buildArtwork(cover image.Image) objc.ID {
 }
 
 func (c *darwinCtrl) Update(state PlayState) {
-	if state.Title == "" {
-		return
-	}
-
 	c.mu.Lock()
 	if c.closed || c.nowPlaying == 0 {
 		c.mu.Unlock()
@@ -68,6 +64,13 @@ func (c *darwinCtrl) Update(state PlayState) {
 	c.mu.Unlock()
 
 	autoPool(func() {
+		if !state.HasTrack {
+			// An unloaded track must remove the previous metadata and artwork.
+			np.Send(selSetPlaybackState, playbackStateStopped)
+			np.Send(selSetNowPlayingInfo, objc.ID(0))
+			return
+		}
+
 		dict := nsMutableDict()
 		dur := state.Duration.Seconds()
 		pos := state.Position.Seconds()
