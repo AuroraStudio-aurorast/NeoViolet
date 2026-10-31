@@ -22,10 +22,13 @@ For AI agents. Read [Keeping this file honest](#keeping-this-file-honest) before
   purego/dlopen is the pattern (`internal/power`, `internal/mediactl`, `internal/audio/synth`).
 - **A `CC` is still required while `CGO_ENABLED=1`** — the Go runtime's cgo shim gets compiled, so
   check `CGO_ENABLED` and a working `CC` before blaming a link error on source.
-- **`make test` is not a Rust build** — it only runs `cargo test`; the release binaries the app
-  spawns need `make apetools` / `make gui`.
-- **Rust is optional at runtime** — `apecli` comes from PATH or beside the binary (ffmpeg/macOS
-  fallback), the GUI is an optional wrapper. No cargo → `make build` warns and continues, by design.
+- **Tests do not refresh Rust release binaries** — `make test` runs Go and Rust tests; the release
+  binaries the app spawns need `make apetools` / `make gui`.
+- **TUI development does not build the GUI** — use `make run` or `make build/tui` for the TUI and
+  optional apecli. `make build` prepares all components; `make run/gui` builds them before launch.
+- **Rust is optional for the TUI** — without cargo, TUI/full builds warn and skip Rust components;
+  explicit GUI execution and universal macOS builds require cargo. Missing apecli can fall back to
+  ffmpeg or the Monkey's Audio `mac` CLI when installed. Rust compilation or copy failures are errors.
 - **Never commit build artifacts or local state** — root binaries, `coverage.*`, `config.json`,
   `history.txt`, `caches/`.
 
@@ -45,11 +48,13 @@ per-component `LICENSE` files alone; the app bundle ships both.
 
 ## Quality gates
 
-`make check` is the local aggregate; CI runs the same gates individually
+`make check` aggregates code quality gates locally; CI runs those checks individually
 (`.github/workflows/build.yml`, which also pins Go/Rust/linter versions). Thresholds live with
 their gate, not here: `make lint` (`.golangci.yml`), `make lint/rust` (clippy `-D warnings`),
-`make test` / `test/race` (`TEST_FLAGS`), `make test/coverage` (`COVERAGE_MIN`),
+Go test targets (`TEST_FLAGS`), `make test/rust`, `make test/coverage` (`COVERAGE_MIN`),
 `make check/linelength`, `make tidy/check`, `make vet`.
+The aggregate includes race tests and needs `CGO_ENABLED=1` and a working C compiler. Without cargo,
+Rust checks warn and skip; passing the remaining checks does not validate Rust components.
 
 ## Architecture invariants
 
@@ -89,6 +94,8 @@ Register in `init()` beside the existing entries:
 - **Loop**: register beside the existing entries, keep the logic in its own file next to its
   peers, test in the same package, iterate with `make test/short`, finish with `make check`. If
   your change falsifies anything here — including the license table — fix it in the same change.
+- **Keep compilation caches during development**: `make clean` removes root binaries and coverage
+  reports; use `make clean/all` only when Rust compilation caches also need clearing.
 
 ## Keeping this file honest
 
