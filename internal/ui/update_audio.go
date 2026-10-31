@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
@@ -141,6 +142,20 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.preferredLyricFormat = ""
 	}
+	if m.Config.TrackSwitchMode == config.TrackSwitchImmediate {
+		m.followTrackAnimation = m.followTrackAnimation || m.animVisible() || m.animAuto() || m.Anim.Loading
+		m.heldTrackAnimation = m.heldTrackAnimation || m.Anim.Held()
+		m.Audio.Close()
+		m.Audio.Reset()
+		m.Accent = nil
+		m.LyricsFetching = false
+		m.Anim.Close()
+		m.activeGeneration = m.loadGeneration
+		m.rebuildProgressBar()
+		if m.MediaCtl != nil {
+			m.MediaCtl.Update(m.buildPlayState())
+		}
+	}
 	m.Loading = true
 	m.loadingTick = 0
 	m.switchingTrack = true
@@ -150,8 +165,10 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 // Sidecars follow accepted audio only: a failed replacement leaves the current
 // animation (and its warnings) untouched.
 func (m *Model) loadTrackAnimation(path string) tea.Cmd {
-	follow := m.animVisible() || m.animAuto() || (m.Anim != nil && m.Anim.Loading)
-	held := m.Anim != nil && m.Anim.Held()
+	follow := m.followTrackAnimation || m.animVisible() || m.animAuto() || (m.Anim != nil && m.Anim.Loading)
+	m.followTrackAnimation = false
+	held := m.heldTrackAnimation || (m.Anim != nil && m.Anim.Held())
+	m.heldTrackAnimation = false
 	m.Anim.Close()
 	m.animRequested = false
 	if !follow {

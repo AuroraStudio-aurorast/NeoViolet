@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,6 +17,7 @@ func TestDefaultConfig(t *testing.T) {
 	}{
 		{"IconTheme", cfg.IconTheme, "nerd"},
 		{"DefaultVolume", cfg.DefaultVolume, 1.0},
+		{"TrackSwitchMode", cfg.TrackSwitchMode, "on_success"},
 		{"VolumeStep", cfg.VolumeStep, 0.1},
 		{"SeekStep", cfg.SeekStep, 5},
 		{"TickRate", cfg.TickRate, 30},
@@ -82,6 +84,88 @@ func TestConfigJSONRoundTrip(t *testing.T) {
 	}
 	if decoded.Lyrics.Fetch.BaseURL != "https://lrclib.net/" {
 		t.Errorf("Fetch.BaseURL = %q, want preserved across round trip", decoded.Lyrics.Fetch.BaseURL)
+	}
+}
+
+func TestNormalizeTrackSwitchMode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+		want string
+	}{
+		{name: "on success", mode: "on_success", want: "on_success"},
+		{name: "immediate", mode: "immediate", want: "immediate"},
+		{name: "unknown", mode: "unknown", want: "on_success"},
+		{name: "missing", want: "on_success"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			cfg.TrackSwitchMode = tc.mode
+			cfg.Normalize()
+			if cfg.TrackSwitchMode != tc.want {
+				t.Errorf("TrackSwitchMode = %q, want %q", cfg.TrackSwitchMode, tc.want)
+			}
+		})
+	}
+}
+
+func TestConfigJSONRoundTripTrackSwitchMode(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.TrackSwitchMode = "immediate"
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Config
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	decoded.Normalize()
+	if decoded.TrackSwitchMode != "immediate" {
+		t.Errorf("TrackSwitchMode = %q, want immediate", decoded.TrackSwitchMode)
+	}
+}
+
+func TestLoadAndSaveTrackSwitchMode(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	SetXDGConfig(true)
+	t.Cleanup(func() { SetXDGConfig(false) })
+	path, err := configPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name string
+		json string
+		want string
+	}{
+		{name: "old configuration", json: `{}`, want: "on_success"},
+		{name: "invalid configuration", json: `{"track_switch_mode":"typo"}`, want: "on_success"},
+		{name: "immediate configuration", json: `{"track_switch_mode":"immediate"}`, want: "immediate"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := DefaultConfig()
+			if err := cfg.Save(); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(tc.json), 0600); err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if loaded.TrackSwitchMode != tc.want {
+				t.Errorf("loaded mode = %q, want %q", loaded.TrackSwitchMode, tc.want)
+			}
+			if err := loaded.Save(); err != nil {
+				t.Fatal(err)
+			}
+			reloaded, err := Load()
+			if err != nil || reloaded.TrackSwitchMode != tc.want {
+				t.Errorf("mode did not survive Save/Load: config=%+v err=%v", reloaded, err)
+			}
+		})
 	}
 }
 

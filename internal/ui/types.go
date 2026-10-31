@@ -291,6 +291,10 @@ type Model struct {
 	// in the help bar instead of switching to the full-screen loading view.
 	switchingTrack bool
 
+	// Preserve sidecar-following intent when immediate switching closes it.
+	followTrackAnimation bool
+	heldTrackAnimation   bool
+
 	// ipcServer handles bidirectional communication with the GUI wrapper
 	// via Unix domain socket. nil when running standalone.
 	ipcServer *ipc.Server

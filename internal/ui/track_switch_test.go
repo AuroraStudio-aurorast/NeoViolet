@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 )
 
@@ -264,5 +265,95 @@ func TestTrackSwitchPublishesMetadataBeforeAccentFinishes(t *testing.T) {
 	dispatcherModel(t, m, AudioLoadedMsg{Player: &switchPlayer{}, Path: "next.flac", Generation: m.loadGeneration})
 	if len(ctrl.updates) != 1 || ctrl.updates[0].Title != "next.flac" {
 		t.Error("system metadata waited for async accent extraction")
+	}
+}
+
+func TestTrackSwitchImmediatePolicyUnloadsBeforePreparing(t *testing.T) {
+	m, current := currentTrackModel()
+	m.Config.TrackSwitchMode = "immediate"
+	ctrl := &mockMediaCtl{}
+	m.MediaCtl = ctrl
+	dispatcherModel(t, m, LoadTrackMsg{Path: "next.flac"})
+	if m.Audio.Player != nil || !current.closeCalled || m.Audio.CurrentSong != "" || !m.Loading {
+		t.Error("immediate policy did not unload the current player before preparation")
+	}
+	dispatcherModel(t, m, AudioLoadFailedMsg{Message: "bad file", Timer: 90, Generation: m.loadGeneration})
+	if m.Audio.Player != nil || m.Audio.CurrentSong != "" || m.Loading {
+		t.Error("immediate policy restored the current player after load failure")
+	}
+	if len(ctrl.updates) == 0 || ctrl.updates[0].HasTrack {
+		t.Error("immediate policy did not clear OS media metadata")
+	}
+}
+
+func TestTrackSwitchDefaultPolicyRetainsCurrentDuringPreparation(t *testing.T) {
+	m, current := currentTrackModel()
+	if config.DefaultConfig().TrackSwitchMode != "on_success" {
+		t.Fatal("default config must use on_success")
+	}
+	dispatcherModel(t, m, LoadTrackMsg{Path: "next.flac"})
+	if m.Audio.Player != current || current.closeCalled {
+		t.Error("default on_success mode interrupted current playback during preparation")
+	}
+}
+
+func TestTrackSwitchModesShareSuccessfulHandoff(t *testing.T) {
+	for _, mode := range []string{"on_success", "immediate", "", "unknown"} {
+		t.Run(mode, func(t *testing.T) {
+			m, current := currentTrackModel()
+			m.Config.TrackSwitchMode = mode
+			dispatcherModel(t, m, LoadTrackMsg{Path: "next.flac"})
+			candidate := &switchPlayer{}
+			dispatcherModel(t, m, AudioLoadedMsg{Player: candidate, Path: "next.flac", Generation: m.loadGeneration})
+			if m.Audio.Player != candidate || !current.closeCalled || m.Loading || !m.Audio.IsPlaying {
+				t.Error("mode did not accept successful replacement and release current player")
+			}
+		})
+	}
+}
+
+func TestTrackSwitchImmediatePolicyStartFailureLeavesNoTrack(t *testing.T) {
+	m, current := currentTrackModel()
+	m.Config.TrackSwitchMode = "immediate"
+	dispatcherModel(t, m, LoadTrackMsg{Path: "next.flac"})
+	candidate := &switchPlayer{playErr: errors.New("cannot start")}
+	dispatcherModel(t, m, AudioLoadedMsg{Player: candidate, Path: "next.flac", Generation: m.loadGeneration})
+	if m.Audio.Player != nil || !candidate.closeCalled || !current.closeCalled || m.Loading {
+		t.Error("immediate policy did not leave an empty player after start failure")
+	}
+}
+
+func TestTrackSwitchImmediatePolicyFollowsAnimationAfterAcceptance(t *testing.T) {
+	m := animModel(t, animPlainFixture, 100, 30)
+	m.Config.TrackSwitchMode = "immediate"
+	m.Config.Anim.Auto = false
+	m.Audio.Player = &mockPlayer{playing: true}
+	path := animFixturePath(t, animPlainFixture)
+	dispatcherModel(t, m, LoadTrackMsg{Path: path})
+	if m.animVisible() || m.Anim.Loading {
+		t.Error("immediate switch kept an animation for an unloaded track")
+	}
+	dispatcherModel(t, m, AudioLoadedMsg{Player: &mockPlayer{}, Path: path, Generation: m.loadGeneration})
+	if !m.Anim.Loading {
+		t.Error("immediate switch lost the existing animation's follow intent")
+	}
+}
+
+func TestTrackSwitchModesTransferPendingAnimationWarning(t *testing.T) {
+	for _, mode := range []string{"on_success", "immediate"} {
+		t.Run(mode, func(t *testing.T) {
+			m := batteryModel(t, animPlainFixture, 18)
+			m.Config.TrackSwitchMode = mode
+			runAnim(m, invocation{})
+			if !m.Anim.Held() {
+				t.Fatal("fixture must hold a pending battery warning")
+			}
+			path := animFixturePath(t, animPlainFixture)
+			dispatcherModel(t, m, LoadTrackMsg{Path: path})
+			dispatcherModel(t, m, AudioLoadedMsg{Player: &mockPlayer{}, Path: path, Generation: m.loadGeneration})
+			if !m.Anim.Held() {
+				t.Error("accepted replacement lost the pending battery confirmation")
+			}
+		})
 	}
 }

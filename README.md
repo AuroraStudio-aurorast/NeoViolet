@@ -94,6 +94,23 @@ Same as TUI, but change `neoviolet` to `neoviolet-gui`
 
 We provide App Bundle for macOS, you can simply drag your audio file to the app!
 
+### Track switching
+
+By default, the current song keeps playing while a replacement loads. If the
+replacement fails to load or start, the current song remains at its current
+position and keeps its playing or paused state.
+
+Set `track_switch_mode` in the TUI's `config.json` to choose when the current
+song is unloaded:
+
+| Value | Behavior |
+|-------|----------|
+| `on_success` (default) | Switch after the replacement loads and starts successfully. |
+| `immediate` | Unload the current song as soon as loading begins; a failure leaves no audio loaded. |
+
+A missing or invalid value uses `on_success`. Restart the player after editing
+the configuration. This setting also applies when using the GUI wrapper.
+
 ## Build
 
 Check out [`BUILD.md`](./docs/BUILD.md) for more information!
