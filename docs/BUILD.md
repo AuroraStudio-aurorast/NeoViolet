@@ -100,8 +100,8 @@ build without launching, or `make build` to build all components, including the 
 | `clean/all`          | Also clear both Rust compilation caches (when cargo is available)                        |
 | `install`            | Install binary to `$GOPATH/bin`                                                            |
 | `install/desktop`    | Install the `.desktop` entry                                                               |
-| `install/icons`      | Print where to place the icons                                                             |
-| `install/all`        | `install` + `install/desktop`                                                              |
+| `install/icons`      | Install Linux SVG and PNG icons                                                            |
+| `install/all`        | `install` + `install/desktop` + `install/icons`                                            |
 | `help`               | List the available targets                                                                 |
 
 ---
@@ -422,9 +422,14 @@ own toolchains; `CGO_ENABLED=0` does not remove those requirements from a full b
 ```bash
 make install            # binary to $GOPATH/bin
 make install/desktop    # Linux .desktop entry
-make install/icons      # prints where to place the icons
-make install/all        # install + install/desktop
+make install/icons      # Linux SVG and PNG icons
+make install/all        # install + install/desktop + install/icons
 ```
+
+The Linux desktop entry and icons install under `$(PREFIX)/share`, with `PREFIX` defaulting to
+`/usr/local`. The SVG goes in `icons/hicolor/scalable/apps/`; the full-resolution PNG goes in
+`pixmaps/` as a fallback. Override `PREFIX` and optionally set `DESTDIR` to stage these files for
+packaging. These variables do not affect `make install`, which uses Go's binary install directory.
 
 ---
 

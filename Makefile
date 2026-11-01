@@ -3,6 +3,7 @@ GO      ?= go
 GOOS    ?= $(shell $(GO) env GOOS)
 GOARCH  ?= $(shell $(GO) env GOARCH)
 OUTPUT   = $(BINARY)
+PREFIX  ?= /usr/local
 
 ifeq ($(GOOS),windows)
 	OUTPUT := $(OUTPUT).exe
@@ -39,7 +40,7 @@ endif
 .PHONY: run run/gui gui gui/debug apetools apetools/debug
 .PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
 .PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
-.PHONY: install help
+.PHONY: install install/desktop install/icons install/all help
 
 all: build
 
@@ -260,17 +261,17 @@ install:
 	$(GO) install $(BUILD_FLAGS) ./cmd/$(BINARY)
 
 install/desktop:
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/applications
-	cp neoviolet.desktop $(DESTDIR)$(PREFIX)/share/applications/
+	@install -d "$(DESTDIR)$(PREFIX)/share/applications"
+	install -m 644 neoviolet.desktop "$(DESTDIR)$(PREFIX)/share/applications/"
 	@echo "Install desktop file to $(DESTDIR)$(PREFIX)/share/applications/"
 
 install/icons:
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps
-	@echo "Place neoviolet.svg in share/icons/hicolor/scalable/apps/"
-	@echo "Place neoviolet.png in share/icons/hicolor/48x48/apps/"
+	@install -d "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps"
+	@install -d "$(DESTDIR)$(PREFIX)/share/pixmaps"
+	install -m 644 assets/icons/neoviolet.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/"
+	install -m 644 assets/icons/neoviolet.png "$(DESTDIR)$(PREFIX)/share/pixmaps/"
 
-install/all: install install/desktop
+install/all: install install/desktop install/icons
 
 # --- Help ---
 
@@ -324,6 +325,6 @@ help:
 	@echo "  clean/all          Also remove Rust compilation caches (when cargo is available)"
 	@echo "  install            Install binary to GOPATH/bin"
 	@echo "  install/desktop    Install the .desktop entry"
-	@echo "  install/icons      Print where to place the icons"
-	@echo "  install/all        install + install/desktop"
+	@echo "  install/icons      Install Linux SVG and PNG icons"
+	@echo "  install/all        install + install/desktop + install/icons"
 	@echo "  help               Show this message"
