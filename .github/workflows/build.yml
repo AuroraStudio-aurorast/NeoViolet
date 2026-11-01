@@ -229,6 +229,7 @@ jobs:
           update: true
           install: >-
             ${{ matrix.pkg_prefix }}-clang
+            ${{ matrix.pkg_prefix }}-llvm
             make
           path-type: inherit
       - name: Setup Go
