@@ -37,7 +37,7 @@ func TestLoadingResultsEraseOnlyTheStartupLine(t *testing.T) {
 			m.Loading, m.switchingTrack = true, !startup
 			output := captureLoadingTerminalWrites(t, func() {
 				if failed {
-					handleError(m, ErrorMsg{Message: "cannot open audio", Timer: 30})
+					handleAudioLoadFailed(m, AudioLoadFailedMsg{Message: "cannot open audio", Timer: 30})
 				} else {
 					handleAudioLoaded(m, AudioLoadedMsg{Player: &mockPlayer{}, Path: "/track.flac"})
 				}

@@ -21,6 +21,7 @@ How to build NeoViolet from source.
 - [Build Variants](#build-variants)
 - [Installing](#installing)
 - [Testing](#testing)
+- [Cleaning](#cleaning)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -29,10 +30,14 @@ How to build NeoViolet from source.
 
 - **Go 1.26.1+** — the requirement declared in `go.mod`; CI pins the version in `.github/workflows/build.yml`
 - **`make`** — the only build entry point
-- **Rust with cargo** — builds `apecli` and `neoviolet-gui`. Optional: without it `make build` still
-  produces `neoviolet` and prints a warning. Install via [rustup](https://rustup.rs/).
-- **C compiler** — for `make test/race` (the race detector requires cgo) and for the Rust components'
-  native dependencies. The shipped binaries are pure Go.
+- **Rust with cargo** — builds `apecli` and `neoviolet-gui`. Optional for TUI development: without it,
+  `make run`, `make build/tui` and `make build` skip Rust components with a warning and still build
+  `neoviolet`. `make run/gui`, `make build/macos` and macOS app bundling require cargo.
+  Install via [rustup](https://rustup.rs/).
+- **C compiler** — for race builds, race tests and `make check` (the race detector requires cgo), and
+  for the Rust components' native dependencies. The Go player uses no CGo bindings; CI release builds
+  set `CGO_ENABLED=0`. Ordinary local builds inherit Go's cgo setting, so a working `CC` is also needed
+  when `CGO_ENABLED=1`.
 - **`pkg-config`** (Linux only) — the GUI's build scripts use it to locate X11, Wayland, fontconfig and
   freetype
 - **X11/Wayland development libraries** (Linux only) — required by the GUI; see
@@ -50,11 +55,12 @@ How to build NeoViolet from source.
 git clone https://github.com/AuroraStudio-aurorast/neoviolet.git
 cd neoviolet
 
-# Build
-make build
-
-# Binary is placed at ./neoviolet (or ./neoviolet.exe on Windows)
+# Build the TUI and optional apecli, then launch the TUI (no GUI build)
+make run
 ```
+
+The TUI binary is placed at `./neoviolet` (`./neoviolet.exe` on Windows). Use `make build/tui` to
+build without launching, or `make build` to build all components, including the optional GUI.
 
 ---
 
@@ -62,32 +68,36 @@ make build
 
 | Target               | Description                                                                                |
 |----------------------|--------------------------------------------------------------------------------------------|
-| `build`              | Production build with stripped debug info (builds `apecli`, `neoviolet-gui` automatically) |
-| `build/race`         | Build with Go race detector                                                                |
-| `build/debug`        | Build with debug symbols (compatible with `dlv`)                                           |
+| `build`              | Production TUI build with stripped debug info, plus both Rust components when cargo exists |
+| `build/tui`          | Build TUI and optional `apecli`, without GUI                                               |
+| `build/race`         | Build Go player only with race detector (requires cgo and a C compiler)                   |
+| `build/debug`        | Build Go player only with debug symbols (compatible with `dlv`)                           |
 | `build/macos`        | Universal binaries for Apple silicon and Intel (`arm64` + `amd64`, merged with `lipo`)     |
 | `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
 | `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
 | `apetools/debug`     | Build `apecli` in debug mode                                                               |
 | `gui`                | Build `neoviolet-gui` GUI wrapper (release mode)                                           |
 | `gui/debug`          | Build `neoviolet-gui` in debug mode                                                        |
-| `run/gui ARGS=...`   | Build GUI and run with optional arguments                                                  |
-| `run ARGS=...`       | Build TUI and run with optional arguments                                                  |
-| `test`               | Run all tests                                                                              |
-| `test/race`          | Run tests with race detector                                                               |
-| `test/verbose`       | Run tests verbosely (`-v`)                                                                 |
-| `test/short`         | Run short tests (skips integration)                                                        |
-| `test/cover`         | Run tests with coverage profile and HTML report                                            |
-| `test/coverage`      | Run tests and enforce the `COVERAGE_MIN` gate (CI)                                         |
+| `run/gui ARGS=...`   | Build TUI, `apecli` and GUI, then launch GUI (cargo required)                              |
+| `run ARGS=...`       | Build TUI and optional `apecli`, then launch TUI                                          |
+| `test`               | Run Go and Rust tests (Rust skipped without cargo)                                        |
+| `test/go`            | Run Go tests only                                                                         |
+| `test/race`          | Run Go tests with race detector (requires cgo and a C compiler)                            |
+| `test/verbose`       | Run Go tests verbosely (`-v`)                                                              |
+| `test/short`         | Run short Go tests (skips integration)                                                     |
+| `test/cover`         | Run Go tests with coverage profile and HTML report                                        |
+| `test/coverage`      | Run Go tests and enforce the `COVERAGE_MIN` gate                                           |
 | `test/rust`          | Run Rust unit tests for `apecli` and `neoviolet-gui`                                       |
 | `vet`                | Run `go vet`                                                                               |
-| `lint`               | Run `golangci-lint` (falls back to `go vet` + `gofmt`)                                     |
+| `lint`               | Run `golangci-lint` (falls back to `make vet` + `gofmt`)                                   |
 | `lint/rust`          | Run `cargo fmt --check` and clippy with `-D warnings`                                      |
-| `check`              | Aggregate gate: vet + lint + lint/rust + test + check/linelength                           |
+| `check`              | Aggregate lint, vet, Rust tests, race, coverage, tidy and file-size gates                 |
+| `check/cgo`          | Check cgo and C compiler prerequisites for race targets                                   |
 | `check/linelength`   | Enforce the per-file line limits (500 lines / 800 for tests)                               |
 | `tidy`               | Run `go mod tidy`                                                                          |
 | `tidy/check`         | Read-only `go mod tidy -diff` (what CI runs)                                               |
-| `clean`              | Remove build artifacts                                                                     |
+| `clean`              | Remove root binaries and coverage reports; retain Rust compilation caches                |
+| `clean/all`          | Also clear both Rust compilation caches (when cargo is available)                        |
 | `install`            | Install binary to `$GOPATH/bin`                                                            |
 | `install/desktop`    | Install the `.desktop` entry                                                               |
 | `install/icons`      | Print where to place the icons                                                             |
@@ -135,8 +145,15 @@ sudo pacman -S libxcb libxkbcommon libxkbcommon-x11 \
 make gui                # Release build → ./neoviolet-gui
 make gui/debug          # Debug build
 make build              # TUI + APE + GUI in one step
-make run/gui ARGS=...   # Build GUI and launch it
+make run/gui ARGS=...    # Build TUI + APE + GUI and launch GUI (cargo required)
 ```
+
+`make gui` builds only the wrapper. `make run/gui` also rebuilds its TUI and apecli dependencies so
+the GUI launches the current player. Without cargo, `run/gui` fails before launching any existing
+GUI binary. Rust compilation and root-binary copy failures also stop the build.
+
+`make gui/debug` leaves its binary in `tools/neoviolet-gui/target/debug/`; it does not replace the
+release binary in the repository root.
 
 ### macOS App Bundle
 
@@ -153,8 +170,8 @@ the bundle ad hoc.
 
 ## APE (Monkey's Audio) Toolchain
 
-`make build` depends on `apetools`, which builds `apecli` from `tools/apecli/` and copies it to the
-repo root so the Go binary finds it.
+`make build/tui` depends on `apetools`, which builds `apecli` from `tools/apecli/` and copies it to the
+repo root so the Go binary finds it. `make run` uses this TUI build; `make build` also builds the GUI.
 
 Cargo is optional. Without it the target prints
 
@@ -162,9 +179,13 @@ Cargo is optional. Without it the target prints
 Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)
 ```
 
-and the Go build continues, so APE playback falls back to ffmpeg (or `afconvert` on macOS). Build the
-helper on its own with `make apetools` (release) or `make apetools/debug`; `make clean` also runs
-`cargo clean` in both `tools/` crates.
+and the Go build continues. If no usable apecli is available, APE playback tries ffmpeg, then the
+Monkey's Audio `mac` CLI. These are separate installed programs; if none is available, APE playback
+fails while the TUI remains usable for other formats.
+
+Build the helper on its own with `make apetools` (release) or `make apetools/debug`. The debug target
+leaves its binary in `tools/apecli/target/debug/` and does not replace the root release binary. Tests
+do not refresh the release helper; use `make apetools` after changing Rust code that the player uses.
 
 ---
 
@@ -174,8 +195,9 @@ The system packages below exclude Go and Rust — install those separately as de
 
 ### Linux
 
-**Build dependencies** — for the Rust GUI and for `make test/race`. The Go binary is built with
-`CGO_ENABLED=0`, so it needs no C toolchain:
+**Build dependencies** — for the Rust GUI and for race builds/tests. These GUI dependencies are not
+needed by `make run` or `make build/tui`. Building the Go player with `CGO_ENABLED=0` needs no C
+toolchain; ordinary local builds inherit Go's cgo setting:
 
 ```bash
 # Debian / Ubuntu
@@ -209,10 +231,12 @@ plays nothing, and reports no error.
 **Build:**
 
 ```bash
-make build                              # production binary
+make build/tui                          # TUI and optional apecli
+make build                              # TUI, optional apecli and optional GUI
 ```
 
-Produces `./neoviolet`, plus `./apecli` and `./neoviolet-gui` when cargo is available.
+`build/tui` produces `./neoviolet` and, with cargo, `./apecli`. The full `build` also produces
+`./neoviolet-gui` when cargo is available.
 
 `GOARCH=amd64 make build` cross-compiles only the Go binary; the Rust helpers are always built for the
 host architecture.
@@ -229,11 +253,13 @@ brew install libopenmpt
 **Build:**
 
 ```bash
-make build        # host architecture: the fast path while developing
+make run          # build TUI + optional apecli and run; no GUI build
+make build/tui    # host architecture: TUI + optional apecli
+make build        # host architecture: all components
 make build/macos  # universal, arm64 + amd64 merged with lipo
 ```
 
-`make build/macos` needs the Intel Rust target, which rustup does not install by default:
+`make build/macos` requires cargo and the Intel Rust target, which rustup does not install by default:
 
 ```bash
 rustup target add x86_64-apple-darwin
@@ -343,42 +369,51 @@ The full recursive collection is in `.github/workflows/build.yml`.
 
 ```bash
 make build
-# Step 1: cargo build --release in tools/apecli/        (if cargo is available)
-# Step 2: cargo build --release in tools/neoviolet-gui/ (if cargo is available)
-# Step 3: go build -ldflags="-s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=<version>" -o neoviolet ./cmd/neoviolet
 ```
 
-- Strips debug info (`-s -w`)
+- Builds the Go player and, when cargo is available, both Rust components in release mode
+- Strips Go debug info (`-s -w`)
 - Stamps the version from `git describe --tags --always --dirty` (override with `make build VERSION=...`)
-- Output: `./neoviolet`, `./neoviolet-gui`, `./apecli` (`.exe` on Windows)
+- Output: `./neoviolet`, plus `./neoviolet-gui` and `./apecli` when cargo is available (`.exe` on Windows)
+
+### TUI Build (`make build/tui`)
+
+```bash
+make build/tui
+make run ARGS="--version"
+```
+
+Uses the same Go build flags and version stamp as `make build`, and builds the release apecli helper
+when cargo is available. It does not build the GUI. `make run` depends on this target and passes
+`ARGS` to the TUI. Go and cargo retain their normal incremental compilation caches.
 
 ### Debug Build (`make build/debug`)
 
 ```bash
 make build/debug
-# Equivalent to: go build -gcflags="all=-N -l" -o neoviolet ./cmd/neoviolet
 ```
 
-Disables optimizations and inlining; compatible with `dlv` (Delve).
+Builds only the Go player, disables optimizations and inlining (`-gcflags="all=-N -l"`), and retains
+debug symbols for `dlv` (Delve). This target does not inject a version stamp or rebuild Rust helpers.
 
 ### Race Build (`make build/race`)
 
 ```bash
 make build/race
-# Equivalent to: go build -race -ldflags="-s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=<version>" -o neoviolet ./cmd/neoviolet
 ```
 
-Enables Go's race detector. Runtime overhead is roughly 5–10× slower and 2× memory.
+Builds only the Go player using the production flags plus Go's race detector (`-race`). Requires
+`CGO_ENABLED=1` and a working C compiler; `check/cgo` checks these before compilation.
 
-### Manual Go Build
+### Building Without CGo
 
 ```bash
-# Minimum build
-CGO_ENABLED=0 go build -o neoviolet ./cmd/neoviolet
-
-# With the version stamp the Makefile adds
-CGO_ENABLED=0 go build -ldflags="-s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=$(git describe --tags --always --dirty)" -o neoviolet ./cmd/neoviolet
+CGO_ENABLED=0 make build/tui
 ```
+
+This disables cgo for the Go player while preserving the Makefile's build flags and version stamp.
+The optional apecli still builds when cargo is available. GUI and Rust native dependencies use their
+own toolchains; `CGO_ENABLED=0` does not remove those requirements from a full build.
 
 ---
 
@@ -396,14 +431,49 @@ make install/all        # install + install/desktop
 ## Testing
 
 ```bash
-make test           # all tests
-make test/race      # with race detector
-make test/verbose   # -v
-make test/short     # skips integration/format-heavy tests
-make test/cover     # writes coverage.out and coverage.html
+make test           # Go + Rust tests; Rust skipped with a warning without cargo
+make test/go        # Go tests only
+make test/rust      # Rust tests only
+make test/race      # Go tests with race detector; requires cgo and CC
+make test/verbose   # Go tests with -v
+make test/short     # short Go tests; skips integration/format-heavy tests
+make test/cover     # Go tests; writes coverage.out and coverage.html
+make test/coverage  # Go tests; enforces COVERAGE_MIN and writes coverage.out
+make check          # complete local code quality gate; requires cgo and CC
 ```
 
-`make test` does not rebuild `apecli`; run `make apetools` after changing the Rust source.
+All Go test targets honor `TEST_FLAGS` (default `-count=1`). For example:
+
+```bash
+make test/go TEST_FLAGS="-count=1 -run TestVersion"
+CGO_ENABLED=1 CC=clang make test/race
+```
+
+`make check` runs vet, Go and Rust lint, Rust tests, Go race tests, the Go coverage gate, the read-only
+module tidy check and the file-size gate. The race and coverage runs cover Go tests without an extra
+ordinary full Go test run. CI runs these checks individually; its tool versions are pinned in
+`.github/workflows/build.yml`. Rust tests and lint warn and skip without cargo, so such a local run
+does not validate the Rust components.
+
+If `golangci-lint` is unavailable, `make lint` falls back to the repository's `make vet` rules and
+checks Go formatting. This fallback covers fewer checks than the full linter. Formatting and
+file-size scans exclude Git metadata, `.worktrees` and build `target` directories.
+
+Tests do not refresh the Rust release binaries that the application spawns. Use `make apetools` or
+`make gui` to update those binaries.
+
+---
+
+## Cleaning
+
+```bash
+make clean          # remove root binaries and coverage reports; retain Rust caches
+make clean/all      # also run cargo clean in both Rust crates
+```
+
+Use `clean` for ordinary development. `clean/all` clears Rust compilation caches and makes subsequent
+Rust builds compile dependencies again. Without cargo, it removes root outputs and warns that Rust
+cache cleanup was skipped. Neither target removes configuration, history or the app bundle in `dist/`.
 
 ---
 
@@ -453,9 +523,10 @@ error: failed to run `xcrun metal` …
 
 `gpui-ce` compiles its shaders ahead of time by default, which requires the full Xcode Metal Toolchain.
 `make gui` avoids that on macOS by passing `--no-default-features -F gpui/runtime_shaders`, so shaders
-are compiled at run time through the system Metal framework instead. If you call `cargo build`
-directly, pass the same flags:
+are compiled at run time through the system Metal framework instead. Use the Makefile entry points
+so those flags are applied automatically:
 
 ```bash
-cargo build --release --no-default-features -F gpui/runtime_shaders
+make gui
+make gui/debug
 ```

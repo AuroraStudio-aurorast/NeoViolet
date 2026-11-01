@@ -49,8 +49,8 @@ type Backend interface {
 //
 // opMu serialises Stream, Seek and Close: those three touch the shared decode
 // buffer, while Position and Len read atomic counters and never block. beep
-// already serialises them for playback (speaker.Clear waits for the in-flight
-// Stream), but the streamer also owns a decoder subprocess and a reader
+// already serialises them for playback (detaching the player's output waits
+// for the in-flight Stream), but the streamer also owns a subprocess and a reader
 // goroutine, so it does not rely on the caller for its own consistency.
 type Streamer struct {
 	streamcore.Core

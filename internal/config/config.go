@@ -152,20 +152,21 @@ func (a AccentConfig) IsEnabled() bool {
 
 // Config is the root user configuration, persisted as JSON.
 type Config struct {
-	IconTheme      string               `json:"icon_theme"`
-	DefaultVolume  float64              `json:"default_volume"`
-	VolumeStep     float64              `json:"volume_step"`
-	SeekStep       int                  `json:"seek_step"`
-	TickRate       int                  `json:"tick_rate"`
-	SoundfontPath  string               `json:"soundfont_path"`
-	TrackerBackend string               `json:"tracker_backend"`
-	Lyrics         LyricsConfig         `json:"lyrics"`
-	Anim           AnimConfig           `json:"anim"`
-	ProgressBar    ProgressBarConfig    `json:"progress_bar"`
-	VolumeBar      VolumeBarConfig      `json:"volume_bar"`
-	CommandHistory CommandHistoryConfig `json:"command_history"`
-	Error          ErrorConfig          `json:"error"`
-	Accent         AccentConfig         `json:"accent"`
+	IconTheme       string               `json:"icon_theme"`
+	DefaultVolume   float64              `json:"default_volume"`
+	VolumeStep      float64              `json:"volume_step"`
+	SeekStep        int                  `json:"seek_step"`
+	TickRate        int                  `json:"tick_rate"`
+	SoundfontPath   string               `json:"soundfont_path"`
+	TrackerBackend  string               `json:"tracker_backend"`
+	TrackSwitchMode string               `json:"track_switch_mode"` // on_success | immediate
+	Lyrics          LyricsConfig         `json:"lyrics"`
+	Anim            AnimConfig           `json:"anim"`
+	ProgressBar     ProgressBarConfig    `json:"progress_bar"`
+	VolumeBar       VolumeBarConfig      `json:"volume_bar"`
+	CommandHistory  CommandHistoryConfig `json:"command_history"`
+	Error           ErrorConfig          `json:"error"`
+	Accent          AccentConfig         `json:"accent"`
 }
 
 // Normalize validates and repairs fields in place, returning true when any
@@ -186,6 +187,11 @@ func (c *Config) Normalize() bool {
 
 	normalizeLyricsPanel(&c.Lyrics.Panel)
 	normalizeAnim(&c.Anim)
+	switch c.TrackSwitchMode {
+	case TrackSwitchOnSuccess, TrackSwitchImmediate:
+	default:
+		c.TrackSwitchMode = TrackSwitchOnSuccess
+	}
 
 	f := &c.Lyrics.Fetch
 
@@ -235,7 +241,7 @@ func (c *Config) Normalize() bool {
 		f.Timeout != orig.Lyrics.Fetch.Timeout ||
 		f.Security != orig.Lyrics.Fetch.Security ||
 		f.InsecureTLS != orig.Lyrics.Fetch.InsecureTLS
-	return volumeChanged || fetchChanged || panelChanged || animChanged
+	return volumeChanged || fetchChanged || panelChanged || animChanged || c.TrackSwitchMode != orig.TrackSwitchMode
 }
 
 // normalizeLyricsPanel clamps the panel settings into their documented ranges.
@@ -291,13 +297,14 @@ func isPrivateHost(host string) bool {
 // DefaultConfig returns the built-in default configuration.
 func DefaultConfig() Config {
 	return Config{
-		IconTheme:      "nerd",
-		DefaultVolume:  1.0,
-		VolumeStep:     0.1,
-		SeekStep:       5,
-		TickRate:       30,
-		SoundfontPath:  "",
-		TrackerBackend: "auto",
+		IconTheme:       "nerd",
+		DefaultVolume:   1.0,
+		VolumeStep:      0.1,
+		SeekStep:        5,
+		TickRate:        30,
+		SoundfontPath:   "",
+		TrackerBackend:  "auto",
+		TrackSwitchMode: TrackSwitchOnSuccess,
 		Lyrics: LyricsConfig{
 			Enabled:        true,
 			ScrollSpeed:    6,
