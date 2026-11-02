@@ -12,7 +12,8 @@ ifeq ($(GOOS),windows)
 endif
 
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-LDFLAGS   = -s -w -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=$(VERSION)
+VERSION_LDFLAGS = -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=$(VERSION)
+LDFLAGS   = -s -w $(VERSION_LDFLAGS)
 BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
 TEST_FLAGS  ?= -count=1
 
@@ -35,9 +36,20 @@ GUI_OUT   := neoviolet-gui$(shell [ "$(GOOS)" = windows ] && echo ".exe")
 GUI_BIN   := $(GUI_DIR)/target/$(RUST_TARGET_SUBDIR)release/neoviolet-gui$(shell [ "$(GOOS)" = windows ] && echo ".exe")
 GUI_CARGO := cargo build
 GUI_LINK_FLAGS :=
-GO_ICON :=
+GO_RESOURCE_DEPS :=
+GO_DEBUG_RESOURCE_DEPS :=
+GO_RESOURCE_COPY :=
 GUI_ICON_DEPS :=
+GUI_DEBUG_ICON_DEPS :=
+APECLI_CARGO := cargo build
+APECLI_LINK_FLAGS :=
+APECLI_RESOURCE_DEPS :=
+APECLI_DEBUG_RESOURCE_DEPS :=
+DEBUG_VERSION_FLAGS :=
+WINDOWS_PROFILE := release
 ifeq ($(GOOS),windows)
+  export WINDOWS_VERSION := $(VERSION)
+  DEBUG_VERSION_FLAGS = -ldflags="$(VERSION_LDFLAGS)"
   LLVM_RC ?= llvm-rc
   LLVM_CVTRES ?= llvm-cvtres
   WINDRES ?= windres
@@ -49,16 +61,18 @@ ifeq ($(GOOS),windows)
   WINDOWS_RUST_ARCH_386 := i686
   WINDOWS_RUST_ARCH_amd64 := x86_64
   WINDOWS_RUST_ARCH_arm64 := aarch64
-  # Cargo tracks link arguments, so a changed icon must also change the object path.
-  WINDOWS_ICON_HASH := $(shell cksum assets/icons/neoviolet.ico assets/icons/neoviolet.rc | cksum | cut -d ' ' -f 1)
-  WINDOWS_ICON := .build/windows/icon_$(GOARCH)_$(WINDOWS_ICON_HASH).o
-  GO_ICON := cmd/$(BINARY)/icon_windows_$(GOARCH).syso
+  GO_RESOURCE_DEPS := windows-resource/tui-release
+  GO_DEBUG_RESOURCE_DEPS := windows-resource/tui-debug
+  GO_RESOURCE_COPY = @obj=$$(cat .build/windows/tui_$(GOARCH)_$(WINDOWS_PROFILE).path); \
+    syso=cmd/$(BINARY)/icon_windows_$(GOARCH).syso; cmp -s "$$obj" "$$syso" || cp "$$obj" "$$syso"
   GUI_CARGO := cargo rustc
-  # Native Windows Rust tools cannot read Cygwin's /cygdrive/... paths.
-  WINDOWS_ICON_LINK_PATH = $(shell if command -v cygpath >/dev/null 2>&1; then \
-    cygpath -m "$(abspath $(WINDOWS_ICON))"; else printf '%s' "$(abspath $(WINDOWS_ICON))"; fi)
-  GUI_LINK_FLAGS = -- -C "link-arg=$(WINDOWS_ICON_LINK_PATH)"
-  GUI_ICON_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-gui $(WINDOWS_ICON))
+  APECLI_CARGO := cargo rustc
+  GUI_LINK_FLAGS = -- -C "link-arg=$$(cat '$(abspath .build/windows/gui_$(GOARCH)_$(WINDOWS_PROFILE).path)')"
+  APECLI_LINK_FLAGS = -- -C "link-arg=$$(cat '$(abspath .build/windows/apecli_$(GOARCH)_$(WINDOWS_PROFILE).path)')"
+  GUI_ICON_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-rust windows-resource/gui-release)
+  GUI_DEBUG_ICON_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-rust windows-resource/gui-debug)
+  APECLI_RESOURCE_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-rust windows-resource/apecli-release)
+  APECLI_DEBUG_RESOURCE_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-rust windows-resource/apecli-debug)
 endif
 # Use runtime_shaders on macOS to avoid Metal Toolchain requirement.
 # Shaders compile at runtime via system Metal framework (no xcrun metal needed).
@@ -72,22 +86,29 @@ endif
 .PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
 .PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
 .PHONY: install install/desktop install/icons install/all help
-.PHONY: check/windows-gui
+.PHONY: check/windows-rust windows-resource/tui-release windows-resource/tui-debug
+.PHONY: windows-resource/gui-release windows-resource/gui-debug
+.PHONY: windows-resource/apecli-release windows-resource/apecli-debug
 
 all: build
+
+build/debug gui/debug apetools/debug: WINDOWS_PROFILE = debug
 
 # --- Build ---
 
 build: build/tui gui
 
-build/tui: apetools $(GO_ICON)
+build/tui: apetools $(GO_RESOURCE_DEPS)
+	$(GO_RESOURCE_COPY)
 	$(GO) build $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
-build/race: check/cgo $(GO_ICON)
+build/race: check/cgo $(GO_RESOURCE_DEPS)
+	$(GO_RESOURCE_COPY)
 	$(GO) build -race $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
-build/debug: $(GO_ICON)
-	$(GO) build -gcflags="all=-N -l" -o $(OUTPUT) ./cmd/$(BINARY)
+build/debug: $(GO_DEBUG_RESOURCE_DEPS)
+	$(GO_RESOURCE_COPY)
+	$(GO) build -gcflags="all=-N -l" $(DEBUG_VERSION_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
 # Universal macOS build: every slice is compiled here and merged with lipo, so a
 # single Apple silicon host produces one artifact that runs on both CPUs.
@@ -125,7 +146,7 @@ gui: $(GUI_ICON_DEPS)
 		cp "$(GUI_BIN)" "$(GUI_OUT)"; \
 	fi
 
-gui/debug: $(GUI_ICON_DEPS)
+gui/debug: $(GUI_DEBUG_ICON_DEPS)
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, GUI will not be built"; \
 	else \
@@ -134,54 +155,63 @@ gui/debug: $(GUI_ICON_DEPS)
 
 # --- APE toolchain (Rust) ---
 
-apetools:
+apetools: $(APECLI_RESOURCE_DEPS)
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, apecli will not be built (ffmpeg/mac fallback still works)"; \
 	else \
-		( cd $(APECLI_DIR) && cargo build --release ) || exit 1; \
+		( cd $(APECLI_DIR) && $(APECLI_CARGO) --release $(APECLI_LINK_FLAGS) ) || exit 1; \
 		cp "$(APECLI_BIN)" .; \
 	fi
 
-apetools/debug:
+apetools/debug: $(APECLI_DEBUG_RESOURCE_DEPS)
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, apecli will not be built"; \
 	else \
-		( cd $(APECLI_DIR) && cargo build ) || exit 1; \
+		( cd $(APECLI_DIR) && $(APECLI_CARGO) $(APECLI_LINK_FLAGS) ) || exit 1; \
 	fi
 
 build/osxappbundle:
 	@tools/osx-appbundle-builder/build.sh
 
-# --- Windows executable icons ---
+# --- Windows executable resources ---
 
 ifeq ($(GOOS),windows)
-$(WINDOWS_ICON): assets/icons/neoviolet.rc assets/icons/neoviolet.ico
+windows-resource/tui-release windows-resource/tui-debug \
+windows-resource/gui-release windows-resource/gui-debug \
+windows-resource/apecli-release windows-resource/apecli-debug:
 	@if [ -z "$(WINDOWS_MACHINE_$(GOARCH))" ]; then \
-		echo "error: unsupported Windows icon architecture: $(GOARCH)" >&2; exit 1; \
+		echo "error: unsupported Windows resource architecture: $(GOARCH)" >&2; exit 1; \
 	fi
 	@mkdir -p .build/windows
 	@set -eu; tmp=$$(mktemp -d .build/windows/tmp.XXXXXX); trap 'rm -rf "$$tmp"' EXIT; \
-		if command -v "$(LLVM_RC)" >/dev/null 2>&1 && command -v "$(LLVM_CVTRES)" >/dev/null 2>&1; then \
-			"$(LLVM_RC)" -no-preprocess -FO "$$tmp/icon.res" assets/icons/neoviolet.rc; \
-			"$(LLVM_CVTRES)" -machine:$(WINDOWS_MACHINE_$(GOARCH)) -timestamp:0 "-out:$$tmp/icon.o" "$$tmp/icon.res"; \
-		elif command -v "$(WINDRES)" >/dev/null 2>&1; then \
-			if [ -z "$(WINDOWS_FORMAT_$(GOARCH))" ]; then \
-				echo "error: Windows $(GOARCH) icons need llvm-rc + llvm-cvtres" >&2; exit 1; \
+		component=$(firstword $(subst -, ,$(@F))); profile=$(lastword $(subst -, ,$(@F))); \
+		rc=$$(GOOS= GOARCH= $(GO) run ./tools/windows-resources \
+			-component "$$component" -arch $(GOARCH) -debug=$(if $(filter %-debug,$@),true,false)); \
+		obj=$${rc%.rc}.o; \
+		if [ ! -f "$$obj" ]; then \
+			if command -v "$(LLVM_RC)" >/dev/null 2>&1 && command -v "$(LLVM_CVTRES)" >/dev/null 2>&1; then \
+				"$(LLVM_RC)" -no-preprocess -FO "$$tmp/resource.res" "$$rc"; \
+				"$(LLVM_CVTRES)" -machine:$(WINDOWS_MACHINE_$(GOARCH)) -timestamp:0 "-out:$$tmp/resource.o" "$$tmp/resource.res"; \
+			elif command -v "$(WINDRES)" >/dev/null 2>&1; then \
+				if [ -z "$(WINDOWS_FORMAT_$(GOARCH))" ]; then \
+					echo "error: Windows $(GOARCH) resources need llvm-rc + llvm-cvtres" >&2; exit 1; \
+				fi; \
+				"$(WINDRES)" -F $(WINDOWS_FORMAT_$(GOARCH)) -i "$$rc" -O coff -o "$$tmp/resource.o"; \
+			else \
+				echo "error: Windows resources need llvm-rc + llvm-cvtres, or windres (override LLVM_RC/LLVM_CVTRES/WINDRES)" >&2; \
+				exit 1; \
 			fi; \
-			"$(WINDRES)" -F $(WINDOWS_FORMAT_$(GOARCH)) -i assets/icons/neoviolet.rc -O coff -o "$$tmp/icon.o"; \
-		else \
-			echo "error: Windows icons need llvm-rc + llvm-cvtres, or windres (override LLVM_RC/LLVM_CVTRES/WINDRES)" >&2; \
-			exit 1; \
+			mv "$$tmp/resource.o" "$$obj"; \
 		fi; \
-		mv "$$tmp/icon.o" "$@"
+		link_path="$(CURDIR)/$$obj"; \
+		if command -v cygpath >/dev/null 2>&1; then link_path=$$(cygpath -m "$$link_path"); fi; \
+		printf '%s\n' "$$link_path" > "$$tmp/resource.path"; \
+		mv "$$tmp/resource.path" ".build/windows/$${component}_$(GOARCH)_$${profile}.path"
 
-$(GO_ICON): $(WINDOWS_ICON)
-	cp "$<" "$@"
-
-check/windows-gui:
+check/windows-rust:
 	@case "$(RUST_TARGET)" in \
 		$(WINDOWS_RUST_ARCH_$(GOARCH))-pc-windows-*) ;; \
-		*) echo "error: Windows GUI needs a Rust target matching GOARCH=$(GOARCH); set CARGO_BUILD_TARGET" >&2; exit 1 ;; \
+		*) echo "error: Windows Rust binaries need a target matching GOARCH=$(GOARCH); set CARGO_BUILD_TARGET" >&2; exit 1 ;; \
 	esac
 endif
 
@@ -324,7 +354,8 @@ clean/all: clean
 
 # --- Install ---
 
-install: $(GO_ICON)
+install: $(GO_RESOURCE_DEPS)
+	$(GO_RESOURCE_COPY)
 	$(GO) install $(BUILD_FLAGS) ./cmd/$(BINARY)
 
 install/desktop:
