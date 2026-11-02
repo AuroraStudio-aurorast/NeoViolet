@@ -63,11 +63,7 @@ ifeq ($(GOOS),windows)
   LLVM_RC ?= llvm-rc
   LLVM_CVTRES ?= llvm-cvtres
   WINDRES ?= windres
-  WINDOWS_MACHINE_386 := X86
-  WINDOWS_MACHINE_amd64 := X64
-  WINDOWS_MACHINE_arm64 := ARM64
-  WINDOWS_FORMAT_386 := pe-i386
-  WINDOWS_FORMAT_amd64 := pe-x86-64
+  export LLVM_RC LLVM_CVTRES WINDRES
   WINDOWS_RUST_ARCH_386 := i686
   WINDOWS_RUST_ARCH_amd64 := x86_64
   WINDOWS_RUST_ARCH_arm64 := aarch64
@@ -185,32 +181,12 @@ ifeq ($(GOOS),windows)
 windows-resource/tui-release windows-resource/tui-debug \
 windows-resource/gui-release windows-resource/gui-debug \
 windows-resource/apecli-release windows-resource/apecli-debug:
-	@if [ -z "$(WINDOWS_MACHINE_$(GOARCH))" ]; then \
-		echo "error: unsupported Windows resource architecture: $(GOARCH)" >&2; exit 1; \
-	fi
 	@mkdir -p .build/windows
 	@set -eu; tmp=$$(mktemp -d .build/windows/tmp.XXXXXX); trap 'rm -rf "$$tmp"' EXIT; \
 		component=$(firstword $(subst -, ,$(@F))); profile=$(lastword $(subst -, ,$(@F))); \
 		rc=$$(GOOS= GOARCH= $(GO) run ./tools/windows-resources \
 			-component "$$component" -arch $(GOARCH) -debug=$(if $(filter %-debug,$@),true,false)); \
-		obj=$${rc%.rc}.o; \
-		if [ ! -f "$$obj" ]; then \
-			if command -v "$(LLVM_RC)" >/dev/null 2>&1 && command -v "$(LLVM_CVTRES)" >/dev/null 2>&1; then \
-				"$(LLVM_RC)" -no-preprocess -FO "$$tmp/resource.res" "$$rc"; \
-				"$(LLVM_CVTRES)" -machine:$(WINDOWS_MACHINE_$(GOARCH)) -timestamp:0 "-out:$$tmp/resource.o" "$$tmp/resource.res"; \
-			elif command -v "$(WINDRES)" >/dev/null 2>&1; then \
-				if [ -z "$(WINDOWS_FORMAT_$(GOARCH))" ]; then \
-					echo "error: Windows $(GOARCH) resources need llvm-rc + llvm-cvtres" >&2; exit 1; \
-				fi; \
-				"$(WINDRES)" -F $(WINDOWS_FORMAT_$(GOARCH)) -i "$$rc" -O coff -o "$$tmp/resource.o"; \
-			else \
-				echo "error: Windows resources need llvm-rc + llvm-cvtres, or windres (override LLVM_RC/LLVM_CVTRES/WINDRES)" >&2; \
-				exit 1; \
-			fi; \
-			mv "$$tmp/resource.o" "$$obj"; \
-		fi; \
-		link_path="$(CURDIR)/$$obj"; \
-		if command -v cygpath >/dev/null 2>&1; then link_path=$$(cygpath -m "$$link_path"); fi; \
+		link_path=$$(sh tools/windows-resources/compile.sh "$$rc" "$(GOARCH)"); \
 		printf '%s\n' "$$link_path" > "$$tmp/resource.path"; \
 		mv "$$tmp/resource.path" ".build/windows/$${component}_$(GOARCH)_$${profile}.path"
 

@@ -342,6 +342,10 @@ make build
 **Icon tools:** Use `llvm-rc` and `llvm-cvtres`, or GNU `windres` for x86/x86_64. Arm64 requires
 the LLVM tools. Set `LLVM_RC`, `LLVM_CVTRES` or `WINDRES` for tools outside `PATH`.
 
+The Go resource generator owns version/icon content and content-addressed sources; a separate
+compiler script selects the resource tool and publishes the object only on success. Make owns the
+resource dependencies, Go `.syso` copy and Rust link arguments.
+
 **Cross compilation:** Install the Rust target, linker and Windows libraries for the target
 architecture. Set `GOOS=windows`, `GOARCH` and a matching `CARGO_BUILD_TARGET`:
 
