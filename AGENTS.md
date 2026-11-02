@@ -29,6 +29,11 @@ For AI agents. Read [Keeping this file honest](#keeping-this-file-honest) before
 - **Rust is optional for the TUI** — without cargo, TUI/full builds warn and skip Rust components;
   explicit GUI execution and universal macOS builds require cargo. Missing apecli can fall back to
   ffmpeg or the Monkey's Audio `mac` CLI when installed. Rust compilation or copy failures are errors.
+- **Complete distribution builds require Rust** — CI uses `REQUIRE_RUST=1` to validate the Rust
+  target against Go before compilation. Ordinary local builds retain the optional Rust behavior.
+- **Packaging consumes existing artifacts** — `package/osxappbundle` and `package/windows` never
+  compile or download inputs. Make supplies their configuration; scripts must not parse Makefile
+  text. `build/osxappbundle` builds universal binaries before packaging them.
 - **Never commit build artifacts or local state** — root binaries, `coverage.*`, `config.json`,
   `history.txt`, `caches/`.
 
@@ -52,7 +57,7 @@ per-component `LICENSE` files alone; the app bundle ships both.
 (`.github/workflows/build.yml`, which also pins Go/Rust/linter versions). Thresholds live with
 their gate, not here: `make lint` (`.golangci.yml`), `make lint/rust` (clippy `-D warnings`),
 Go test targets (`TEST_FLAGS`), `make test/rust`, `make test/coverage` (`COVERAGE_MIN`),
-`make check/linelength`, `make tidy/check`, `make vet`.
+`make check/linelength`, `make tidy/check`, `make vet`, `make check/shell`.
 The aggregate includes race tests and needs `CGO_ENABLED=1` and a working C compiler. Without cargo,
 Rust checks warn and skip; passing the remaining checks does not validate Rust components.
 

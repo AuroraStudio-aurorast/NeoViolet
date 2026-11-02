@@ -97,6 +97,8 @@ build without launching, or `make build` to build all components, including the 
 | `lint/rust`          | Run `cargo fmt --check` and clippy with `-D warnings`                                      |
 | `check`              | Aggregate lint, vet, Rust tests, race, coverage, tidy and file-size gates                 |
 | `check/cgo`          | Check cgo and C compiler prerequisites for race targets                                   |
+| `check/rust`         | Require cargo and a Rust standard library matching the Go target                          |
+| `check/shell`        | Check build and packaging script syntax                                                   |
 | `check/linelength`   | Enforce the per-file line limits (500 lines / 800 for tests)                               |
 | `tidy`               | Run `go mod tidy`                                                                          |
 | `tidy/check`         | Read-only `go mod tidy -diff` (what CI runs)                                               |
@@ -107,6 +109,7 @@ build without launching, or `make build` to build all components, including the 
 | `install/icons`      | Install Linux SVG and PNG icons                                                            |
 | `install/all`        | `install` + `install/desktop` + `install/icons`                                            |
 | `help`               | List the available targets                                                                 |
+| `info`               | Print resolved host, target, version, flags and output settings                            |
 
 ---
 
@@ -417,6 +420,24 @@ make build
 - Stamps the version from `git describe --tags --always --dirty` (override with `make build VERSION=...`)
 - Output: `./neoviolet`, plus `./neoviolet-gui` and `./apecli` when cargo is available (`.exe` on Windows)
 
+For a complete distribution, enable the same strict preflight that CI uses:
+
+```bash
+make build REQUIRE_RUST=1
+make info
+```
+
+`REQUIRE_RUST=1` requires cargo and a Rust standard library matching `GOOS`/`GOARCH` before build
+steps run, including resource generation under `make -j`. The resolved Rust target comes from
+`CARGO_BUILD_TARGET`, or the selected rustc host when unset. Preflight does not install or choose a
+toolchain; set an appropriate target explicitly for cross compilation. Windows Rust builds also
+perform this target check in ordinary mode. `build/macos` always requires both Apple targets and
+a macOS host, regardless of `REQUIRE_RUST`.
+
+`make info` prints the host separately from the target, resolved version, default release profile,
+flags and output paths without compiling. The Go release, debug and race targets still share the
+same root output name; build them separately when retaining multiple variants.
+
 ### TUI Build (`make build/tui`)
 
 ```bash
@@ -479,6 +500,7 @@ packaging. These variables do not affect `make install`, which uses Go's binary 
 ```bash
 make test           # Go + Rust tests; Rust skipped with a warning without cargo
 make test/go        # Go tests only
+make test/build     # build/packaging contracts with temporary fixtures, on Linux/macOS
 make test/rust      # Rust tests only
 make test/race      # Go tests with race detector; requires cgo and CC
 make test/verbose   # Go tests with -v
@@ -496,10 +518,16 @@ CGO_ENABLED=1 CC=clang make test/race
 ```
 
 `make check` runs vet, Go and Rust lint, Rust tests, Go race tests, the Go coverage gate, the read-only
-module tidy check and the file-size gate. The race and coverage runs cover Go tests without an extra
+module tidy check, file-size gate and build-script syntax checks. The race and coverage runs cover Go tests without an extra
 ordinary full Go test run. CI runs these checks individually; its tool versions are pinned in
 `.github/workflows/build.yml`. Rust tests and lint warn and skip without cargo, so such a local run
 does not validate the Rust components.
+
+Build contract tests are included in the Go test targets on Linux/macOS and can be run alone with
+`make test/build`. They invoke real Make targets and scripts in temporary directories, substituting
+external compilers and platform tools to check error propagation and artifact preservation. They
+do not validate real PE resources, universal slices or signing; use the corresponding platform
+builds for those. `make check/shell` checks the platform scripts' shell syntax without executing them.
 
 If `golangci-lint` is unavailable, `make lint` falls back to the repository's `make vet` rules and
 checks Go formatting. This fallback covers fewer checks than the full linter. Formatting and

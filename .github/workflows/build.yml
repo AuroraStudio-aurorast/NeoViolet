@@ -89,6 +89,9 @@ jobs:
       - name: Line length gate
         if: matrix.os == 'ubuntu-latest'
         run: make check/linelength
+      - name: Build script syntax
+        if: matrix.os == 'ubuntu-latest'
+        run: make check/shell
 
   security:
     name: govulncheck
@@ -119,6 +122,7 @@ jobs:
     timeout-minutes: 60
     env:
       CGO_ENABLED: 0
+      REQUIRE_RUST: 1
       GOOS: ${{ matrix.os == 'macos' && 'darwin' || 'linux' }}
     strategy:
       fail-fast: false
@@ -193,6 +197,7 @@ jobs:
     timeout-minutes: 60
     env:
       CGO_ENABLED: 0
+      REQUIRE_RUST: 1
       GOOS: windows
     strategy:
       fail-fast: false

@@ -31,14 +31,14 @@ export BUILD := $(BUILD)
 SIGN_IDENTITY ?= -
 PACKAGE_INPUT_DIR ?= $(CURDIR)
 PACKAGE_OUTPUT_DIR ?= $(CURDIR)/dist
-export MACOS_MIN SIGN_IDENTITY PACKAGE_INPUT_DIR PACKAGE_OUTPUT_DIR
-
-
 WINDOWS_DLL_DIR ?= $(MINGW_PREFIX)/bin
 LIBOPENMPT_DLL ?= $(PACKAGE_INPUT_DIR)/libopenmpt.dll
 OBJDUMP ?= objdump
+export MACOS_MIN SIGN_IDENTITY PACKAGE_INPUT_DIR PACKAGE_OUTPUT_DIR
 export WINDOWS_DLL_DIR LIBOPENMPT_DLL OBJDUMP
+
 HAS_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
+REQUIRE_RUST ?= 0
 RUST_TARGET = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET),$(shell rustc -vV | sed -n 's/^host: //p'))
 RUST_TARGET_SUBDIR = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET)/)
 
@@ -68,9 +68,6 @@ ifeq ($(GOOS),windows)
   LLVM_CVTRES ?= llvm-cvtres
   WINDRES ?= windres
   export LLVM_RC LLVM_CVTRES WINDRES
-  WINDOWS_RUST_ARCH_386 := i686
-  WINDOWS_RUST_ARCH_amd64 := x86_64
-  WINDOWS_RUST_ARCH_arm64 := aarch64
   GO_RESOURCE_DEPS := windows-resource/tui-release
   GO_DEBUG_RESOURCE_DEPS := windows-resource/tui-debug
   GO_RESOURCE_COPY = @obj=$$(cat .build/windows/tui_$(GOARCH)_$(WINDOWS_PROFILE).path); \
@@ -91,12 +88,12 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: package/osxappbundle package/windows test/build check/macos
 .PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
+.PHONY: package/osxappbundle package/windows
 .PHONY: run run/gui gui gui/debug apetools apetools/debug
-.PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
-.PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
-.PHONY: install install/desktop install/icons install/all help
+.PHONY: test test/go test/build test/race test/verbose test/short test/cover test/coverage test/rust
+.PHONY: lint lint/rust check check/cgo check/rust check/macos check/shell check/linelength vet tidy tidy/check clean clean/all
+.PHONY: install install/desktop install/icons install/all info help
 .PHONY: check/windows-rust windows-resource/tui-release windows-resource/tui-debug
 .PHONY: windows-resource/gui-release windows-resource/gui-debug
 .PHONY: windows-resource/apecli-release windows-resource/apecli-debug
@@ -104,6 +101,13 @@ endif
 all: build
 
 build/debug gui/debug apetools/debug: WINDOWS_PROFILE = debug
+
+# Every compiling prerequisite waits for preflight too, including under make -j.
+ifeq ($(REQUIRE_RUST),1)
+build/tui build/race build/debug gui gui/debug apetools apetools/debug install: check/rust
+$(GO_RESOURCE_DEPS) $(GO_DEBUG_RESOURCE_DEPS) windows-resource/gui-release windows-resource/gui-debug \
+windows-resource/apecli-release windows-resource/apecli-debug: check/rust
+endif
 
 # --- Build ---
 
@@ -178,7 +182,6 @@ build/osxappbundle: build/macos
 package/osxappbundle:
 	@bash tools/osx-appbundle-builder/build.sh
 
-
 package/windows:
 	@bash tools/windows-package/package.sh
 
@@ -197,11 +200,7 @@ windows-resource/apecli-release windows-resource/apecli-debug:
 		printf '%s\n' "$$link_path" > "$$tmp/resource.path"; \
 		mv "$$tmp/resource.path" ".build/windows/$${component}_$(GOARCH)_$${profile}.path"
 
-check/windows-rust:
-	@case "$(RUST_TARGET)" in \
-		$(WINDOWS_RUST_ARCH_$(GOARCH))-pc-windows-*) ;; \
-		*) echo "error: Windows Rust binaries need a target matching GOARCH=$(GOARCH); set CARGO_BUILD_TARGET" >&2; exit 1 ;; \
-	esac
+check/windows-rust: check/rust
 endif
 
 # --- Run ---
@@ -294,7 +293,7 @@ lint:
 	fi
 
 # Local aggregate of the code quality gates CI runs individually.
-check: vet lint lint/rust test/rust test/race test/coverage tidy/check check/linelength
+check: vet lint lint/rust test/rust test/race test/coverage tidy/check check/linelength check/shell
 	@echo "All checks passed."
 
 check/cgo:
@@ -304,6 +303,12 @@ check/cgo:
 	@race_cc="$$($(GO) env CC)" && $$race_cc --version >/dev/null 2>&1 || { \
 		echo "error: race targets need a working CC (see go env CC)" >&2; exit 1; \
 	}
+
+check/rust:
+	@if [ "$(HAS_CARGO)" != 1 ] || ! command -v cargo >/dev/null 2>&1; then \
+		echo "error: cargo is required for this target" >&2; exit 1; \
+	fi
+	@sh tools/build/check-rust.sh "$(GOOS)" "$(GOARCH)" "$(RUST_TARGET)"
 
 check/macos:
 	@if [ "$(HOST_OS)" != darwin ] || [ "$(GOOS)" != darwin ]; then \
@@ -315,6 +320,12 @@ check/macos:
 	@command -v lipo >/dev/null
 	@sh tools/build/check-rust.sh darwin arm64 aarch64-apple-darwin
 	@sh tools/build/check-rust.sh darwin amd64 x86_64-apple-darwin
+
+check/shell:
+	bash -n tools/osx-appbundle-builder/build.sh
+	bash -n tools/windows-package/package.sh
+	sh -n tools/windows-resources/compile.sh
+	sh -n tools/build/check-rust.sh
 
 check/linelength:
 	@fail=0; \
@@ -376,11 +387,26 @@ install/all: install install/desktop install/icons
 
 # --- Help ---
 
+info: export INFO_RUST_TARGET = $(if $(filter 1,$(HAS_CARGO)),$(RUST_TARGET),unavailable)
+info: export HAS_CARGO := $(HAS_CARGO)
+info: export REQUIRE_RUST := $(REQUIRE_RUST)
+info: export OUTPUT := $(OUTPUT)
+info: export GUI_OUT := $(GUI_OUT)
+info: export BUILD_FLAGS := $(BUILD_FLAGS)
+info: export TEST_FLAGS := $(TEST_FLAGS)
+info:
+	@printf '%s\n' "HOST_OS=$$HOST_OS" "GOOS=$$GOOS" "GOARCH=$$GOARCH" \
+		"RUST_TARGET=$$INFO_RUST_TARGET" "HAS_CARGO=$$HAS_CARGO" "REQUIRE_RUST=$$REQUIRE_RUST" \
+		"VERSION=$$VERSION" "BUILD=$$BUILD" "TUI_OUTPUT=$$OUTPUT" "GUI_OUTPUT=$$GUI_OUT" \
+		"DEFAULT_PROFILE=release" "BUILD_FLAGS=$$BUILD_FLAGS" "TEST_FLAGS=$$TEST_FLAGS" "MACOS_MIN=$$MACOS_MIN" \
+		"PACKAGE_INPUT_DIR=$$PACKAGE_INPUT_DIR" "PACKAGE_OUTPUT_DIR=$$PACKAGE_OUTPUT_DIR"
+
 help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Build:"
 	@echo "  build              Build TUI, apecli and GUI (default; Rust components optional)"
+	@echo "                     REQUIRE_RUST=1 requires matching Rust targets before compilation"
 	@echo "  build/tui          Build TUI and optional apecli, without GUI"
 	@echo "  build/race         Build with race detector"
 	@echo "  build/debug        Build without optimizations (dlv compatible)"
@@ -415,6 +441,8 @@ help:
 	@echo "  lint/rust          Run cargo fmt --check + clippy -D warnings"
 	@echo "  check              Run lint, vet, Rust tests, race, coverage, tidy and size gates"
 	@echo "  check/cgo          Check cgo and CC prerequisites for race targets"
+	@echo "  check/rust         Check cargo and matching Rust target standard library"
+	@echo "  check/shell        Check build and packaging script syntax"
 	@echo "  check/linelength   Enforce the per-file line limits"
 	@echo "  tidy               Run go mod tidy"
 	@echo "  tidy/check         Read-only go mod tidy -diff (what CI runs)"
@@ -431,4 +459,5 @@ help:
 	@echo "  install/desktop    Install the .desktop entry"
 	@echo "  install/icons      Install Linux SVG and PNG icons"
 	@echo "  install/all        install + install/desktop + install/icons"
+	@echo "  info               Print resolved host, target, version and output settings"
 	@echo "  help               Show this message"
