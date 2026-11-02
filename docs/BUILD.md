@@ -76,6 +76,7 @@ build without launching, or `make build` to build all components, including the 
 | `build/macos`        | Universal binaries for Apple silicon and Intel (`arm64` + `amd64`, merged with `lipo`)     |
 | `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
 | `package/osxappbundle` | Package existing universal binaries into a macOS app bundle                             |
+| `package/windows`    | Package existing Windows executables with their non-system DLL dependencies              |
 | `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
 | `apetools/debug`     | Build `apecli` in debug mode                                                               |
 | `gui`                | Build `neoviolet-gui` GUI wrapper (release mode)                                           |
@@ -364,43 +365,42 @@ name in CLANGARM64.
 
 **Collect DLLs for distribution:**
 
-```bash
-mkdir -p dist
-cp neoviolet.exe dist/
-cp neoviolet-gui.exe dist/ 2>/dev/null || true
-# Then copy the non-system DLLs that objdump reports, recursively:
-objdump -p dist/neoviolet-gui.exe | grep "DLL Name"
-```
+`make package/windows` consumes all three `.exe` files from `PACKAGE_INPUT_DIR` (default: the repo
+root), plus `LIBOPENMPT_DLL` (default: `PACKAGE_INPUT_DIR/libopenmpt.dll`). It recursively collects
+non-system DLL imports from the input directory and `WINDOWS_DLL_DIR` (default: `$MINGW_PREFIX/bin`).
+`OBJDUMP` overrides the import inspection tool. The target does not compile or download files.
 
-`libopenmpt` is opened at run time, so `objdump -p` never lists it. Copy it into `dist/` yourself,
-otherwise `dist/` ships without tracker support (the app still starts).
-
-Either take the DLL this project builds, or MSYS2's:
+Prepare a matching libopenmpt DLL outside the final output directory. For the project's prebuilt DLL:
 
 ```bash
-# Prebuilt: the asset the release build uses, matching your architecture
+mkdir -p .build/windows-deps
+version=$(sed -n 's/^LIBOPENMPT_VERSION=//p' deps/libopenmpt.lock)
 case "$(uname -m)" in
   x86_64)        arch=x86_64 ;;
   aarch64|arm64) arch=aarch64 ;;
 esac
+asset="libopenmpt-${version}-win-${arch}.dll"
 gh release download deps --repo AuroraStudio-aurorast/neoviolet \
-  -p "libopenmpt-*-win-${arch}.dll" -D dist
-mv dist/libopenmpt-*-win-${arch}.dll dist/libopenmpt.dll
+  -p "$asset" -p "${asset}.sha256" -D .build/windows-deps
+(cd .build/windows-deps && sha256sum -c "${asset}.sha256")
+make package/windows LIBOPENMPT_DLL="$PWD/.build/windows-deps/$asset"
 
-# MSYS2's copy, whose own imports still have to be collected
-cp "$MINGW_PREFIX"/bin/libopenmpt-0.dll dist/
-objdump -p dist/libopenmpt-0.dll | grep "DLL Name"
+# Or use MSYS2's copy; its imports are collected by the same target:
+make package/windows LIBOPENMPT_DLL="$MINGW_PREFIX/bin/libopenmpt-0.dll"
 ```
 
-The prebuilt DLL compiles its decoders in and needs nothing else; `gh release download deps` also
-carries a matching `.sha256`. MSYS2's `libopenmpt-0.dll` instead pulls in its whole runtime closure
-(`libogg`, `libvorbis`, `libvorbisfile`, `libmpg123`, `zlib1`, `libc++`, `libunwind`), so walk it the
-same recursive way as the executables.
+The complete distribution goes to `PACKAGE_OUTPUT_DIR` (default: `dist/`), with libopenmpt named
+`libopenmpt.dll` because it is loaded at run time. Its own imports are inspected too, including the
+decoder and toolchain dependencies of MSYS2's library. Missing executables, libopenmpt, required DLLs
+or a failed import inspection stop packaging before replacing an existing distribution. DLL lookup
+and cycle detection are case-insensitive. The output must be a dedicated directory, not a symlink,
+an input directory or an ancestor of any source file.
 
 The `deps` release is a pre-release holding the dependency builds for every platform, with the
 libopenmpt version and the architecture in each asset name.
 
-The full recursive collection is in `.github/workflows/build.yml`.
+CI downloads and verifies dependencies separately, then calls this same Make target to assemble
+the distribution.
 
 ---
 

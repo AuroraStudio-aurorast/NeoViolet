@@ -34,6 +34,10 @@ PACKAGE_OUTPUT_DIR ?= $(CURDIR)/dist
 export MACOS_MIN SIGN_IDENTITY PACKAGE_INPUT_DIR PACKAGE_OUTPUT_DIR
 
 
+WINDOWS_DLL_DIR ?= $(MINGW_PREFIX)/bin
+LIBOPENMPT_DLL ?= $(PACKAGE_INPUT_DIR)/libopenmpt.dll
+OBJDUMP ?= objdump
+export WINDOWS_DLL_DIR LIBOPENMPT_DLL OBJDUMP
 HAS_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 RUST_TARGET = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET),$(shell rustc -vV | sed -n 's/^host: //p'))
 RUST_TARGET_SUBDIR = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET)/)
@@ -87,7 +91,7 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
-.PHONY: package/osxappbundle test/build check/macos
+.PHONY: package/osxappbundle package/windows test/build check/macos
 .PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
 .PHONY: run run/gui gui gui/debug apetools apetools/debug
 .PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
@@ -174,6 +178,9 @@ build/osxappbundle: build/macos
 package/osxappbundle:
 	@bash tools/osx-appbundle-builder/build.sh
 
+
+package/windows:
+	@bash tools/windows-package/package.sh
 
 # --- Windows executable resources ---
 
@@ -386,6 +393,7 @@ help:
 	@echo "macOS App Bundle:"
 	@echo "  build/osxappbundle    Build macOS .app bundle (macOS only)"
 	@echo "  package/osxappbundle  Package existing universal binaries (no compilation)"
+	@echo "  package/windows      Package existing executables and their DLL dependencies"
 	@echo ""
 	@echo "Run:"
 	@echo "  run ARGS=...       Build TUI and optional apecli, then run TUI"
