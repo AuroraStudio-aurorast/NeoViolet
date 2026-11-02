@@ -10,3 +10,86 @@
  
          if self.ivars().ime_state.get() != ImeState::Disabled {
              self.ivars().ime_state.set(ImeState::Disabled);
+--- a/src/platform_impl/macos/app_state.rs
++++ b/src/platform_impl/macos/app_state.rs
+@@ -4,11 +4,13 @@
+ use std::time::Instant;
+ 
+ use objc2::rc::Retained;
+-use objc2::{declare_class, msg_send_id, mutability, ClassType, DeclaredClass};
++use objc2::{declare_class, msg_send_id, mutability, sel, ClassType, DeclaredClass};
++use objc2::runtime::ProtocolObject;
+ use objc2_app_kit::{
+     NSApplication, NSApplicationActivationPolicy, NSApplicationDelegate, NSRunningApplication,
++    NSApplicationTerminateReply,
+ };
+-use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol};
++use objc2_foundation::{MainThreadMarker, NSNotification, NSObject, NSObjectProtocol, NSArray, NSURL};
+ 
+ use super::event_handler::EventHandler;
+ use super::event_loop::{notify_windows_of_exit, stop_app_immediately, ActiveEventLoop, PanicInfo};
+@@ -20,6 +22,7 @@
+ 
+ #[derive(Debug)]
+ pub(super) struct AppState {
++    external_delegate: Option<Retained<ProtocolObject<dyn NSApplicationDelegate>>>,
+     activation_policy: Option<NSApplicationActivationPolicy>,
+     default_menu: bool,
+     activate_ignoring_other_apps: bool,
+@@ -61,6 +64,38 @@
+     unsafe impl NSObjectProtocol for ApplicationDelegate {}
+ 
+     unsafe impl NSApplicationDelegate for ApplicationDelegate {
++        #[method(application:openURLs:)]
++        fn open_urls(&self, application: &NSApplication, urls: &NSArray<NSURL>) {
++            if let Some(delegate) = &self.ivars().external_delegate {
++                if delegate.respondsToSelector(sel!(application:openURLs:)) {
++                    // SAFETY: The optional delegate method exists and the objects have its declared types.
++                    unsafe { delegate.application_openURLs(application, urls) };
++                }
++            }
++        }
++
++        #[method(applicationShouldHandleReopen:hasVisibleWindows:)]
++        fn reopen(&self, application: &NSApplication, visible: bool) -> bool {
++            match self.ivars().external_delegate.as_ref() {
++                Some(delegate) if delegate.respondsToSelector(sel!(applicationShouldHandleReopen:hasVisibleWindows:)) => {
++                    // SAFETY: The optional method was checked and is called with its declared signature.
++                    unsafe { delegate.applicationShouldHandleReopen_hasVisibleWindows(application, visible) }
++                },
++                _ => true,
++            }
++        }
++
++        #[method(applicationShouldTerminate:)]
++        fn should_terminate(&self, application: &NSApplication) -> NSApplicationTerminateReply {
++            match self.ivars().external_delegate.as_ref() {
++                Some(delegate) if delegate.respondsToSelector(sel!(applicationShouldTerminate:)) => {
++                    // SAFETY: This optional callback exists and takes the current NSApplication.
++                    unsafe { delegate.applicationShouldTerminate(application) }
++                },
++                _ => NSApplicationTerminateReply::NSTerminateNow,
++            }
++        }
++
+         #[method(applicationDidFinishLaunching:)]
+         fn app_did_finish_launching(&self, notification: &NSNotification) {
+             self.did_finish_launching(notification)
+@@ -81,6 +116,8 @@
+         activate_ignoring_other_apps: bool,
+     ) -> Retained<Self> {
+         let this = mtm.alloc().set_ivars(AppState {
++            // Preserve document/reopen callbacks while keeping Winit's lifecycle delegate installed.
++            external_delegate: unsafe { NSApplication::sharedApplication(mtm).delegate() },
+             activation_policy,
+             default_menu,
+             activate_ignoring_other_apps,
+@@ -136,7 +173,7 @@
+         #[allow(deprecated)]
+         app.activateIgnoringOtherApps(self.ivars().activate_ignoring_other_apps);
+ 
+-        if self.ivars().default_menu {
++        if self.ivars().default_menu && unsafe { app.mainMenu() }.is_none() {
+             // The menubar initialization should be before the `NewEvents` event, to allow
+             // overriding of the default menu even if it's created
+             menu::initialize(&app);

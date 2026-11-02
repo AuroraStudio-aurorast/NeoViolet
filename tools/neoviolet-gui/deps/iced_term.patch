@@ -34,9 +34,190 @@
      "canvas",
      "lazy",
      "advanced",
+--- a/src/backend.rs
++++ b/src/backend.rs
+@@ -27,6 +27,7 @@
+ #[derive(Debug, Clone)]
+ pub enum Command {
+     Write(Vec<u8>),
++    Paste(String),
+     Scroll(i32),
+     Resize(Option<Size<f32>>, Option<Size<f32>>),
+     SelectStart(SelectionType, (f32, f32)),
+@@ -132,6 +133,7 @@
+ }
+ 
+ pub struct Backend {
++    pub(crate) child_pid: Option<u32>,
+     term: Arc<FairMutex<Term<EventProxy>>>,
+     size: TerminalSize,
+     notifier: Notifier,
+@@ -155,6 +157,11 @@
+         let config = term::Config::default();
+         let terminal_size = TerminalSize::default();
+         let pty = tty::new(&pty_config, terminal_size.into(), id)?;
++        #[cfg(unix)]
++        let child_pid = Some(pty.child().id());
++        #[cfg(windows)]
++        let child_pid =
++            pty.child_watcher().pid().map(std::num::NonZeroU32::get);
+ 
+         let event_proxy = EventProxy(pty_event_proxy_sender);
+ 
+@@ -181,6 +188,7 @@
+         let _ = pty_event_loop.spawn();
+ 
+         Ok(Self {
++            child_pid,
+             term: term.clone(),
+             size: terminal_size,
+             notifier,
+@@ -205,8 +213,27 @@
+                     Event::PtyWrite(pty) => {
+                         self.notifier.notify(pty.into_bytes())
+                     },
++                    Event::TextAreaSizeRequest(format) => {
++                        self.notifier
++                            .notify(format(self.size.into()).into_bytes());
++                    },
+                     _ => {},
+                 };
++            },
++            Command::Paste(text) => {
++                let bracketed = term.mode().contains(TermMode::BRACKETED_PASTE);
++                let mut text = text.replace("\r\n", "\n");
++                if bracketed {
++                    text.retain(|character| {
++                        character != '\x1b' && character != '\x03'
++                    });
++                    self.write(
++                        format!("\x1b[200~{text}\x1b[201~").into_bytes(),
++                    );
++                } else {
++                    self.write(text.into_bytes());
++                }
++                term.scroll_display(Scroll::Bottom);
+             },
+             Command::Write(input) => {
+                 self.write(input);
+--- a/src/terminal.rs
++++ b/src/terminal.rs
+@@ -30,6 +30,9 @@
+ 
+ pub struct Terminal {
+     pub id: u64,
++    pub(crate) opacity: f32,
++    pub(crate) scroll_zoom: bool,
++    pub(crate) application_shortcuts: bool,
+     widget_id: iced::widget::Id,
+     pub(crate) font: TermFont,
+     pub(crate) theme: Theme,
+@@ -47,6 +50,9 @@
+ 
+         Ok(Self {
+             id,
++            opacity: 1.0,
++            scroll_zoom: false,
++            application_shortcuts: false,
+             widget_id: iced::widget::Id::unique(),
+             font,
+             theme,
+@@ -65,6 +71,33 @@
+         &self.widget_id
+     }
+ 
++    /// PID of the process launched directly into this terminal's PTY.
++    pub fn child_process_id(&self) -> Option<u32> {
++        self.backend.child_pid
++    }
++
++    /// Selected terminal text for application menu clipboard actions.
++    pub fn selection(&self) -> String {
++        self.backend.selectable_content()
++    }
++
++    pub fn set_opacity(&mut self, opacity: f32) {
++        self.opacity = opacity.clamp(0.1, 1.0);
++        self.redraw();
++    }
++
++    pub fn set_scroll_zoom(&mut self, enabled: bool) {
++        self.scroll_zoom = enabled;
++    }
++
++    pub fn set_application_shortcuts(&mut self, enabled: bool) {
++        self.application_shortcuts = enabled;
++    }
++
++    pub fn paste(&mut self, text: String) {
++        self.handle(Command::ProxyToBackend(backend::Command::Paste(text)));
++    }
++
+     pub fn subscription(&self) -> Subscription<Event> {
+         let data = TerminalSubscriptionData {
+             id: self.id,
+@@ -88,7 +121,32 @@
+                 self.bindings.add_bindings(bindings);
+             },
+             Command::ProxyToBackend(cmd) => {
+-                action = self.backend.handle(cmd);
++                if let backend::Command::ProcessAlacrittyEvent(
++                    AlacrittyEvent::ColorRequest(index, format),
++                ) = cmd
++                {
++                    use alacritty_terminal::vte::ansi::{
++                        Color, NamedColor, Rgb,
++                    };
++                    let color = if index < 256 {
++                        Color::Indexed(index as u8)
++                    } else if index == 257 {
++                        Color::Named(NamedColor::Background)
++                    } else {
++                        Color::Named(NamedColor::Foreground)
++                    };
++                    let color = self.theme.get_color(color);
++                    let rgb = Rgb {
++                        r: (color.r * 255.0).round() as u8,
++                        g: (color.g * 255.0).round() as u8,
++                        b: (color.b * 255.0).round() as u8,
++                    };
++                    self.backend.handle(backend::Command::Write(
++                        format(rgb).into_bytes(),
++                    ));
++                } else {
++                    action = self.backend.handle(cmd);
++                }
+             },
+         };
+ 
+@@ -151,6 +209,7 @@
+                     if !shutdown {
+                         panic!("iced_term stream {}: terminal event channel closed unexpected", id);
+                     }
++                    break;
+                 },
+             }
+         }
 --- a/src/view.rs
 +++ b/src/view.rs
-@@ -98,7 +98,16 @@
+@@ -33,7 +33,15 @@
+         container(Self { term })
+             .width(Length::Fill)
+             .height(Length::Fill)
+-            .style(|_| term.theme.container_style())
++            .style(|_| {
++                let mut style = term.theme.container_style();
++                if let Some(iced::Background::Color(color)) =
++                    &mut style.background
++                {
++                    color.a = if term.opacity < 1.0 { 0.0 } else { 1.0 };
++                }
++                style
++            })
+             .into()
+     }
+ 
+@@ -98,7 +106,16 @@
          use iced_core::mouse::{Button::Left, Event::ButtonPressed};
  
          if let Mouse(ButtonPressed(Left)) = event {
@@ -54,7 +235,39 @@
          }
      }
  
-@@ -340,7 +349,7 @@
+@@ -157,6 +174,9 @@
+                 );
+             },
+             iced::mouse::Event::WheelScrolled { delta } => {
++                if self.term.scroll_zoom && state.keyboard_modifiers.command() {
++                    return commands;
++                }
+                 Self::handle_wheel_scrolled(
+                     state,
+                     *delta,
+@@ -308,6 +328,21 @@
+         clipboard: &mut dyn iced_graphics::core::Clipboard,
+         event: &iced::keyboard::Event,
+     ) -> Option<Command> {
++        if self.term.application_shortcuts {
++            if let iced::keyboard::Event::KeyPressed {
++                key: Key::Character(key),
++                modifiers,
++                ..
++            } = event
++            {
++                if modifiers.command()
++                    && ["o", ",", "q", "=", "+", "-", "0"]
++                        .contains(&key.as_str())
++                {
++                    return None;
++                }
++            }
++        }
+         let mut binding_action = BindingAction::Ignore;
+         let last_content = self.term.backend.renderable_content();
+         match event {
+@@ -340,7 +375,7 @@
  
                      // If no binding matched, only write printable text (when provided)
                      if binding_action == BindingAction::Ignore
@@ -63,7 +276,17 @@
                      {
                          if let Some(c) = text {
                              return Some(Command::Write(c.as_bytes().to_vec()));
-@@ -438,8 +447,10 @@
+@@ -370,8 +405,7 @@
+             },
+             BindingAction::Paste => {
+                 if let Some(data) = clipboard.read(ClipboardKind::Standard) {
+-                    let input: Vec<u8> = data.bytes().collect();
+-                    return Some(Command::Write(input));
++                    return Some(Command::Paste(data));
+                 }
+             },
+             BindingAction::Copy => {
+@@ -438,8 +472,10 @@
          let display_offset = content.grid.display_offset() as f32;
          let cell_width = terminal_size.cell_width as f32;
          let cell_height = terminal_size.cell_height as f32;
@@ -76,7 +299,7 @@
  
          InputMethod::Enabled {
              cursor: Rectangle::new(
-@@ -447,7 +458,10 @@
+@@ -447,7 +483,10 @@
                  Size::new(cell_width.max(1.0), cell_height.max(1.0)),
              ),
              purpose: Purpose::Terminal,
@@ -88,7 +311,7 @@
          }
      }
  }
-@@ -543,15 +557,12 @@
+@@ -543,19 +582,17 @@
                  let y = layout_offset_y
                      + (((line as f32) + display_offset) * cell_height);
                  let cell_center_y = y + half_h;
@@ -110,7 +333,21 @@
  
                  // Resolve colors for this cell
                  let mut fg = self.term.theme.get_color(indexed.fg);
-@@ -718,9 +729,19 @@
+                 let mut bg = self.term.theme.get_color(indexed.bg);
++                bg.a *= self.term.opacity;
+ 
+                 // If the new line was detected,
+                 // need to flush pending background rect and init the new one
+@@ -592,7 +629,7 @@
+                 }
+ 
+                 // Batch draw backgrounds: skip default background (container already paints it)
+-                if bg != default_bg {
++                if bg != default_bg || self.term.opacity < 1.0 {
+                     if bg_batch_rect.can_extend(bg, x) {
+                         // Same color and contiguous: extend current run
+                         bg_batch_rect.extend(cell_width);
+@@ -718,9 +755,19 @@
          self.handle_resize(state, layout, shell);
  
          let is_cursor_in_layout = self.is_cursor_in_layout(cursor, layout);
@@ -132,7 +369,7 @@
              shell.request_input_method(&self.input_method(state, layout));
          }
  
-@@ -746,6 +767,8 @@
+@@ -746,6 +793,8 @@
                      return;
                  }
  
@@ -141,7 +378,7 @@
                  self.handle_input_method_event(state, input_method_event)
                      .into_iter()
                      .collect()
-@@ -836,6 +859,8 @@
+@@ -836,6 +885,8 @@
  
      fn unfocus(&mut self) {
          self.focus = false;
@@ -150,7 +387,7 @@
      }
  }
  
-@@ -1285,10 +1310,101 @@
+@@ -1285,10 +1336,101 @@
      mod handle_input_method_event_tests {
          use super::*;
  
@@ -254,7 +491,7 @@
              let view = TerminalView { term: &terminal };
              let mut state = TerminalViewState::new(0);
  
-@@ -1313,8 +1429,9 @@
+@@ -1313,8 +1455,9 @@
  
          #[test]
          fn stores_preedit_without_writing() {
@@ -266,7 +503,7 @@
              let view = TerminalView { term: &terminal };
              let mut state = TerminalViewState::new(0);
  
-@@ -1328,13 +1445,17 @@
+@@ -1328,13 +1471,17 @@
              let preedit = state.ime_preedit.expect("preedit stored");
              assert_eq!(preedit.content, "ni");
              assert_eq!(preedit.selection, Some(0..2));
@@ -287,7 +524,7 @@
              let view = TerminalView { term: &terminal };
              let mut state = TerminalViewState::new(0);
              state.ime_preedit = Some(input_method::Preedit {
-@@ -1354,8 +1475,9 @@
+@@ -1354,8 +1501,9 @@
  
          #[test]
          fn commits_utf8_text_once() {
@@ -299,7 +536,7 @@
              let view = TerminalView { term: &terminal };
              let mut state = TerminalViewState::new(0);
              state.ime_preedit = Some(input_method::Preedit {
-@@ -1369,7 +1491,9 @@
+@@ -1369,7 +1517,9 @@
                  &input_method::Event::Commit("你".into()),
              );
  

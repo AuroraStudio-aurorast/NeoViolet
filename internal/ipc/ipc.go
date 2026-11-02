@@ -4,17 +4,19 @@
 // The TUI listens on 127.0.0.1:0 (random port) and writes the assigned
 // address and a random secret token to a temp file. The GUI reads this
 // file, connects via TCP, and sends the token as the first line for
-// authentication. All subsequent messages are newline-delimited plain
-// text in the format "<type> [payload]".
+// authentication. All subsequent messages are newline-delimited JSON objects.
+// The server acknowledges successful authentication with {"type":"hello"}.
 //
 // GUI → TUI message types:
 //
 //	{"type": "open", "path": "/path/to/file"}
 //	{"type": "desktop_lyrics", "enable": true|false}
 //	{"type": "play_pause"}                  — toggle play/pause
+//	{"type": "quit"}                        — confirmed GUI close, clean up and exit
 //
 // TUI → GUI message types:
 //
+//	{"type": "hello"}                       — authentication succeeded
 //	{"type": "quit", "dialog": true}     — :q/:quit, show confirmation dialog
 //	{"type": "quit", "dialog": false}    — :wq, quit immediately
 //	{"type": "lyrics", "lines": [...], "elapsed": 12.3, "title": "...", "artist": "..."}
@@ -169,6 +171,10 @@ func (s *Server) Accept() error {
 	s.mu.Lock()
 	s.conn = conn
 	s.mu.Unlock()
+	if err := s.SendJSON(Message{Type: "hello"}); err != nil {
+		_ = conn.Close()
+		return fmt.Errorf("ipc acknowledge: %w", err)
+	}
 
 	logger.Info("IPC client authenticated", "remote", conn.RemoteAddr())
 	go s.readLoop(conn)

@@ -1767,7 +1767,8 @@ SOFTWARE.
 
 The replacement GUI is licensed under **MIT**. Its direct GUI dependencies are
 Iced (MIT), iced_term (MIT), and Alacritty terminal (Apache-2.0, through iced_term).
-The local winit dependency is Apache-2.0.
+The local winit dependency is Apache-2.0. The desktop also uses rfd (MIT), muda
+(MIT OR Apache-2.0), and objc2 (MIT), together with serde, tokio, toml and open.
 
 The patched dependency sources retain their original license texts:
 

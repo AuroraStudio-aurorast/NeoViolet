@@ -78,7 +78,7 @@ GUI_FEATURES :=
 
 .PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
 .PHONY: run run/gui gui gui/debug gui/deps apetools apetools/debug
-.PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
+.PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust test/gui-ipc
 .PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
 .PHONY: install install/desktop install/icons install/all help
 .PHONY: check/windows-rust windows-resource/tui-release windows-resource/tui-debug
@@ -250,6 +250,11 @@ test/rust: gui/deps
 		( cd $(GUI_DIR) && cargo test ) || exit 1; \
 	fi
 
+test/gui-ipc: build/tui gui/deps
+	@if [ $(HAS_CARGO) -eq 0 ]; then echo "error: test/gui-ipc needs cargo" >&2; exit 1; fi
+	cd $(GUI_DIR) && NEOVIOLET_TEST_PLAYER="$(abspath $(OUTPUT))" \
+		cargo test live_tui_acknowledges_and_exits_on_gui_request -- --ignored
+
 lint/rust: gui/deps
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, skipping Rust lint"; \
@@ -414,6 +419,7 @@ help:
 	@echo "GUI (Iced + iced_term):"
 	@echo "  gui                Build neoviolet-gui (cargo required)"
 	@echo "  gui/deps           Prepare checksum-pinned GUI sources and local patches"
+	@echo "  test/gui-ipc       Verify a real TUI handshake and graceful quit without a GUI"
 	@echo "  gui/debug          Build neoviolet-gui in debug mode"
 	@echo "  run/gui ARGS=...   Build TUI, apecli and GUI, then run GUI (cargo required)"
 	@echo ""

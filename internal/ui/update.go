@@ -85,6 +85,9 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 				logger.Debug("IPC: invalid JSON", "line", raw, "err", err)
 			} else {
 				switch ipcMsg.Type {
+				case "quit":
+					m.cleanup()
+					return m, tea.Quit
 				case "open":
 					if ipcMsg.Path != "" {
 						if !isValidAudioPath(ipcMsg.Path) {
