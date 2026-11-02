@@ -134,12 +134,12 @@ while [[ "$index" -lt "${#pending[@]}" ]]; do
     index=$((index + 1))
     imports="$("$OBJDUMP" -p "$current")" || fail "objdump failed: $current"
     while IFS= read -r line; do
+        line="$(lower "$line")"
         case "$line" in
-            *'DLL Name:'*) dll="${line#*DLL Name:}" ;;
+            *'dll name:'*) dll="${line#*dll name:}" ;;
             *) continue ;;
         esac
         dll="$(printf '%s' "$dll" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
-        dll="$(lower "$dll")"
         [[ "$dll" =~ ^[a-z0-9_][a-z0-9_.+-]*\.dll$ ]] || fail "invalid DLL name: $dll"
         if [[ "$dll" =~ $SYSTEM_DLLS || "$seen" == *"|$dll|"* ]]; then
             continue

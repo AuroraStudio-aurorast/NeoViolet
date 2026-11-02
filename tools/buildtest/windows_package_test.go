@@ -73,6 +73,24 @@ func TestWindowsPackageSystemDLLs(t *testing.T) {
 	}
 }
 
+func TestWindowsPackageImportLabelCase(t *testing.T) {
+	for _, label := range []string{"DLL Name:", "DLL name:", "dll name:", "DLL NAME:"} {
+		t.Run(label, func(t *testing.T) {
+			t.Parallel()
+			f := windowsFixture(t)
+			f.write(t, "input/neoviolet.exe", "\t"+label+" LIBOPENMPT.dll\r\n\t"+label+" Runtime.DLL\r\n")
+			f.write(t, "runtime/runtime.dll", "runtime fixture\n")
+			output, err := packageWindows(t, f)
+			if err != nil {
+				t.Fatalf("import label %q: %v\n%s", label, err, output)
+			}
+			if got := f.read(t, "packages/windows/runtime.dll"); got != "runtime fixture\n" {
+				t.Fatalf("incorrect packaged dependency: %q", got)
+			}
+		})
+	}
+}
+
 func TestWindowsPackageFailurePreservesDistribution(t *testing.T) {
 	for _, name := range []string{"missing-exe", "missing-openmpt", "missing-dll", "openmpt-import",
 		"objdump", "copy", "publish"} {
