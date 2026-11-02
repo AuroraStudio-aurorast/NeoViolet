@@ -1,228 +1,86 @@
-mod app;
-mod backend;
-mod components;
-mod config;
-mod desktop_lyrics;
-mod dracula_theme;
-mod drop_paste;
-mod ipc;
-mod menus;
-mod neo_violet_app;
-#[cfg(target_os = "macos")]
-mod open_files;
-mod platform;
-mod state;
-mod terminal;
-mod theme_colors;
-mod util;
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
-use gpui::*;
-#[cfg(target_os = "macos")]
-use std::sync::OnceLock;
-use std::sync::{Arc, Mutex};
-use yororen_ui::assets::UiAsset;
+use iced::widget::{container, text};
+use iced::{Element, Length, Subscription, Task, Theme};
+use iced_term::{Terminal, TerminalView, actions::Action, settings};
 
-use app::TerminalApp;
-use neo_violet_app::NeoVioletApp;
-use state::AppState;
+fn main() -> iced::Result {
+    iced::application(App::boot, App::update, App::view)
+        .title("NeoViolet")
+        .theme(Theme::Dark)
+        .window_size((1100.0, 720.0))
+        .subscription(App::subscription)
+        .run()
+}
 
-fn main() {
-    // Sync macOS launch environment (runs at most once, before any threads).
-    #[cfg(target_os = "macos")]
-    {
-        static ENV_SYNC: OnceLock<()> = OnceLock::new();
-        ENV_SYNC.get_or_init(|| {
-            let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
-            if let Ok(output) = std::process::Command::new(&shell)
-                .args(["-l", "-c", "env -0"])
-                .output()
-                && output.status.success()
-            {
-                for entry in output.stdout.split(|b| *b == 0) {
-                    if entry.is_empty() {
-                        continue;
-                    }
-                    let Some(eq) = entry.iter().position(|b| *b == b'=') else {
-                        continue;
-                    };
-                    let Ok(key) = std::str::from_utf8(&entry[..eq]) else {
-                        continue;
-                    };
-                    let Ok(value) = std::str::from_utf8(&entry[eq + 1..]) else {
-                        continue;
-                    };
-                    let should_import = matches!(
-                        key,
-                        "PATH"
-                            | "LANG"
-                            | "LC_ALL"
-                            | "LC_CTYPE"
-                            | "LC_MESSAGES"
-                            | "LC_MONETARY"
-                            | "LC_NUMERIC"
-                            | "LC_TIME"
-                            | "SHELL"
-                            | "HOME"
-                            | "HOMEBREW_PREFIX"
-                            | "HOMEBREW_CELLAR"
-                            | "HOMEBREW_REPOSITORY"
-                    );
-                    if should_import {
-                        unsafe {
-                            std::env::set_var(key, value);
-                        }
-                    }
-                }
-            }
-        });
-    }
+struct App {
+    terminal: Result<Terminal, String>,
+}
 
-    env_logger::init();
-    let gui_config = config::load_or_create();
-    let user_args: Vec<String> = std::env::args().skip(1).collect();
+#[derive(Debug, Clone)]
+enum Message {
+    Terminal(iced_term::Event),
+}
 
-    let app = Application::new().with_assets(UiAsset);
-
-    // ── Shared pending-file-paths store ──
-    // On macOS, `on_open_urls` fires before/during `run()` and feeds file
-    // paths here. On other platforms it stays empty: in-window drops are
-    // handled by the root element's `on_drop` and are pasted in, and startup
-    // files come from this process's own CLI args.
-    let pending_urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-
-    // ── macOS: handle files dropped onto Dock icon / opened via Finder ──
-    #[cfg(target_os = "macos")]
-    {
-        let pending = pending_urls.clone();
-        app.on_open_urls(move |urls| {
-            let paths = open_files::extract_file_paths(&urls);
-            if !paths.is_empty() {
-                log::info!("[open_urls] received {} file(s)", paths.len());
-                if let Ok(mut guard) = pending.lock() {
-                    *guard = paths;
-                }
-            }
-        });
-    }
-    #[cfg(target_os = "macos")]
-    app.on_reopen(move |_cx: &mut App| {
-        log::info!("[reopen] app re-opened via Dock / Finder");
-    });
-
-    app.run(move |cx: &mut App| {
-        // Renderer + theme: one call installs the global theme and registers the
-        // renderers behind every headless component.
-        yororen_ui::renderer::themes::install_with(cx, dracula_theme::dracula_theme());
-
-        // Text-input keymap, idempotent; dialogs only ever need the text input.
-        yororen_ui::headless::text_input::init(cx);
-
-        // Locale: the English catalog installs as its own crate.
-        yororen_ui::locale_en::install(cx);
-
-        // AppState — seed with the shared pending-urls handle so that
-        // NeoVioletApp can pick up late-arriving open-file events.
-        {
-            let mut state = AppState::new(gui_config.clone(), user_args.clone());
-            state.pending_file_paths = pending_urls.clone();
-            cx.set_global(state);
-        }
-
-        // Menu setup
-        menus::setup(cx, gui_config.neoviolet_path.as_deref());
-
-        // Open window
-        let titlebar_opts = Some(TitlebarOptions {
-            title: Some("NeoViolet".into()),
-            appears_transparent: cfg!(target_os = "macos"),
-            traffic_light_position: None,
-        });
-
-        let config_opacity = gui_config.opacity.clamp(0.1, 1.0);
-        let window_background = if config_opacity < 1.0 {
-            WindowBackgroundAppearance::Transparent
-        } else {
-            WindowBackgroundAppearance::Opaque
-        };
-
-        let opened = cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::new(
-                    point(px(0.0), px(0.0)),
-                    size(
-                        px(gui_config.window_width as f32),
-                        px(gui_config.window_height as f32),
-                    ),
-                ))),
-                titlebar: titlebar_opts,
-                window_background,
+impl App {
+    fn boot() -> (Self, Task<Message>) {
+        #[cfg(unix)]
+        let program = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
+        #[cfg(windows)]
+        let program = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into());
+        let terminal = Terminal::new(
+            1,
+            settings::Settings {
+                backend: settings::BackendSettings {
+                    program,
+                    env: std::collections::HashMap::from([
+                        ("TERM".into(), "xterm-256color".into()),
+                        ("COLORTERM".into(), "truecolor".into()),
+                    ]),
+                    ..Default::default()
+                },
                 ..Default::default()
             },
-            move |window, cx| {
-                let _args = user_args.clone();
+        )
+        .map_err(|error| format!("Could not start terminal: {error}"));
+        let focus = terminal
+            .as_ref()
+            .map(|terminal| TerminalView::focus(terminal.widget_id().clone()))
+            .unwrap_or_else(|_| Task::none());
+        (Self { terminal }, focus)
+    }
 
-                window.on_window_should_close(cx, move |w, cx| {
-                    let already_exited = {
-                        let state = cx.global::<AppState>();
-                        *state.show_exit_error.lock().unwrap()
-                    };
-                    if already_exited {
-                        return true;
-                    }
-                    let eid = {
-                        let state = cx.global::<AppState>();
-                        *state.show_close.lock().unwrap() = true;
-                        *state.root_entity_id.lock().unwrap()
-                    };
-                    if let Some(eid) = eid {
-                        cx.notify(eid);
-                    }
-                    w.refresh();
-                    false
-                });
+    fn subscription(&self) -> Subscription<Message> {
+        self.terminal
+            .as_ref()
+            .map(|terminal| terminal.subscription().map(Message::Terminal))
+            .unwrap_or_else(|_| Subscription::none())
+    }
 
-                // ── Cold-start hand-off ──
-                // Files opened before this window existed have no PTY to be
-                // pasted into yet, so they go to the spawn as arguments
-                // instead. Appended, not assigned: `launch_args` also holds
-                // this process's own CLI args, which the TUI still needs. Both
-                // locks are released before `cx.new` runs.
+    fn update(&mut self, message: Message) -> Task<Message> {
+        match message {
+            Message::Terminal(iced_term::Event::BackendCall(_, command)) => {
+                if let Ok(terminal) = &mut self.terminal
+                    && matches!(
+                        terminal.handle(iced_term::Command::ProxyToBackend(command)),
+                        Action::Shutdown
+                    )
                 {
-                    let state = cx.global::<AppState>();
-                    let paths: Vec<String> =
-                        state.pending_file_paths.lock().unwrap().drain(..).collect();
-                    if !paths.is_empty() {
-                        state
-                            .launch_args
-                            .lock()
-                            .unwrap()
-                            .extend(drop_paste::launch_args_for(&paths));
-                    }
+                    return iced::exit();
                 }
-
-                let terminal_child = cx.new(TerminalApp::new);
-                cx.global::<AppState>()
-                    .terminal_child
-                    .lock()
-                    .unwrap()
-                    .replace(terminal_child.downgrade());
-
-                let root_entity =
-                    cx.new(|cx| NeoVioletApp::new(terminal_child, config_opacity, cx));
-                cx.global::<AppState>()
-                    .root_entity_id
-                    .lock()
-                    .unwrap()
-                    .replace(root_entity.entity_id());
-                root_entity
-            },
-        );
-        if let Err(err) = opened {
-            // With no window there is nothing left to drive the run loop, so
-            // report and quit rather than unwinding through the callback with a
-            // backtrace.
-            log::error!("[gui] could not open the main window: {err}");
-            cx.quit();
+            }
         }
-    });
+        Task::none()
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        let content = match &self.terminal {
+            Ok(terminal) => TerminalView::show(terminal).map(Message::Terminal),
+            Err(error) => text(error).into(),
+        };
+        container(content)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into()
+    }
 }

@@ -1,0 +1,14 @@
+[
+  {
+    "name": "iced_term",
+    "url": "https://api.github.com/repos/kemokempo/iced_term/tarball/230945e443c7bded8eac0786240210a51a0e8303",
+    "sha256": "7548cb6860d5f1c2ef834cbde3c107537f9b094cdb31154058e784e413a3e7c5",
+    "patch": "iced_term.patch"
+  },
+  {
+    "name": "winit",
+    "url": "https://static.crates.io/crates/winit/winit-0.30.13.crate",
+    "sha256": "a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d",
+    "patch": "winit.patch"
+  }
+]

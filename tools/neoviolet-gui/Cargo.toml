@@ -2,23 +2,16 @@
 name = "neoviolet-gui"
 version = "0.1.0"
 edition = "2024"
-description = "Native GUI wrapper for NeoViolet terminal music player"
-license = "GPL-3.0-or-later"
+description = "Iced desktop terminal for NeoViolet"
+license = "MIT"
+publish = false
 
 [dependencies]
-gpui = { package = "gpui-ce", version = "0.3", features = ["runtime_shaders"] }
-yororen_ui = "0.3"
-alacritty_terminal = "0.26"
-portable-pty = "0.9"
-anyhow = "1"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = "1"
-dirs = "7"
-fontdb = "0.24"
-log = "0.4"
-env_logger = "0.11"
-smol = "2"
+iced = { version = "=0.14.0", features = ["tokio"] }
+iced_term = { path = "../../.build/gui-deps/iced_term" }
+
+[patch.crates-io]
+winit = { path = "../../.build/gui-deps/winit" }
 
 [profile.release]
 opt-level = 3

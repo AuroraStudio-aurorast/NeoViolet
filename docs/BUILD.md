@@ -108,32 +108,30 @@ build without launching, or `make build` to build all components, including the 
 
 ## GUI (neoviolet-gui)
 
-A native desktop wrapper around the same player, built with Rust (`gpui-ce` + `yororen-ui`).
+A native desktop wrapper around the same player, built with Rust (`Iced` + `iced_term`).
 
 ### GUI Prerequisites
 
+The Make targets prepare the pinned patched dependencies automatically. The first
+build needs network access and Git; source archives are checked against SHA-256 and
+reused from the OS user cache. Generated sources live in `.build/gui-deps`.
+See [dependency sources](../tools/neoviolet-gui/deps/README.md) for the pins and patches.
+
 In addition to the [core prerequisites](#prerequisites):
 
-**Linux** — X11/Wayland development libraries. The GUI's build scripts look up `x11`, `wayland-client`,
-`fontconfig` and `freetype2` through `pkg-config`, and its build dependency `bindgen` needs libclang:
+**Linux** — the Iced window backend needs X11 or Wayland and xkbcommon. The CI
+workflow records the package set used for official builds. For development:
 
 ```bash
 # Debian / Ubuntu
-sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
-                     libx11-dev libwayland-dev libfontconfig1-dev \
-                     llvm-dev libclang-dev pkg-config
+sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
 
 # Fedora
-sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel \
-                 libX11-devel wayland-devel fontconfig-devel \
-                 clang-devel llvm-devel pkgconf
+sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel pkgconf
 
 # Arch Linux
-sudo pacman -S libxcb libxkbcommon libxkbcommon-x11 \
-               libx11 wayland fontconfig clang pkgconf
+sudo pacman -S libxcb libxkbcommon libxkbcommon-x11 pkgconf
 ```
-
-`freetype2` itself is optional: `freetype-sys` builds its own copy when the system library is absent.
 
 **macOS** — nothing extra; the GUI links only system frameworks.
 
@@ -536,18 +534,8 @@ sudo dnf install pkgconf        # Fedora
 sudo pacman -S pkgconf          # Arch Linux
 ```
 
-### Metal Shader Compilation (macOS)
+### GUI renderer (macOS)
 
-```
-error: failed to run `xcrun metal` …
-```
-
-`gpui-ce` compiles its shaders ahead of time by default, which requires the full Xcode Metal Toolchain.
-`make gui` avoids that on macOS by passing `--no-default-features -F gpui/runtime_shaders`, so shaders
-are compiled at run time through the system Metal framework instead. Use the Makefile entry points
-so those flags are applied automatically:
-
-```bash
-make gui
-make gui/debug
-```
+The Iced GUI uses the system Metal backend through wgpu. It does not require the
+former GPUI shader flags or a separate Metal shader compilation step. Build it
+through `make gui` or `make gui/debug`.

@@ -74,15 +74,10 @@ ifeq ($(GOOS),windows)
   APECLI_RESOURCE_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-rust windows-resource/apecli-release)
   APECLI_DEBUG_RESOURCE_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-rust windows-resource/apecli-debug)
 endif
-# Use runtime_shaders on macOS to avoid Metal Toolchain requirement.
-# Shaders compile at runtime via system Metal framework (no xcrun metal needed).
 GUI_FEATURES :=
-ifeq ($(GOOS),darwin)
-  GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
-endif
 
 .PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
-.PHONY: run run/gui gui gui/debug apetools apetools/debug
+.PHONY: run run/gui gui gui/debug gui/deps apetools apetools/debug
 .PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
 .PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
 .PHONY: install install/desktop install/icons install/all help
@@ -112,7 +107,7 @@ build/debug: $(GO_DEBUG_RESOURCE_DEPS)
 
 # Universal macOS build: every slice is compiled here and merged with lipo, so a
 # single Apple silicon host produces one artifact that runs on both CPUs.
-build/macos:
+build/macos: gui/deps
 	@if [ "$(GOOS)" != darwin ]; then \
 		echo "error: build/macos is macOS only" >&2; exit 1; \
 	fi
@@ -136,9 +131,9 @@ build/macos:
 			$(GUI_DIR)/target/x86_64-apple-darwin/release/neoviolet-gui -output $(GUI_OUT)
 	@echo "Built $(OUTPUT), $(GUI_OUT) and apecli for arm64 + amd64"
 
-# --- GUI (Rust + gpui-ce) ---
+# --- GUI (Rust + Iced) ---
 
-gui: $(GUI_ICON_DEPS)
+gui: gui/deps $(GUI_ICON_DEPS)
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, GUI will not be built"; \
 	else \
@@ -146,12 +141,15 @@ gui: $(GUI_ICON_DEPS)
 		cp "$(GUI_BIN)" "$(GUI_OUT)"; \
 	fi
 
-gui/debug: $(GUI_DEBUG_ICON_DEPS)
+gui/debug: gui/deps $(GUI_DEBUG_ICON_DEPS)
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, GUI will not be built"; \
 	else \
 		( cd $(GUI_DIR) && $(GUI_CARGO) $(GUI_FEATURES) $(GUI_LINK_FLAGS) ) || exit 1; \
 	fi
+
+gui/deps:
+	@if [ $(HAS_CARGO) -eq 1 ]; then GOOS= GOARCH= $(GO) run ./tools/gui-deps -root "$(CURDIR)"; fi
 
 # --- APE toolchain (Rust) ---
 
@@ -244,7 +242,7 @@ test/verbose:
 test/short:
 	$(GO) test -short $(TEST_FLAGS) ./...
 
-test/rust:
+test/rust: gui/deps
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, skipping Rust tests"; \
 	else \
@@ -252,7 +250,7 @@ test/rust:
 		( cd $(GUI_DIR) && cargo test ) || exit 1; \
 	fi
 
-lint/rust:
+lint/rust: gui/deps
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, skipping Rust lint"; \
 	else \
@@ -413,8 +411,9 @@ help:
 	@echo "  tidy               Run go mod tidy"
 	@echo "  tidy/check         Read-only go mod tidy -diff (what CI runs)"
 	@echo ""
-	@echo "GUI (gpui-ce + yororen-ui):"
+	@echo "GUI (Iced + iced_term):"
 	@echo "  gui                Build neoviolet-gui (cargo required)"
+	@echo "  gui/deps           Prepare checksum-pinned GUI sources and local patches"
 	@echo "  gui/debug          Build neoviolet-gui in debug mode"
 	@echo "  run/gui ARGS=...   Build TUI, apecli and GUI, then run GUI (cargo required)"
 	@echo ""

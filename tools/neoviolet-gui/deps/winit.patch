@@ -1,0 +1,12 @@
+--- a/src/platform_impl/macos/view.rs
++++ b/src/platform_impl/macos/view.rs
+@@ -888,6 +888,9 @@
+ 
+         // Clear markedText
+         *self.ivars().marked_text.borrow_mut() = NSMutableAttributedString::new();
++        if let Some(input_context) = self.inputContext() {
++            input_context.discardMarkedText();
++        }
+ 
+         if self.ivars().ime_state.get() != ImeState::Disabled {
+             self.ivars().ime_state.set(ImeState::Disabled);
