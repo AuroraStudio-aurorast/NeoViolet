@@ -1,8 +1,11 @@
 BINARY  ?= neoviolet
 GO      ?= go
-GOOS    ?= $(shell $(GO) env GOOS)
+WINDOWS_HOST := $(filter Windows_NT,$(OS))$(filter MSYS% MINGW% CYGWIN%,$(shell uname -s))
+GOOS    ?= $(if $(WINDOWS_HOST)$(findstring -windows-,$(CARGO_BUILD_TARGET)),windows,$(shell $(GO) env GOOS))
 GOARCH  ?= $(shell $(GO) env GOARCH)
+export GOOS GOARCH
 OUTPUT   = $(BINARY)
+PREFIX  ?= /usr/local
 
 ifeq ($(GOOS),windows)
 	OUTPUT := $(OUTPUT).exe
@@ -21,13 +24,42 @@ TEST_FLAGS  ?= -count=1
 MACOS_MIN ?= 13.0
 
 HAS_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
+RUST_TARGET = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET),$(shell rustc -vV | sed -n 's/^host: //p'))
+RUST_TARGET_SUBDIR = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET)/)
 
 APECLI_DIR := tools/apecli
-APECLI_BIN := $(APECLI_DIR)/target/release/apecli$(shell [ "$(GOOS)" = windows ] && echo ".exe")
+APECLI_BIN := $(APECLI_DIR)/target/$(RUST_TARGET_SUBDIR)release/apecli$(shell [ "$(GOOS)" = windows ] && echo ".exe")
 
 GUI_DIR   := tools/neoviolet-gui
 GUI_OUT   := neoviolet-gui$(shell [ "$(GOOS)" = windows ] && echo ".exe")
-GUI_BIN   := $(GUI_DIR)/target/release/neoviolet-gui$(shell [ "$(GOOS)" = windows ] && echo ".exe")
+GUI_BIN   := $(GUI_DIR)/target/$(RUST_TARGET_SUBDIR)release/neoviolet-gui$(shell [ "$(GOOS)" = windows ] && echo ".exe")
+GUI_CARGO := cargo build
+GUI_LINK_FLAGS :=
+GO_ICON :=
+GUI_ICON_DEPS :=
+ifeq ($(GOOS),windows)
+  LLVM_RC ?= llvm-rc
+  LLVM_CVTRES ?= llvm-cvtres
+  WINDRES ?= windres
+  WINDOWS_MACHINE_386 := X86
+  WINDOWS_MACHINE_amd64 := X64
+  WINDOWS_MACHINE_arm64 := ARM64
+  WINDOWS_FORMAT_386 := pe-i386
+  WINDOWS_FORMAT_amd64 := pe-x86-64
+  WINDOWS_RUST_ARCH_386 := i686
+  WINDOWS_RUST_ARCH_amd64 := x86_64
+  WINDOWS_RUST_ARCH_arm64 := aarch64
+  # Cargo tracks link arguments, so a changed icon must also change the object path.
+  WINDOWS_ICON_HASH := $(shell cksum assets/icons/neoviolet.ico assets/icons/neoviolet.rc | cksum | cut -d ' ' -f 1)
+  WINDOWS_ICON := .build/windows/icon_$(GOARCH)_$(WINDOWS_ICON_HASH).o
+  GO_ICON := cmd/$(BINARY)/icon_windows_$(GOARCH).syso
+  GUI_CARGO := cargo rustc
+  # Native Windows Rust tools cannot read Cygwin's /cygdrive/... paths.
+  WINDOWS_ICON_LINK_PATH = $(shell if command -v cygpath >/dev/null 2>&1; then \
+    cygpath -m "$(abspath $(WINDOWS_ICON))"; else printf '%s' "$(abspath $(WINDOWS_ICON))"; fi)
+  GUI_LINK_FLAGS = -- -C "link-arg=$(WINDOWS_ICON_LINK_PATH)"
+  GUI_ICON_DEPS := $(if $(filter 1,$(HAS_CARGO)),check/windows-gui $(WINDOWS_ICON))
+endif
 # Use runtime_shaders on macOS to avoid Metal Toolchain requirement.
 # Shaders compile at runtime via system Metal framework (no xcrun metal needed).
 GUI_FEATURES :=
@@ -39,7 +71,8 @@ endif
 .PHONY: run run/gui gui gui/debug apetools apetools/debug
 .PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
 .PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
-.PHONY: install help
+.PHONY: install install/desktop install/icons install/all help
+.PHONY: check/windows-gui
 
 all: build
 
@@ -47,13 +80,13 @@ all: build
 
 build: build/tui gui
 
-build/tui: apetools
+build/tui: apetools $(GO_ICON)
 	$(GO) build $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
-build/race: check/cgo
+build/race: check/cgo $(GO_ICON)
 	$(GO) build -race $(BUILD_FLAGS) -o $(OUTPUT) ./cmd/$(BINARY)
 
-build/debug:
+build/debug: $(GO_ICON)
 	$(GO) build -gcflags="all=-N -l" -o $(OUTPUT) ./cmd/$(BINARY)
 
 # Universal macOS build: every slice is compiled here and merged with lipo, so a
@@ -84,19 +117,19 @@ build/macos:
 
 # --- GUI (Rust + gpui-ce) ---
 
-gui:
+gui: $(GUI_ICON_DEPS)
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, GUI will not be built"; \
 	else \
-		( cd $(GUI_DIR) && cargo build --release $(GUI_FEATURES) ) || exit 1; \
+		( cd $(GUI_DIR) && $(GUI_CARGO) --release $(GUI_FEATURES) $(GUI_LINK_FLAGS) ) || exit 1; \
 		cp "$(GUI_BIN)" "$(GUI_OUT)"; \
 	fi
 
-gui/debug:
+gui/debug: $(GUI_ICON_DEPS)
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, GUI will not be built"; \
 	else \
-		( cd $(GUI_DIR) && cargo build $(GUI_FEATURES) ) || exit 1; \
+		( cd $(GUI_DIR) && $(GUI_CARGO) $(GUI_FEATURES) $(GUI_LINK_FLAGS) ) || exit 1; \
 	fi
 
 # --- APE toolchain (Rust) ---
@@ -118,6 +151,39 @@ apetools/debug:
 
 build/osxappbundle:
 	@tools/osx-appbundle-builder/build.sh
+
+# --- Windows executable icons ---
+
+ifeq ($(GOOS),windows)
+$(WINDOWS_ICON): assets/icons/neoviolet.rc assets/icons/neoviolet.ico
+	@if [ -z "$(WINDOWS_MACHINE_$(GOARCH))" ]; then \
+		echo "error: unsupported Windows icon architecture: $(GOARCH)" >&2; exit 1; \
+	fi
+	@mkdir -p .build/windows
+	@set -eu; tmp=$$(mktemp -d .build/windows/tmp.XXXXXX); trap 'rm -rf "$$tmp"' EXIT; \
+		if command -v "$(LLVM_RC)" >/dev/null 2>&1 && command -v "$(LLVM_CVTRES)" >/dev/null 2>&1; then \
+			"$(LLVM_RC)" -no-preprocess -FO "$$tmp/icon.res" assets/icons/neoviolet.rc; \
+			"$(LLVM_CVTRES)" -machine:$(WINDOWS_MACHINE_$(GOARCH)) -timestamp:0 "-out:$$tmp/icon.o" "$$tmp/icon.res"; \
+		elif command -v "$(WINDRES)" >/dev/null 2>&1; then \
+			if [ -z "$(WINDOWS_FORMAT_$(GOARCH))" ]; then \
+				echo "error: Windows $(GOARCH) icons need llvm-rc + llvm-cvtres" >&2; exit 1; \
+			fi; \
+			"$(WINDRES)" -F $(WINDOWS_FORMAT_$(GOARCH)) -i assets/icons/neoviolet.rc -O coff -o "$$tmp/icon.o"; \
+		else \
+			echo "error: Windows icons need llvm-rc + llvm-cvtres, or windres (override LLVM_RC/LLVM_CVTRES/WINDRES)" >&2; \
+			exit 1; \
+		fi; \
+		mv "$$tmp/icon.o" "$@"
+
+$(GO_ICON): $(WINDOWS_ICON)
+	cp "$<" "$@"
+
+check/windows-gui:
+	@case "$(RUST_TARGET)" in \
+		$(WINDOWS_RUST_ARCH_$(GOARCH))-pc-windows-*) ;; \
+		*) echo "error: Windows GUI needs a Rust target matching GOARCH=$(GOARCH); set CARGO_BUILD_TARGET" >&2; exit 1 ;; \
+	esac
+endif
 
 # --- Run ---
 
@@ -245,6 +311,8 @@ tidy/check:
 clean:
 	rm -f $(BINARY) $(BINARY).exe apecli apecli.exe neoviolet-gui neoviolet-gui.exe $(GUI_OUT)
 	rm -f coverage.out coverage.html
+	rm -f cmd/$(BINARY)/icon_windows_*.syso
+	rm -rf .build/windows
 
 clean/all: clean
 	@if [ $(HAS_CARGO) -eq 0 ]; then \
@@ -256,21 +324,21 @@ clean/all: clean
 
 # --- Install ---
 
-install:
+install: $(GO_ICON)
 	$(GO) install $(BUILD_FLAGS) ./cmd/$(BINARY)
 
 install/desktop:
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/applications
-	cp neoviolet.desktop $(DESTDIR)$(PREFIX)/share/applications/
+	@install -d "$(DESTDIR)$(PREFIX)/share/applications"
+	install -m 644 neoviolet.desktop "$(DESTDIR)$(PREFIX)/share/applications/"
 	@echo "Install desktop file to $(DESTDIR)$(PREFIX)/share/applications/"
 
 install/icons:
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
-	@mkdir -p $(DESTDIR)$(PREFIX)/share/icons/hicolor/48x48/apps
-	@echo "Place neoviolet.svg in share/icons/hicolor/scalable/apps/"
-	@echo "Place neoviolet.png in share/icons/hicolor/48x48/apps/"
+	@install -d "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps"
+	@install -d "$(DESTDIR)$(PREFIX)/share/pixmaps"
+	install -m 644 assets/icons/neoviolet.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/"
+	install -m 644 assets/icons/neoviolet.png "$(DESTDIR)$(PREFIX)/share/pixmaps/"
 
-install/all: install install/desktop
+install/all: install install/desktop install/icons
 
 # --- Help ---
 
@@ -324,6 +392,6 @@ help:
 	@echo "  clean/all          Also remove Rust compilation caches (when cargo is available)"
 	@echo "  install            Install binary to GOPATH/bin"
 	@echo "  install/desktop    Install the .desktop entry"
-	@echo "  install/icons      Print where to place the icons"
-	@echo "  install/all        install + install/desktop"
+	@echo "  install/icons      Install Linux SVG and PNG icons"
+	@echo "  install/all        install + install/desktop + install/icons"
 	@echo "  help               Show this message"

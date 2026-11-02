@@ -100,8 +100,8 @@ build without launching, or `make build` to build all components, including the 
 | `clean/all`          | Also clear both Rust compilation caches (when cargo is available)                        |
 | `install`            | Install binary to `$GOPATH/bin`                                                            |
 | `install/desktop`    | Install the `.desktop` entry                                                               |
-| `install/icons`      | Print where to place the icons                                                             |
-| `install/all`        | `install` + `install/desktop`                                                              |
+| `install/icons`      | Install Linux SVG and PNG icons                                                            |
+| `install/all`        | `install` + `install/desktop` + `install/icons`                                            |
 | `help`               | List the available targets                                                                 |
 
 ---
@@ -287,10 +287,10 @@ Rust come from their own installers.
 
 ```bash
 # CLANG64 (amd64)
-pacman -S --needed mingw-w64-clang-x86_64-clang make
+pacman -S --needed mingw-w64-clang-x86_64-clang mingw-w64-clang-x86_64-llvm make
 
 # CLANGARM64 (arm64)
-pacman -S --needed mingw-w64-clang-aarch64-clang make
+pacman -S --needed mingw-w64-clang-aarch64-clang mingw-w64-clang-aarch64-llvm make
 ```
 
 The `clang` package also brings the C++ runtime (`libc++.dll`, `libunwind.dll`) that the Rust GUI
@@ -316,6 +316,22 @@ export CGO_ENABLED=0
 export CC=clang
 export CXX=clang++
 make build
+```
+
+**Icon tools:** Use `llvm-rc` and `llvm-cvtres`, or GNU `windres` for x86/x86_64. Arm64 requires
+the LLVM tools. Set `LLVM_RC`, `LLVM_CVTRES` or `WINDRES` for tools outside `PATH`.
+
+**Cross compilation:** Install the Rust target, linker and Windows libraries for the target
+architecture. Set `GOOS=windows`, `GOARCH` and a matching `CARGO_BUILD_TARGET`:
+
+```bash
+GOOS=windows GOARCH=amd64 CARGO_BUILD_TARGET=x86_64-pc-windows-gnu make build
+```
+
+Go player only:
+
+```bash
+GOOS=windows GOARCH=amd64 CGO_ENABLED=0 make build/tui HAS_CARGO=0
 ```
 
 **Optional runtime library:** `pacman -S --needed mingw-w64-clang-x86_64-libopenmpt`, or the `aarch64`
@@ -422,9 +438,14 @@ own toolchains; `CGO_ENABLED=0` does not remove those requirements from a full b
 ```bash
 make install            # binary to $GOPATH/bin
 make install/desktop    # Linux .desktop entry
-make install/icons      # prints where to place the icons
-make install/all        # install + install/desktop
+make install/icons      # Linux SVG and PNG icons
+make install/all        # install + install/desktop + install/icons
 ```
+
+The Linux desktop entry and icons install under `$(PREFIX)/share`, with `PREFIX` defaulting to
+`/usr/local`. The SVG goes in `icons/hicolor/scalable/apps/`; the full-resolution PNG goes in
+`pixmaps/` as a fallback. Override `PREFIX` and optionally set `DESTDIR` to stage these files for
+packaging. These variables do not affect `make install`, which uses Go's binary install directory.
 
 ---
 
