@@ -32,7 +32,8 @@ How to build NeoViolet from source.
 - **`make`** — the only build entry point
 - **Rust with cargo** — builds `apecli` and `neoviolet-gui`. Optional for TUI development: without it,
   `make run`, `make build/tui` and `make build` skip Rust components with a warning and still build
-  `neoviolet`. `make run/gui`, `make build/macos` and macOS app bundling require cargo.
+  `neoviolet`. `make run/gui`, `make build/macos` and `make build/osxappbundle` require cargo.
+  Packaging already built binaries does not require cargo.
   Install via [rustup](https://rustup.rs/).
 - **C compiler** — for race builds, race tests and `make check` (the race detector requires cgo), and
   for the Rust components' native dependencies. The Go player uses no CGo bindings; CI release builds
@@ -74,6 +75,7 @@ build without launching, or `make build` to build all components, including the 
 | `build/debug`        | Build Go player only with debug symbols (compatible with `dlv`)                           |
 | `build/macos`        | Universal binaries for Apple silicon and Intel (`arm64` + `amd64`, merged with `lipo`)     |
 | `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
+| `package/osxappbundle` | Package existing universal binaries into a macOS app bundle                             |
 | `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
 | `apetools/debug`     | Build `apecli` in debug mode                                                               |
 | `gui`                | Build `neoviolet-gui` GUI wrapper (release mode)                                           |
@@ -82,6 +84,7 @@ build without launching, or `make build` to build all components, including the 
 | `run ARGS=...`       | Build TUI and optional `apecli`, then launch TUI                                          |
 | `test`               | Run Go and Rust tests (Rust skipped without cargo)                                        |
 | `test/go`            | Run Go tests only                                                                         |
+| `test/build`         | Run build and packaging contract tests on Linux/macOS                                     |
 | `test/race`          | Run Go tests with race detector (requires cgo and a C compiler)                            |
 | `test/verbose`       | Run Go tests verbosely (`-v`)                                                              |
 | `test/short`         | Run short Go tests (skips integration)                                                     |
@@ -159,12 +162,30 @@ release binary in the repository root.
 
 ```bash
 make build/osxappbundle
+make package/osxappbundle VERSION=v1.2.3 BUILD=42  # Existing universal binaries only
 ```
 
-Packages `neoviolet`, `neoviolet-gui` and `apecli` into `dist/NeoViolet GUI.app/`. The bundle script
-(`tools/osx-appbundle-builder/build.sh`) writes `Info.plist`, picks the icon (compiling it with
-`actool` only when Xcode 26+ is installed, otherwise using the assets committed to the repo) and signs
-the bundle ad hoc.
+`build/osxappbundle` builds universal binaries before packaging. `package/osxappbundle` consumes
+`neoviolet`, `neoviolet-gui` and `apecli` from `PACKAGE_INPUT_DIR` (default: the repository root),
+checks that each contains both architectures, and writes `PACKAGE_OUTPUT_DIR/NeoViolet GUI.app/`
+(default: `dist/NeoViolet GUI.app/`). For example:
+
+```bash
+make package/osxappbundle PACKAGE_INPUT_DIR=/path/to/artifacts \
+  PACKAGE_OUTPUT_DIR=/path/to/packages VERSION=v1.2.3 BUILD=42 MACOS_MIN=13.0
+```
+
+Make supplies `VERSION`, `BUILD`, `MACOS_MIN` and `SIGN_IDENTITY` to the bundle script; it no longer
+reads Makefile text, derives its own version or starts compilation. When packaging saved artifacts,
+set `VERSION` and `BUILD` to their matching metadata. `build/osxappbundle` uses the same resolved
+version for its build and bundle. Use the Make targets in place of calling the script directly.
+The one-step `build/osxappbundle` always packages its newly built root binaries; custom input
+directories apply to the package-only target.
+
+The script writes `Info.plist`, picks the icon (compiling it with `actool` only when Xcode 26+ is
+installed, otherwise using the committed assets), copies both licenses and signs the bundle ad hoc.
+Override `SIGN_IDENTITY` for an installed signing identity. It assembles in a temporary directory
+before replacing the final bundle; build, copy or signing failures leave an existing bundle intact.
 
 ---
 

@@ -1,6 +1,8 @@
 BINARY  ?= neoviolet
 GO      ?= go
 WINDOWS_HOST := $(filter Windows_NT,$(OS))$(filter MSYS% MINGW% CYGWIN%,$(shell uname -s))
+HOST_OS := $(if $(WINDOWS_HOST),windows,$(shell uname -s | tr '[:upper:]' '[:lower:]'))
+export HOST_OS
 GOOS    ?= $(if $(WINDOWS_HOST)$(findstring -windows-,$(CARGO_BUILD_TARGET)),windows,$(shell $(GO) env GOOS))
 GOARCH  ?= $(shell $(GO) env GOARCH)
 export GOOS GOARCH
@@ -12,6 +14,7 @@ ifeq ($(GOOS),windows)
 endif
 
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+export VERSION := $(VERSION)
 VERSION_LDFLAGS = -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=$(VERSION)
 LDFLAGS   = -s -w $(VERSION_LDFLAGS)
 BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
@@ -23,6 +26,13 @@ TEST_FLAGS  ?= -count=1
 # asset. The Go slices carry the toolchain's own default instead, so this must
 # not be set below it.
 MACOS_MIN ?= 13.0
+BUILD ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
+export BUILD := $(BUILD)
+SIGN_IDENTITY ?= -
+PACKAGE_INPUT_DIR ?= $(CURDIR)
+PACKAGE_OUTPUT_DIR ?= $(CURDIR)/dist
+export MACOS_MIN SIGN_IDENTITY PACKAGE_INPUT_DIR PACKAGE_OUTPUT_DIR
+
 
 HAS_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 RUST_TARGET = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET),$(shell rustc -vV | sed -n 's/^host: //p'))
@@ -81,6 +91,7 @@ ifeq ($(GOOS),darwin)
   GUI_FEATURES := --no-default-features -F gpui/runtime_shaders
 endif
 
+.PHONY: package/osxappbundle test/build check/macos
 .PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
 .PHONY: run run/gui gui gui/debug apetools apetools/debug
 .PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust
@@ -112,16 +123,7 @@ build/debug: $(GO_DEBUG_RESOURCE_DEPS)
 
 # Universal macOS build: every slice is compiled here and merged with lipo, so a
 # single Apple silicon host produces one artifact that runs on both CPUs.
-build/macos:
-	@if [ "$(GOOS)" != darwin ]; then \
-		echo "error: build/macos is macOS only" >&2; exit 1; \
-	fi
-	@if [ $(HAS_CARGO) -eq 0 ]; then \
-		echo "error: build/macos needs cargo for the GUI and apecli" >&2; exit 1; \
-	fi
-	@if [ ! -d "$$(rustc --print target-libdir --target x86_64-apple-darwin 2>/dev/null)" ]; then \
-		echo "error: build/macos needs the Intel target: rustup target add x86_64-apple-darwin" >&2; exit 1; \
-	fi
+build/macos: check/macos
 	@set -eu; tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
 		CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(BUILD_FLAGS) -o "$$tmp/arm64" ./cmd/$(BINARY); \
 		CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(BUILD_FLAGS) -o "$$tmp/amd64" ./cmd/$(BINARY); \
@@ -170,8 +172,12 @@ apetools/debug: $(APECLI_DEBUG_RESOURCE_DEPS)
 		( cd $(APECLI_DIR) && $(APECLI_CARGO) $(APECLI_LINK_FLAGS) ) || exit 1; \
 	fi
 
-build/osxappbundle:
-	@tools/osx-appbundle-builder/build.sh
+build/osxappbundle: build/macos
+	@$(MAKE) package/osxappbundle PACKAGE_INPUT_DIR="$(CURDIR)"
+
+package/osxappbundle:
+	@bash tools/osx-appbundle-builder/build.sh
+
 
 # --- Windows executable resources ---
 
@@ -234,6 +240,9 @@ test: test/go test/rust
 
 test/go:
 	$(GO) test $(TEST_FLAGS) ./...
+
+test/build:
+	$(GO) test $(TEST_FLAGS) ./tools/buildtest
 
 test/race: check/cgo
 	$(GO) test -race $(TEST_FLAGS) ./...
@@ -313,6 +322,17 @@ check/cgo:
 		echo "error: race targets need a working CC (see go env CC)" >&2; exit 1; \
 	}
 
+check/macos:
+	@if [ "$(HOST_OS)" != darwin ] || [ "$(GOOS)" != darwin ]; then \
+		echo "error: build/macos needs a macOS host and GOOS=darwin" >&2; exit 1; \
+	fi
+	@if [ "$(HAS_CARGO)" != 1 ] || ! command -v cargo >/dev/null 2>&1; then \
+		echo "error: build/macos needs cargo for the GUI and apecli" >&2; exit 1; \
+	fi
+	@command -v lipo >/dev/null
+	@sh tools/build/check-rust.sh darwin arm64 aarch64-apple-darwin
+	@sh tools/build/check-rust.sh darwin amd64 x86_64-apple-darwin
+
 check/linelength:
 	@fail=0; \
 	for f in $$(find . -type d \( -name .git -o -name .worktrees -o -name target \) -prune \
@@ -389,6 +409,7 @@ help:
 	@echo ""
 	@echo "macOS App Bundle:"
 	@echo "  build/osxappbundle    Build macOS .app bundle (macOS only)"
+	@echo "  package/osxappbundle  Package existing universal binaries (no compilation)"
 	@echo ""
 	@echo "Run:"
 	@echo "  run ARGS=...       Build TUI and optional apecli, then run TUI"
@@ -396,6 +417,7 @@ help:
 	@echo "Test:"
 	@echo "  test               Run Go and Rust tests (Rust skipped without cargo)"
 	@echo "  test/go            Run Go tests only"
+	@echo "  test/build         Run build and packaging contract tests (Unix hosts)"
 	@echo "  test/race          Run Go tests with race detector (requires cgo and CC)"
 	@echo "  test/verbose       Run Go tests verbosely"
 	@echo "  test/short         Run short Go tests (skips integration)"

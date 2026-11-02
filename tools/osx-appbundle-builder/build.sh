@@ -15,33 +15,54 @@ GUI_ASSETS="$PROJECT_ROOT/tools/neoviolet-gui/assets"
 APP_NAME="NeoViolet GUI"
 BUNDLE_ID="org.aurorast.neovioletgui"
 
-VERSION="${VERSION:-$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || echo "0.1.0")}"
-BUILD="${BUILD:-$(git -C "$PROJECT_ROOT" rev-list --count HEAD 2>/dev/null || echo "1")}"
-APP_DIR="$PROJECT_ROOT/dist/${APP_NAME}.app"
+: "${VERSION:?use make package/osxappbundle to supply VERSION}"
+: "${BUILD:?use make package/osxappbundle to supply BUILD}"
+: "${MACOS_MIN:?use make package/osxappbundle to supply MACOS_MIN}"
+: "${PACKAGE_INPUT_DIR:?missing PACKAGE_INPUT_DIR}"
+: "${PACKAGE_OUTPUT_DIR:?missing PACKAGE_OUTPUT_DIR}"
+INPUT_DIR="$(cd "$PACKAGE_INPUT_DIR" && pwd -P)"
+for bin in neoviolet-gui neoviolet apecli; do
+    if [[ ! -f "$INPUT_DIR/$bin" ]]; then
+        echo "error: missing input: $INPUT_DIR/$bin" >&2
+        exit 1
+    fi
+    lipo -verify_arch arm64 x86_64 "$INPUT_DIR/$bin"
+done
+
+mkdir -p "$PACKAGE_OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$PACKAGE_OUTPUT_DIR" && pwd -P)"
+FINAL_APP_DIR="$OUTPUT_DIR/${APP_NAME}.app"
+tmp="$(mktemp -d "$OUTPUT_DIR/.neoviolet-bundle.XXXXXX")"
+cleanup() {
+    status=$?
+    trap - EXIT
+    if [[ -e "$tmp/old" && ! -e "$FINAL_APP_DIR" ]]; then
+        if ! mv "$tmp/old" "$FINAL_APP_DIR"; then
+            echo "error: could not restore bundle; previous bundle is at $tmp/old" >&2
+            exit 1
+        fi
+    fi
+    rm -rf "$tmp"
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+APP_DIR="$tmp/new"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
-# The Makefile owns the minimum macOS version; read it from there so the icon
-# pipeline, the plist and the binaries cannot drift apart.
-MACOS_MIN="${MACOS_MIN:-$(sed -n 's/^MACOS_MIN ?= //p' "$PROJECT_ROOT/Makefile")}"
-MACOS_MIN="${MACOS_MIN:-13.0}"
 
 ICON_SRC="$GUI_ASSETS/NeoViolet.icon"
 ICON_NAME="NeoViolet"
 PRE_COMPILED="$GUI_ASSETS/pre-compiled"
 
-# ── Build ──────────────────────────────────────────────────────────────────
-echo "Building (make build/macos) …"
-cd "$PROJECT_ROOT"
-make build/macos
-
 # ── Bundle skeleton ────────────────────────────────────────────────────────
-rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 for bin in neoviolet-gui neoviolet apecli; do
-    cp "$PROJECT_ROOT/$bin" "$MACOS_DIR/"
+    cp "$INPUT_DIR/$bin" "$MACOS_DIR/"
 done
 
 cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GPL"
@@ -210,4 +231,8 @@ if command -v codesign >/dev/null 2>&1; then
   fi
 fi
 
-echo "$APP_DIR"
+if [[ -e "$FINAL_APP_DIR" ]]; then
+    mv "$FINAL_APP_DIR" "$tmp/old"
+fi
+mv "$APP_DIR" "$FINAL_APP_DIR"
+echo "$FINAL_APP_DIR"
