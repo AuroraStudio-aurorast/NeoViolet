@@ -38,6 +38,7 @@ Linked/reserved modulators are diagnosed and ignored.
 
 ## License
 
-MIT, reproduced verbatim in [LICENSE](LICENSE). The upstream copyright notices
-(Copyright (C) 2021 Nobuaki Tanaka for MeltySynth, Copyright (C) 2022 Nobuaki
-Tanaka for Go-MeltySynth) are retained there.
+MIT, See [ACKNOWLEDGEMENTS](../../../docs/ACKNOWLEDGEMENTS.md) for more details
+
+Copyright (C) 2021 Nobuaki Tanaka for MeltySynth
+Copyright (C) 2022 Nobuaki Tanaka for Go-MeltySynth
