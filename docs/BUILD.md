@@ -539,3 +539,9 @@ sudo pacman -S pkgconf          # Arch Linux
 The Iced GUI uses the system Metal backend through wgpu. It does not require the
 former GPUI shader flags or a separate Metal shader compilation step. Build it
 through `make gui` or `make gui/debug`.
+
+If the standalone GUI exits before printing any startup output and the macOS system
+log reports `load code signature error 2`, its executable may have been overwritten
+in place after an earlier run. `make gui` installs the binary by atomic replacement
+to avoid reusing the old file's cached signature. Rebuild with that target; no
+system security settings need to change.

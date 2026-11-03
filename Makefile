@@ -133,12 +133,16 @@ build/macos: gui/deps
 
 # --- GUI (Rust + Iced) ---
 
+# Replace the output inode so macOS does not reuse a previous Mach-O signature cache.
 gui: gui/deps $(GUI_ICON_DEPS)
-	@if [ $(HAS_CARGO) -eq 0 ]; then \
+	@set -eu; if [ $(HAS_CARGO) -eq 0 ]; then \
 		echo "Warning: cargo not found, GUI will not be built"; \
 	else \
 		( cd $(GUI_DIR) && $(GUI_CARGO) --release $(GUI_FEATURES) $(GUI_LINK_FLAGS) ) || exit 1; \
-		cp "$(GUI_BIN)" "$(GUI_OUT)"; \
+		gui_tmp="$(GUI_OUT).tmp.$$$$"; \
+		trap 'rm -f "$$gui_tmp"' EXIT; \
+		cp "$(GUI_BIN)" "$$gui_tmp"; \
+		mv -f "$$gui_tmp" "$(GUI_OUT)"; \
 	fi
 
 gui/debug: gui/deps $(GUI_DEBUG_ICON_DEPS)
