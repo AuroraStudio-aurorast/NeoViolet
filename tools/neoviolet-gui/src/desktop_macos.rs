@@ -62,6 +62,7 @@ impl Hash for Events {
 
 #[derive(Clone)]
 pub struct Desktop {
+    sender: mpsc::UnboundedSender<Event>,
     _menu: Menu,
     _delegate: Retained<FileDelegate>,
     events: Events,
@@ -195,6 +196,7 @@ impl Desktop {
         menu.init_for_nsapp();
         // Let AppKit maintain the window list and route standard window actions.
         window_menu.set_as_windows_menu_for_nsapp();
+        let native_sender = sender.clone();
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
             let action = match event.id.as_ref() {
                 "about" => Action::About,
@@ -216,6 +218,7 @@ impl Desktop {
             let _ = sender.send(Event::Action(action));
         }));
         Ok(Self {
+            sender: native_sender,
             _menu: menu,
             _delegate: delegate,
             events: Events(Arc::new(Mutex::new(receiver))),
@@ -237,31 +240,35 @@ impl Desktop {
     }
 }
 
-pub fn configure_lyrics_window(id: iced::window::Id) -> iced::Task<()> {
-    iced::window::run(id, |window| {
-        use iced::window::raw_window_handle::RawWindowHandle;
-        use objc2_app_kit::{NSView, NSWindowCollectionBehavior};
+impl Desktop {
+    pub fn configure_lyrics_window(&self, id: iced::window::Id) -> iced::Task<()> {
+        let sender = self.sender.clone();
+        iced::window::run(id, move |window| {
+            use iced::window::raw_window_handle::RawWindowHandle;
+            use objc2_app_kit::{NSView, NSWindowCollectionBehavior};
 
-        let Some(_marker) = MainThreadMarker::new() else {
-            return;
-        };
-        let Ok(handle) = window.window_handle() else {
-            return;
-        };
-        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-            return;
-        };
-        // SAFETY: Iced invokes this callback on the window thread while the handle is alive.
-        let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
-        if let Some(window) = view.window() {
-            window.setExcludedFromWindowsMenu(true);
-            window.setHasShadow(false);
-            window.setHidesOnDeactivate(false);
-            window.setCollectionBehavior(
-                NSWindowCollectionBehavior::CanJoinAllSpaces
-                    | NSWindowCollectionBehavior::FullScreenAuxiliary
-                    | NSWindowCollectionBehavior::IgnoresCycle,
-            );
-        }
-    })
+            let Some(_marker) = MainThreadMarker::new() else {
+                return;
+            };
+            let Ok(handle) = window.window_handle() else {
+                return;
+            };
+            let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+                return;
+            };
+            // SAFETY: Iced invokes this callback on the window thread while the handle is alive.
+            let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+            if let Some(window) = view.window() {
+                super::hit_test::install(id, &window, sender);
+                window.setExcludedFromWindowsMenu(true);
+                window.setHasShadow(false);
+                window.setHidesOnDeactivate(false);
+                window.setCollectionBehavior(
+                    NSWindowCollectionBehavior::CanJoinAllSpaces
+                        | NSWindowCollectionBehavior::FullScreenAuxiliary
+                        | NSWindowCollectionBehavior::IgnoresCycle,
+                );
+            }
+        })
+    }
 }

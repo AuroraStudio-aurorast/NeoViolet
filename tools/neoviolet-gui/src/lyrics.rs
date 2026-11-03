@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 #[path = "lyrics_tests.rs"]
 mod tests;
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Frame {
     #[serde(deserialize_with = "null_lines")]
@@ -21,7 +21,7 @@ fn null_lines<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<L
     Ok(Option::<Vec<Line>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default)]
 pub struct Line {
     pub time: f64,
@@ -34,7 +34,7 @@ pub struct Line {
     pub agent_name: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Word {
     pub time: f64,
     pub text: String,

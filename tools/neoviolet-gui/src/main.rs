@@ -7,6 +7,8 @@ mod desktop;
 mod ipc;
 mod launch;
 mod lyrics;
+#[cfg(any(target_os = "macos", test))]
+mod lyrics_hit_test;
 mod lyrics_text;
 mod lyrics_window;
 mod view;

@@ -158,6 +158,9 @@ release binary in the repository root.
 The GUI opens a separate transparent, always-on-top lyrics window. Additional lines
 are enabled by default; the next line is disabled. Hover for playback, move, lock,
 and settings controls. Locked lyrics pass mouse input through to other applications.
+On macOS, transparent pixels also pass clicks through while unlocked; visible
+lyrics and toolbar controls remain interactive. The hit mask follows rendered
+content changes and does not use a continuously running capture loop.
 On macOS, use **View → Desktop Lyrics Settings…** or **Unlock Desktop Lyrics** to
 restore interaction. Other platforms expose these actions in the main window.
 The settings window includes a position reset if a display arrangement changes.

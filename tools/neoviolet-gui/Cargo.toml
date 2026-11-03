@@ -17,9 +17,10 @@ open = "5"
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "tokio"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
 muda = "0.17"
 objc2 = "0.6"
-objc2-app-kit = { version = "0.3", features = ["NSApplication"] }
+objc2-app-kit = { version = "0.3", features = ["NSApplication", "block2"] }
 objc2-foundation = { version = "0.3", features = ["NSArray", "NSURL", "NSString"] }
 
 [patch.crates-io]

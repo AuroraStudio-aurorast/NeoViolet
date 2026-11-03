@@ -209,18 +209,29 @@ async fn reusing_the_overlay_reconciles_native_lock_state_after_settings_reload(
     for locked in [false, true] {
         preferences.locked = locked;
         let (task, _) = overlay.update(lyrics_window::Event::Visible(true), &mut preferences);
-        let actions = iced_runtime::task::into_stream(task)
-            .expect("an existing window must apply the current passthrough setting")
-            .collect::<Vec<_>>()
-            .await;
-        if locked {
-            assert!(matches!(actions.as_slice(), [iced_runtime::Action::Window(
+        let mut actions = iced_runtime::task::into_stream(task)
+            .expect("an existing window must apply the current passthrough setting");
+        #[cfg(target_os = "macos")]
+        {
+            assert!(
+                matches!(actions.next().await, Some(iced_runtime::Action::Window(
+                window::Action::Run(window, _)
+            )) if window == id)
+            );
+            continue;
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let actions = actions.collect::<Vec<_>>().await;
+            if locked {
+                assert!(matches!(actions.as_slice(), [iced_runtime::Action::Window(
                 window::Action::EnableMousePassthrough(window)
             )] if *window == id));
-        } else {
-            assert!(matches!(actions.as_slice(), [iced_runtime::Action::Window(
+            } else {
+                assert!(matches!(actions.as_slice(), [iced_runtime::Action::Window(
                 window::Action::DisableMousePassthrough(window)
             )] if *window == id));
+            }
         }
     }
 }

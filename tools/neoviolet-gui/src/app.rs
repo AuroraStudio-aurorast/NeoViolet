@@ -256,9 +256,18 @@ impl App {
                 let opened = matches!(&event, lyrics_window::Event::Opened(id) if Some(*id) == self.lyrics.window);
                 let closed_settings = matches!(&event, lyrics_window::Event::CloseSettings)
                     && self.lyrics.settings_window.is_some();
+                let native_setup = if opened {
+                    self.desktop.as_ref().map_or_else(Task::none, |desktop| {
+                        desktop
+                            .configure_lyrics_window(self.lyrics.window.unwrap())
+                            .map(|_| Message::Ready)
+                    })
+                } else {
+                    Task::none()
+                };
                 let (task, request) = self.lyrics.update(event, &mut self.config.desktop_lyrics);
                 return Task::batch([
-                    task.map(Message::Lyrics),
+                    native_setup.chain(task.map(Message::Lyrics)),
                     self.send_all(request.into_iter().collect()),
                     if opened {
                         window::gain_focus(self.lyrics.settings_window.unwrap_or(self.main_window))
@@ -269,7 +278,22 @@ impl App {
                     },
                 ]);
             }
+            #[cfg(target_os = "macos")]
+            Message::Desktop(desktop::Event::LyricsHover(id, hovered)) => {
+                if self.lyrics.window == Some(id) {
+                    return self.update(Message::Lyrics(lyrics_window::Event::Hover(hovered)));
+                }
+            }
             Message::Native(id, event) if id != self.main_window => {
+                if self.lyrics.window == Some(id)
+                    && matches!(
+                        &event,
+                        iced::Event::Window(window::Event::Resized(_))
+                            | iced::Event::Mouse(iced::mouse::Event::WheelScrolled { .. })
+                    )
+                {
+                    return self.lyrics.refresh_mask().map(Message::Lyrics);
+                }
                 if let iced::Event::Window(window::Event::Moved(point)) = &event {
                     self.lyrics
                         .moved(id, *point, &mut self.config.desktop_lyrics);
@@ -342,7 +366,10 @@ impl App {
                                         .into()
                                 }
                             }));
-                            return self.reveal_main();
+                            return Task::batch([
+                                self.reveal_main(),
+                                self.lyrics.refresh_mask().map(Message::Lyrics),
+                            ]);
                         }
                         actions::Action::ChangeTitle(title) => {
                             self.window_title = if title.trim().is_empty() {
@@ -372,11 +399,20 @@ impl App {
             }
             Message::Ipc(_, ipc::Event::Received(ipc::Incoming::Lyrics(frame))) => {
                 if self.config.desktop_lyrics.enabled {
+                    let changed = self.lyrics.frame.active_lines() != frame.active_lines()
+                        || self.lyrics.frame.next_line() != frame.next_line()
+                        || self.lyrics.frame.title != frame.title
+                        || self.lyrics.frame.artist != frame.artist;
                     self.lyrics.frame = frame;
-                    return self
-                        .lyrics
-                        .fit(&self.config.desktop_lyrics)
-                        .map(Message::Lyrics);
+                    return Task::batch([
+                        self.lyrics.fit(&self.config.desktop_lyrics),
+                        if changed {
+                            self.lyrics.refresh_mask()
+                        } else {
+                            Task::none()
+                        },
+                    ])
+                    .map(Message::Lyrics);
                 }
             }
             Message::Ipc(_, ipc::Event::Received(ipc::Incoming::DesktopLyrics { enable })) => {
@@ -402,6 +438,7 @@ impl App {
                 if !self.closing && self.running {
                     eprintln!("NeoViolet GUI: {error}");
                 }
+                return self.lyrics.refresh_mask().map(Message::Lyrics);
             }
             Message::Ipc(_, ipc::Event::Received(_)) => {}
             Message::Desktop(desktop::Event::Action(action)) | Message::Action(action) => {

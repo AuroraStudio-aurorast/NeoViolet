@@ -14,6 +14,10 @@ pub enum Event {
     Opened(window::Id),
     SettingsOpened(window::Id),
     Ready,
+    #[cfg(target_os = "macos")]
+    Capture(window::Id, u64),
+    #[cfg(target_os = "macos")]
+    Mask(window::Id, u64, crate::lyrics_hit_test::Mask),
     Sized(window::Id, Point, Size, Size),
     Visible(bool),
     Settings,
@@ -38,6 +42,8 @@ pub struct Overlay {
     hovered: bool,
     size: Size,
     opened: bool,
+    #[cfg(target_os = "macos")]
+    mask_revision: u64,
 }
 
 impl Overlay {
@@ -152,14 +158,51 @@ impl Overlay {
         event: Event,
         preferences: &mut Preferences,
     ) -> (Task<Event>, Option<Request>) {
+        #[cfg(target_os = "macos")]
+        let visual_change = !matches!(
+            &event,
+            Event::Ready
+                | Event::Capture(..)
+                | Event::Mask(..)
+                | Event::Drag
+                | Event::PlayPause
+                | Event::Settings
+                | Event::SettingsOpened(_)
+                | Event::CloseSettings
+        );
+        #[cfg(not(target_os = "macos"))]
+        let visual_change = false;
         let task = match event {
+            #[cfg(target_os = "macos")]
+            Event::Capture(id, revision) => {
+                if self.window != Some(id) || self.mask_revision != revision {
+                    return (Task::none(), None);
+                }
+                return (
+                    window::screenshot(id).map(move |image| {
+                        Event::Mask(id, revision, crate::lyrics_hit_test::Mask(image))
+                    }),
+                    None,
+                );
+            }
+            #[cfg(target_os = "macos")]
+            Event::Mask(id, revision, mask) => {
+                if self.window != Some(id) || self.mask_revision != revision {
+                    return (Task::none(), None);
+                }
+                return (
+                    crate::desktop::set_lyrics_mask(id, mask, preferences.locked)
+                        .map(|_| Event::Ready),
+                    None,
+                );
+            }
             Event::Opened(id) if self.window == Some(id) => {
                 self.opened = true;
                 return (
                     Task::batch([
-                        crate::desktop::configure_lyrics_window(id).map(|_| Event::Ready),
                         self.passthrough(preferences.locked),
                         self.fit(preferences),
+                        self.refresh_mask(),
                     ]),
                     None,
                 );
@@ -174,9 +217,14 @@ impl Overlay {
                 } else {
                     self.opened = false;
                     self.clear();
-                    self.window.take().map_or_else(Task::none, window::close)
+                    self.window
+                        .take()
+                        .map_or_else(Task::none, crate::desktop::close_lyrics)
                 };
-                return (task, Some(Request::DesktopLyrics(enable)));
+                return (
+                    Task::batch([task, self.refresh_mask()]),
+                    Some(Request::DesktopLyrics(enable)),
+                );
             }
             Event::Settings => {
                 if let Some(id) = self.settings_window {
@@ -201,7 +249,10 @@ impl Overlay {
                 .map_or_else(Task::none, window::close),
             Event::ResetPosition => {
                 preferences.position = None;
-                let close = self.window.take().map_or_else(Task::none, window::close);
+                let close = self
+                    .window
+                    .take()
+                    .map_or_else(Task::none, crate::desktop::close_lyrics);
                 Task::batch([close, self.show(preferences)])
             }
             Event::Sized(id, position, previous, size) => {
@@ -246,17 +297,55 @@ impl Overlay {
             Event::Ready | Event::Drag => Task::none(),
         };
         preferences.normalize();
-        (Task::batch([task, self.fit(preferences)]), None)
+        (
+            Task::batch([
+                task,
+                self.fit(preferences),
+                if visual_change {
+                    self.refresh_mask()
+                } else {
+                    Task::none()
+                },
+            ]),
+            None,
+        )
     }
 
     fn passthrough(&self, locked: bool) -> Task<Event> {
         self.window.map_or_else(Task::none, |id| {
-            if locked {
-                window::enable_mouse_passthrough(id)
-            } else {
-                window::disable_mouse_passthrough(id)
+            #[cfg(target_os = "macos")]
+            {
+                crate::desktop::set_lyrics_locked(id, locked).map(|_| Event::Ready)
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                if locked {
+                    window::enable_mouse_passthrough(id)
+                } else {
+                    window::disable_mouse_passthrough(id)
+                }
             }
         })
+    }
+
+    pub fn refresh_mask(&mut self) -> Task<Event> {
+        #[cfg(target_os = "macos")]
+        {
+            let Some(id) = self.window.filter(|_| self.opened) else {
+                return Task::none();
+            };
+            self.mask_revision = self.mask_revision.wrapping_add(1);
+            let revision = self.mask_revision;
+            // Let Iced draw the changed content before reading its alpha buffer.
+            Task::perform(
+                async { tokio::time::sleep(std::time::Duration::from_millis(30)).await },
+                move |_| Event::Capture(id, revision),
+            )
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            Task::none()
+        }
     }
 
     pub fn view(&self, preferences: &Preferences) -> Element<'_, Event> {
@@ -390,17 +479,19 @@ impl Overlay {
         ]
         .spacing(8)
         .align_x(iced::Center);
-        mouse_area(
+        let area = mouse_area(
             container(content)
                 .padding([8, 20])
                 .center_x(Length::Fill)
                 .center_y(Length::Fill),
         )
         .on_press(Event::Drag)
-        .on_enter(Event::Hover(true))
-        .on_exit(Event::Hover(false))
-        .interaction(iced::mouse::Interaction::Grab)
-        .into()
+        .interaction(iced::mouse::Interaction::Grab);
+        #[cfg(not(target_os = "macos"))]
+        let area = area
+            .on_enter(Event::Hover(true))
+            .on_exit(Event::Hover(false));
+        area.into()
     }
 
     pub fn settings_view(&self, preferences: &Preferences) -> Element<'_, Event> {
@@ -526,6 +617,47 @@ fn caption<'a>(label: String, size: f32, opacity: f32, outline_opacity: f32) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn paused_hover_captures_the_changed_toolbar_and_cancels_stale_masks() {
+        use iced::futures::StreamExt;
+        let id = window::Id::unique();
+        let mut overlay = Overlay {
+            window: Some(id),
+            opened: true,
+            ..Default::default()
+        };
+        let mut preferences = Preferences::default();
+        overlay.size = overlay.display_size(&preferences);
+        let (task, _) = overlay.update(Event::Hover(true), &mut preferences);
+        let messages = iced_runtime::task::into_stream(task)
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        let [iced_runtime::Action::Output(Event::Capture(window, old_revision))] =
+            messages.as_slice()
+        else {
+            panic!("a hover change must queue a single capture even while paused");
+        };
+        assert_eq!(*window, id);
+        let old_revision = *old_revision;
+        let (task, _) = overlay.update(Event::Hover(false), &mut preferences);
+        let messages = iced_runtime::task::into_stream(task)
+            .unwrap()
+            .collect::<Vec<_>>()
+            .await;
+        assert!(
+            matches!(messages.as_slice(), [iced_runtime::Action::Output(Event::Capture(window,revision))]
+            if *window == id && *revision != old_revision)
+        );
+        let (stale, _) = overlay.update(Event::Capture(id, old_revision), &mut preferences);
+        assert!(iced_runtime::task::into_stream(stale).is_none());
+        let (ready, _) = overlay.update(Event::Ready, &mut preferences);
+        if let Some(stream) = iced_runtime::task::into_stream(ready) {
+            assert!(stream.collect::<Vec<_>>().await.is_empty());
+        }
+    }
 
     #[test]
     fn ordinary_bilingual_lyrics_fit_below_tooltip_space_without_scrollbars() {
