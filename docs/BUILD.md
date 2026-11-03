@@ -76,6 +76,7 @@ build without launching, or `make build` to build all components, including the 
 | `build/macos`        | Universal binaries for Apple silicon and Intel (`arm64` + `amd64`, merged with `lipo`)     |
 | `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
 | `package/osxappbundle` | Package existing universal binaries into a macOS app bundle                             |
+| `deps/openmpt/macos` | Fetch and verify the locked prebuilt universal libopenmpt dylib                            |
 | `package/windows`    | Package existing Windows executables with their non-system DLL dependencies              |
 | `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
 | `apetools/debug`     | Build `apecli` in debug mode                                                               |
@@ -166,10 +167,17 @@ release binary in the repository root.
 
 ```bash
 make build/osxappbundle
+make deps/openmpt/macos                         # Prepare or verify the cached runtime library
 make package/osxappbundle VERSION=v1.2.3 BUILD=42  # Existing universal binaries only
 ```
 
-`build/osxappbundle` builds universal binaries before packaging. `package/osxappbundle` consumes
+`build/osxappbundle` builds universal binaries and fetches the locked prebuilt libopenmpt before
+packaging. The fetch step uses `gh` to download the macOS asset and its `.sha256` from this repo's
+`deps` release, checks SHA-256, and caches them under `.build/macos-deps/`. A valid cache is reused
+offline; downloads do not run inside the packaging script. The dependency version and deployment
+floor come from `deps/libopenmpt.lock`, which also supplies the default application `MACOS_MIN`.
+
+`package/osxappbundle` consumes
 `neoviolet`, `neoviolet-gui` and `apecli` from `PACKAGE_INPUT_DIR` (default: the repository root),
 checks that each contains both architectures, and writes `PACKAGE_OUTPUT_DIR/NeoViolet GUI.app/`
 (default: `dist/NeoViolet GUI.app/`). For example:
@@ -185,6 +193,21 @@ set `VERSION` and `BUILD` to their matching metadata. `build/osxappbundle` uses 
 version for its build and bundle. Use the Make targets in place of calling the script directly.
 The one-step `build/osxappbundle` always packages its newly built root binaries; custom input
 directories apply to the package-only target.
+
+The bundle includes `Contents/Frameworks/libopenmpt.0.dylib`, where the player's existing loader
+looks before system package directories. `LIBOPENMPT_DYLIB` defaults to the locked cached asset;
+set it to use an already prepared universal dylib, including for an offline one-step build:
+
+```bash
+make build/osxappbundle LIBOPENMPT_DYLIB=/path/to/libopenmpt.0.dylib
+```
+
+An explicit library path skips automatic fetching. Packaging requires both arm64 and x86_64 slices
+and accepts only system library dependencies, so a Homebrew-linked dylib cannot silently produce a
+bundle that depends on the builder's machine. The library is copied before signing, signed first
+with the bundle's identity, and then included in the outer bundle signature. The shipped
+`ACKNOWLEDGEMENTS.md` includes libopenmpt's license. macOS CI packages and verifies the signed bundle
+and uploads a ZIP alongside the standalone executables.
 
 The script writes `Info.plist`, picks the icon (compiling it with `actool` only when Xcode 26+ is
 installed, otherwise using the committed assets), copies both licenses and signs the bundle ad hoc.

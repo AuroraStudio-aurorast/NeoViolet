@@ -25,7 +25,7 @@ TEST_FLAGS  ?= -count=1
 # record a legacy minimum) and reused by the app bundle for its plist and icon
 # asset. The Go slices carry the toolchain's own default instead, so this must
 # not be set below it.
-MACOS_MIN ?= 13.0
+MACOS_MIN ?= $(shell sed -n 's/^MACOS_MIN=//p' deps/libopenmpt.lock)
 BUILD ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
 export BUILD := $(BUILD)
 SIGN_IDENTITY ?= -
@@ -33,9 +33,13 @@ PACKAGE_INPUT_DIR ?= $(CURDIR)
 PACKAGE_OUTPUT_DIR ?= $(CURDIR)/dist
 WINDOWS_DLL_DIR ?= $(MINGW_PREFIX)/bin
 LIBOPENMPT_DLL ?= $(PACKAGE_INPUT_DIR)/libopenmpt.dll
+LIBOPENMPT_FETCH_DEP := $(if $(filter undefined,$(origin LIBOPENMPT_DYLIB)),deps/openmpt/macos)
+LIBOPENMPT_MACOS_ASSET = libopenmpt-$(shell sed -n 's/^LIBOPENMPT_VERSION=//p' deps/libopenmpt.lock)-macos$(shell sed -n 's/^MACOS_MIN=//p' deps/libopenmpt.lock)-universal.dylib
+LIBOPENMPT_DYLIB ?= $(CURDIR)/.build/macos-deps/$(LIBOPENMPT_MACOS_ASSET)
 OBJDUMP ?= objdump
 export MACOS_MIN SIGN_IDENTITY PACKAGE_INPUT_DIR PACKAGE_OUTPUT_DIR
 export WINDOWS_DLL_DIR LIBOPENMPT_DLL OBJDUMP
+export LIBOPENMPT_DYLIB
 
 HAS_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
 REQUIRE_RUST ?= 0
@@ -90,6 +94,7 @@ endif
 
 .PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
 .PHONY: package/osxappbundle package/windows
+.PHONY: deps/openmpt/macos
 .PHONY: run run/gui gui gui/debug apetools apetools/debug
 .PHONY: test test/go test/build test/race test/verbose test/short test/cover test/coverage test/rust
 .PHONY: lint lint/rust check check/cgo check/rust check/macos check/shell check/linelength vet tidy tidy/check clean clean/all
@@ -176,8 +181,11 @@ apetools/debug: $(APECLI_DEBUG_RESOURCE_DEPS)
 		( cd $(APECLI_DIR) && $(APECLI_CARGO) $(APECLI_LINK_FLAGS) ) || exit 1; \
 	fi
 
-build/osxappbundle: build/macos
+build/osxappbundle: build/macos $(LIBOPENMPT_FETCH_DEP)
 	@$(MAKE) package/osxappbundle PACKAGE_INPUT_DIR="$(CURDIR)"
+
+deps/openmpt/macos:
+	@sh tools/osx-appbundle-builder/fetch-openmpt.sh
 
 package/osxappbundle:
 	@bash tools/osx-appbundle-builder/build.sh
@@ -323,6 +331,7 @@ check/macos:
 
 check/shell:
 	bash -n tools/osx-appbundle-builder/build.sh
+	sh -n tools/osx-appbundle-builder/fetch-openmpt.sh
 	bash -n tools/windows-package/package.sh
 	sh -n tools/windows-resources/compile.sh
 	sh -n tools/build/check-rust.sh
@@ -419,6 +428,7 @@ help:
 	@echo "macOS App Bundle:"
 	@echo "  build/osxappbundle    Build macOS .app bundle (macOS only)"
 	@echo "  package/osxappbundle  Package existing universal binaries (no compilation)"
+	@echo "  deps/openmpt/macos    Fetch and verify the locked universal libopenmpt dylib"
 	@echo "  package/windows      Package existing executables and their DLL dependencies"
 	@echo ""
 	@echo "Run:"

@@ -25,7 +25,7 @@ func newFixture(t *testing.T, scripts ...string) fixture {
 	}
 	f := fixture{root: filepath.Join(temp, "project with spaces")}
 	f.bin = filepath.Join(f.root, "test-bin")
-	for _, name := range append([]string{"Makefile"}, scripts...) {
+	for _, name := range append([]string{"Makefile", "deps/libopenmpt.lock"}, scripts...) {
 		data, err := os.ReadFile(filepath.Join("..", "..", name)) // #nosec G304 -- test-owned repository fixture paths.
 		if err != nil {
 			t.Fatal(err)
@@ -74,6 +74,8 @@ func (f fixture) run(t *testing.T, args ...string) (string, error) {
 		case "MAKEFLAGS", "MFLAGS", "MAKELEVEL", "MAKEOVERRIDES", "GO", "GOOS", "GOARCH", "CARGO_BUILD_TARGET", "VERSION", "BUILD", "MACOS_MIN", "REQUIRE_RUST", "OS", "PATH":
 			continue
 		case "PACKAGE_INPUT_DIR", "PACKAGE_OUTPUT_DIR", "WINDOWS_DLL_DIR", "LIBOPENMPT_DLL", "OBJDUMP", "SIGN_IDENTITY", "LLVM_RC", "LLVM_CVTRES", "WINDRES", "RUST_TARGET", "HAS_CARGO":
+			continue
+		case "LIBOPENMPT_DYLIB":
 			continue
 		}
 		cmd.Env = append(cmd.Env, entry)

@@ -181,6 +181,16 @@ jobs:
             export GOARCH=${{ matrix.goarch }}
             make build
           fi
+      - name: Package macOS app bundle
+        if: matrix.os == 'macos'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          make deps/openmpt/macos
+          make package/osxappbundle
+          codesign --verify --deep --strict "dist/NeoViolet GUI.app"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/NeoViolet GUI.app" dist/NeoViolet-GUI-macos-universal.zip
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -189,6 +199,7 @@ jobs:
             neoviolet
             apecli
             neoviolet-gui
+            dist/*.zip
           if-no-files-found: error
 
   windows:
