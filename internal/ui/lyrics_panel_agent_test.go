@@ -209,7 +209,7 @@ func TestPanelWindow_LabelWithKaraoke(t *testing.T) {
 	if spans[0].Text != "Taylor Swift: " {
 		t.Fatalf("first span = %q, want the label span", spans[0].Text)
 	}
-	current := panelCurrentStyle(m).Render("x")
+	current := panelCurrentStyle().Render("x")
 	if got := spans[0].Style.Render("x"); got != current {
 		t.Errorf("label style is not the current-line style (rendered %q, want %q)", got, current)
 	}

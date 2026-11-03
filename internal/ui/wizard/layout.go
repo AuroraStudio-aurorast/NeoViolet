@@ -12,23 +12,22 @@ import (
 // renderer's cursor row rather than filling the entire terminal height.
 type setupForm struct {
 	form    *huh.Form
-	welcome *huh.Note
+	welcome *logoNote
 	picker  *huh.FilePicker
-	logo    string
 }
 
 func (m *setupForm) Init() tea.Cmd { return m.form.Init() }
 
 func (m *setupForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
-		title := m.logo
+		title := ""
 		if size.Height < 36 || size.Width < 70 {
 			title = "Welcome to NeoViolet — a terminal music player."
 		}
 		if size.Width < 50 {
 			title = "NeoViolet setup"
 		}
-		m.welcome.Title(title)
+		m.welcome.setFallback(title)
 		m.picker.Height(min(8, max(1, size.Height-12)))
 		m.form.WithWidth(max(1, size.Width)).WithHeight(max(1, size.Height-2))
 	}

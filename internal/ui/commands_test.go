@@ -151,8 +151,8 @@ func TestCommandInputSuggestionWiring(t *testing.T) {
 
 // An empty input must not leave stale matches behind: textinput keeps
 // matchedSuggestions across Reset/SetValue and only recomputes them from the
-// list it already holds, so a leftover entry would make <tab> complete a
-// command the user never typed.
+// list it already holds. The explicit candidate list owns empty-input
+// selection; stale inline suggestions must not survive.
 func TestSyncCompletionClearsEmptyInput(t *testing.T) {
 	m := setupModel()
 	ti := &m.Components.CommandInput
@@ -167,16 +167,6 @@ func TestSyncCompletionClearsEmptyInput(t *testing.T) {
 	syncCompletion(m)
 	if got := ti.MatchedSuggestions(); len(got) != 0 {
 		t.Errorf("empty input matched %v, want none", got)
-	}
-
-	// Guards existing behaviour: tab on an empty input must not complete
-	// anything. The input is focused because entering command mode focuses it,
-	// and textinput ignores every key while it is blurred.
-	m.UI.Mode = ModeCommand
-	m.Components.CommandInput.Focus()
-	updated, _ := handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyTab})
-	if got := updated.(*Model).Components.CommandInput.Value(); got != "" {
-		t.Errorf("value after tab on an empty line = %q, want empty", got)
 	}
 }
 

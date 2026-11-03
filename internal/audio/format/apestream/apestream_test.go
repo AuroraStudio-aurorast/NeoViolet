@@ -137,17 +137,20 @@ func TestConvertPCMToFloat64_32bit(t *testing.T) {
 func TestFindApeCLI(t *testing.T) {
 	// The function should either return empty (if apecli isn't installed)
 	// or find it alongside the test binary.
-	path := findApeCLI()
+	path, problems := findApeCLI()
 	// During development, it may be found. In CI, it may not.
 	// Just ensure no crash and it returns something sensible.
-	t.Logf("findApeCLI() = %q", path)
+	t.Logf("findApeCLI() = %q (problems: %q)", path, problems)
 }
 
 func TestProbeBackends(t *testing.T) {
-	backends := probeBackends()
+	backends, problems := probeBackends()
 	t.Logf("found %d backends:", len(backends))
 	for _, b := range backends {
 		t.Logf("  - %s", b.Name())
+	}
+	for _, problem := range problems {
+		t.Logf("  ! %s", problem)
 	}
 	// Should always return at least 0 backends (never crash).
 }

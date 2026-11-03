@@ -56,7 +56,7 @@ func TestPaintBackground_ReassertsWhereThePenLosesTheColour(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := paintBackground(tt.frame); got != tt.want {
+			if got := paintBackground(tt.frame, nil); got != tt.want {
 				t.Errorf("paintBackground(%q) = %q, want %q", tt.frame, got, tt.want)
 			}
 		})
@@ -69,7 +69,7 @@ func TestPaintBackground_KeepsWhatTheFrameSays(t *testing.T) {
 	for name, m := range everyScreen(t) {
 		t.Run(name, func(t *testing.T) {
 			raw := renderMainView(m).Content
-			painted := paintBackground(raw)
+			painted := paintBackground(raw, nil)
 
 			if ansi.Strip(painted) != ansi.Strip(raw) {
 				t.Error("the paint changed the text")
@@ -111,7 +111,7 @@ func TestBackgroundHoles_FindsThemInAFrameNothingHasPainted(t *testing.T) {
 	}
 	t.Logf("the unpainted library frame leaves %d cells to the terminal", holes)
 
-	if left := backgroundHoles(paintBackground(raw)); left != 0 {
+	if left := backgroundHoles(paintBackground(raw, nil)); left != 0 {
 		t.Errorf("%d cells survived the paint", left)
 	}
 }

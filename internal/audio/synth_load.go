@@ -102,21 +102,14 @@ func gotrackerSupports(path string) error {
 func (p *Player) openSynthetic(path, ext string) error {
 	logger.Info("Opening synthetic", "path", path, "ext", ext)
 
-	p.closeStreamer()
-	if p.synthCtrl != nil {
-		_ = p.synthCtrl.Close()
-		p.synthCtrl = nil
-	}
-	p.synthActive = false
-	p.synthRegistered = false
+	_ = p.closeStreamer()
 
-	sr := speakerSampleRate
-	if sr == 0 {
-		sr = 44100
-	}
-	if err := ensureSpeakerInit(sr); err != nil {
+	if err := ensureSpeakerInit(44100); err != nil {
 		return fmt.Errorf("speaker init: %w", err)
 	}
+	// Wait for sync.Once before reading the rate: another player may still be
+	// initializing the speaker while this candidate is being prepared.
+	sr := speakerSampleRate
 
 	switch ext {
 	case ".mid", ".midi":
@@ -209,20 +202,14 @@ func (p *Player) playSynthetic() error {
 		return fmt.Errorf("no synth controller")
 	}
 
-	if err := p.synthCtrl.Play(); err != nil {
+	speaker.Lock()
+	err := p.synthCtrl.Play()
+	speaker.Unlock()
+	if err != nil {
 		return err
 	}
-	reusable, ok := p.synthCtrl.(interface{ ReusableStream() bool })
-	reusableMIDI := ok && reusable.ReusableStream()
-	if !p.synthRegistered || (!reusableMIDI && !p.isPlaying) {
-		if p.registerSynth != nil {
-			p.registerSynth(p.synthCtrl.Streamer())
-		} else {
-			speaker.Play(p.synthCtrl.Streamer())
-		}
-		p.synthRegistered = true
-	}
 
+	p.attachOutput(p.synthCtrl.Streamer())
 	p.isPlaying = true
 	p.isPaused = false
 	return nil

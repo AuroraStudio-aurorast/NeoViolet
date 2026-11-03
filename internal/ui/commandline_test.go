@@ -178,9 +178,9 @@ func TestRenderCommandLineShowsEllipsisWhenTheValueDoesNotFit(t *testing.T) {
 	}
 }
 
-func TestCommandRowRendersBothEllipsesInTheDefaultColour(t *testing.T) {
-	// Both ellipses belong to the terminal's default colour, so neither may sit
-	// inside a styled span. The probe fixture is 93 cells wide with the cursor at
+func TestCommandRowKeepsEllipsesOnItsOpaqueSurface(t *testing.T) {
+	// Both ellipses keep their existing positions on the command surface.
+	// The probe fixture is 93 cells wide with the cursor at
 	// the start: that makes both edges cut, which is what puts the two ellipses
 	// on screen at the same time.
 	var b strings.Builder
@@ -193,11 +193,15 @@ func TestCommandRowRendersBothEllipsesInTheDefaultColour(t *testing.T) {
 	syncCommandInputWidth(m)
 
 	row := renderCommandLine(m)
-	if !strings.Contains(row, inputStyle.Render(m.Icons.Command)+"…") {
-		t.Fatalf("the left ellipsis is inside the command style: %q", row)
+	plain := stripANSI(row)
+	if !strings.HasPrefix(plain, ":…") || !strings.HasSuffix(plain, "…") {
+		t.Fatalf("ellipsis geometry changed: %q", plain)
 	}
-	if !strings.HasSuffix(row, inputStyle.Render(ti.View())+"…") {
-		t.Fatalf("the right ellipsis is inside the input style: %q", row)
+	want := newInteractionPalette(m.Accent).command
+	for x, bg := range frameBackgrounds(t, row)[0] {
+		if !sameRGB(bg, want) {
+			t.Fatalf("ellipsis/padding cell %d lost command surface", x)
+		}
 	}
 }
 

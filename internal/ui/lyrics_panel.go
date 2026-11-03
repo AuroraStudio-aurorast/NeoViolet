@@ -76,9 +76,16 @@ func panelPlaceholderRows(text string, innerH, innerW int) []string {
 	return rows
 }
 
-// panelCurrentStyle styles the current line: accent colour and bold, and
+// panelCurrentStyle styles the current line: white and bold, and
 // deliberately not italic (the panel repaints on every tick).
-func panelCurrentStyle(m *Model) lipgloss.Style {
+func panelCurrentStyle() lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#ffffff")).
+		Bold(true)
+}
+
+// panelCountdownStyle keeps the waiting indicator in the track's accent.
+func panelCountdownStyle(m *Model) lipgloss.Style {
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color(accentOrDefault(m.Accent, "141"))).
 		Bold(true)

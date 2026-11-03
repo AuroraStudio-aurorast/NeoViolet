@@ -16,9 +16,8 @@ func panelTranslationModel(t *testing.T, parts []string) *Model {
 	return m
 }
 
-// A translated row is subordinate to the line being sung: it keeps the accent's
-// hue but steps halfway toward the grey the unplayed text uses, and it carries no
-// bold. The sung row itself is untouched.
+// A current translation is neutral grey, below the white original and above
+// unplayed lines, and carries no bold.
 func TestPanelWindow_TranslationRowIsQuieter(t *testing.T) {
 	m := panelTranslationModel(t, []string{"The rain I hear falls", "我听见雨滴落在青青草地"})
 	plan := m.layoutPlan()
@@ -32,12 +31,10 @@ func TestPanelWindow_TranslationRowIsQuieter(t *testing.T) {
 	if got, want := panelRowText(translated), "我听见雨滴落在青青草地"; got != want {
 		t.Fatalf("row %d = %q, want %q", anchor+1, got, want)
 	}
-	if got, want := sung.spans[0].Style.Render("x"), panelCurrentStyle(m).Render("x"); got != want {
+	if got, want := sung.spans[0].Style.Render("x"), panelCurrentStyle().Render("x"); got != want {
 		t.Errorf("sung row style changed: rendered %q, want %q", got, want)
 	}
-	// Halfway from the emphasis colour to lyricGrey. A cover-less track takes the
-	// ANSI 141 fallback (#af87ff), so the step lands on #9f89c4.
-	if got, want := translated.spans[0].Style.GetForeground(), lipgloss.Color("#9f89c4"); got != want {
+	if got, want := translated.spans[0].Style.GetForeground(), lipgloss.Color("#c8c8c8"); got != want {
 		t.Errorf("translated row foreground = %v, want %v", got, want)
 	}
 	if translated.spans[0].Style.GetBold() {

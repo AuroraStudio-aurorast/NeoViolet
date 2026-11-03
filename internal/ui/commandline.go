@@ -103,32 +103,33 @@ func setCommandNotice(m *Model, text string) {
 // renderCommandLine assembles the whole command row: the prompt, the two
 // optional edge ellipses, the input itself, and the right-hand notice.
 //
-// Only the prompt and the input carry the command style. The ellipses stay
-// outside it, so they render in the terminal's default colour.
+// Every cell carries the command surface, including ellipses and padding.
 func renderCommandLine(m *Model) string {
 	ti := &m.Components.CommandInput
+	palette := newInteractionPalette(m.Accent)
+	palette.applyInputStyles(ti)
 	value := ti.Value()
 	notice := commandNotice(m)
 	_, showLeft, showRight, showNotice := commandLineLayout(
 		value, ti.CurrentSuggestion(), ti.Position(), notice, m.UI.Width-1)
 
-	row := inputStyle.Render(m.Icons.Command)
+	row := lipgloss.NewStyle().Foreground(palette.prompt).Background(palette.command).Bold(true).Render(m.Icons.Command)
 	if showLeft {
 		// A width proxy: this can show even when nothing was cut on the left.
 		row += "…"
 	}
-	row += inputStyle.Render(ti.View())
+	row += ti.View()
 	if showRight {
 		// A width proxy as well: it reports the tail the window cannot hold.
 		row += "…"
 	}
 	if showNotice {
 		// The leading space is the separator the budget reserved a cell for.
-		row += commandNoticeStyle.Render(" " + notice)
+		row += lipgloss.NewStyle().Foreground(lipgloss.Color("#ffd08a")).Background(palette.command).Bold(true).Render(" " + notice)
 	}
 	// The clamp is the last step, once every span is closed: it only trims the
 	// tail, and trimming keeps the escape sequences that follow the cut.
-	return clampRowWidth(row, m.UI.Width)
+	return interactionRow(row, m.UI.Width, palette.command)
 }
 
 // clampRowWidth trims an over-wide row down to width cells. It is the safety net

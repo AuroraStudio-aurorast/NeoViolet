@@ -127,10 +127,10 @@ func TestSyncCompletionResetsSelection(t *testing.T) {
 		t.Errorf("completionSeg = %+v", m.completionSeg)
 	}
 
-	// Clearing the input must clear the candidates and the cached segment.
+	// Clearing the input restores the command list without keeping a selection.
 	ti.SetValue("")
 	syncCompletion(m)
-	if len(m.completionCandidates) != 0 || m.completionIndex != -1 || m.completionSeg != (segment{}) {
+	if len(m.completionCandidates) == 0 || m.completionIndex != -1 || m.completionSeg != (segment{}) {
 		t.Errorf("after clearing input: candidates = %d, index = %d, seg = %+v",
 			len(m.completionCandidates), m.completionIndex, m.completionSeg)
 	}

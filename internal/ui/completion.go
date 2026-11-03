@@ -235,12 +235,12 @@ func syncCompletion(m *Model) {
 	syncGhostSuggestions(m)
 
 	// The row budget depends on the notice and on the current suggestion, and
-	// the clearing paths below (leaving command mode, an empty line) must still
+	// the clearing path below (leaving command mode) must still
 	// restore the unsplit width, so this runs before the early return.
 	syncCommandInputWidth(m)
 
 	ti := &m.Components.CommandInput
-	if m.UI.Mode != ModeCommand || strings.TrimSpace(ti.Value()) == "" {
+	if m.UI.Mode != ModeCommand {
 		m.completionCandidates = nil
 		m.completionIndex = -1
 		m.completionSeg = segment{}

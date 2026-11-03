@@ -6,10 +6,32 @@
 package mediactl
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"time"
 
 	"github.com/godbus/dbus/v5"
 )
+
+// mprisBusName returns the unique D-Bus well-known name for this process.
+// The MPRIS spec requires org.mpris.MediaPlayer2.<instance>, and a unique
+// instance suffix lets multiple NeoViolet processes register on the same bus
+// instead of colliding on the shared name.
+func mprisBusName() string {
+	return "org.mpris.MediaPlayer2.neoviolet.instance-" + instanceSuffix()
+}
+
+// instanceSuffix returns a short random hex string. A crypto/rand failure is
+// unrecoverable, so fall back to a nanosecond timestamp — still unique across
+// concurrently-started instances for all practical purposes.
+func instanceSuffix() string {
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
 
 // playbackStatus maps the TUI playback state to the MPRIS Playback_Status
 // enum: no track loaded is "Stopped", otherwise Playing/Paused.

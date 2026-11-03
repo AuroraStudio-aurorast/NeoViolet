@@ -3,17 +3,16 @@ package ui
 import (
 	"fmt"
 	"image/color"
+	"strconv"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 )
 
-// The interface is black from edge to edge: every cell of a frame carries the
-// colour, and the terminal's own default is set to the same colour for the cells
-// no frame draws. One says nothing to the terminal, the other nothing to the
-// frame, so it takes both.
+// The terminal default stays black for cells cleared by the terminal itself.
+// Each complete frame also paints every cell with its screen row's background.
 var (
-	// uiBackground is the background the whole interface is painted with.
+	// uiBackground is the terminal default, including cells cleared by resize.
 	uiBackground = lipgloss.Color("#000000")
 
 	// uiForeground is what text drawn without a colour of its own comes out as.
@@ -42,25 +41,35 @@ func sgrBackground(c color.Color) string {
 //
 // The sequences it walks past are zero-width, so the frame keeps its text, its
 // size and its layout.
-func paintBackground(frame string) string {
+func paintBackground(frame string, rows []color.RGBA) string {
 	if frame == "" {
 		return frame
 	}
 
+	row := 0
+	rowSGR := func() string {
+		if row < len(rows) {
+			return sgrBackground(rows[row])
+		}
+		return backgroundSGR
+	}
+	background := rowSGR()
 	var b strings.Builder
 	b.Grow(len(frame) + len(frame)/8)
-	b.WriteString(backgroundSGR)
+	b.WriteString(background)
 	for i := 0; i < len(frame); {
 		if frame[i] == '\n' {
 			b.WriteByte('\n')
-			b.WriteString(backgroundSGR)
+			row++
+			background = rowSGR()
+			b.WriteString(background)
 			i++
 			continue
 		}
 		if end, clears := sgrSequence(frame, i); end > i {
 			b.WriteString(frame[i:end])
 			if clears {
-				b.WriteString(backgroundSGR)
+				b.WriteString(background)
 			}
 			i = end
 			continue
@@ -88,18 +97,35 @@ func sgrSequence(frame string, i int) (end int, clears bool) {
 	return j + 1, clearsBackground(frame[i+2 : j])
 }
 
-// clearsBackground reports whether an SGR parameter list leaves the pen with no
-// background: empty or all-zero parameters are a full reset, and 49 restores the
-// terminal's default. A list that sets a background of its own -- the completion
-// overlay's rows do -- is left alone.
+// clearsBackground follows the final background effect of a mixed SGR list.
+// Colour components belong to 38/48/58, even when their values are 0 or 49.
 func clearsBackground(params string) bool {
-	for _, p := range strings.Split(params, ";") {
-		if i := strings.IndexByte(p, ':'); i >= 0 {
-			p = p[:i] // sub-parameters all belong to the one attribute
+	fields := strings.Split(params, ";")
+	clears := false
+	for i := 0; i < len(fields); i++ {
+		field, _, sub := strings.Cut(fields[i], ":")
+		n, err := strconv.Atoi(field)
+		if field == "" {
+			n, err = 0, nil
 		}
-		if p != "" && p != "0" && p != "49" {
-			return false
+		if err != nil {
+			continue
+		}
+		switch {
+		case n == 0, n == 49:
+			clears = true
+		case n == 48, n >= 40 && n <= 47, n >= 100 && n <= 107:
+			clears = false
+		}
+		if sub || (n != 38 && n != 48 && n != 58) || i+1 >= len(fields) {
+			continue
+		}
+		switch fields[i+1] {
+		case "5":
+			i += min(2, len(fields)-i-1)
+		case "2":
+			i += min(4, len(fields)-i-1)
 		}
 	}
-	return true
+	return clears
 }

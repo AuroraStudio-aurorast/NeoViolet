@@ -37,31 +37,30 @@ func ensureSpeakerInit(sampleRate beep.SampleRate) error {
 // optional synthetic (MIDI/tracker) controller behind a single mutex-guarded
 // API used by the UI.
 type Player struct {
-	mu              sync.Mutex
-	streamer        beep.StreamSeekCloser
-	ctrl            *beep.Ctrl
-	volume          *effects.Volume
-	format          beep.Format
-	isPaused        bool
-	isPlaying       bool
-	file            io.Closer
-	path            string
-	linearVolume    float64
-	title           string
-	artist          string
-	album           string
-	coverImage      image.Image
-	decoder         *format.Decoder
-	tagReader       *format.MetadataReader
-	synthCtrl       synth.Controller
-	synthActive     bool
-	synthRegistered bool
-	registerSynth   func(beep.Streamer)
-	sfPath          string
-	cachedSF        *soundfont.SoundFont
-	cachedSFPath    string
-	trackerBackend  string
-	tempFiles       []string // temp files to clean up in Close()
+	mu             sync.Mutex
+	streamer       beep.StreamSeekCloser
+	ctrl           *beep.Ctrl
+	output         *beep.Ctrl
+	volume         *effects.Volume
+	format         beep.Format
+	isPaused       bool
+	isPlaying      bool
+	file           io.Closer
+	path           string
+	linearVolume   float64
+	title          string
+	artist         string
+	album          string
+	coverImage     image.Image
+	decoder        *format.Decoder
+	tagReader      *format.MetadataReader
+	synthCtrl      synth.Controller
+	synthActive    bool
+	sfPath         string
+	cachedSF       *soundfont.SoundFont
+	cachedSFPath   string
+	trackerBackend string
+	tempFiles      []string // temp files to clean up in Close()
 }
 
 // NewPlayer creates a Player with the default format decoder and metadata reader.
@@ -164,7 +163,7 @@ func (p *Player) Open(path string) error {
 	}
 
 	// Release the previous track before opening the next one.
-	p.closeStreamer()
+	_ = p.closeStreamer()
 
 	if _, seekErr := file.Seek(0, io.SeekStart); seekErr != nil {
 		_ = file.Close()
@@ -178,6 +177,7 @@ func (p *Player) Open(path string) error {
 	}
 
 	if err := ensureSpeakerInit(format.SampleRate); err != nil {
+		_ = streamer.Close()
 		_ = file.Close()
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
@@ -193,18 +193,14 @@ func (p *Player) Open(path string) error {
 }
 
 // closeStreamer stops playback and closes the file/streamer resources. Caller must hold p.mu.
-func (p *Player) closeStreamer() {
+func (p *Player) closeStreamer() error {
+	p.detachOutput()
+	var err error
 	if p.synthCtrl != nil {
-		_ = p.synthCtrl.Close()
+		err = p.synthCtrl.Close()
 		p.synthCtrl = nil
 	}
 	p.synthActive = false
-	p.synthRegistered = false
-	// Clear unconditionally: it stops playback and, because beep holds the
-	// speaker lock for the duration of a Stream call, it also guarantees no
-	// decoder is being read by the time the streamer is closed.
-	speaker.Clear()
-	p.isPlaying = false
 
 	if p.streamer != nil {
 		// The streamer owns its decoder subprocess and its reader goroutine, so
@@ -218,6 +214,7 @@ func (p *Player) closeStreamer() {
 	}
 	p.ctrl = nil
 	p.volume = nil
+	return err
 }
 
 // Play starts or resumes playback.
@@ -238,13 +235,8 @@ func (p *Player) Play() error {
 	p.ctrl.Paused = false
 	speaker.Unlock()
 
-	if p.isPlaying {
-		speaker.Clear()
-		p.isPlaying = false
-	}
-
 	logger.Debug("Audio play/resume")
-	speaker.Play(p.volume)
+	p.attachOutput(p.volume)
 	p.isPlaying = true
 	p.isPaused = false
 	return nil
@@ -319,6 +311,7 @@ func (p *Player) Stop() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	p.detachOutput()
 	if p.isSynthActive() {
 		logger.Debug("Synth stop")
 		p.synthCtrl.Stop()
@@ -328,7 +321,6 @@ func (p *Player) Stop() {
 	}
 
 	logger.Debug("Audio stop")
-	speaker.Clear()
 	p.isPlaying = false
 	p.isPaused = true
 }
@@ -374,10 +366,14 @@ func (p *Player) Seek(position time.Duration) error {
 	}
 
 	wasPlaying := p.isPlaying && !p.isPaused
-
-	speaker.Clear()
+	wasAttached := p.output != nil
+	p.detachOutput()
 
 	if err := p.streamer.Seek(targetSamples); err != nil {
+		if wasAttached {
+			p.attachOutput(p.volume)
+			p.isPlaying = true
+		}
 		return fmt.Errorf("seek to %v: %w", position, err)
 	}
 
@@ -385,17 +381,11 @@ func (p *Player) Seek(position time.Duration) error {
 	// replaying the samples it buffered before the seek.
 	p.buildChain(!wasPlaying)
 
-	if wasPlaying {
-		speaker.Lock()
-		p.ctrl.Paused = false
-		speaker.Unlock()
-		speaker.Play(p.volume)
-		p.isPlaying = true
-		p.isPaused = false
-	} else {
-		p.isPlaying = false
-		p.isPaused = true
+	if wasAttached {
+		p.attachOutput(p.volume)
 	}
+	p.isPlaying = wasAttached
+	p.isPaused = !wasPlaying
 
 	return nil
 }
@@ -443,17 +433,8 @@ func (p *Player) Close() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	var closeErr error
-	if p.synthCtrl != nil {
-		closeErr = p.synthCtrl.Close()
-		p.synthCtrl = nil
-	}
-	if p.streamer != nil || p.file != nil {
-		p.closeStreamer()
-	}
-	p.synthActive = false
-	p.synthRegistered = false
-	p.isPlaying = false
+	logger.Debug("Player.Close")
+	err := p.closeStreamer()
 	p.isPaused = true
 	p.path = ""
 
@@ -468,7 +449,7 @@ func (p *Player) Close() error {
 	p.cachedSF = nil
 	p.cachedSFPath = ""
 
-	return closeErr
+	return err
 }
 
 // Format returns the sample format of the current stream.

@@ -494,8 +494,8 @@ func TestPanelWindow_KaraokeOnlyFirstPartOfMergedLine(t *testing.T) {
 	if got := panelRowText(rows[1]); got != "你好世界" {
 		t.Errorf("row 1 = %q, want the translation part whole", got)
 	}
-	if got := rows[1].spans[0].Style.Render("x"); got != panelCurrentStyle(m).Render("x") {
-		t.Errorf("row 1 style != current style: rendered %q, want %q", got, panelCurrentStyle(m).Render("x"))
+	if got := rows[1].spans[0].Style.Render("x"); got != panelCurrentStyle().Render("x") {
+		t.Errorf("row 1 style != current style: rendered %q, want %q", got, panelCurrentStyle().Render("x"))
 	}
 	panelRowWidths(t, rows, plan.PanelInnerW)
 }
@@ -626,7 +626,7 @@ func TestPanelWindow_PartsShareCurrentStyleWithoutTranslations(t *testing.T) {
 	m := panelPartsModel(t, 0, []string{"I hear the rain fall", "on the green green grass"})
 	plan := m.layoutPlan()
 	rows := panelWindow(m, plan)
-	current := panelCurrentStyle(m).Render("x")
+	current := panelCurrentStyle().Render("x")
 
 	for i := 0; i < 2; i++ {
 		if got := len(rows[i].spans); got != 1 {
@@ -735,7 +735,7 @@ func TestPanelWindow_SameTimeLinesAreBothCurrent(t *testing.T) {
 
 	plan := m.layoutPlan()
 	rows := panelWindow(m, plan)
-	current := panelCurrentStyle(m).Render("x")
+	current := panelCurrentStyle().Render("x")
 
 	lit := 0
 	for _, r := range rows {
@@ -762,7 +762,7 @@ func TestPanelWindow_SandwichedLineStaysContext(t *testing.T) {
 
 	plan := m.layoutPlan()
 	rows := panelWindow(m, plan)
-	current := panelCurrentStyle(m).Render("x")
+	current := panelCurrentStyle().Render("x")
 
 	texts := make([]string, len(rows))
 	lit := make([]bool, len(rows))

@@ -192,6 +192,8 @@ func (r *remoteReadSeeker) Close() error {
 }
 
 func (p *Player) openURL(urlStr string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	logger.Info("Opening remote audio", "url", urlStr)
 
 	u, err := url.Parse(urlStr)
@@ -227,7 +229,7 @@ func (p *Player) openURL(urlStr string) error {
 	}
 
 	// Release the previous track before opening the next one.
-	p.closeStreamer()
+	_ = p.closeStreamer()
 
 	rrs, err := newRemoteReadSeeker(resp)
 	if err != nil {
@@ -241,6 +243,7 @@ func (p *Player) openURL(urlStr string) error {
 	}
 
 	if err := ensureSpeakerInit(format.SampleRate); err != nil {
+		_ = streamer.Close()
 		_ = rrs.Close()
 		return fmt.Errorf("speaker init failed: %w", err)
 	}

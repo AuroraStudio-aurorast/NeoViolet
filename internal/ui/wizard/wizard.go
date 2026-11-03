@@ -5,7 +5,6 @@ import (
 
 	"charm.land/huh/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/lucasb-eyer/go-colorful"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
@@ -31,41 +30,6 @@ func (o iconOption) ConfigValue() string {
 	return "nerd"
 }
 
-var logoLines = []string{
-	"",
-	"███╗   ██╗███████╗ ██████╗",
-	"████╗  ██║██╔════╝██╔═══██╗",
-	"██╔██╗ ██║█████╗  ██║   ██║",
-	"██║╚██╗██║██╔══╝  ██║   ██║",
-	"██║ ╚████║███████╗╚██████╔╝",
-	"╚═╝  ╚═══╝╚══════╝ ╚═════╝",
-	"",
-	"██╗   ██╗██╗ ██████╗ ██╗     ███████╗████████╗",
-	"██║   ██║██║██╔═══██╗██║     ██╔════╝╚══██╔══╝",
-	"██║   ██║██║██║   ██║██║     █████╗     ██║",
-	"╚██╗ ██╔╝██║██║   ██║██║     ██╔══╝     ██║",
-	" ╚████╔╝ ██║╚██████╔╝███████╗███████╗   ██║",
-	"  ╚═══╝  ╚═╝ ╚═════╝ ╚══════╝╚══════╝   ╚═╝",
-}
-
-func logoGradient() string {
-	start, _ := colorful.Hex("#c77dff")
-	end, _ := colorful.Hex("#5a00b3")
-	n := len(logoLines)
-	var out string
-	for i, line := range logoLines {
-		if line == "" {
-			out += "\n"
-			continue
-		}
-		t := float64(i) / float64(n-1)
-		c := start.BlendHcl(end, t)
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(c.Hex())).Bold(true)
-		out += style.Render(line) + "\n"
-	}
-	return out
-}
-
 // Run shows the first-run setup wizard and returns the resulting config.
 func Run() (*config.Config, error) {
 	var sfPath string
@@ -83,6 +47,7 @@ func Run() (*config.Config, error) {
 	if err := form.Run(); err != nil {
 		return nil, err
 	}
+
 	cfg := config.DefaultConfig()
 	cfg.IconTheme = selected.ConfigValue()
 	cfg.SoundfontPath = sfPath
@@ -102,18 +67,7 @@ func newSetupForm(selected *iconOption, sfPath *string, home string) *setupForm 
 		huh.NewOption(descriptions[IconFallback], IconFallback),
 	}
 
-	logo := logoGradient() + "\nWelcome to NeoViolet \u2014 a terminal music player."
-
-	compact := func(isDark bool) *huh.Styles {
-		s := huh.ThemeCharm(isDark)
-		s.FieldSeparator = lipgloss.NewStyle().SetString("\n")
-		s.Focused.NoteTitle = s.Focused.NoteTitle.MarginBottom(0)
-		s.Focused.Card = s.Focused.Base.Padding(0, 0)
-		s.Blurred.Card = s.Blurred.Base.Padding(0, 0)
-		return s
-	}
-
-	welcome := huh.NewNote().Title(logo)
+	welcome := newLogoNote()
 	picker := huh.NewFilePicker().
 		Title("Choose a SoundFont file (optional)").
 		Description("Pick a .sf2 file for MIDI playback, or leave empty to skip.").
@@ -130,6 +84,18 @@ func newSetupForm(selected *iconOption, sfPath *string, home string) *setupForm 
 				Value(selected),
 			picker,
 		),
-	).WithTheme(huh.ThemeFunc(compact))
-	return &setupForm{form: form, welcome: welcome, picker: picker, logo: logo}
+	).WithTheme(huh.ThemeFunc(wizardTheme))
+	return &setupForm{form: form, welcome: welcome, picker: picker}
+}
+
+func wizardTheme(isDark bool) *huh.Styles {
+	// Huh v2.0.3 supplies LightDark's two palettes in reverse order.
+	// Invert only this theme input; terminal detection and the logo keep isDark.
+	s := huh.ThemeCharm(!isDark)
+	s.FieldSeparator = lipgloss.NewStyle().SetString("\n")
+	s.Focused.NoteTitle = lipgloss.NewStyle()
+	s.Blurred.NoteTitle = lipgloss.NewStyle()
+	s.Focused.Card = s.Focused.Base.Padding(0, 0)
+	s.Blurred.Card = s.Blurred.Base.Padding(0, 0)
+	return s
 }

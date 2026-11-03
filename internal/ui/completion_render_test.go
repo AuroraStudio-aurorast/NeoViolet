@@ -87,7 +87,7 @@ func TestCompletionRowThreeTiers(t *testing.T) {
 		{"tier 3 compacts a path", candidate{Value: "/Users/damon233/Music/Albums/VeryLong/name.mp3", Path: true}, 24, "  …/VeryLong/name.mp3"},
 		{"tier 3 truncates a plain value", candidate{Value: "some-very-long-command-name"}, 10, "  some-ve…"},
 	} {
-		got := stripANSI(completionRow(tc.cand, false, tc.avail))
+		got := stripANSI(completionRow(tc.cand, false, tc.avail, newInteractionPalette(nil).completion(0, 1, false)))
 		if strings.TrimRight(got, " ") != tc.want {
 			t.Errorf("%s: row = %q, want %q", tc.name, strings.TrimRight(got, " "), tc.want)
 		}
@@ -102,7 +102,7 @@ func TestCompletionRowThreeTiers(t *testing.T) {
 	}
 
 	// The selected row keeps the same width, with a marker instead of padding.
-	sel := stripANSI(completionRow(candidate{Value: "lrc", Desc: "<sub>  Lyrics control"}, true, 40))
+	sel := stripANSI(completionRow(candidate{Value: "lrc", Desc: "<sub>  Lyrics control"}, true, 40, newInteractionPalette(nil).completion(0, 1, true)))
 	if w := lipgloss.Width(sel); w != 40 {
 		t.Errorf("selected row width = %d, want 40", w)
 	}
@@ -176,7 +176,7 @@ func TestCompletionRowWidthIsExactlyAvail(t *testing.T) {
 	avail := plan.Width
 	cand := candidate{Value: "/dir/" + strings.Repeat("x", avail-markerWidth-1), Path: true}
 	for _, selected := range []bool{false, true} {
-		if got := lipgloss.Width(completionRow(cand, selected, avail)); got != avail {
+		if got := lipgloss.Width(completionRow(cand, selected, avail, newInteractionPalette(nil).completion(0, 1, selected))); got != avail {
 			t.Errorf("selected=%v: row width = %d, want exactly %d", selected, got, avail)
 		}
 	}
@@ -240,7 +240,7 @@ func TestCompletionRowBudgetsTheGapAndMarker(t *testing.T) {
 	// Exactly at the boundary: marker (2) + value (32) + gap (2) + description
 	// (4) == avail, so the description still fits.
 	const avail = 40
-	row := stripANSI(completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail))
+	row := stripANSI(completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail, newInteractionPalette(nil).completion(0, 1, false)))
 	if w := lipgloss.Width(row); w != avail {
 		t.Errorf("boundary row width = %d, want %d", w, avail)
 	}
@@ -249,18 +249,18 @@ func TestCompletionRowBudgetsTheGapAndMarker(t *testing.T) {
 	}
 
 	// The description keeps its own style: with pad == 0 its span is exactly
-	// completionDescStyle.Render(<desc>), so this fails if the row style is used
+	// the description style rather than the primary style, so this fails if it is used
 	// for it instead. This render is deliberately left un-stripped of its SGR
 	// sequences, unlike the one above.
-	styled := completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail)
-	if !strings.Contains(styled, completionDescStyle.Render("desc")) {
+	styled := completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail, newInteractionPalette(nil).completion(0, 1, false))
+	if !strings.Contains(styled, newInteractionPalette(nil).completion(0, 1, false).description.Render("desc")) {
 		t.Errorf("boundary row = %q, want the description in its own style", styled)
 	}
 
 	// Two cells too wide once the marker and the gap count: the description has
 	// to go so that the row stays inside avail.
 	const narrow = 10
-	tight := stripANSI(completionRow(candidate{Value: "lrcde", Desc: "Lyr"}, false, narrow))
+	tight := stripANSI(completionRow(candidate{Value: "lrcde", Desc: "Lyr"}, false, narrow, newInteractionPalette(nil).completion(0, 1, false)))
 	if w := lipgloss.Width(tight); w != narrow {
 		t.Errorf("tight row width = %d, want %d", w, narrow)
 	}

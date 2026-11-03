@@ -21,7 +21,7 @@ func TestLoadGenerationCaptured(t *testing.T) {
 	_, cmd := handleLoadTrack(m, LoadTrackMsg{Path: filepath.Join(t.TempDir(), "missing.mid")})
 	generation := m.loadGeneration
 	m.loadGeneration++
-	result, ok := cmd().(ErrorMsg)
+	result, ok := cmd().(AudioLoadFailedMsg)
 	if !ok || result.Generation != generation {
 		t.Fatalf("load command read later generation: %+v", result)
 	}

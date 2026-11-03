@@ -22,15 +22,19 @@ CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
+# The Makefile owns the minimum macOS version; read it from there so the icon
+# pipeline, the plist and the binaries cannot drift apart.
+MACOS_MIN="${MACOS_MIN:-$(sed -n 's/^MACOS_MIN ?= //p' "$PROJECT_ROOT/Makefile")}"
+MACOS_MIN="${MACOS_MIN:-13.0}"
 
 ICON_SRC="$GUI_ASSETS/NeoViolet.icon"
 ICON_NAME="NeoViolet"
 PRE_COMPILED="$GUI_ASSETS/pre-compiled"
 
 # ── Build ──────────────────────────────────────────────────────────────────
-echo "Building (make build) …"
+echo "Building (make build/macos) …"
 cd "$PROJECT_ROOT"
-make build
+make build/macos
 
 # ── Bundle skeleton ────────────────────────────────────────────────────────
 rm -rf "$APP_DIR"
@@ -54,7 +58,7 @@ if [[ "$XCODE_MAJOR" -ge 26 ]] && xcrun actool "$ICON_SRC" \
     --compile "$RESOURCES_DIR" \
     --platform macosx \
     --target-device mac \
-    --minimum-deployment-target 26.0 \
+    --minimum-deployment-target "$MACOS_MIN" \
     --app-icon "$ICON_NAME" \
     --output-partial-info-plist "/dev/null" \
     --include-all-app-icons \
@@ -98,7 +102,7 @@ cat > "$CONTENTS_DIR/Info.plist" <<EOF
   <key>CFBundleVersion</key>
   <string>$BUILD</string>
   <key>LSMinimumSystemVersion</key>
-  <string>12.0</string>
+  <string>$MACOS_MIN</string>
   <key>NSHighResolutionCapable</key>
   <true/>
   <key>CFBundleDocumentTypes</key>

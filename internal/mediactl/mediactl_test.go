@@ -5,11 +5,30 @@
 package mediactl
 
 import (
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/godbus/dbus/v5"
 )
+
+func TestMprisBusName(t *testing.T) {
+	const prefix = "org.mpris.MediaPlayer2.neoviolet.instance-"
+
+	a := mprisBusName()
+	if !strings.HasPrefix(a, prefix) {
+		t.Errorf("mprisBusName() = %q, want prefix %q", a, prefix)
+	}
+	if suffix := strings.TrimPrefix(a, prefix); suffix == "" {
+		t.Error("mprisBusName() has empty instance suffix")
+	}
+
+	// Two calls must yield distinct names so concurrent instances can
+	// register on the same bus (collision probability is 2^-32).
+	if a == mprisBusName() {
+		t.Error("mprisBusName() returned the same name twice; instance suffix is not unique")
+	}
+}
 
 func TestPlaybackStatus(t *testing.T) {
 	tests := []struct {

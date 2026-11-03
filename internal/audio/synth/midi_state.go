@@ -54,9 +54,6 @@ func (p *MidiPlayer) ClippedSamples() uint64 {
 	return p.clippedSamples
 }
 
-// ReusableStream reports that EOF/Stop retain the registered silent stream.
-func (p *MidiPlayer) ReusableStream() bool { return true }
-
 // Position returns consumed frames or the newest pending seek target.
 func (p *MidiPlayer) Position() time.Duration {
 	p.mu.Lock()
