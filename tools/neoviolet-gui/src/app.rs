@@ -260,7 +260,9 @@ impl App {
                 return Task::batch([
                     task.map(Message::Lyrics),
                     self.send_all(request.into_iter().collect()),
-                    if opened || closed_settings {
+                    if opened {
+                        window::gain_focus(self.lyrics.settings_window.unwrap_or(self.main_window))
+                    } else if closed_settings {
                         window::gain_focus(self.main_window)
                     } else {
                         Task::none()
@@ -291,6 +293,12 @@ impl App {
                     }
                     if matches!(Action::shortcut(&key, modifiers), Some(Action::Quit)) {
                         return self.action(Action::Quit);
+                    }
+                    if matches!(
+                        Action::shortcut(&key, modifiers),
+                        Some(Action::DesktopLyrics)
+                    ) {
+                        return self.action(Action::DesktopLyrics);
                     }
                 }
             }
@@ -365,6 +373,10 @@ impl App {
             Message::Ipc(_, ipc::Event::Received(ipc::Incoming::Lyrics(frame))) => {
                 if self.config.desktop_lyrics.enabled {
                     self.lyrics.frame = frame;
+                    return self
+                        .lyrics
+                        .fit(&self.config.desktop_lyrics)
+                        .map(Message::Lyrics);
                 }
             }
             Message::Ipc(_, ipc::Event::Received(ipc::Incoming::DesktopLyrics { enable })) => {

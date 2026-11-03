@@ -165,6 +165,7 @@ The settings window includes a position reset if a display arrangement changes.
 Preferences are saved under `[desktop_lyrics]` in `neoviolet_gui.toml`. The TUI
 streams the lyric data and elapsed time; the GUI does not run a playback clock.
 The standalone TUI can toggle an attached overlay with `:lrc desktop`.
+The GUI shortcut is **Cmd+Shift+L** on macOS and **Ctrl+Shift+L** on other platforms.
 
 ### macOS App Bundle
 

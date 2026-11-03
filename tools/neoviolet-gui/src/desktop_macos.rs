@@ -143,7 +143,11 @@ impl Desktop {
                     ("zoom_out", "Zoom Out", Some(Code::Minus)),
                     ("zoom_reset", "Actual Size", Some(Code::Digit0)),
                     ("theme", "Toggle Light / Dark", None),
-                    ("desktop_lyrics", "Show / Hide Desktop Lyrics", None),
+                    (
+                        "desktop_lyrics",
+                        "Show / Hide Desktop Lyrics",
+                        Some(Code::KeyL),
+                    ),
                     ("lyrics_settings", "Desktop Lyrics Settings…", None),
                     ("unlock_lyrics", "Unlock Desktop Lyrics", None),
                 ],
@@ -151,7 +155,16 @@ impl Desktop {
         ] {
             let submenu = Submenu::new(label, true);
             for (id, title, key) in entries {
-                let accelerator = key.map(|key| Accelerator::new(Some(Modifiers::SUPER), key));
+                let accelerator = key.map(|key| {
+                    Accelerator::new(
+                        Some(if id == "desktop_lyrics" {
+                            Modifiers::SUPER | Modifiers::SHIFT
+                        } else {
+                            Modifiers::SUPER
+                        }),
+                        key,
+                    )
+                });
                 submenu
                     .append(&MenuItem::with_id(id, title, true, accelerator))
                     .map_err(|error| error.to_string())?;
