@@ -26,7 +26,6 @@ objc2-foundation = { version = "0.3", features = ["NSArray", "NSURL", "NSString"
 winit = { path = "../../.build/gui-deps/winit" }
 
 [dev-dependencies]
-iced_tiny_skia = "0.14"
 tempfile = "3"
 
 [profile.release]

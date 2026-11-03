@@ -93,3 +93,25 @@
              // The menubar initialization should be before the `NewEvents` event, to allow
              // overriding of the default menu even if it's created
              menu::initialize(&app);
+--- a/src/platform_impl/macos/window_delegate.rs
++++ b/src/platform_impl/macos/window_delegate.rs
+@@ -293,6 +293,9 @@
+             trace_scope!("windowDidEnterFullScreen:");
+             self.ivars().initial_fullscreen.set(false);
+             self.ivars().in_fullscreen_transition.set(false);
++            // AppKit can finish animating after the last resize-driven frame.
++            self.queue_event(WindowEvent::Resized(self.inner_size()));
++            self.request_redraw();
+             if let Some(target_fullscreen) = self.ivars().target_fullscreen.take() {
+                 self.set_fullscreen(target_fullscreen);
+             }
+@@ -305,6 +308,9 @@
+ 
+             self.restore_state_from_fullscreen();
+             self.ivars().in_fullscreen_transition.set(false);
++            // AppKit can finish animating after the last resize-driven frame.
++            self.queue_event(WindowEvent::Resized(self.inner_size()));
++            self.request_redraw();
+             if let Some(target_fullscreen) = self.ivars().target_fullscreen.take() {
+                 self.set_fullscreen(target_fullscreen);
+             }
