@@ -17,6 +17,7 @@
 // TUI → GUI message types:
 //
 //	{"type": "hello"}                       — authentication succeeded
+//	{"type": "desktop_lyrics", "enable": true|false} — synchronize overlay visibility
 //	{"type": "quit", "dialog": true}     — :q/:quit, show confirmation dialog
 //	{"type": "quit", "dialog": false}    — :wq, quit immediately
 //	{"type": "lyrics", "lines": [...], "elapsed": 12.3, "title": "...", "artist": "..."}

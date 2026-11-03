@@ -17,12 +17,18 @@ const MAX_FRAME: usize = 10 * 1024 * 1024;
 pub enum Request {
     Open(PathBuf),
     Quit,
+    DesktopLyrics(bool),
+    PlayPause,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Incoming {
     Hello,
+    Lyrics(crate::lyrics::Frame),
+    DesktopLyrics {
+        enable: bool,
+    },
     Quit {
         dialog: bool,
     },
@@ -154,6 +160,10 @@ async fn write_request<W: AsyncWrite + Unpin>(
     let value = match request {
         Request::Open(path) => serde_json::json!({"type": "open", "path": path}),
         Request::Quit => serde_json::json!({"type": "quit"}),
+        Request::DesktopLyrics(enable) => {
+            serde_json::json!({"type": "desktop_lyrics", "enable": enable})
+        }
+        Request::PlayPause => serde_json::json!({"type": "play_pause"}),
     };
     let mut data = serde_json::to_vec(&value).map_err(|error| error.to_string())?;
     data.push(b'\n');

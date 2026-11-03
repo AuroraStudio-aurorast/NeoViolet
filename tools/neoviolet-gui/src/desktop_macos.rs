@@ -143,6 +143,9 @@ impl Desktop {
                     ("zoom_out", "Zoom Out", Some(Code::Minus)),
                     ("zoom_reset", "Actual Size", Some(Code::Digit0)),
                     ("theme", "Toggle Light / Dark", None),
+                    ("desktop_lyrics", "Show / Hide Desktop Lyrics", None),
+                    ("lyrics_settings", "Desktop Lyrics Settings…", None),
+                    ("unlock_lyrics", "Unlock Desktop Lyrics", None),
                 ],
             ),
         ] {
@@ -192,6 +195,9 @@ impl Desktop {
                 "zoom_reset" => Action::ZoomReset,
                 "theme" => Action::Theme,
                 "repository" => Action::Repository,
+                "desktop_lyrics" => Action::DesktopLyrics,
+                "lyrics_settings" => Action::LyricsSettings,
+                "unlock_lyrics" => Action::UnlockLyrics,
                 _ => return,
             };
             let _ = sender.send(Event::Action(action));
@@ -216,4 +222,33 @@ impl Desktop {
             })
         })
     }
+}
+
+pub fn configure_lyrics_window(id: iced::window::Id) -> iced::Task<()> {
+    iced::window::run(id, |window| {
+        use iced::window::raw_window_handle::RawWindowHandle;
+        use objc2_app_kit::{NSView, NSWindowCollectionBehavior};
+
+        let Some(_marker) = MainThreadMarker::new() else {
+            return;
+        };
+        let Ok(handle) = window.window_handle() else {
+            return;
+        };
+        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+            return;
+        };
+        // SAFETY: Iced invokes this callback on the window thread while the handle is alive.
+        let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+        if let Some(window) = view.window() {
+            window.setExcludedFromWindowsMenu(true);
+            window.setHasShadow(false);
+            window.setHidesOnDeactivate(false);
+            window.setCollectionBehavior(
+                NSWindowCollectionBehavior::CanJoinAllSpaces
+                    | NSWindowCollectionBehavior::FullScreenAuxiliary
+                    | NSWindowCollectionBehavior::IgnoresCycle,
+            );
+        }
+    })
 }

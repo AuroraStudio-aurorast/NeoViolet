@@ -14,6 +14,7 @@ pub struct Config {
     pub neoviolet_path: Option<String>,
     pub zoom_via_scroll: bool,
     pub theme: String,
+    pub desktop_lyrics: crate::lyrics::Preferences,
     #[serde(flatten)]
     pub extra: BTreeMap<String, toml::Value>,
 }
@@ -35,6 +36,7 @@ impl Default for Config {
             neoviolet_path: None,
             zoom_via_scroll: false,
             theme: "dark".into(),
+            desktop_lyrics: crate::lyrics::Preferences::default(),
             extra: BTreeMap::new(),
         }
     }
@@ -80,6 +82,7 @@ impl Config {
     }
 
     fn normalize(&mut self) {
+        self.desktop_lyrics.normalize();
         self.font_size = self.font_size.clamp(8, 48);
         self.window_width = self.window_width.clamp(480, 7680);
         self.window_height = self.window_height.clamp(320, 4320);
@@ -120,5 +123,24 @@ mod tests {
         let saved = toml::to_string(&config).unwrap();
         assert!(saved.contains("[desktop_lyrics]"));
         assert!(saved.contains("enabled = false"));
+    }
+
+    #[test]
+    fn lyric_preferences_normalize_invalid_values_and_preserve_unknown_keys() {
+        let mut config: Config = toml::from_str(
+            "[desktop_lyrics]\nfont_size = 999\nopacity = nan\nadditional_lines = false\nnext_line = true\nlegacy_value = 'keep'\n[desktop_lyrics.position]\nx = inf\ny = 0.0\n",
+        ).unwrap();
+        config.normalize();
+        assert_eq!(config.desktop_lyrics.font_size, 48);
+        assert_eq!(config.desktop_lyrics.opacity, 1.0);
+        assert!(config.desktop_lyrics.position.is_none());
+        let saved = toml::to_string(&config).unwrap();
+        let restored: Config = toml::from_str(&saved).unwrap();
+        assert!(!restored.desktop_lyrics.additional_lines);
+        assert!(restored.desktop_lyrics.next_line);
+        assert_eq!(
+            restored.desktop_lyrics.extra["legacy_value"].as_str(),
+            Some("keep")
+        );
     }
 }

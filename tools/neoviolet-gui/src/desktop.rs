@@ -14,7 +14,12 @@ pub enum Event {
 #[path = "desktop_macos.rs"]
 mod macos;
 #[cfg(target_os = "macos")]
-pub use macos::Desktop;
+pub use macos::{Desktop, configure_lyrics_window};
+
+#[cfg(not(target_os = "macos"))]
+pub fn configure_lyrics_window(_id: iced::window::Id) -> iced::Task<()> {
+    iced::Task::none()
+}
 
 #[cfg(not(target_os = "macos"))]
 #[derive(Clone)]

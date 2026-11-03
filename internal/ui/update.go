@@ -105,7 +105,7 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 					}
 				case "desktop_lyrics":
 					if ipcMsg.Enable != nil {
-						m.DesktopLyricsEnabled = *ipcMsg.Enable
+						m.setDesktopLyricsEnabled(*ipcMsg.Enable)
 						logger.Info("IPC: desktop lyrics", "enabled", *ipcMsg.Enable)
 					}
 				case "play_pause":

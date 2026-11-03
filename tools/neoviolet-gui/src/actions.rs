@@ -11,6 +11,9 @@ pub enum Action {
     ZoomReset,
     Theme,
     Repository,
+    DesktopLyrics,
+    LyricsSettings,
+    UnlockLyrics,
 }
 
 impl Action {

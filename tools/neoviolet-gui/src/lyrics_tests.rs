@@ -1,0 +1,91 @@
+use super::*;
+
+#[test]
+fn overlapping_voices_end_at_explicit_or_next_distinct_boundaries() {
+    let mut frame: Frame = serde_json::from_str(
+        r#"{"elapsed":12,"lines":[
+            {"time":20,"end":0,"text":"last"},
+            {"time":10,"end":0,"text":"voice A"},
+            {"time":10,"end":14,"text":"voice B"},
+            {"time":14,"end":18,"text":"next"}
+        ]}"#,
+    )
+    .unwrap();
+    let texts = |frame: &Frame| {
+        frame
+            .active_lines()
+            .iter()
+            .map(|line| line.text.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(texts(&frame), ["voice A", "voice B"]);
+    frame.elapsed = 14.0;
+    assert_eq!(texts(&frame), ["next"]);
+    frame.elapsed = 18.0;
+    assert!(texts(&frame).is_empty());
+    assert_eq!(frame.next_line().unwrap().text, "last");
+    frame.elapsed = 120.0;
+    assert_eq!(texts(&frame), ["last"]);
+    frame.elapsed = 11.0;
+    assert_eq!(texts(&frame), ["voice A", "voice B"]);
+}
+
+#[test]
+fn parts_replace_text_and_timings_preserve_utf8_and_whitespace() {
+    let line: Line = serde_json::from_str(
+        r#"{"time":1,"end":8,"text":"fallback","parts":["你 Hello 🌙","Additional","Another"],
+        "prefix":"Voice A:","words":[{"time":1,"text":"你 "},{"time":3,"text":"Hello "},{"time":6,"text":"🌙"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(line.first_text(), "你 Hello 🌙");
+    assert_eq!(line.additional_lines(), ["Additional", "Another"]);
+    assert_eq!(
+        line.fragments(3.0),
+        [("你 ", true), ("Hello ", true), ("🌙", false)]
+    );
+    assert_eq!(
+        line.fragments(0.0),
+        [("你 ", false), ("Hello ", false), ("🌙", false)]
+    );
+    assert_eq!(line.prefix, "Voice A:");
+}
+
+#[test]
+fn invalid_word_tiling_or_order_falls_back_to_the_actual_line() {
+    for words in [
+        r#"[{"time":1,"text":"different"}]"#,
+        r#"[{"time":4,"text":"Hello "},{"time":2,"text":"world"}]"#,
+    ] {
+        let line: Line =
+            serde_json::from_str(&format!(r#"{{"text":"Hello world","words":{words}}}"#)).unwrap();
+        assert_eq!(line.fragments(3.0), [("Hello world", true)]);
+    }
+}
+
+#[test]
+fn absent_and_null_lyric_lists_clear_previous_content_and_zero_elapsed_is_valid() {
+    for json in [r#"{}"#, r#"{"lines":null}"#, r#"{"lines":[]}"#] {
+        let frame: Frame = serde_json::from_str(json).unwrap();
+        assert!(frame.active_lines().is_empty());
+        assert!(frame.next_line().is_none());
+    }
+    let frame: Frame = serde_json::from_str(r#"{"lines":[{"time":0,"text":"start"}]}"#).unwrap();
+    assert_eq!(frame.active_lines()[0].text, "start");
+}
+
+#[test]
+fn invalid_line_intervals_do_not_replace_valid_current_or_upcoming_lines() {
+    let frame: Frame = serde_json::from_str(
+        r#"{"elapsed":5,"lines":[
+            {"time":-1,"end":0,"text":"invalid start"},
+            {"time":2,"end":1,"text":"reversed interval"},
+            {"time":4,"end":-1,"text":"invalid end"},
+            {"time":0,"end":0,"text":"current"},
+            {"time":9,"end":12,"text":"upcoming"}
+        ]}"#,
+    )
+    .unwrap();
+    assert_eq!(frame.active_lines().len(), 1);
+    assert_eq!(frame.active_lines()[0].text, "current");
+    assert_eq!(frame.next_line().unwrap().text, "upcoming");
+}

@@ -7,13 +7,15 @@ use iced_term::{BackendCommand, Terminal, TerminalView, actions, settings};
 use tokio::sync::mpsc;
 
 use crate::actions::Action;
-use crate::{config, desktop, ipc, launch};
+use crate::{config, desktop, ipc, launch, lyrics_window};
 
 #[cfg(test)]
 #[path = "app_tests.rs"]
 mod tests;
 
 pub struct App {
+    pub main_window: window::Id,
+    pub lyrics: lyrics_window::Overlay,
     pub config: config::Config,
     pub terminal: Option<Terminal>,
     pub running: bool,
@@ -47,7 +49,9 @@ pub enum Message {
     Terminal(iced_term::Event),
     Ipc(u64, ipc::Event),
     Desktop(desktop::Event),
-    Native(iced::Event),
+    Native(window::Id, iced::Event),
+    Lyrics(lyrics_window::Event),
+    Ready,
     Action(Action),
     Picked(Option<PathBuf>),
     Pasted(Option<String>),
@@ -68,7 +72,16 @@ impl App {
         let save_settings = warning.is_none();
         let warning = warning.or_else(|| desktop.as_ref().err().cloned());
         let family = Box::leak(config.monospace_font.clone().into_boxed_str());
+        let (main_window, open_main) = window::open(window::Settings {
+            size: iced::Size::new(config.window_width as f32, config.window_height as f32),
+            min_size: Some(iced::Size::new(480.0, 320.0)),
+            transparent: config.opacity < 1.0,
+            exit_on_close_request: false,
+            ..Default::default()
+        });
         let mut app = Self {
+            main_window,
+            lyrics: lyrics_window::Overlay::default(),
             config,
             terminal: None,
             running: false,
@@ -99,7 +112,12 @@ impl App {
             },
             Message::Version,
         );
-        (app, Task::batch([start, version]))
+        (
+            app,
+            open_main
+                .map(|_| Message::Ready)
+                .chain(Task::batch([start, version])),
+        )
     }
 
     fn start(&mut self) -> Task<Message> {
@@ -109,6 +127,7 @@ impl App {
         self.ipc_connected = false;
         self.exit_code = None;
         self.closing = false;
+        self.lyrics.clear();
         self.session += 1;
         let executable = launch::player(self.config.neoviolet_path.as_deref());
         let mut environment = self.environment.clone();
@@ -138,7 +157,11 @@ impl App {
                 terminal.set_application_shortcuts(true);
                 self.terminal = Some(terminal);
                 self.running = true;
-                self.focus()
+                let (lyrics, _) = self.lyrics.update(
+                    lyrics_window::Event::Visible(self.config.desktop_lyrics.enabled),
+                    &mut self.config.desktop_lyrics,
+                );
+                Task::batch([self.focus(), lyrics.map(Message::Lyrics)])
             }
             Err(error) => {
                 self.running = false;
@@ -169,6 +192,16 @@ impl App {
         self.window_title.clone()
     }
 
+    pub fn title_for_window(&self, id: window::Id) -> String {
+        if id == self.main_window {
+            self.title()
+        } else if Some(id) == self.lyrics.settings_window {
+            "Desktop Lyrics Settings".into()
+        } else {
+            "NeoViolet Lyrics".into()
+        }
+    }
+
     fn font(&self) -> settings::FontSettings {
         settings::FontSettings {
             size: self.config.font_size as f32,
@@ -189,14 +222,14 @@ impl App {
     }
 
     pub fn subscription(&self) -> Subscription<Message> {
-        let mut subscriptions = vec![iced::event::listen_with(|event, _, _| {
+        let mut subscriptions = vec![iced::event::listen_with(|event, _, id| {
             matches!(
                 event,
                 iced::Event::Window(_)
                     | iced::Event::Keyboard(_)
                     | iced::Event::Mouse(iced::mouse::Event::WheelScrolled { .. })
             )
-            .then_some(Message::Native(event))
+            .then_some(Message::Native(id, event))
         })];
         if self.running {
             if let Some(terminal) = &self.terminal {
@@ -218,6 +251,49 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         match message {
+            Message::Ready => {}
+            Message::Lyrics(event) => {
+                let opened = matches!(&event, lyrics_window::Event::Opened(id) if Some(*id) == self.lyrics.window);
+                let closed_settings = matches!(&event, lyrics_window::Event::CloseSettings)
+                    && self.lyrics.settings_window.is_some();
+                let (task, request) = self.lyrics.update(event, &mut self.config.desktop_lyrics);
+                return Task::batch([
+                    task.map(Message::Lyrics),
+                    self.send_all(request.into_iter().collect()),
+                    if opened || closed_settings {
+                        window::gain_focus(self.main_window)
+                    } else {
+                        Task::none()
+                    },
+                ]);
+            }
+            Message::Native(id, event) if id != self.main_window => {
+                if let iced::Event::Window(window::Event::Moved(point)) = &event {
+                    self.lyrics
+                        .moved(id, *point, &mut self.config.desktop_lyrics);
+                }
+                if matches!(event, iced::Event::Window(window::Event::CloseRequested)) {
+                    if Some(id) == self.lyrics.window {
+                        return self.update(Message::Lyrics(lyrics_window::Event::Visible(false)));
+                    }
+                    if Some(id) == self.lyrics.settings_window {
+                        return self.update(Message::Lyrics(lyrics_window::Event::CloseSettings));
+                    }
+                }
+                if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key,
+                    modifiers,
+                    ..
+                }) = event
+                {
+                    if key == Key::Named(Named::Escape) && Some(id) == self.lyrics.settings_window {
+                        return self.update(Message::Lyrics(lyrics_window::Event::CloseSettings));
+                    }
+                    if matches!(Action::shortcut(&key, modifiers), Some(Action::Quit)) {
+                        return self.action(Action::Quit);
+                    }
+                }
+            }
             Message::Ipc(session, _) if session != self.session => return Task::none(),
             Message::Terminal(iced_term::Event::BackendCall(id, _)) if id != self.session => {
                 return Task::none();
@@ -241,6 +317,7 @@ impl App {
                             self.running = false;
                             self.connection = None;
                             self.ipc_connected = false;
+                            self.lyrics.clear();
                             if self.closing {
                                 return self.finish_quit();
                             }
@@ -257,6 +334,7 @@ impl App {
                                         .into()
                                 }
                             }));
+                            return self.reveal_main();
                         }
                         actions::Action::ChangeTitle(title) => {
                             self.window_title = if title.trim().is_empty() {
@@ -276,15 +354,30 @@ impl App {
                     "NeoViolet GUI: IPC authenticated (player PID {})",
                     self.pid.unwrap_or_default()
                 );
-                if self.dialog.is_some() {
-                    return Task::none();
+                let mut requests = vec![ipc::Request::DesktopLyrics(
+                    self.config.desktop_lyrics.enabled,
+                )];
+                if self.dialog.is_none() {
+                    requests.extend(self.pending.drain(..).map(ipc::Request::Open));
                 }
-                let requests: Vec<_> = self.pending.drain(..).map(ipc::Request::Open).collect();
                 return self.send_all(requests);
+            }
+            Message::Ipc(_, ipc::Event::Received(ipc::Incoming::Lyrics(frame))) => {
+                if self.config.desktop_lyrics.enabled {
+                    self.lyrics.frame = frame;
+                }
+            }
+            Message::Ipc(_, ipc::Event::Received(ipc::Incoming::DesktopLyrics { enable })) => {
+                let (task, _) = self.lyrics.update(
+                    lyrics_window::Event::Visible(enable),
+                    &mut self.config.desktop_lyrics,
+                );
+                return task.map(Message::Lyrics);
             }
             Message::Ipc(_, ipc::Event::Received(ipc::Incoming::Quit { dialog })) => {
                 if dialog {
                     self.dialog = Some(Dialog::Quit);
+                    return self.reveal_main();
                 } else {
                     self.closing = true;
                     return self.finish_quit();
@@ -293,6 +386,7 @@ impl App {
             Message::Ipc(_, ipc::Event::Disconnected(error)) => {
                 self.connection = None;
                 self.ipc_connected = false;
+                self.lyrics.clear();
                 if !self.closing && self.running {
                     eprintln!("NeoViolet GUI: {error}");
                 }
@@ -307,9 +401,9 @@ impl App {
                 }
             }
             Message::Desktop(desktop::Event::Reopen) => {
-                return window::latest().and_then(window::gain_focus);
+                return self.reveal_main();
             }
-            Message::Native(iced::Event::Window(event)) => match event {
+            Message::Native(_, iced::Event::Window(event)) => match event {
                 window::Event::CloseRequested => return self.action(Action::Quit),
                 window::Event::FileDropped(path) => return self.open(path),
                 window::Event::Resized(size) => {
@@ -318,7 +412,7 @@ impl App {
                 }
                 _ => {}
             },
-            Message::Native(iced::Event::Keyboard(event)) => match event {
+            Message::Native(_, iced::Event::Keyboard(event)) => match event {
                 iced::keyboard::Event::ModifiersChanged(modifiers) => self.modifiers = modifiers,
                 iced::keyboard::Event::KeyPressed { key, modifiers, .. } => {
                     if key == Key::Named(Named::Escape) && self.dialog.is_some() {
@@ -330,7 +424,7 @@ impl App {
                 }
                 _ => {}
             },
-            Message::Native(iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })) => {
+            Message::Native(_, iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })) => {
                 if self.config.zoom_via_scroll && self.modifiers.command() {
                     let y = match delta {
                         iced::mouse::ScrollDelta::Lines { y, .. }
@@ -345,7 +439,7 @@ impl App {
                     }
                 }
             }
-            Message::Native(_) => {}
+            Message::Native(_, _) => {}
             Message::Picked(Some(path)) => return self.open(path),
             Message::Picked(None) => return self.focus(),
             Message::Pasted(Some(text)) => {
@@ -358,7 +452,10 @@ impl App {
             }
             Message::Pasted(None) => {}
             Message::Version(version) => self.version = version,
-            Message::Sent(Err(error)) => self.dialog = Some(Dialog::Error(error)),
+            Message::Sent(Err(error)) => {
+                self.dialog = Some(Dialog::Error(error));
+                return self.reveal_main();
+            }
             Message::Sent(Ok(())) => {}
             Message::Dismiss => {
                 if self.running {
@@ -405,6 +502,17 @@ impl App {
 
     fn action(&mut self, action: Action) -> Task<Message> {
         match action {
+            Action::DesktopLyrics => {
+                return self.update(Message::Lyrics(lyrics_window::Event::Visible(
+                    !self.config.desktop_lyrics.enabled,
+                )));
+            }
+            Action::LyricsSettings => {
+                return self.update(Message::Lyrics(lyrics_window::Event::Settings));
+            }
+            Action::UnlockLyrics => {
+                return self.update(Message::Lyrics(lyrics_window::Event::Locked(false)));
+            }
             Action::Open => {
                 return Task::perform(
                     async {
@@ -434,12 +542,16 @@ impl App {
                     Message::Sent,
                 );
             }
-            Action::About => self.dialog = Some(Dialog::About),
+            Action::About => {
+                self.dialog = Some(Dialog::About);
+                return self.reveal_main();
+            }
             Action::Quit => {
                 if !self.running {
                     return self.finish_quit();
                 }
                 self.dialog = Some(Dialog::Quit);
+                return self.reveal_main();
             }
             Action::Copy => {
                 if self.dialog.is_none()
@@ -529,5 +641,9 @@ impl App {
             return TerminalView::focus(terminal.widget_id().clone());
         }
         Task::none()
+    }
+
+    fn reveal_main(&self) -> Task<Message> {
+        window::minimize(self.main_window, false).chain(window::gain_focus(self.main_window))
     }
 }

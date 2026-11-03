@@ -1,6 +1,48 @@
 use super::*;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
+#[tokio::test]
+async fn lyric_stream_frames_are_not_discarded_as_unknown_messages() {
+    let payload = b"{\"type\":\"lyrics\",\"elapsed\":12.3,\"title\":\"Song\",\"lines\":[{\"time\":10,\"end\":15,\"text\":\"Hello\",\"parts\":[\"Hello\",\"Additional line\"],\"words\":[{\"time\":10,\"text\":\"Hello\"}],\"agent\":\"a\",\"agent_name\":\"Voice A\"}]}\n";
+    let mut reader = BufReader::new(&payload[..]);
+    let frame = read_frame(&mut reader).await.unwrap().unwrap();
+    let Incoming::Lyrics(frame) = frame else {
+        panic!("lyric frame was not decoded");
+    };
+    assert_eq!(frame.elapsed, 12.3);
+    assert_eq!(frame.title, "Song");
+    assert_eq!(frame.lines[0].additional_lines(), ["Additional line"]);
+    assert_eq!(frame.lines[0].agent, "a");
+    assert_eq!(frame.lines[0].agent_name, "Voice A");
+}
+
+#[tokio::test]
+async fn overlay_commands_use_existing_tui_protocol_and_newline_framing() {
+    let mut output = Vec::new();
+    write_request(&mut output, &Request::DesktopLyrics(true))
+        .await
+        .unwrap();
+    write_request(&mut output, &Request::PlayPause)
+        .await
+        .unwrap();
+    write_request(&mut output, &Request::DesktopLyrics(false))
+        .await
+        .unwrap();
+    let frames: Vec<serde_json::Value> = String::from_utf8(output)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        frames,
+        [
+            serde_json::json!({"type":"desktop_lyrics","enable":true}),
+            serde_json::json!({"type":"play_pause"}),
+            serde_json::json!({"type":"desktop_lyrics","enable":false}),
+        ]
+    );
+}
+
 #[test]
 fn discovery_rejects_remote_addresses_and_malformed_tokens() {
     let token = "a".repeat(64);
@@ -110,6 +152,27 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
         .await
         .expect("TUI must start IPC without a desktop window")
         .expect("real authentication acknowledgement");
+    write_request(peer.get_mut(), &Request::DesktopLyrics(true))
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(Duration::from_secs(5), read_frame(&mut peer))
+        .await
+        .expect("enabling desktop lyrics must send an initial frame")
+        .unwrap()
+        .unwrap();
+    assert!(matches!(frame, Incoming::Lyrics(_)));
+    write_request(peer.get_mut(), &Request::DesktopLyrics(false))
+        .await
+        .unwrap();
+    write_request(peer.get_mut(), &Request::DesktopLyrics(true))
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(Duration::from_secs(5), read_frame(&mut peer))
+        .await
+        .expect("re-enabling a paused stream must send a fresh frame")
+        .unwrap()
+        .unwrap();
+    assert!(matches!(frame, Incoming::Lyrics(_)));
     write_request(peer.get_mut(), &Request::Quit).await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), async {
         while port.exists() {

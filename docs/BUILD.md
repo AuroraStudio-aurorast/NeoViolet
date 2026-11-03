@@ -153,6 +153,19 @@ GUI binary. Rust compilation and root-binary copy failures also stop the build.
 `make gui/debug` leaves its binary in `tools/neoviolet-gui/target/debug/`; it does not replace the
 release binary in the repository root.
 
+### Desktop lyrics
+
+The GUI opens a separate transparent, always-on-top lyrics window. Additional lines
+are enabled by default; the next line is disabled. Hover for playback, move, lock,
+and settings controls. Locked lyrics pass mouse input through to other applications.
+On macOS, use **View → Desktop Lyrics Settings…** or **Unlock Desktop Lyrics** to
+restore interaction. Other platforms expose these actions in the main window.
+The settings window includes a position reset if a display arrangement changes.
+
+Preferences are saved under `[desktop_lyrics]` in `neoviolet_gui.toml`. The TUI
+streams the lyric data and elapsed time; the GUI does not run a playback clock.
+The standalone TUI can toggle an attached overlay with `:lrc desktop`.
+
 ### macOS App Bundle
 
 ```bash

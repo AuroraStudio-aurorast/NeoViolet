@@ -6,7 +6,27 @@ use crate::actions::Action;
 use crate::app::{App, Dialog, Message};
 
 impl App {
-    pub fn view(&self) -> Element<'_, Message> {
+    pub fn view(&self, id: iced::window::Id) -> Element<'_, Message> {
+        if Some(id) == self.lyrics.window {
+            return self
+                .lyrics
+                .view(&self.config.desktop_lyrics)
+                .map(Message::Lyrics);
+        }
+        if Some(id) == self.lyrics.settings_window {
+            return self
+                .lyrics
+                .settings_view(&self.config.desktop_lyrics)
+                .map(Message::Lyrics);
+        }
+        if id == self.main_window {
+            self.main_view()
+        } else {
+            text("").into()
+        }
+    }
+
+    fn main_view(&self) -> Element<'_, Message> {
         let content = self.player_view();
         if let Some(dialog) = &self.dialog {
             let (heading, body, controls) = match dialog {
@@ -104,15 +124,24 @@ impl App {
         }
         column![
             container(
-                row![
-                    button("Open").on_press(Message::Action(Action::Open)),
-                    button("Settings").on_press(Message::Action(Action::Preferences)),
-                    button("Copy").on_press(Message::Action(Action::Copy)),
-                    button("Paste").on_press(Message::Action(Action::Paste)),
-                    button("−").on_press(Message::Action(Action::ZoomOut)),
-                    button("+").on_press(Message::Action(Action::ZoomIn)),
-                    button("Theme").on_press(Message::Action(Action::Theme)),
-                    button("About").on_press(Message::Action(Action::About)),
+                column![
+                    row![
+                        button("Open").on_press(Message::Action(Action::Open)),
+                        button("Settings").on_press(Message::Action(Action::Preferences)),
+                        button("Copy").on_press(Message::Action(Action::Copy)),
+                        button("Paste").on_press(Message::Action(Action::Paste)),
+                        button("−").on_press(Message::Action(Action::ZoomOut)),
+                        button("+").on_press(Message::Action(Action::ZoomIn)),
+                        button("Theme").on_press(Message::Action(Action::Theme)),
+                        button("About").on_press(Message::Action(Action::About)),
+                    ]
+                    .spacing(6),
+                    row![
+                        button("Lyrics").on_press(Message::Action(Action::DesktopLyrics)),
+                        button("Lyrics Settings").on_press(Message::Action(Action::LyricsSettings)),
+                        button("Unlock Lyrics").on_press(Message::Action(Action::UnlockLyrics)),
+                    ]
+                    .spacing(6)
                 ]
                 .spacing(6)
             )
