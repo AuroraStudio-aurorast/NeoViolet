@@ -88,7 +88,12 @@ func parseTrack(data []byte, track uint32, limits parseLimits) (events []Event, 
 				}
 			}
 			if d1 >= 128 || d2 >= 128 {
-				return fail(errors.New("status byte in channel data"))
+				// Files in the wild (e.g. some C418 MIDI conversions) contain a
+				// data byte with its high bit set. Mainstream players mask it;
+				// dropping the track loses every other event it carries.
+				d1 &= 0x7F
+				d2 &= 0x7F
+				addDiagnostic(&diags, "invalid_channel_data", "high-bit data byte masked", port, track)
 			}
 			events = append(events, Event{Tick: tick, Track: track, Order: order, Port: port, Status: status, Data1: d1, Data2: d2})
 		case status == 255:

@@ -43,6 +43,7 @@ func parse(r io.Reader, limits parseLimits) (*Song, []Diagnostic, error) {
 	s := &Song{division: division}
 	var diags []Diagnostic
 	pos := int(h) + 8
+	lastStart, lastEnd := pos, pos
 	for track := uint32(0); track < uint32(count); track++ {
 		if len(data)-pos < 8 || string(data[pos:pos+4]) != "MTrk" {
 			return nil, nil, fmt.Errorf("track%d: missing MTrk", track)
@@ -68,6 +69,7 @@ func parse(r io.Reader, limits parseLimits) (*Song, []Diagnostic, error) {
 		if err != nil {
 			return nil, nil, fmt.Errorf("track%d: %w", track, err)
 		}
+		lastStart, lastEnd = pos, end
 		s.Events = append(s.Events, events...)
 		s.tempos = append(s.tempos, tempos...)
 		s.end = max(s.end, tick)
@@ -80,7 +82,15 @@ func parse(r io.Reader, limits parseLimits) (*Song, []Diagnostic, error) {
 		pos = end
 	}
 	if pos != len(data) {
-		return nil, nil, errors.New("SMF: trailing bytes")
+		// Some encoders repeat the final bytes of the last track after its
+		// declared end. Mainstream players stop after the declared track count;
+		// accept the duplicate so the rest of the song still plays.
+		tail := data[pos:]
+		last := data[lastStart:lastEnd]
+		if len(tail) > len(last) || !bytes.Equal(tail, last[len(last)-len(tail):]) {
+			return nil, nil, errors.New("SMF: trailing bytes")
+		}
+		addDiagnostic(&diags, "duplicate_tail", "duplicate trailing bytes ignored", 0, uint32(count)-1)
 	}
 	sort.SliceStable(s.Events, func(i, j int) bool {
 		a, b := s.Events[i], s.Events[j]

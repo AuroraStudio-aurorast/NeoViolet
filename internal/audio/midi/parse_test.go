@@ -99,3 +99,50 @@ func TestCompileSMPTE(t *testing.T) {
 		}
 	}
 }
+
+func TestParseMasksHighBitDataBytes(t *testing.T) {
+	tr := append(miditest.Event(0, 0xEA, 0x6E, 0x7D), miditest.Event(16, 0x00, 0x80)...)
+	tr = append(tr, miditest.Event(1, 0x9A, 0x32, 0x00)...)
+	tr = append(tr, miditest.Event(0, 0xEA, 0x00, 0x40)...)
+	tr = append(tr, miditest.Event(0, 0xFF, 0x2F, 0x00)...)
+
+	s, d, err := Parse(bytes.NewReader(miditest.SMF(0, 120, tr)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Events) != 4 {
+		t.Fatalf("events=%+v", s.Events)
+	}
+	if got := s.Events[1]; got.Status != 0xEA || got.Data1 != 0 || got.Data2 != 0 {
+		t.Fatalf("masked event=%+v", got)
+	}
+	if len(d) != 1 || d[0].Code != "invalid_channel_data" || d[0].Count != 1 {
+		t.Fatalf("diagnostics=%+v", d)
+	}
+}
+
+func TestParseIgnoresDuplicateTrackTail(t *testing.T) {
+	tr := miditest.Event(0, 0x90, 60, 100)
+	tr = append(tr, miditest.Event(120, 0x80, 60, 0)...)
+	tr = append(tr, miditest.Event(0, 0xFF, 0x2F, 0)...)
+	raw := miditest.SMF(0, 120, tr)
+	raw = append(raw, tr[len(tr)-6:]...)
+	s, d, err := Parse(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Events) != 2 {
+		t.Fatalf("events=%+v", s.Events)
+	}
+	if len(d) != 1 || d[0].Code != "duplicate_tail" {
+		t.Fatalf("diagnostics=%+v", d)
+	}
+}
+
+func TestParseRejectsUnrelatedTrailingBytes(t *testing.T) {
+	tr := append(miditest.Event(0, 0x90, 60, 100), miditest.Event(0, 0xFF, 0x2F, 0)...)
+	raw := append(miditest.SMF(0, 120, tr), 0x90, 60, 100)
+	if _, _, err := Parse(bytes.NewReader(raw)); err == nil {
+		t.Fatal("accepted unrelated trailing bytes")
+	}
+}
