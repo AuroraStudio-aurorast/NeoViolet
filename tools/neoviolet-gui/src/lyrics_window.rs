@@ -1,12 +1,13 @@
 //! Native lyrics and settings windows; playback remains in the TUI.
 use iced::widget::{
-    button, column, container, mouse_area, pin, rich_text, row, rule, scrollable, slider, space,
-    span, stack, text, toggler, tooltip,
+    button, column, container, mouse_area, rich_text, row, rule, scrollable, slider, space, span,
+    text, toggler, tooltip,
 };
 use iced::{Color, Element, Font, Length, Point, Size, Task, window};
 
 use crate::ipc::Request;
 use crate::lyrics::{Frame, Highlight, Position, Preferences};
+use crate::lyrics_text::outlined;
 
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -63,7 +64,7 @@ impl Overlay {
             rows.push((format!("{}{}", next.prefix, next.first_text()), 13.0));
         }
         if rows.is_empty() {
-            return Size::new(300.0, 100.0);
+            return Size::new(300.0, 130.0);
         }
         let width = (rows
             .iter()
@@ -76,9 +77,9 @@ impl Overlay {
             .iter()
             .map(|(line, size)| measure_text(line, *size, width - 40.0).height)
             .sum::<f32>()
-            + 58.0
+            + 100.0
             + (rows.len() - 1) as f32 * 8.0;
-        Size::new(width, height.ceil().clamp(100.0, 500.0))
+        Size::new(width, height.ceil().clamp(130.0, 500.0))
     }
 
     pub fn fit(&mut self, preferences: &Preferences) -> Task<Event> {
@@ -278,11 +279,7 @@ impl Overlay {
             } else {
                 "No lyrics"
             };
-            lines = lines.push(
-                text(label)
-                    .size(17)
-                    .color(Color::WHITE.scale_alpha(0.45 * alpha)),
-            );
+            lines = lines.push(caption(label.to_owned(), 17.0, 0.85 * alpha, alpha));
         }
         for line in active {
             let mut fragments = Vec::new();
@@ -297,13 +294,15 @@ impl Overlay {
                 fragments.push(span(fragment).color(if played {
                     sung
                 } else {
-                    Color::WHITE.scale_alpha(0.48 * alpha)
+                    Color::from_rgb8(220, 218, 226).scale_alpha(0.95 * alpha)
                 }));
             }
             let shadow = fragments
                 .iter()
                 .cloned()
-                .map(|fragment| fragment.color(Color::BLACK.scale_alpha(0.6 * alpha)))
+                .map(|fragment| {
+                    fragment.color(Color::from_rgb8(20, 18, 25).scale_alpha(0.92 * alpha))
+                })
                 .collect::<Vec<_>>();
             let make_text = |fragments| {
                 rich_text::<(), _, _, _>(fragments)
@@ -315,8 +314,7 @@ impl Overlay {
                     .align_x(iced::Center)
                     .width(Length::Fill)
             };
-            let primary = stack![make_text(fragments)]
-                .push_under(pin(make_text(shadow)).height(Length::Shrink).y(0.75));
+            let primary = outlined(make_text(fragments), make_text(shadow), 0.95);
             let mut group = column![primary]
                 .spacing(5)
                 .align_x(iced::Center)
@@ -327,23 +325,19 @@ impl Overlay {
                     .iter()
                     .filter(|line| !line.trim().is_empty())
                 {
-                    let additional_shadow = text(additional.as_str())
-                        .size(preferences.font_size as f32 * 0.46)
-                        .shaping(iced::advanced::text::Shaping::Advanced)
-                        .color(Color::BLACK.scale_alpha(0.55 * alpha))
-                        .align_x(iced::Center)
-                        .width(Length::Fill);
-                    group = group.push(
-                        stack![
-                            text(additional.as_str())
-                                .size(preferences.font_size as f32 * 0.46)
-                                .shaping(iced::advanced::text::Shaping::Advanced)
-                                .color(Color::WHITE.scale_alpha(0.7 * alpha))
-                                .align_x(iced::Center)
-                                .width(Length::Fill)
-                        ]
-                        .push_under(pin(additional_shadow).height(Length::Shrink).y(0.75)),
-                    );
+                    let additional_text = |color| {
+                        text(additional.as_str())
+                            .size(preferences.font_size as f32 * 0.46)
+                            .shaping(iced::advanced::text::Shaping::Advanced)
+                            .color(color)
+                            .align_x(iced::Center)
+                            .width(Length::Fill)
+                    };
+                    group = group.push(outlined(
+                        additional_text(Color::WHITE.scale_alpha(0.95 * alpha)),
+                        additional_text(Color::from_rgb8(20, 18, 25).scale_alpha(0.92 * alpha)),
+                        0.7,
+                    ));
                 }
             }
             let agent = if line.agent_name.is_empty() {
@@ -354,33 +348,26 @@ impl Overlay {
             let group: Element<'_, Event> = if agent.is_empty() {
                 group.into()
             } else {
-                tooltip(
-                    group,
-                    text(agent.as_str()).size(11),
-                    tooltip::Position::Bottom,
-                )
-                .into()
+                hint(group, agent.as_str(), tooltip::Position::Bottom)
             };
             lines = lines.push(group);
         }
         if preferences.next_line
             && let Some(next) = self.frame.next_line()
         {
-            lines = lines.push(
-                text(format!("{}{}", next.prefix, next.first_text()))
-                    .size(13)
-                    .shaping(iced::advanced::text::Shaping::Advanced)
-                    .color(Color::WHITE.scale_alpha(0.4 * alpha))
-                    .align_x(iced::Center)
-                    .width(Length::Fill),
-            );
+            lines = lines.push(caption(
+                format!("{}{}", next.prefix, next.first_text()),
+                13.0,
+                0.8 * alpha,
+                alpha,
+            ));
         }
         let toolbar: Element<'_, Event> = if self.hovered && !preferences.locked {
             container(
                 row![
-                    tooltip(
+                    hint(
                         mouse_area(container(icon(Icon::Move)).padding(6)).on_press(Event::Drag),
-                        text("Move lyrics").size(11),
+                        "Drag to move",
                         tooltip::Position::Top
                     ),
                     icon_button(Icon::Playback, "Play / Pause", Event::PlayPause),
@@ -397,6 +384,7 @@ impl Overlay {
             space().height(34).into()
         };
         let content = column![
+            space().height(30),
             container(toolbar).height(34).center_x(Length::Fill),
             scrollable(lines).height(Length::Shrink),
         ]
@@ -516,9 +504,88 @@ impl Overlay {
     }
 }
 
+fn caption<'a>(label: String, size: f32, opacity: f32, outline_opacity: f32) -> Element<'a, Event> {
+    let make_text = |label, color| {
+        text(label)
+            .size(size)
+            .shaping(iced::advanced::text::Shaping::Advanced)
+            .color(color)
+            .align_x(iced::Center)
+            .width(Length::Fill)
+    };
+    outlined(
+        make_text(label.clone(), Color::WHITE.scale_alpha(opacity)),
+        make_text(
+            label,
+            Color::from_rgb8(20, 18, 25).scale_alpha(0.92 * outline_opacity),
+        ),
+        0.7,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ordinary_bilingual_lyrics_fit_below_tooltip_space_without_scrollbars() {
+        use iced::advanced::{layout, widget};
+        #[derive(Default)]
+        struct Bounds(Vec<(iced::Rectangle, iced::Rectangle)>);
+        impl widget::Operation for Bounds {
+            fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn widget::Operation)) {
+                operate(self);
+            }
+            fn scrollable(
+                &mut self,
+                _: Option<&widget::Id>,
+                bounds: iced::Rectangle,
+                content: iced::Rectangle,
+                _: iced::Vector,
+                _: &mut dyn widget::operation::Scrollable,
+            ) {
+                self.0.push((bounds, content));
+            }
+        }
+        let overlay = Overlay {
+            frame: serde_json::from_value(serde_json::json!({
+                "elapsed":1,"lines":[{"time":0,"text":"把未说完的话，交给夜色",
+                    "parts":["把未说完的话，交给夜色","Let the quiet carry what we left unsaid."]}]
+            }))
+            .unwrap(),
+            ..Default::default()
+        };
+        let renderer =
+            iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(Font::DEFAULT, 16.0.into()));
+        for font_size in [22, 32, 48] {
+            let preferences = Preferences {
+                font_size,
+                ..Default::default()
+            };
+            let size = overlay.display_size(&preferences);
+            let mut view = overlay.view(&preferences);
+            let mut tree = widget::Tree::new(&view);
+            let node =
+                view.as_widget_mut()
+                    .layout(&mut tree, &renderer, &layout::Limits::new(size, size));
+            let mut bounds = Bounds::default();
+            view.as_widget_mut().operate(
+                &mut tree,
+                layout::Layout::new(&node),
+                &renderer,
+                &mut bounds,
+            );
+            assert!(!bounds.0.is_empty());
+            for (viewport, content) in bounds.0 {
+                assert!(
+                    content.height <= viewport.height + 0.5,
+                    "font size {font_size}: content {} exceeds viewport {}",
+                    content.height,
+                    viewport.height
+                );
+            }
+        }
+    }
 
     #[test]
     fn overlay_bounds_follow_lyrics_and_optional_sublines_without_growing_on_progress() {
@@ -546,7 +613,7 @@ mod tests {
         let id = window::Id::unique();
         let mut overlay = Overlay {
             window: Some(id),
-            size: Size::new(300.0, 100.0),
+            size: Size::new(300.0, 130.0),
             frame: serde_json::from_value(serde_json::json!({"elapsed":1,"lines":[
                 {"time":0,"text":"A considerably longer line than the initial waiting message"}
             ]}))
@@ -626,16 +693,45 @@ fn icon(kind: Icon) -> iced::widget::Canvas<Glyph, Event> {
     iced::widget::canvas(Glyph(kind)).width(16).height(16)
 }
 
-fn icon_button(kind: Icon, label: &'static str, event: Event) -> Element<'static, Event> {
+fn hint<'a>(
+    content: impl Into<Element<'a, Event>>,
+    label: &'a str,
+    position: tooltip::Position,
+) -> Element<'a, Event> {
     tooltip(
+        content,
+        container(text(label).size(11).color(Color::from_rgb8(235, 232, 241))).padding([6, 9]),
+        position,
+    )
+    .gap(7)
+    .padding(0)
+    .delay(std::time::Duration::from_millis(400))
+    .style(|_| container::Style {
+        background: Some(Color::from_rgba8(30, 29, 34, 0.98).into()),
+        border: iced::Border {
+            color: Color::WHITE.scale_alpha(0.14),
+            width: 1.0,
+            radius: 6.0.into(),
+        },
+        shadow: iced::Shadow {
+            color: Color::BLACK.scale_alpha(0.2),
+            offset: iced::Vector::new(0.0, 2.0),
+            blur_radius: 6.0,
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn icon_button(kind: Icon, label: &'static str, event: Event) -> Element<'static, Event> {
+    hint(
         button(icon(kind))
             .padding(6)
             .on_press(event)
             .style(|_, status| control_style(false, status)),
-        text(label).size(11),
+        label,
         tooltip::Position::Top,
     )
-    .into()
 }
 
 struct Glyph(Icon);

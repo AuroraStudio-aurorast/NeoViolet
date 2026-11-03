@@ -7,6 +7,7 @@ mod desktop;
 mod ipc;
 mod launch;
 mod lyrics;
+mod lyrics_text;
 mod lyrics_window;
 mod view;
 
