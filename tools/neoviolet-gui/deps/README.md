@@ -11,7 +11,7 @@ archive caches stay outside Git. Git is required to apply the patches.
 
 | Component | Upstream | License | Changes |
 |---|---|---|---|
-| iced_term | `230945e443c7bded8eac0786240210a51a0e8303` (PR 73) | MIT | Validated IME fixes, process ID and selection access, terminal query responses, bracketed paste, application shortcuts, opacity and scroll zoom, subscription shutdown |
+| iced_term | `230945e443c7bded8eac0786240210a51a0e8303` (PR 73) | MIT | Validated IME fixes, process ID and selection access, terminal query responses, bracketed paste, application shortcuts, opacity and scroll zoom, modal input isolation, subscription shutdown |
 | winit | 0.30.13 / `e9809ef54b18499bb4f2cac945719ecc2a61061b` | Apache-2.0 | Discard marked text when disabling IME; retain document/reopen/quit callbacks and preinstalled macOS menus |
 
 Original license texts are retained under `licenses/` and shipped in macOS bundles.

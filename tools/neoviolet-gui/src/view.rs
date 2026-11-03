@@ -1,5 +1,5 @@
-use iced::widget::{button, column, container, row, text};
-use iced::{Element, Length};
+use iced::widget::{button, column, container, opaque, row, scrollable, stack, text};
+use iced::{Border, Color, Element, Length, Shadow, Vector};
 use iced_term::TerminalView;
 
 use crate::actions::Action;
@@ -7,6 +7,7 @@ use crate::app::{App, Dialog, Message};
 
 impl App {
     pub fn view(&self) -> Element<'_, Message> {
+        let content = self.player_view();
         if let Some(dialog) = &self.dialog {
             let (heading, body, controls) = match dialog {
                 Dialog::About => (
@@ -22,7 +23,9 @@ impl App {
                     "Close NeoViolet?",
                     "Playback will stop when the player closes.".into(),
                     row![
-                        button("Cancel").on_press(Message::Dismiss),
+                        button("Cancel")
+                            .on_press(Message::Dismiss)
+                            .style(button::secondary),
                         button("Close player").on_press(Message::ConfirmQuit)
                     ],
                 ),
@@ -39,19 +42,61 @@ impl App {
                     },
                 ),
             };
-            return container(
-                column![text(heading).size(24), text(body), controls.spacing(12)].spacing(20),
+            let panel = container(
+                column![
+                    text(heading).size(20),
+                    container(scrollable(text(body).size(14)).height(Length::Shrink))
+                        .width(Length::Fill)
+                        .max_height(120),
+                    container(controls.spacing(8))
+                        .width(Length::Fill)
+                        .align_x(iced::Right),
+                ]
+                .spacing(20),
             )
-            .padding(32)
-            .center_x(Length::Fill)
-            .center_y(Length::Fill)
-            .style(container::rounded_box)
-            .into();
+            .padding(24)
+            .width(Length::Fill)
+            .max_width(420)
+            .max_height(280)
+            .style(|theme: &iced::Theme| {
+                let palette = theme.extended_palette();
+                container::Style {
+                    background: Some(palette.background.weak.color.into()),
+                    text_color: Some(palette.background.base.text),
+                    border: Border {
+                        color: palette.background.strong.color,
+                        width: 1.0,
+                        radius: 12.0.into(),
+                    },
+                    shadow: Shadow {
+                        color: Color::BLACK.scale_alpha(0.35),
+                        offset: Vector::new(0.0, 8.0),
+                        blur_radius: 24.0,
+                    },
+                    ..Default::default()
+                }
+            });
+            let modal = container(panel)
+                .padding(24)
+                .center_x(Length::Fill)
+                .center_y(Length::Fill)
+                .style(|_| container::Style {
+                    background: Some(Color::BLACK.scale_alpha(0.45).into()),
+                    ..Default::default()
+                });
+            return stack![content, opaque(modal)].into();
         }
+        content
+    }
+
+    fn player_view(&self) -> Element<'_, Message> {
         let terminal = self
             .terminal
             .as_ref()
-            .map(|terminal| TerminalView::show(terminal).map(Message::Terminal))
+            .map(|terminal| {
+                TerminalView::show_with_input(terminal, self.dialog.is_none())
+                    .map(Message::Terminal)
+            })
             .unwrap_or_else(|| text("Starting player…").into());
         // macOS uses the system menu bar; other desktops get ordinary window content controls.
         if cfg!(target_os = "macos") && self.desktop.is_some() {
