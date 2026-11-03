@@ -145,7 +145,6 @@ impl Desktop {
                     ("theme", "Toggle Light / Dark", None),
                 ],
             ),
-            ("Help", vec![("repository", "Project Repository", None)]),
         ] {
             let submenu = Submenu::new(label, true);
             for (id, title, key) in entries {
@@ -156,7 +155,30 @@ impl Desktop {
             }
             menu.append(&submenu).map_err(|error| error.to_string())?;
         }
+        let window_menu = Submenu::new("Window", true);
+        window_menu
+            .append_items(&[
+                &PredefinedMenuItem::minimize(None),
+                &PredefinedMenuItem::maximize(None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::bring_all_to_front(None),
+            ])
+            .map_err(|error| error.to_string())?;
+        menu.append(&window_menu)
+            .map_err(|error| error.to_string())?;
+        let help_menu = Submenu::new("Help", true);
+        help_menu
+            .append(&MenuItem::with_id(
+                "repository",
+                "Project Repository",
+                true,
+                None,
+            ))
+            .map_err(|error| error.to_string())?;
+        menu.append(&help_menu).map_err(|error| error.to_string())?;
         menu.init_for_nsapp();
+        // Let AppKit maintain the window list and route standard window actions.
+        window_menu.set_as_windows_menu_for_nsapp();
         MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
             let action = match event.id.as_ref() {
                 "about" => Action::About,
