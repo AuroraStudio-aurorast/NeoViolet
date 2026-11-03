@@ -19,6 +19,7 @@ pub struct App {
     pub running: bool,
     pub dialog: Option<Dialog>,
     pub version: String,
+    window_title: String,
     pub desktop: Option<desktop::Desktop>,
     pub ipc_connected: bool,
     session: u64,
@@ -73,6 +74,7 @@ impl App {
             running: false,
             dialog: warning.map(Dialog::Error),
             version: "Loading…".into(),
+            window_title: "NeoViolet".into(),
             desktop: desktop.ok(),
             ipc_connected: false,
             session: 0,
@@ -163,6 +165,10 @@ impl App {
         }
     }
 
+    pub fn title(&self) -> String {
+        self.window_title.clone()
+    }
+
     fn font(&self) -> settings::FontSettings {
         settings::FontSettings {
             size: self.config.font_size as f32,
@@ -223,29 +229,44 @@ impl App {
                 {
                     self.exit_code = Some(*code);
                 }
-                if let Some(terminal) = &mut self.terminal
-                    && matches!(
-                        terminal.handle(iced_term::Command::ProxyToBackend(command)),
-                        actions::Action::Shutdown
-                    )
-                {
-                    self.running = false;
-                    self.connection = None;
-                    self.ipc_connected = false;
-                    if self.closing {
-                        return self.finish_quit();
+                if matches!(
+                    &command,
+                    BackendCommand::ProcessAlacrittyEvent(iced_term::AlacrittyEvent::ResetTitle)
+                ) {
+                    self.window_title = "NeoViolet".into();
+                }
+                if let Some(terminal) = &mut self.terminal {
+                    match terminal.handle(iced_term::Command::ProxyToBackend(command)) {
+                        actions::Action::Shutdown => {
+                            self.running = false;
+                            self.connection = None;
+                            self.ipc_connected = false;
+                            if self.closing {
+                                return self.finish_quit();
+                            }
+                            self.dialog = Some(Dialog::Error(match self.exit_code {
+                                Some(0) => {
+                                    "The player exited. You can restart it or close this window."
+                                        .into()
+                                }
+                                Some(code) => format!(
+                                    "The player exited with status {code}. Check the launch arguments and player settings."
+                                ),
+                                None => {
+                                    "The player stopped. You can restart it or close this window."
+                                        .into()
+                                }
+                            }));
+                        }
+                        actions::Action::ChangeTitle(title) => {
+                            self.window_title = if title.trim().is_empty() {
+                                "NeoViolet".into()
+                            } else {
+                                title
+                            };
+                        }
+                        _ => {}
                     }
-                    self.dialog = Some(Dialog::Error(match self.exit_code {
-                        Some(0) => {
-                            "The player exited. You can restart it or close this window.".into()
-                        }
-                        Some(code) => format!(
-                            "The player exited with status {code}. Check the launch arguments and player settings."
-                        ),
-                        None => {
-                            "The player stopped. You can restart it or close this window.".into()
-                        }
-                    }));
                 }
             }
             Message::Ipc(_, ipc::Event::Connected(sender)) => {

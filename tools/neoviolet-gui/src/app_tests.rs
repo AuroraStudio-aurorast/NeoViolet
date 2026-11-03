@@ -7,6 +7,7 @@ fn app() -> App {
         running: true,
         dialog: Some(Dialog::Quit),
         version: String::new(),
+        window_title: "NeoViolet".into(),
         desktop: None,
         ipc_connected: false,
         session: 2,
@@ -46,4 +47,24 @@ fn obsolete_session_cannot_install_its_connection() {
     let (sender, _receiver) = mpsc::channel(2);
     let _ = app.update(Message::Ipc(1, ipc::Event::Connected(sender)));
     assert!(app.connection.is_none());
+}
+
+#[test]
+fn terminal_titles_replace_and_clear_the_window_title() {
+    let mut app = app();
+    app.dialog = None;
+    app.terminal =
+        Some(iced_term::Terminal::new(2, iced_term::settings::Settings::default()).unwrap());
+    let command = |event| {
+        Message::Terminal(iced_term::Event::BackendCall(
+            2,
+            iced_term::BackendCommand::ProcessAlacrittyEvent(event),
+        ))
+    };
+    let _ = app.update(command(iced_term::AlacrittyEvent::Title(
+        "Current Track".into(),
+    )));
+    assert_eq!(app.title(), "Current Track");
+    let _ = app.update(command(iced_term::AlacrittyEvent::ResetTitle));
+    assert_eq!(app.title(), "NeoViolet");
 }

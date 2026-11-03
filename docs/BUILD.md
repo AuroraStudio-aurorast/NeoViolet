@@ -159,7 +159,7 @@ release binary in the repository root.
 make build/osxappbundle
 ```
 
-Packages `neoviolet`, `neoviolet-gui` and `apecli` into `dist/NeoViolet GUI.app/`. The bundle script
+Packages `neoviolet`, `neoviolet-gui` and `apecli` into `dist/NeoViolet.app/`. The bundle script
 (`tools/osx-appbundle-builder/build.sh`) writes `Info.plist`, picks the icon (compiling it with
 `actool` only when Xcode 26+ is installed, otherwise using the assets committed to the repo) and signs
 the bundle ad hoc.

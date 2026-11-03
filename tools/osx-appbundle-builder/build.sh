@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GUI_ASSETS="$PROJECT_ROOT/tools/neoviolet-gui/assets"
 
-APP_NAME="NeoViolet GUI"
+APP_NAME="NeoViolet"
 BUNDLE_ID="org.aurorast.neovioletgui"
 
 VERSION="${VERSION:-$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || echo "0.1.0")}"

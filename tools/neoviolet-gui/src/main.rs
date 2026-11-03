@@ -23,7 +23,7 @@ fn main() -> iced::Result {
         app::App::update,
         app::App::view,
     )
-    .title("NeoViolet")
+    .title(app::App::title)
     .window(window)
     .theme(app::App::theme)
     .style(|_state, theme| iced::theme::Style {

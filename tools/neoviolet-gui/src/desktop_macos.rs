@@ -7,7 +7,7 @@ use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
-use objc2_app_kit::{NSApplication, NSApplicationDelegate, NSApplicationTerminateReply};
+use objc2_app_kit::{NSApplication, NSApplicationDelegate, NSApplicationTerminateReply, NSWindow};
 use objc2_foundation::{MainThreadMarker, NSArray, NSObject, NSObjectProtocol, NSURL};
 use tokio::sync::{Mutex, mpsc};
 
@@ -70,6 +70,8 @@ pub struct Desktop {
 impl Desktop {
     pub fn install() -> Result<Self, String> {
         let marker = MainThreadMarker::new().ok_or("Desktop must start on the main thread")?;
+        // Native tabbing injects "Show Tab Bar" into the system View menu.
+        NSWindow::setAllowsAutomaticWindowTabbing(false, marker);
         let (sender, receiver) = mpsc::unbounded_channel();
         let application = NSApplication::sharedApplication(marker);
         let delegate: Retained<FileDelegate> = unsafe {
@@ -80,15 +82,52 @@ impl Desktop {
         };
         application.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
         let menu = Menu::new();
+        let app_menu = Submenu::new("NeoViolet", true);
+        app_menu
+            .append(&MenuItem::with_id("about", "About NeoViolet", true, None))
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::separator())
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&MenuItem::with_id(
+                "preferences",
+                "Preferences…",
+                true,
+                Some(Accelerator::new(Some(Modifiers::SUPER), Code::Comma)),
+            ))
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::separator())
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::services(None))
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::separator())
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::hide(None))
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::hide_others(None))
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::show_all(None))
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&PredefinedMenuItem::separator())
+            .map_err(|error| error.to_string())?;
+        app_menu
+            .append(&MenuItem::with_id(
+                "quit",
+                "Quit NeoViolet",
+                true,
+                Some(Accelerator::new(Some(Modifiers::SUPER), Code::KeyQ)),
+            ))
+            .map_err(|error| error.to_string())?;
+        menu.append(&app_menu).map_err(|error| error.to_string())?;
         for (label, entries) in [
-            (
-                "NeoViolet",
-                vec![
-                    ("about", "About NeoViolet", None),
-                    ("preferences", "Preferences…", Some(Code::Comma)),
-                    ("quit", "Quit NeoViolet", Some(Code::KeyQ)),
-                ],
-            ),
             ("File", vec![("open", "Open File…", Some(Code::KeyO))]),
             (
                 "Edit",
@@ -113,17 +152,6 @@ impl Desktop {
                 let accelerator = key.map(|key| Accelerator::new(Some(Modifiers::SUPER), key));
                 submenu
                     .append(&MenuItem::with_id(id, title, true, accelerator))
-                    .map_err(|error| error.to_string())?;
-            }
-            if label == "NeoViolet" {
-                submenu
-                    .append(&PredefinedMenuItem::separator())
-                    .map_err(|error| error.to_string())?;
-                submenu
-                    .append(&PredefinedMenuItem::hide(None))
-                    .map_err(|error| error.to_string())?;
-                submenu
-                    .append(&PredefinedMenuItem::hide_others(None))
                     .map_err(|error| error.to_string())?;
             }
             menu.append(&submenu).map_err(|error| error.to_string())?;
