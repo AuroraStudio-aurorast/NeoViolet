@@ -9,7 +9,9 @@ pub enum Action {
     ZoomIn,
     ZoomOut,
     ZoomReset,
-    Theme,
+    Minimize,
+    ZoomWindow,
+    Fullscreen,
     Repository,
     DesktopLyrics,
     LyricsSettings,
@@ -35,6 +37,8 @@ impl Action {
         }
         Some(match key.as_str() {
             "o" => Self::Open,
+            "c" => Self::Copy,
+            "v" => Self::Paste,
             "," => Self::Preferences,
             "q" => Self::Quit,
             "+" | "=" => Self::ZoomIn,

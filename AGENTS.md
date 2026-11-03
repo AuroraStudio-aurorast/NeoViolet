@@ -67,6 +67,7 @@ apecli (Rust)         optional APE decoder subprocess, stdin → PCM stdout
 - The GUI holds no playback state: it spawns `neoviolet` in a PTY and drives it over TCP IPC
   (loopback, random port + token in a temp file). **The TUI must run standalone** — anything that
   works only with the GUI attached is a bug.
+- GUI controls use English and a dark gray appearance; do not introduce a light mode.
 - IPC message types live in the `internal/ipc` package comment, the contract both sides are
   written against. Add the variant there first.
 - OS integration sits behind per-OS build tags or platform modules; don't branch on

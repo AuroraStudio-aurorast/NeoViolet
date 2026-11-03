@@ -7,7 +7,7 @@ use iced_term::{BackendCommand, Terminal, TerminalView, actions, settings};
 use tokio::sync::mpsc;
 
 use crate::actions::Action;
-use crate::{config, desktop, ipc, launch, lyrics_window};
+use crate::{config, desktop, ipc, launch, lyrics_window, titlebar};
 
 #[cfg(test)]
 #[path = "app_tests.rs"]
@@ -16,12 +16,13 @@ mod tests;
 pub struct App {
     pub main_window: window::Id,
     pub lyrics: lyrics_window::Overlay,
+    pub titlebar: titlebar::State,
     pub config: config::Config,
     pub terminal: Option<Terminal>,
     pub running: bool,
     pub dialog: Option<Dialog>,
     pub version: String,
-    window_title: String,
+    pub window_title: String,
     pub desktop: Option<desktop::Desktop>,
     pub ipc_connected: bool,
     session: u64,
@@ -51,8 +52,11 @@ pub enum Message {
     Desktop(desktop::Event),
     Native(window::Id, iced::Event),
     Lyrics(lyrics_window::Event),
+    Titlebar(titlebar::Message),
     Ready,
-    Action(Action),
+    MainOpened,
+    ChromeState(bool, window::Mode),
+    SetMode(window::Mode),
     Picked(Option<PathBuf>),
     Pasted(Option<String>),
     Sent(Result<(), String>),
@@ -72,16 +76,31 @@ impl App {
         let save_settings = warning.is_none();
         let warning = warning.or_else(|| desktop.as_ref().err().cloned());
         let family = Box::leak(config.monospace_font.clone().into_boxed_str());
+        #[cfg(target_os = "macos")]
+        let window_decorations = true;
+        #[cfg(not(target_os = "macos"))]
+        let window_decorations = config.system_decorations;
         let (main_window, open_main) = window::open(window::Settings {
             size: iced::Size::new(config.window_width as f32, config.window_height as f32),
             min_size: Some(iced::Size::new(480.0, 320.0)),
             transparent: config.opacity < 1.0,
+            decorations: window_decorations,
+            #[cfg(target_os = "macos")]
+            platform_specific: window::settings::PlatformSpecific {
+                title_hidden: true,
+                titlebar_transparent: true,
+                fullsize_content_view: true,
+            },
             exit_on_close_request: false,
             ..Default::default()
         });
         let mut app = Self {
             main_window,
             lyrics: lyrics_window::Overlay::default(),
+            titlebar: titlebar::State::new(iced::Size::new(
+                config.window_width as f32,
+                config.window_height as f32,
+            )),
             config,
             terminal: None,
             running: false,
@@ -102,6 +121,7 @@ impl App {
             save_settings,
             environment: launch::environment(),
         };
+        app.titlebar.configure(&app.config);
         let start = app.start();
         let executable = launch::player(app.config.neoviolet_path.as_deref());
         let version = Task::perform(
@@ -115,7 +135,7 @@ impl App {
         (
             app,
             open_main
-                .map(|_| Message::Ready)
+                .map(|_| Message::MainOpened)
                 .chain(Task::batch([start, version])),
         )
     }
@@ -175,17 +195,13 @@ impl App {
     }
 
     pub fn theme(&self) -> Theme {
-        if self.config.theme == "light" {
-            Theme::Light
-        } else {
-            Theme::custom(
-                "NeoViolet",
-                iced::theme::Palette {
-                    background: iced::Color::from_rgb8(32, 32, 32),
-                    ..Theme::Dark.palette()
-                },
-            )
-        }
+        Theme::custom(
+            "NeoViolet",
+            iced::theme::Palette {
+                background: iced::Color::from_rgb8(32, 32, 32),
+                ..Theme::Dark.palette()
+            },
+        )
     }
 
     pub fn title(&self) -> String {
@@ -211,13 +227,10 @@ impl App {
     }
 
     fn terminal_theme(&self) -> settings::ThemeSettings {
-        let mut palette = iced_term::ColorPalette::default();
-        if self.config.theme == "light" {
-            palette.background = "#eeeeee".into();
-            palette.foreground = "#202020".into();
-        } else {
-            palette.background = "#202020".into();
-        }
+        let palette = iced_term::ColorPalette {
+            background: "#202020".into(),
+            ..Default::default()
+        };
         settings::ThemeSettings::new(Box::new(palette))
     }
 
@@ -227,7 +240,11 @@ impl App {
                 event,
                 iced::Event::Window(_)
                     | iced::Event::Keyboard(_)
-                    | iced::Event::Mouse(iced::mouse::Event::WheelScrolled { .. })
+                    | iced::Event::Mouse(
+                        iced::mouse::Event::WheelScrolled { .. }
+                            | iced::mouse::Event::CursorMoved { .. }
+                            | iced::mouse::Event::ButtonReleased(_)
+                    )
             )
             .then_some(Message::Native(id, event))
         })];
@@ -250,8 +267,44 @@ impl App {
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
+        let menu = self.titlebar.visible();
+        let fullscreen = self.titlebar.fullscreen;
+        let mut task = self.update_inner(message);
+        if menu && !self.titlebar.visible() && self.dialog.is_none() {
+            task = task.chain(self.focus());
+        }
+        if let Some(desktop) = &self.desktop {
+            desktop.sync_lyrics(self.config.desktop_lyrics.enabled);
+        }
+        if menu != self.titlebar.visible() || fullscreen != self.titlebar.fullscreen {
+            return desktop::chrome_input(
+                self.main_window,
+                self.titlebar.visible(),
+                self.titlebar.fullscreen,
+            )
+            .discard()
+            .chain(task);
+        }
+        task
+    }
+
+    fn update_inner(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Ready => {}
+            Message::MainOpened => {
+                return Task::batch([
+                    desktop::configure_main(self.main_window, self.config.system_decorations)
+                        .map(|_| Message::Ready),
+                    self.refresh_chrome(),
+                ]);
+            }
+            Message::SetMode(mode) => {
+                return window::set_mode(self.main_window, mode).chain(self.refresh_chrome());
+            }
+            Message::ChromeState(maximized, mode) => {
+                self.titlebar.maximized = maximized;
+                self.titlebar.fullscreen = mode == window::Mode::Fullscreen;
+            }
             Message::Lyrics(event) => {
                 let opened = matches!(&event, lyrics_window::Event::Opened(id) if Some(*id) == self.lyrics.window);
                 let closed_settings = matches!(&event, lyrics_window::Event::CloseSettings)
@@ -278,6 +331,22 @@ impl App {
                     },
                 ]);
             }
+            Message::Titlebar(event) => match event {
+                titlebar::Message::DoubleClick => {
+                    self.titlebar.update(titlebar::Message::DoubleClick);
+                    return desktop::title_double_click(self.main_window)
+                        .chain(self.refresh_chrome());
+                }
+                titlebar::Message::Resize(direction) => {
+                    return window::drag_resize(self.main_window, direction);
+                }
+                event => {
+                    if let Some(action) = self.titlebar.update(event) {
+                        return self.action(action);
+                    }
+                    return Task::none();
+                }
+            },
             #[cfg(target_os = "macos")]
             Message::Desktop(desktop::Event::LyricsHover(id, hovered)) => {
                 if self.lyrics.window == Some(id) {
@@ -289,7 +358,11 @@ impl App {
                     && matches!(
                         &event,
                         iced::Event::Window(window::Event::Resized(_))
-                            | iced::Event::Mouse(iced::mouse::Event::WheelScrolled { .. })
+                            | iced::Event::Mouse(
+                                iced::mouse::Event::WheelScrolled { .. }
+                                    | iced::mouse::Event::CursorMoved { .. }
+                                    | iced::mouse::Event::ButtonReleased(_)
+                            )
                     )
                 {
                     return self.lyrics.refresh_mask().map(Message::Lyrics);
@@ -441,7 +514,7 @@ impl App {
                 return self.lyrics.refresh_mask().map(Message::Lyrics);
             }
             Message::Ipc(_, ipc::Event::Received(_)) => {}
-            Message::Desktop(desktop::Event::Action(action)) | Message::Action(action) => {
+            Message::Desktop(desktop::Event::Action(action)) => {
                 return self.action(action);
             }
             Message::Desktop(desktop::Event::Files(paths)) => {
@@ -455,24 +528,67 @@ impl App {
             Message::Native(_, iced::Event::Window(event)) => match event {
                 window::Event::CloseRequested => return self.action(Action::Quit),
                 window::Event::FileDropped(path) => return self.open(path),
+                window::Event::Unfocused => self.titlebar.close(),
+                window::Event::Focused => return self.refresh_chrome(),
                 window::Event::Resized(size) => {
+                    self.titlebar.size = size;
                     self.config.window_width = size.width.round() as u32;
                     self.config.window_height = size.height.round() as u32;
+                    return self.refresh_chrome();
                 }
                 _ => {}
             },
             Message::Native(_, iced::Event::Keyboard(event)) => match event {
                 iced::keyboard::Event::ModifiersChanged(modifiers) => self.modifiers = modifiers,
                 iced::keyboard::Event::KeyPressed { key, modifiers, .. } => {
+                    if let Some(action) = Action::shortcut(&key, modifiers) {
+                        return self.action(action);
+                    }
+                    if self.titlebar.visible() {
+                        if let Some(action) =
+                            self.titlebar.key(&key, self.config.desktop_lyrics.enabled)
+                        {
+                            return self.action(action);
+                        }
+                        return Task::none();
+                    }
+                    if key == Key::Named(Named::F10)
+                        && !cfg!(target_os = "macos")
+                        && modifiers.is_empty()
+                        && self.dialog.is_none()
+                    {
+                        return self.update(Message::Titlebar(titlebar::Message::ToggleMenu));
+                    }
+                    if key == Key::Named(Named::F11)
+                        && !cfg!(target_os = "macos")
+                        && modifiers.is_empty()
+                    {
+                        return self.action(Action::Fullscreen);
+                    }
                     if key == Key::Named(Named::Escape) && self.dialog.is_some() {
                         return self.update(Message::Dismiss);
                     }
-                    if let Some(action) = Action::shortcut(&key, modifiers) {
-                        return self.action(action);
+                    if key == Key::Named(Named::Escape) && self.titlebar.fullscreen {
+                        return self.action(Action::Fullscreen);
                     }
                 }
                 _ => {}
             },
+            Message::Native(
+                _,
+                iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }),
+            ) => {
+                self.titlebar.cursor = position;
+                if self.titlebar.take_drag(position) {
+                    return window::drag(self.main_window);
+                }
+            }
+            Message::Native(
+                _,
+                iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)),
+            ) => {
+                self.titlebar.update(titlebar::Message::ReleaseTitle);
+            }
             Message::Native(_, iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })) => {
                 if self.config.zoom_via_scroll && self.modifiers.command() {
                     let y = match delta {
@@ -550,6 +666,7 @@ impl App {
     }
 
     fn action(&mut self, action: Action) -> Task<Message> {
+        self.titlebar.close();
         match action {
             Action::DesktopLyrics => {
                 return self.update(Message::Lyrics(lyrics_window::Event::Visible(
@@ -622,17 +739,18 @@ impl App {
                 }
                 return self.focus();
             }
-            Action::Theme => {
-                self.config.theme = if self.config.theme == "light" {
-                    "dark"
-                } else {
-                    "light"
-                }
-                .into();
-                let theme = self.terminal_theme();
-                if let Some(terminal) = &mut self.terminal {
-                    terminal.handle(iced_term::Command::ChangeTheme(theme.color_pallete));
-                }
+            Action::Fullscreen => {
+                return window::mode(self.main_window).map(|mode| {
+                    Message::SetMode(if mode == window::Mode::Fullscreen {
+                        window::Mode::Windowed
+                    } else {
+                        window::Mode::Fullscreen
+                    })
+                });
+            }
+            Action::Minimize => return window::minimize(self.main_window, true),
+            Action::ZoomWindow => {
+                return window::toggle_maximize(self.main_window).chain(self.refresh_chrome());
             }
         }
         Task::none()
@@ -685,11 +803,19 @@ impl App {
 
     fn focus(&self) -> Task<Message> {
         if self.dialog.is_none()
+            && !self.titlebar.visible()
             && let Some(terminal) = &self.terminal
         {
             return TerminalView::focus(terminal.widget_id().clone());
         }
         Task::none()
+    }
+
+    fn refresh_chrome(&self) -> Task<Message> {
+        let id = self.main_window;
+        window::is_maximized(id).then(move |maximized| {
+            window::mode(id).map(move |mode| Message::ChromeState(maximized, mode))
+        })
     }
 
     fn reveal_main(&self) -> Task<Message> {

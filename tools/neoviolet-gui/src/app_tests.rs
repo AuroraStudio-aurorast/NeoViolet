@@ -4,6 +4,7 @@ fn app() -> App {
     App {
         main_window: window::Id::unique(),
         lyrics: lyrics_window::Overlay::default(),
+        titlebar: titlebar::State::default(),
         config: config::Config::default(),
         terminal: None,
         running: true,
@@ -169,7 +170,7 @@ async fn quit_from_a_secondary_window_reveals_the_main_confirmation() {
     use iced::futures::StreamExt;
     let mut app = app();
     app.dialog = None;
-    let task = app.update(Message::Action(Action::Quit));
+    let task = app.update(Message::Desktop(desktop::Event::Action(Action::Quit)));
     let actions = iced_runtime::task::into_stream(task)
         .expect("quit must reveal the main window")
         .collect::<Vec<_>>()
@@ -233,5 +234,64 @@ async fn reusing_the_overlay_reconciles_native_lock_state_after_settings_reload(
             )] if *window == id));
             }
         }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tokio::test]
+async fn closing_a_menu_restores_the_terminal_widget_focus() {
+    use iced::advanced::widget::operation::Focusable;
+    use iced::futures::StreamExt;
+    #[derive(Default)]
+    struct Focus(bool);
+    impl Focusable for Focus {
+        fn is_focused(&self) -> bool {
+            self.0
+        }
+        fn focus(&mut self) {
+            self.0 = true;
+        }
+        fn unfocus(&mut self) {
+            self.0 = false;
+        }
+    }
+    for action in ["escape", "dismiss", "copy"] {
+        let mut app = app();
+        app.dialog = None;
+        app.terminal = Some(Terminal::new(2, settings::Settings::default()).unwrap());
+        let target = app.terminal.as_ref().unwrap().widget_id().clone();
+        let _ = app.update(Message::Titlebar(titlebar::Message::ToggleMenu));
+        let message = match action {
+            "escape" => Message::Native(
+                app.main_window,
+                iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                    key: Key::Named(Named::Escape),
+                    modified_key: Key::Named(Named::Escape),
+                    physical_key: iced::keyboard::key::Physical::Code(
+                        iced::keyboard::key::Code::Escape,
+                    ),
+                    location: iced::keyboard::Location::Standard,
+                    modifiers: Modifiers::empty(),
+                    text: None,
+                    repeat: false,
+                }),
+            ),
+            "copy" => Message::Titlebar(titlebar::Message::Action(Action::Copy)),
+            _ => Message::Titlebar(titlebar::Message::Dismiss),
+        };
+        let task = app.update(message);
+        let mut focus = Focus::default();
+        if let Some(mut actions) = iced_runtime::task::into_stream(task) {
+            while let Some(action) = actions.next().await {
+                if let iced_runtime::Action::Widget(mut operation) = action {
+                    operation.focusable(Some(&target), iced::Rectangle::default(), &mut focus);
+                }
+            }
+        }
+        assert!(!app.titlebar.visible());
+        assert!(
+            focus.0,
+            "{action}: terminal must receive widget focus when the menu closes"
+        );
     }
 }

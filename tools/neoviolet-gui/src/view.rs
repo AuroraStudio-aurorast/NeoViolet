@@ -2,7 +2,6 @@ use iced::widget::{button, column, container, opaque, row, scrollable, stack, te
 use iced::{Border, Color, Element, Length, Shadow, Vector};
 use iced_term::TerminalView;
 
-use crate::actions::Action;
 use crate::app::{App, Dialog, Message};
 
 impl App {
@@ -104,51 +103,30 @@ impl App {
                     background: Some(Color::BLACK.scale_alpha(0.45).into()),
                     ..Default::default()
                 });
+            let content = self.with_titlebar(content);
             return stack![content, opaque(modal)].into();
         }
-        content
+        self.with_titlebar(content)
+    }
+
+    fn with_titlebar<'a>(&'a self, content: Element<'a, Message>) -> Element<'a, Message> {
+        self.titlebar.wrap(
+            content,
+            &self.window_title,
+            self.config.desktop_lyrics.enabled,
+        )
     }
 
     fn player_view(&self) -> Element<'_, Message> {
-        let terminal = self
-            .terminal
+        self.terminal
             .as_ref()
             .map(|terminal| {
-                TerminalView::show_with_input(terminal, self.dialog.is_none())
-                    .map(Message::Terminal)
+                TerminalView::show_with_input(
+                    terminal,
+                    self.dialog.is_none() && !self.titlebar.visible(),
+                )
+                .map(Message::Terminal)
             })
-            .unwrap_or_else(|| text("Starting player…").into());
-        // macOS uses the system menu bar; other desktops get ordinary window content controls.
-        if cfg!(target_os = "macos") && self.desktop.is_some() {
-            return terminal;
-        }
-        column![
-            container(
-                column![
-                    row![
-                        button("Open").on_press(Message::Action(Action::Open)),
-                        button("Settings").on_press(Message::Action(Action::Preferences)),
-                        button("Copy").on_press(Message::Action(Action::Copy)),
-                        button("Paste").on_press(Message::Action(Action::Paste)),
-                        button("−").on_press(Message::Action(Action::ZoomOut)),
-                        button("+").on_press(Message::Action(Action::ZoomIn)),
-                        button("Theme").on_press(Message::Action(Action::Theme)),
-                        button("About").on_press(Message::Action(Action::About)),
-                    ]
-                    .spacing(6),
-                    row![
-                        button("Lyrics").on_press(Message::Action(Action::DesktopLyrics)),
-                        button("Lyrics Settings").on_press(Message::Action(Action::LyricsSettings)),
-                        button("Unlock Lyrics").on_press(Message::Action(Action::UnlockLyrics)),
-                    ]
-                    .spacing(6)
-                ]
-                .spacing(6)
-            )
-            .padding(8),
-            terminal,
-        ]
-        .height(Length::Fill)
-        .into()
+            .unwrap_or_else(|| text("Starting player…").into())
     }
 }

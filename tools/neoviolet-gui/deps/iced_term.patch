@@ -262,11 +262,20 @@
                  Self::handle_wheel_scrolled(
                      state,
                      *delta,
-@@ -308,6 +337,23 @@
+@@ -308,6 +337,32 @@
          clipboard: &mut dyn iced_graphics::core::Clipboard,
          event: &iced::keyboard::Event,
      ) -> Option<Command> {
 +        if self.term.application_shortcuts {
++            #[cfg(not(target_os = "macos"))]
++            if let iced::keyboard::Event::KeyPressed {
++                key: Key::Named(iced::keyboard::key::Named::F10 | iced::keyboard::key::Named::F11),
++                modifiers,
++                ..
++            } = event
++            {
++                if modifiers.is_empty() { return None; }
++            }
 +            if let iced::keyboard::Event::KeyPressed {
 +                key: Key::Character(key),
 +                modifiers,
@@ -276,7 +285,7 @@
 +                let lyrics_shortcut = key.eq_ignore_ascii_case("l")
 +                    && *modifiers == (Modifiers::COMMAND | Modifiers::SHIFT);
 +                if lyrics_shortcut || (modifiers.command()
-+                    && ["o", ",", "q", "=", "+", "-", "0"]
++                    && ["o", "c", "v", ",", "q", "=", "+", "-", "0"]
 +                        .contains(&key.as_str()))
 +                {
 +                    return None;
@@ -286,7 +295,7 @@
          let mut binding_action = BindingAction::Ignore;
          let last_content = self.term.backend.renderable_content();
          match event {
-@@ -340,7 +386,7 @@
+@@ -340,7 +395,7 @@
  
                      // If no binding matched, only write printable text (when provided)
                      if binding_action == BindingAction::Ignore
@@ -295,7 +304,7 @@
                      {
                          if let Some(c) = text {
                              return Some(Command::Write(c.as_bytes().to_vec()));
-@@ -370,8 +416,7 @@
+@@ -370,8 +425,7 @@
              },
              BindingAction::Paste => {
                  if let Some(data) = clipboard.read(ClipboardKind::Standard) {
@@ -305,7 +314,7 @@
                  }
              },
              BindingAction::Copy => {
-@@ -438,8 +483,10 @@
+@@ -438,8 +492,10 @@
          let display_offset = content.grid.display_offset() as f32;
          let cell_width = terminal_size.cell_width as f32;
          let cell_height = terminal_size.cell_height as f32;
@@ -318,7 +327,7 @@
  
          InputMethod::Enabled {
              cursor: Rectangle::new(
-@@ -447,7 +494,10 @@
+@@ -447,7 +503,10 @@
                  Size::new(cell_width.max(1.0), cell_height.max(1.0)),
              ),
              purpose: Purpose::Terminal,
@@ -330,7 +339,7 @@
          }
      }
  }
-@@ -543,19 +593,17 @@
+@@ -543,19 +602,17 @@
                  let y = layout_offset_y
                      + (((line as f32) + display_offset) * cell_height);
                  let cell_center_y = y + half_h;
@@ -357,7 +366,7 @@
  
                  // If the new line was detected,
                  // need to flush pending background rect and init the new one
-@@ -592,7 +640,7 @@
+@@ -592,7 +649,7 @@
                  }
  
                  // Batch draw backgrounds: skip default background (container already paints it)
@@ -366,7 +375,7 @@
                      if bg_batch_rect.can_extend(bg, x) {
                          // Same color and contiguous: extend current run
                          bg_batch_rect.extend(cell_width);
-@@ -716,11 +764,26 @@
+@@ -716,11 +773,26 @@
      ) {
          let state = tree.state.downcast_mut::<TerminalViewState>();
          self.handle_resize(state, layout, shell);
@@ -395,7 +404,7 @@
              shell.request_input_method(&self.input_method(state, layout));
          }
  
-@@ -746,6 +809,8 @@
+@@ -746,6 +818,8 @@
                      return;
                  }
  
@@ -404,7 +413,7 @@
                  self.handle_input_method_event(state, input_method_event)
                      .into_iter()
                      .collect()
-@@ -770,6 +835,9 @@
+@@ -770,6 +844,9 @@
          _viewport: &Rectangle,
          _renderer: &iced::Renderer,
      ) -> iced_core::mouse::Interaction {
@@ -414,7 +423,7 @@
          let state = tree.state.downcast_ref::<TerminalViewState>();
          let mut cursor_mode = iced_core::mouse::Interaction::Idle;
          let terminal_mode =
-@@ -836,6 +904,8 @@
+@@ -836,6 +913,8 @@
  
      fn unfocus(&mut self) {
          self.focus = false;
@@ -423,7 +432,7 @@
      }
  }
  
-@@ -1285,11 +1355,102 @@
+@@ -1285,11 +1364,102 @@
      mod handle_input_method_event_tests {
          use super::*;
  
@@ -529,7 +538,7 @@
              let mut state = TerminalViewState::new(0);
  
              assert!(!state.ime_active);
-@@ -1313,9 +1474,10 @@
+@@ -1313,9 +1483,10 @@
  
          #[test]
          fn stores_preedit_without_writing() {
@@ -543,7 +552,7 @@
              let mut state = TerminalViewState::new(0);
  
              let result = view.handle_input_method_event(
-@@ -1328,14 +1490,18 @@
+@@ -1328,14 +1499,18 @@
              let preedit = state.ime_preedit.expect("preedit stored");
              assert_eq!(preedit.content, "ni");
              assert_eq!(preedit.selection, Some(0..2));
@@ -566,7 +575,7 @@
              let mut state = TerminalViewState::new(0);
              state.ime_preedit = Some(input_method::Preedit {
                  content: "ni".into(),
-@@ -1354,9 +1520,10 @@
+@@ -1354,9 +1529,10 @@
  
          #[test]
          fn commits_utf8_text_once() {
@@ -580,7 +589,7 @@
              let mut state = TerminalViewState::new(0);
              state.ime_preedit = Some(input_method::Preedit {
                  content: "ni".into(),
-@@ -1369,7 +1536,9 @@
+@@ -1369,7 +1545,9 @@
                  &input_method::Event::Commit("你".into()),
              );
  

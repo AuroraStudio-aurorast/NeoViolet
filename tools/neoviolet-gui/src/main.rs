@@ -2,6 +2,8 @@
 
 mod actions;
 mod app;
+#[cfg(any(target_os = "windows", test))]
+mod chrome_hit_test;
 mod config;
 mod desktop;
 mod ipc;
@@ -11,6 +13,7 @@ mod lyrics;
 mod lyrics_hit_test;
 mod lyrics_text;
 mod lyrics_window;
+mod titlebar;
 mod view;
 
 fn main() -> iced::Result {

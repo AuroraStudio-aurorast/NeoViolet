@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use iced::futures::SinkExt;
 use muda::accelerator::{Accelerator, Code, Modifiers};
-use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
@@ -66,6 +66,8 @@ pub struct Desktop {
     _menu: Menu,
     _delegate: Retained<FileDelegate>,
     events: Events,
+    lyrics_item: CheckMenuItem,
+    unlock_item: MenuItem,
 }
 
 impl Desktop {
@@ -128,6 +130,17 @@ impl Desktop {
             ))
             .map_err(|error| error.to_string())?;
         menu.append(&app_menu).map_err(|error| error.to_string())?;
+        let lyrics_item = CheckMenuItem::with_id(
+            "desktop_lyrics",
+            "Desktop Lyrics",
+            true,
+            false,
+            Some(Accelerator::new(
+                Some(Modifiers::SUPER | Modifiers::SHIFT),
+                Code::KeyL,
+            )),
+        );
+        let unlock_item = MenuItem::with_id("unlock_lyrics", "Unlock Desktop Lyrics", false, None);
         for (label, entries) in [
             ("File", vec![("open", "Open File…", Some(Code::KeyO))]),
             (
@@ -143,7 +156,6 @@ impl Desktop {
                     ("zoom_in", "Zoom In", Some(Code::Equal)),
                     ("zoom_out", "Zoom Out", Some(Code::Minus)),
                     ("zoom_reset", "Actual Size", Some(Code::Digit0)),
-                    ("theme", "Toggle Light / Dark", None),
                     (
                         "desktop_lyrics",
                         "Show / Hide Desktop Lyrics",
@@ -166,9 +178,25 @@ impl Desktop {
                         key,
                     )
                 });
-                submenu
-                    .append(&MenuItem::with_id(id, title, true, accelerator))
-                    .map_err(|error| error.to_string())?;
+                if id == "desktop_lyrics" {
+                    submenu
+                        .append(&PredefinedMenuItem::fullscreen(None))
+                        .map_err(|error| error.to_string())?;
+                    submenu
+                        .append(&PredefinedMenuItem::separator())
+                        .map_err(|error| error.to_string())?;
+                    submenu
+                        .append(&lyrics_item)
+                        .map_err(|error| error.to_string())?;
+                } else if id == "unlock_lyrics" {
+                    submenu
+                        .append(&unlock_item)
+                        .map_err(|error| error.to_string())?;
+                } else {
+                    submenu
+                        .append(&MenuItem::with_id(id, title, true, accelerator))
+                        .map_err(|error| error.to_string())?;
+                }
             }
             menu.append(&submenu).map_err(|error| error.to_string())?;
         }
@@ -208,7 +236,6 @@ impl Desktop {
                 "zoom_in" => Action::ZoomIn,
                 "zoom_out" => Action::ZoomOut,
                 "zoom_reset" => Action::ZoomReset,
-                "theme" => Action::Theme,
                 "repository" => Action::Repository,
                 "desktop_lyrics" => Action::DesktopLyrics,
                 "lyrics_settings" => Action::LyricsSettings,
@@ -222,7 +249,18 @@ impl Desktop {
             _menu: menu,
             _delegate: delegate,
             events: Events(Arc::new(Mutex::new(receiver))),
+            lyrics_item,
+            unlock_item,
         })
+    }
+
+    pub fn sync_lyrics(&self, enabled: bool) {
+        if self.lyrics_item.is_checked() != enabled {
+            self.lyrics_item.set_checked(enabled);
+        }
+        if self.unlock_item.is_enabled() != enabled {
+            self.unlock_item.set_enabled(enabled);
+        }
     }
 
     pub fn subscription(&self) -> iced::Subscription<Event> {
@@ -238,6 +276,62 @@ impl Desktop {
             })
         })
     }
+}
+
+pub fn configure_main(id: iced::window::Id) -> iced::Task<()> {
+    iced::window::run(id, move |handle| {
+        use iced::window::raw_window_handle::RawWindowHandle;
+        use objc2_app_kit::{
+            NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSView,
+        };
+        let Some(marker) = MainThreadMarker::new() else {
+            return;
+        };
+        let Ok(handle) = handle.window_handle() else {
+            return;
+        };
+        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+            return;
+        };
+        // SAFETY: The view is borrowed from the live Iced window on its owning thread.
+        let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+        if let Some(window) = view.window() {
+            // SAFETY: AppKit's exported appearance name is available on supported macOS versions.
+            let appearance = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua });
+            window.setAppearance(appearance.as_deref());
+            NSApplication::sharedApplication(marker).setAppearance(appearance.as_deref());
+        }
+    })
+}
+
+pub fn title_double_click(id: iced::window::Id) -> iced::Task<()> {
+    iced::window::run(id, move |handle| {
+        use iced::window::raw_window_handle::RawWindowHandle;
+        use objc2_app_kit::NSView;
+        use objc2_foundation::{NSUserDefaults, ns_string};
+        let Some(_) = MainThreadMarker::new() else {
+            return;
+        };
+        let Ok(handle) = handle.window_handle() else {
+            return;
+        };
+        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+            return;
+        };
+        // SAFETY: Iced keeps the native view alive for this main-thread callback.
+        let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+        if let Some(window) = view.window() {
+            let action = NSUserDefaults::standardUserDefaults()
+                .stringForKey(ns_string!("AppleActionOnDoubleClick"))
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "Maximize".into());
+            match action.as_str() {
+                "Minimize" => window.miniaturize(None),
+                "None" => {}
+                _ => window.zoom(None),
+            }
+        }
+    })
 }
 
 impl Desktop {

@@ -13,7 +13,9 @@ pub struct Config {
     pub opacity: f32,
     pub neoviolet_path: Option<String>,
     pub zoom_via_scroll: bool,
-    pub theme: String,
+    pub menu_bar: bool,
+    pub system_decorations: bool,
+    pub minimize_button: bool,
     pub desktop_lyrics: crate::lyrics::Preferences,
     #[serde(flatten)]
     pub extra: BTreeMap<String, toml::Value>,
@@ -35,7 +37,9 @@ impl Default for Config {
             opacity: 1.0,
             neoviolet_path: None,
             zoom_via_scroll: false,
-            theme: "dark".into(),
+            menu_bar: false,
+            system_decorations: false,
+            minimize_button: true,
             desktop_lyrics: crate::lyrics::Preferences::default(),
             extra: BTreeMap::new(),
         }
@@ -83,6 +87,7 @@ impl Config {
 
     fn normalize(&mut self) {
         self.desktop_lyrics.normalize();
+        self.extra.remove("theme");
         self.font_size = self.font_size.clamp(8, 48);
         self.window_width = self.window_width.clamp(480, 7680);
         self.window_height = self.window_height.clamp(320, 4320);
@@ -123,6 +128,15 @@ mod tests {
         let saved = toml::to_string(&config).unwrap();
         assert!(saved.contains("[desktop_lyrics]"));
         assert!(saved.contains("enabled = false"));
+    }
+
+    #[test]
+    fn legacy_light_theme_is_discarded_and_new_settings_remain_dark_only() {
+        let mut config: Config = toml::from_str("theme = 'light'\nfont_size = 18\n").unwrap();
+        config.normalize();
+        let saved = toml::to_string(&config).unwrap();
+        assert!(!saved.contains("theme"));
+        assert_eq!(config.font_size, 18);
     }
 
     #[test]
