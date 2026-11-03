@@ -234,7 +234,16 @@
              .into()
      }
  
-@@ -98,7 +115,16 @@
+@@ -85,6 +102,8 @@
+                 Some(self.term.font.measure),
+             );
+             shell.publish(Event::BackendCall(self.term.id, cmd));
++            // Layout can change during a redraw, after the resize event was handled.
++            shell.request_redraw();
+         }
+     }
+ 
+@@ -98,7 +117,16 @@
          use iced_core::mouse::{Button::Left, Event::ButtonPressed};
  
          if let Mouse(ButtonPressed(Left)) = event {
@@ -252,7 +261,7 @@
          }
      }
  
-@@ -157,6 +183,9 @@
+@@ -157,6 +185,9 @@
                  );
              },
              iced::mouse::Event::WheelScrolled { delta } => {
@@ -262,7 +271,7 @@
                  Self::handle_wheel_scrolled(
                      state,
                      *delta,
-@@ -308,6 +337,21 @@
+@@ -308,6 +339,21 @@
          clipboard: &mut dyn iced_graphics::core::Clipboard,
          event: &iced::keyboard::Event,
      ) -> Option<Command> {
@@ -284,7 +293,7 @@
          let mut binding_action = BindingAction::Ignore;
          let last_content = self.term.backend.renderable_content();
          match event {
-@@ -340,7 +384,7 @@
+@@ -340,7 +386,7 @@
  
                      // If no binding matched, only write printable text (when provided)
                      if binding_action == BindingAction::Ignore
@@ -293,7 +302,7 @@
                      {
                          if let Some(c) = text {
                              return Some(Command::Write(c.as_bytes().to_vec()));
-@@ -370,8 +414,7 @@
+@@ -370,8 +416,7 @@
              },
              BindingAction::Paste => {
                  if let Some(data) = clipboard.read(ClipboardKind::Standard) {
@@ -303,7 +312,7 @@
                  }
              },
              BindingAction::Copy => {
-@@ -438,8 +481,10 @@
+@@ -438,8 +483,10 @@
          let display_offset = content.grid.display_offset() as f32;
          let cell_width = terminal_size.cell_width as f32;
          let cell_height = terminal_size.cell_height as f32;
@@ -316,7 +325,7 @@
  
          InputMethod::Enabled {
              cursor: Rectangle::new(
-@@ -447,7 +492,10 @@
+@@ -447,7 +494,10 @@
                  Size::new(cell_width.max(1.0), cell_height.max(1.0)),
              ),
              purpose: Purpose::Terminal,
@@ -328,7 +337,7 @@
          }
      }
  }
-@@ -543,19 +591,17 @@
+@@ -543,19 +593,17 @@
                  let y = layout_offset_y
                      + (((line as f32) + display_offset) * cell_height);
                  let cell_center_y = y + half_h;
@@ -355,7 +364,7 @@
  
                  // If the new line was detected,
                  // need to flush pending background rect and init the new one
-@@ -592,7 +638,7 @@
+@@ -592,7 +640,7 @@
                  }
  
                  // Batch draw backgrounds: skip default background (container already paints it)
@@ -364,7 +373,7 @@
                      if bg_batch_rect.can_extend(bg, x) {
                          // Same color and contiguous: extend current run
                          bg_batch_rect.extend(cell_width);
-@@ -716,11 +762,26 @@
+@@ -716,11 +764,26 @@
      ) {
          let state = tree.state.downcast_mut::<TerminalViewState>();
          self.handle_resize(state, layout, shell);
@@ -393,7 +402,7 @@
              shell.request_input_method(&self.input_method(state, layout));
          }
  
-@@ -746,6 +807,8 @@
+@@ -746,6 +809,8 @@
                      return;
                  }
  
@@ -402,7 +411,7 @@
                  self.handle_input_method_event(state, input_method_event)
                      .into_iter()
                      .collect()
-@@ -770,6 +833,9 @@
+@@ -770,6 +835,9 @@
          _viewport: &Rectangle,
          _renderer: &iced::Renderer,
      ) -> iced_core::mouse::Interaction {
@@ -412,7 +421,7 @@
          let state = tree.state.downcast_ref::<TerminalViewState>();
          let mut cursor_mode = iced_core::mouse::Interaction::Idle;
          let terminal_mode =
-@@ -836,6 +902,8 @@
+@@ -836,6 +904,8 @@
  
      fn unfocus(&mut self) {
          self.focus = false;
@@ -421,7 +430,7 @@
      }
  }
  
-@@ -1285,10 +1353,101 @@
+@@ -1285,11 +1355,102 @@
      mod handle_input_method_event_tests {
          use super::*;
  
@@ -443,7 +452,7 @@
 +        fn enabled_input_method_does_not_swallow_normal_keyboard_text() {
 +            let terminal =
 +                Terminal::new(0, crate::settings::Settings::default()).unwrap();
-+            let view = TerminalView { term: &terminal };
++            let view = TerminalView { term: &terminal, interactive: true };
 +            let mut state = TerminalViewState::new(0);
 +            view.handle_input_method_event(
 +                &mut state,
@@ -463,7 +472,7 @@
 +        fn composing_text_never_reaches_pty_as_raw_keys() {
 +            let terminal =
 +                Terminal::new(0, crate::settings::Settings::default()).unwrap();
-+            let view = TerminalView { term: &terminal };
++            let view = TerminalView { term: &terminal, interactive: true };
 +            let mut state = TerminalViewState::new(0);
 +            view.handle_input_method_event(
 +                &mut state,
@@ -494,7 +503,7 @@
 +        fn clicking_away_discards_preedit() {
 +            let terminal =
 +                Terminal::new(0, crate::settings::Settings::default()).unwrap();
-+            let view = TerminalView { term: &terminal };
++            let view = TerminalView { term: &terminal, interactive: true };
 +            let mut state = TerminalViewState::new(0);
 +            state.focus();
 +            view.handle_input_method_event(
@@ -519,25 +528,29 @@
          fn opens_and_closes_ime_state() {
 -            let terminal = Terminal::new(0, crate::settings::Settings::default())
 -                .expect("terminal created");
+-            let view = TerminalView { term: &terminal };
 +            let terminal =
 +                Terminal::new(0, crate::settings::Settings::default())
 +                    .expect("terminal created");
-             let view = TerminalView { term: &terminal };
++            let view = TerminalView { term: &terminal, interactive: true };
              let mut state = TerminalViewState::new(0);
  
-@@ -1313,8 +1472,9 @@
+             assert!(!state.ime_active);
+@@ -1313,9 +1474,10 @@
  
          #[test]
          fn stores_preedit_without_writing() {
 -            let terminal = Terminal::new(0, crate::settings::Settings::default())
 -                .expect("terminal created");
+-            let view = TerminalView { term: &terminal };
 +            let terminal =
 +                Terminal::new(0, crate::settings::Settings::default())
 +                    .expect("terminal created");
-             let view = TerminalView { term: &terminal };
++            let view = TerminalView { term: &terminal, interactive: true };
              let mut state = TerminalViewState::new(0);
  
-@@ -1328,13 +1488,17 @@
+             let result = view.handle_input_method_event(
+@@ -1328,14 +1490,18 @@
              let preedit = state.ime_preedit.expect("preedit stored");
              assert_eq!(preedit.content, "ni");
              assert_eq!(preedit.selection, Some(0..2));
@@ -552,25 +565,29 @@
          fn clears_preedit_on_empty_preedit() {
 -            let terminal = Terminal::new(0, crate::settings::Settings::default())
 -                .expect("terminal created");
+-            let view = TerminalView { term: &terminal };
 +            let terminal =
 +                Terminal::new(0, crate::settings::Settings::default())
 +                    .expect("terminal created");
-             let view = TerminalView { term: &terminal };
++            let view = TerminalView { term: &terminal, interactive: true };
              let mut state = TerminalViewState::new(0);
              state.ime_preedit = Some(input_method::Preedit {
-@@ -1354,8 +1518,9 @@
+                 content: "ni".into(),
+@@ -1354,9 +1520,10 @@
  
          #[test]
          fn commits_utf8_text_once() {
 -            let terminal = Terminal::new(0, crate::settings::Settings::default())
 -                .expect("terminal created");
+-            let view = TerminalView { term: &terminal };
 +            let terminal =
 +                Terminal::new(0, crate::settings::Settings::default())
 +                    .expect("terminal created");
-             let view = TerminalView { term: &terminal };
++            let view = TerminalView { term: &terminal, interactive: true };
              let mut state = TerminalViewState::new(0);
              state.ime_preedit = Some(input_method::Preedit {
-@@ -1369,7 +1534,9 @@
+                 content: "ni".into(),
+@@ -1369,7 +1536,9 @@
                  &input_method::Event::Commit("你".into()),
              );
  

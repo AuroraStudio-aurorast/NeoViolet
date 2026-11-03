@@ -5,6 +5,10 @@ use iced_term::TerminalView;
 use crate::actions::Action;
 use crate::app::{App, Dialog, Message};
 
+#[cfg(test)]
+#[path = "view_tests.rs"]
+mod tests;
+
 impl App {
     pub fn view(&self) -> Element<'_, Message> {
         let content = self.player_view();
