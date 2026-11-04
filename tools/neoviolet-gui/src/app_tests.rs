@@ -361,3 +361,67 @@ fn modal_keys_keep_shortcuts_behind_the_dialog_and_preserve_focus_across_updates
     assert!(!app.dialog_navigation.visible());
     assert!(!app.closing);
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_focus() {
+    use iced::futures::StreamExt;
+    use iced::window::raw_window_handle::{
+        DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
+    };
+    struct NoNativeWindow;
+    impl HasWindowHandle for NoNativeWindow {
+        fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+            Err(HandleError::Unavailable)
+        }
+    }
+    impl HasDisplayHandle for NoNativeWindow {
+        fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+            Err(HandleError::Unavailable)
+        }
+    }
+    for picked in [None, Some(PathBuf::from("/tmp/new-track.flac"))] {
+        let mut app = app();
+        app.dialog = None;
+        app.pending.clear();
+        app.terminal = Some(Terminal::new(2, settings::Settings::default()).unwrap());
+        let secondary = window::Id::unique();
+        app.lyrics.settings_window = Some(secondary);
+        let (sender, mut receiver) = mpsc::channel(4);
+        app.connection = Some(sender);
+        let task = app.update(Message::Picked(picked.clone()));
+        let mut actions = iced_runtime::task::into_stream(task)
+            .expect("selection and cancellation must restore window state");
+        let mut aligned = false;
+        let mut focused = false;
+        while let Some(action) = actions.next().await {
+            match action {
+                iced_runtime::Action::Window(window::Action::Run(id, callback)) => {
+                    assert_eq!(
+                        id, app.main_window,
+                        "the picker must not reconfigure a secondary window"
+                    );
+                    assert_ne!(id, secondary);
+                    aligned = true;
+                    callback(&NoNativeWindow);
+                }
+                iced_runtime::Action::Widget(_) => focused = true,
+                _ => {}
+            }
+        }
+        assert!(
+            aligned,
+            "the file picker must reapply the main window's title bar layout"
+        );
+        assert!(
+            focused,
+            "terminal widget focus must be restored after selecting or cancelling"
+        );
+        match picked {
+            Some(path) => assert!(
+                matches!(receiver.try_recv(),Ok(ipc::Request::Open(opened)) if opened == path)
+            ),
+            None => assert!(receiver.try_recv().is_err()),
+        }
+    }
+}

@@ -300,6 +300,7 @@ pub fn configure_main(id: iced::window::Id) -> iced::Task<()> {
             let appearance = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua });
             window.setAppearance(appearance.as_deref());
             NSApplication::sharedApplication(marker).setAppearance(appearance.as_deref());
+            super::chrome::install(id, view, &window, f64::from(crate::titlebar::HEIGHT));
         }
     })
 }
@@ -337,8 +338,7 @@ pub fn title_double_click(id: iced::window::Id) -> iced::Task<()> {
 pub fn align_main_controls(id: iced::window::Id) -> iced::Task<()> {
     iced::window::run(id, move |handle| {
         use iced::window::raw_window_handle::RawWindowHandle;
-        use objc2_app_kit::{NSView, NSWindowButton, NSWindowStyleMask};
-        use objc2_foundation::NSPoint;
+        use objc2_app_kit::NSView;
         let Some(_) = MainThreadMarker::new() else {
             return;
         };
@@ -350,55 +350,8 @@ pub fn align_main_controls(id: iced::window::Id) -> iced::Task<()> {
         };
         // SAFETY: Iced lends the live main-window view on its owning thread.
         let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
-        let Some(window) = view.window() else {
-            return;
-        };
-        // AppKit owns the auto-hiding fullscreen controls and their animation.
-        if window.styleMask().contains(NSWindowStyleMask::FullScreen) {
-            return;
-        }
-        let content = view.bounds();
-        let center_y = if view.isFlipped() {
-            content.origin.y + f64::from(crate::titlebar::HEIGHT) / 2.0
-        } else {
-            content.origin.y + content.size.height - f64::from(crate::titlebar::HEIGHT) / 2.0
-        };
-        for (index, kind) in [
-            NSWindowButton::CloseButton,
-            NSWindowButton::MiniaturizeButton,
-            NSWindowButton::ZoomButton,
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let Some(button) = window.standardWindowButton(kind) else {
-                continue;
-            };
-            // SAFETY: The native button hierarchy is accessed only on the window's owning thread.
-            let Some(parent) = (unsafe { button.superview() }) else {
-                continue;
-            };
-            let size = button.frame().size;
-            let center = parent.convertPoint_fromView(
-                NSPoint::new(
-                    content.origin.x + 14.0 + index as f64 * 20.0 + size.width / 2.0,
-                    center_y,
-                ),
-                Some(view),
-            );
-            let bounds = parent.bounds();
-            // Preserve each native hit target, including systems with a shorter titlebar container.
-            let origin = NSPoint::new(
-                (center.x - size.width / 2.0).clamp(
-                    bounds.origin.x,
-                    (bounds.origin.x + bounds.size.width - size.width).max(bounds.origin.x),
-                ),
-                (center.y - size.height / 2.0).clamp(
-                    bounds.origin.y,
-                    (bounds.origin.y + bounds.size.height - size.height).max(bounds.origin.y),
-                ),
-            );
-            button.setFrameOrigin(origin);
+        if let Some(window) = view.window() {
+            super::chrome::refresh(id, view, &window, f64::from(crate::titlebar::HEIGHT));
         }
     })
 }

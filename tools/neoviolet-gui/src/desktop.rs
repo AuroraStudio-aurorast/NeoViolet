@@ -18,6 +18,10 @@ mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::Desktop;
 
+#[cfg(target_os = "macos")]
+#[path = "desktop_chrome_macos.rs"]
+mod chrome;
+
 #[cfg(target_os = "windows")]
 #[path = "desktop_windows.rs"]
 mod windows;

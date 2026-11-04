@@ -656,8 +656,14 @@ impl App {
                 }
             }
             Message::Native(_, _) => {}
-            Message::Picked(Some(path)) => return self.open(path),
-            Message::Picked(None) => return self.focus(),
+            Message::Picked(path) => {
+                let open = path.map_or_else(Task::none, |path| self.open(path));
+                return Task::batch([
+                    open,
+                    self.focus(),
+                    desktop::align_main_controls(self.main_window).map(|_| Message::Ready),
+                ]);
+            }
             Message::Pasted(Some(text)) => {
                 if self.dialog.is_none()
                     && self.running
