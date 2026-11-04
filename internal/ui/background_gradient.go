@@ -69,7 +69,7 @@ func frameBackground(m *Model) []color.RGBA {
 	transition := clampUnit((base - 3) / 4)
 	transition = transition * transition * (3 - 2*transition)
 	target := base * (.95 - .15*transition)
-	lyricY := plan.Height - helpHeight - 2
+	lyricY := plan.oneLineLyricY()
 	for y := max(0, lyricY-1); y <= min(len(rows)-1, lyricY+1); y++ {
 		original := rows[y]
 		scale := 1.0

@@ -18,6 +18,8 @@ func runSave(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	m.Config.DefaultVolume = m.Audio.Volume
 	if err := m.Config.Save(); err != nil {
 		m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
+	} else {
+		m.Info.SetSuccess("Configuration saved", m.Config.Error.Duration)
 	}
 	return m, nil
 }

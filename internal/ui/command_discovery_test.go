@@ -108,15 +108,15 @@ func TestCommandDiscovery_OverlayFitsExistingFooter(t *testing.T) {
 		before := strings.Split(renderMainView(m).Content, "\n")
 		handleNormalModeKeyPress(m, tea.KeyPressMsg{Code: ':', Text: ":"})
 		plan := m.layoutPlan()
-		if got := completionRows(m, plan); got != 5 {
-			t.Fatalf("%dx%d: discovery rows = %d, want 5", size.w, size.h, got)
+		if got := completionRows(m, plan); got != 4 {
+			t.Fatalf("%dx%d: discovery rows = %d, want 4", size.w, size.h, got)
 		}
 		frame := renderMainView(m).Content
 		if lipgloss.Width(frame) != size.w || lipgloss.Height(frame) != size.h {
 			t.Fatalf("%dx%d: discovery changed the frame size", size.w, size.h)
 		}
 		after := strings.Split(frame, "\n")
-		for y := 0; y < completionTop(plan, 5); y++ {
+		for y := 0; y < completionTop(plan, 4); y++ {
 			if after[y] != before[y] {
 				t.Fatalf("%dx%d: discovery changed row %d above the footer overlay", size.w, size.h, y)
 			}

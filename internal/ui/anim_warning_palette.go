@@ -12,11 +12,12 @@ import (
 // animWarningPalette is foreground-only: both animation gates retain the
 // existing frame background, including the GUI's default canvas.
 type animWarningPalette struct {
-	title lipgloss.Style
-	body  lipgloss.Style
-	muted lipgloss.Style
-	risk  lipgloss.Style
-	key   lipgloss.Style
+	title   lipgloss.Style
+	caution lipgloss.Style
+	body    lipgloss.Style
+	muted   lipgloss.Style
+	risk    lipgloss.Style
+	key     lipgloss.Style
 }
 
 func newAnimWarningPalette(a *accent.Accent) animWarningPalette {
@@ -24,30 +25,31 @@ func newAnimWarningPalette(a *accent.Accent) animWarningPalette {
 	// against its brightest endpoint also covers every warning row above it.
 	key := interactionPrompt(backgroundAccent(a), backgroundReference)
 	return animWarningPalette{
-		title: lipgloss.NewStyle().Foreground(lipgloss.Color("#ffd08a")).Bold(true),
-		body:  lipgloss.NewStyle().Foreground(lipgloss.Color("#eeeef2")),
-		muted: lipgloss.NewStyle().Foreground(lipgloss.Color("#b5b5be")),
-		risk:  lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb4b4")),
-		key:   lipgloss.NewStyle().Foreground(key).Bold(true),
+		title:   lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb4b4")).Bold(true),
+		caution: lipgloss.NewStyle().Foreground(lipgloss.Color("#ffd08a")).Bold(true),
+		body:    lipgloss.NewStyle().Foreground(lipgloss.Color("#eeeef2")),
+		muted:   lipgloss.NewStyle().Foreground(lipgloss.Color("#b5b5be")),
+		risk:    lipgloss.NewStyle().Foreground(lipgloss.Color("#ffb4b4")),
+		key:     lipgloss.NewStyle().Foreground(key).Bold(true),
 	}
 }
 
 func (p animWarningPalette) keys(compact bool) string {
-	between, end := "  play anyway      ", "  cancel"
+	between, end := " Cancel animation    ", " Play anyway"
 	if compact {
-		between, end = " play anyway   ", " cancel"
+		between = " Cancel   "
 	}
-	return p.key.Render("[enter]") + p.body.Render(between) +
-		p.key.Render("[esc]") + p.body.Render(end)
+	return p.key.Render("Esc") + p.body.Render(between) +
+		p.key.Render("Enter") + p.body.Render(end)
 }
 
 func (p animWarningPalette) battery(percent, below int, compact bool) string {
-	end := fmt.Sprintf(", below %d%%.", below)
+	end := fmt.Sprintf("  /  warning below %d%%", below)
 	if compact {
-		end = fmt.Sprintf(", below %d%%; the animation drains it faster.", below)
+		end = fmt.Sprintf(", below %d%%; the animation may drain the battery faster.", below)
 	}
-	charge := lipgloss.NewStyle().Foreground(p.title.GetForeground())
-	return p.body.Render("Battery at ") + charge.Render(fmt.Sprintf("%d%%", percent)) + p.body.Render(end)
+	charge := lipgloss.NewStyle().Foreground(p.caution.GetForeground())
+	return p.body.Render("Battery at ") + charge.Render(fmt.Sprintf("%d%%", percent)) + p.muted.Render(end)
 }
 
 // measurements colours only the three existing numeric fields, preserving

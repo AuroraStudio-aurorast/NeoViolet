@@ -16,9 +16,13 @@ import (
 func (m *Model) finishAudioLoad() {
 	m.pendingLoad.cancel()
 	m.pendingLoad = nil
+	// Only startup draws on the normal screen. Runtime loads leave cleanup
+	// to the renderer so its cached helpbar still matches the terminal.
+	if m.Loading && !m.switchingTrack {
+		fmt.Fprint(os.Stdout, "\033[2K\r")
+	}
 	m.Loading = false
 	m.switchingTrack = false
-	fmt.Fprint(os.Stdout, "\033[2K\r")
 	fmt.Fprint(os.Stdout, "\033]9;4;0;0\a")
 }
 

@@ -72,7 +72,7 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	m.Error.Tick()
 	m.Info.Tick()
 
-	if m.Loading || (m.Anim != nil && m.Anim.Loading) {
+	if m.Loading || m.LyricsFetching || (m.Anim != nil && m.Anim.Loading) {
 		m.loadingTick++
 	}
 
@@ -157,11 +157,6 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 func handleResize(m *Model, msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.UI.Width = msg.Width
 	m.UI.Height = msg.Height
-
-	m.UI.tabWidth = (msg.Width - 4) / len(m.UI.Tabs)
-	if m.UI.tabWidth > 20 {
-		m.UI.tabWidth = 20
-	}
 
 	syncCommandInputWidth(m)
 
