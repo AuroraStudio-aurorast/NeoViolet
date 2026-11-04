@@ -1,7 +1,6 @@
 # GUI dependency sources
 
-The GUI uses Iced with iced_term and small platform fixes. These are independent
-upstream components; no code comes from the former GPL GUI.
+The GUI uses Iced with iced_term and small platform fixes.
 
 `sources.json` pins the exact source archives and their SHA-256 digests. The patches
 in this directory are the complete local changes. `make gui/deps` verifies cached
@@ -16,7 +15,7 @@ archive caches stay outside Git. Git is required to apply the patches.
 | iced_wgpu | 0.14.0 / `3997291f318a8bc06fa522f5579836fb3feb94df` | MIT | Use DirectComposition for DX12 transparency and select premultiplied alpha; keep other backends' alpha selection |
 | muda | 0.17.2 | MIT OR Apache-2.0 | Render the macOS Equal accelerator as `+`; remove redundant unsafe blocks for safe objc2 calls |
 
-Original license texts are retained under `licenses/` and shipped in macOS bundles.
+Original license texts are retained under [`ACKNOWLEDGEMENTS.md`](../../../docs/ACKNOWLEDGEMENTS.md) and shipped in macOS bundles.
 iced_term's manifest is made standalone to avoid depending on example assets.
 
 To change a dependency, update its source pin and digest, regenerate the corresponding

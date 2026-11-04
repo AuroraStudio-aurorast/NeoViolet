@@ -2,7 +2,7 @@
 name = "neoviolet-gui"
 version = "0.1.0"
 edition = "2024"
-description = "Iced desktop terminal for NeoViolet"
+description = "NeoViolet graphical frontend"
 license = "MIT"
 publish = false
 

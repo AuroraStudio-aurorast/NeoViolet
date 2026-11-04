@@ -46,9 +46,6 @@ done
 
 cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GUI-MIT"
 cp "$PROJECT_ROOT/tools/apecli/LICENSE"       "$RESOURCES_DIR/LICENSE-MIT"
-cp "$PROJECT_ROOT/tools/neoviolet-gui/deps/licenses/LICENSE-iced_term" "$RESOURCES_DIR/LICENSE-iced_term"
-cp "$PROJECT_ROOT/tools/neoviolet-gui/deps/licenses/LICENSE-winit" "$RESOURCES_DIR/LICENSE-winit"
-cp "$PROJECT_ROOT/tools/neoviolet-gui/deps/licenses/LICENSE-iced_wgpu" "$RESOURCES_DIR/LICENSE-iced_wgpu"
 cp "$PROJECT_ROOT/docs/ACKNOWLEDGEMENTS.md"       "$RESOURCES_DIR/ACKNOWLEDGEMENTS.md"
 
 # ── Icon: compile (Xcode ≥ 26) else pre-compiled ──────────────────────────
