@@ -1774,6 +1774,7 @@ The patched dependency sources retain their original license texts:
 
 - [iced_term license](../tools/neoviolet-gui/deps/licenses/LICENSE-iced_term)
 - [winit license](../tools/neoviolet-gui/deps/licenses/LICENSE-winit)
+- [iced_wgpu license](../tools/neoviolet-gui/deps/licenses/LICENSE-iced_wgpu)
 - [Dependency provenance](../tools/neoviolet-gui/deps/README.md)
 
 Upstream references:

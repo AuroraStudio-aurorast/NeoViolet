@@ -252,6 +252,7 @@ test/rust: gui/deps
 	else \
 		( cd $(APECLI_DIR) && cargo test ) || exit 1; \
 		( cd $(GUI_DIR) && cargo test ) || exit 1; \
+		( cd $(GUI_DIR) && cargo test -p iced_wgpu --lib transparency_tests ) || exit 1; \
 	fi
 
 test/gui-ipc: build/tui gui/deps

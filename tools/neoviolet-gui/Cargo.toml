@@ -31,6 +31,7 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Graphic
 x11rb = "0.13.2"
 
 [patch.crates-io]
+iced_wgpu = { path = "../../.build/gui-deps/iced_wgpu" }
 winit = { path = "../../.build/gui-deps/winit" }
 
 [dev-dependencies]

@@ -10,5 +10,11 @@
     "url": "https://static.crates.io/crates/winit/winit-0.30.13.crate",
     "sha256": "a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d",
     "patch": "winit.patch"
+  },
+  {
+    "name": "iced_wgpu",
+    "url": "https://static.crates.io/crates/iced_wgpu/iced_wgpu-0.14.0.crate",
+    "sha256": "ff144a999b0ca0f8a10257934500060240825c42e950ec0ebee9c8ae30561c13",
+    "patch": "iced_wgpu.patch"
   }
 ]
