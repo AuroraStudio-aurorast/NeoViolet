@@ -153,51 +153,6 @@ GUI binary. Rust compilation and root-binary copy failures also stop the build.
 `make gui/debug` leaves its binary in `tools/neoviolet-gui/target/debug/`; it does not replace the
 release binary in the repository root.
 
-### Main window and menus
-
-The GUI uses a dark gray appearance with English controls. The retired `theme`
-setting is ignored and removed when settings are saved; there is no light mode.
-
-On macOS, the title area keeps native traffic lights and the system menu bar.
-Double-clicking the title follows the macOS preference. Windows uses native
-caption hit testing for dragging, resizing, the system window menu, and caption
-buttons while the GUI draws the title area. Linux uses client decorations and
-window-manager drag/resize operations. Full screen hides the custom title area.
-The displayed title follows the TUI's terminal title, including its idle reset.
-
-Windows and Linux default to a compact application menu with File, Edit, View,
-Window, and Help submenus. Use F10 to open the menu, arrow keys to navigate,
-Enter to activate, and Escape to dismiss. F11 toggles full screen. Open,
-clipboard, zoom, and desktop lyrics commands retain their platform shortcuts.
-Menu input is isolated from the terminal while the menu is open.
-
-The following top-level `neoviolet_gui.toml` options apply after restarting the GUI:
-
-- `menu_bar = true` uses a conventional menu bar instead of the compact menu
-  on Windows and Linux. The default is `false`; macOS uses its system menu.
-- `system_decorations = true` leaves the title bar and frame to the desktop
-  on Windows and Linux, retaining an application menu in the client area.
-  The default is `false`.
-- `minimize_button = false` hides the Linux minimize control and menu action
-  for compositors that do not offer minimization. The default is `true`.
-
-### Desktop lyrics
-
-The GUI opens a separate transparent, always-on-top lyrics window. Additional lines
-are enabled by default; the next line is disabled. Hover for playback, move, lock,
-and settings controls. Locked lyrics pass mouse input through to other applications.
-On macOS, transparent pixels also pass clicks through while unlocked; visible
-lyrics and toolbar controls remain interactive. The hit mask follows rendered
-content changes and does not use a continuously running capture loop.
-On macOS, use **View → Desktop Lyrics Settings…** or **Unlock Desktop Lyrics** to
-restore interaction. Other platforms expose these actions in the main window.
-The settings window includes a position reset if a display arrangement changes.
-
-Preferences are saved under `[desktop_lyrics]` in `neoviolet_gui.toml`. The TUI
-streams the lyric data and elapsed time; the GUI does not run a playback clock.
-The standalone TUI can toggle an attached overlay with `:lrc desktop`.
-The GUI shortcut is **Cmd+Shift+L** on macOS and **Ctrl+Shift+L** on other platforms.
-
 ### macOS App Bundle
 
 ```bash
