@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GUI_ASSETS="$PROJECT_ROOT/tools/neoviolet-gui/assets"
 
-APP_NAME="NeoViolet GUI"
+APP_NAME="NeoViolet"
 BUNDLE_ID="org.aurorast.neovioletgui"
 
 VERSION="${VERSION:-$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || echo "0.1.0")}"
@@ -44,7 +44,7 @@ for bin in neoviolet-gui neoviolet apecli; do
     cp "$PROJECT_ROOT/$bin" "$MACOS_DIR/"
 done
 
-cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GPL"
+cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GUI-MIT"
 cp "$PROJECT_ROOT/tools/apecli/LICENSE"       "$RESOURCES_DIR/LICENSE-MIT"
 cp "$PROJECT_ROOT/docs/ACKNOWLEDGEMENTS.md"       "$RESOURCES_DIR/ACKNOWLEDGEMENTS.md"
 

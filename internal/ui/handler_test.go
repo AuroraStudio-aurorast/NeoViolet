@@ -544,7 +544,7 @@ func TestBuildLyricLinesJSON_CarriesParts(t *testing.T) {
 func TestBuildLyricLinesJSON_CarriesWords(t *testing.T) {
 	data := &lyrics.Data{Lines: []lyrics.LyricLine{
 		{Time: 0, Text: "Stop and stare", Words: []lyrics.WordFragment{
-			{Time: 0, Text: "Stop "},
+			{Time: 0, End: 500 * time.Millisecond, Text: "Stop "},
 			{Time: time.Second, Text: "and "},
 			{Time: 2 * time.Second, Text: "stare"},
 		}},
@@ -556,6 +556,10 @@ func TestBuildLyricLinesJSON_CarriesWords(t *testing.T) {
 	}
 	if len(got[0].Words) != 3 {
 		t.Fatalf("Words = %+v, want 3 fragments", got[0].Words)
+	}
+	wordJSON, wordErr := json.Marshal(got[0].Words[0])
+	if wordErr != nil || !strings.Contains(string(wordJSON), `"end":0.5`) {
+		t.Fatalf("word end must preserve the silence before the next word: %s (%v)", wordJSON, wordErr)
 	}
 	if got[0].Words[1].Time != 1.0 || got[0].Words[1].Text != "and " {
 		t.Errorf("Words[1] = %+v, want 1s %q", got[0].Words[1], "and ")
@@ -616,5 +620,35 @@ func TestEffectiveBaseURL(t *testing.T) {
 	}
 	if got := effectiveBaseURL("http://example.com"); got != "http://example.com" {
 		t.Errorf("effectiveBaseURL(custom) = %q, want %q", got, "http://example.com")
+	}
+}
+
+func TestBuildLyricLinesJSONKeepsContextDuringExplicitGaps(t *testing.T) {
+	data := &lyrics.Data{Lines: []lyrics.LyricLine{
+		{Time: time.Second, End: 2 * time.Second, Text: "First"},
+		{Time: 2150 * time.Millisecond, End: 3 * time.Second, Text: "Next"},
+		{Time: 4 * time.Second, End: 5 * time.Second, Text: "Later"},
+	}}
+	for _, elapsed := range []time.Duration{500 * time.Millisecond, 2050 * time.Millisecond, 3100 * time.Millisecond, 6 * time.Second} {
+		got := buildLyricLinesJSON(data, elapsed)
+		if len(got) < 2 {
+			t.Fatalf("at %v: missing gap context: %+v", elapsed, got)
+		}
+		if elapsed == 2050*time.Millisecond && (got[0].Text != "First" || got[1].Text != "Next") {
+			t.Fatalf("short gap lost neighboring cues: %+v", got)
+		}
+	}
+}
+
+func TestBuildLyricLinesJSONKeepsLatestEndedOverlappingCueDuringGap(t *testing.T) {
+	data := &lyrics.Data{Lines: []lyrics.LyricLine{
+		{Time: 0, End: 10 * time.Second, Text: "Sustained voice"},
+		{Time: 8 * time.Second, End: 8100 * time.Millisecond, Text: "Brief overlap"},
+		{Time: 9 * time.Second, End: 9100 * time.Millisecond, Text: "Second overlap"},
+		{Time: 10150 * time.Millisecond, End: 12 * time.Second, Text: "Next line"},
+	}}
+	got := buildLyricLinesJSON(data, 10050*time.Millisecond)
+	if len(got) != 4 || got[0].Text != "Sustained voice" || got[3].Text != "Next line" {
+		t.Fatalf("gap context dropped the cue that ends nearest the gap: %+v", got)
 	}
 }

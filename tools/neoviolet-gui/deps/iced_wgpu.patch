@@ -1,0 +1,135 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -115,6 +115,9 @@
+ ]
+ default-features = false
+ 
++[dependencies.wgpu-types]
++version = "27.0"
++
+ [lints.clippy]
+ default_trait_access = "deny"
+ filter_map_next = "deny"
+--- a/src/window/compositor.rs
++++ b/src/window/compositor.rs
+@@ -53,15 +53,7 @@
+         shell: Shell,
+     ) -> Result<Self, Error> {
+         let instance = wgpu::util::new_instance_with_webgpu_detection(
+-            &wgpu::InstanceDescriptor {
+-                backends: settings.backends,
+-                flags: if cfg!(feature = "strict-assertions") {
+-                    wgpu::InstanceFlags::debugging()
+-                } else {
+-                    wgpu::InstanceFlags::empty()
+-                },
+-                ..Default::default()
+-            },
++            &instance_descriptor(settings.backends),
+         )
+         .await;
+ 
+@@ -124,17 +116,10 @@
+ 
+                 log::info!("Available alpha modes: {alpha_modes:#?}");
+ 
+-                let preferred_alpha = if alpha_modes
+-                    .contains(&wgpu::CompositeAlphaMode::PostMultiplied)
+-                {
+-                    wgpu::CompositeAlphaMode::PostMultiplied
+-                } else if alpha_modes
+-                    .contains(&wgpu::CompositeAlphaMode::PreMultiplied)
+-                {
+-                    wgpu::CompositeAlphaMode::PreMultiplied
+-                } else {
+-                    wgpu::CompositeAlphaMode::Auto
+-                };
++                let preferred_alpha = preferred_alpha_mode(
++                    &alpha_modes,
++                    adapter.get_info().backend,
++                );
+ 
+                 format.zip(Some(preferred_alpha))
+             })
+@@ -373,3 +358,81 @@
+         renderer.screenshot(viewport, background_color)
+     }
+ }
++
++fn instance_descriptor(backends: wgpu::Backends) -> wgpu::InstanceDescriptor {
++    wgpu::InstanceDescriptor {
++        backends,
++        flags: if cfg!(feature = "strict-assertions") {
++            wgpu::InstanceFlags::debugging()
++        } else {
++            wgpu::InstanceFlags::empty()
++        },
++        // HWND swapchains ignore alpha. DirectComposition keeps transparent
++        // secondary windows working even when the first window is opaque.
++        backend_options: wgpu::BackendOptions {
++            dx12: wgpu::Dx12BackendOptions {
++                presentation_system:
++                    wgpu_types::Dx12SwapchainKind::DxgiFromVisual,
++                ..Default::default()
++            },
++            ..Default::default()
++        },
++        ..Default::default()
++    }
++}
++
++fn preferred_alpha_mode(
++    alpha_modes: &[wgpu::CompositeAlphaMode],
++    backend: wgpu::Backend,
++) -> wgpu::CompositeAlphaMode {
++    // DXGI composition swapchains require premultiplied alpha for transparency.
++    if backend == wgpu::Backend::Dx12
++        && alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied)
++    {
++        return wgpu::CompositeAlphaMode::PreMultiplied;
++    }
++    if alpha_modes.contains(&wgpu::CompositeAlphaMode::PostMultiplied) {
++        wgpu::CompositeAlphaMode::PostMultiplied
++    } else if alpha_modes.contains(&wgpu::CompositeAlphaMode::PreMultiplied) {
++        wgpu::CompositeAlphaMode::PreMultiplied
++    } else {
++        wgpu::CompositeAlphaMode::Auto
++    }
++}
++
++#[cfg(test)]
++mod transparency_tests {
++    use super::{instance_descriptor, preferred_alpha_mode};
++    use wgpu::{Backend, Backends, CompositeAlphaMode};
++    use wgpu_types::Dx12SwapchainKind;
++
++    #[test]
++    fn dx12_uses_a_composition_swapchain_that_can_present_transparency() {
++        let descriptor = instance_descriptor(Backends::DX12);
++        assert_eq!(descriptor.backends, Backends::DX12);
++        assert_eq!(
++            descriptor.backend_options.dx12.presentation_system,
++            Dx12SwapchainKind::DxgiFromVisual,
++        );
++    }
++
++    #[test]
++    fn direct_composition_prefers_premultiplied_alpha() {
++        let modes = [
++            CompositeAlphaMode::PostMultiplied,
++            CompositeAlphaMode::PreMultiplied,
++        ];
++        assert_eq!(
++            preferred_alpha_mode(&modes, Backend::Dx12),
++            CompositeAlphaMode::PreMultiplied,
++        );
++        assert_eq!(
++            preferred_alpha_mode(&modes, Backend::Vulkan),
++            CompositeAlphaMode::PostMultiplied,
++        );
++        assert_eq!(
++            preferred_alpha_mode(&[CompositeAlphaMode::Opaque], Backend::Dx12),
++            CompositeAlphaMode::Auto,
++        );
++    }
++}

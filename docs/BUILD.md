@@ -108,32 +108,30 @@ build without launching, or `make build` to build all components, including the 
 
 ## GUI (neoviolet-gui)
 
-A native desktop wrapper around the same player, built with Rust (`gpui-ce` + `yororen-ui`).
+A native desktop wrapper around the same player, built with Rust (`Iced` + `iced_term`).
 
 ### GUI Prerequisites
 
+The Make targets prepare the pinned patched dependencies automatically. The first
+build needs network access and Git; source archives are checked against SHA-256 and
+reused from the OS user cache. Generated sources live in `.build/gui-deps`.
+See [dependency sources](../tools/neoviolet-gui/deps/README.md) for the pins and patches.
+
 In addition to the [core prerequisites](#prerequisites):
 
-**Linux** — X11/Wayland development libraries. The GUI's build scripts look up `x11`, `wayland-client`,
-`fontconfig` and `freetype2` through `pkg-config`, and its build dependency `bindgen` needs libclang:
+**Linux** — the Iced window backend needs X11 or Wayland and xkbcommon. The CI
+workflow records the package set used for official builds. For development:
 
 ```bash
 # Debian / Ubuntu
-sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev \
-                     libx11-dev libwayland-dev libfontconfig1-dev \
-                     llvm-dev libclang-dev pkg-config
+sudo apt-get install libxcb1-dev libxkbcommon-dev libxkbcommon-x11-dev pkg-config
 
 # Fedora
-sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel \
-                 libX11-devel wayland-devel fontconfig-devel \
-                 clang-devel llvm-devel pkgconf
+sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel pkgconf
 
 # Arch Linux
-sudo pacman -S libxcb libxkbcommon libxkbcommon-x11 \
-               libx11 wayland fontconfig clang pkgconf
+sudo pacman -S libxcb libxkbcommon libxkbcommon-x11 pkgconf
 ```
-
-`freetype2` itself is optional: `freetype-sys` builds its own copy when the system library is absent.
 
 **macOS** — nothing extra; the GUI links only system frameworks.
 
@@ -155,13 +153,58 @@ GUI binary. Rust compilation and root-binary copy failures also stop the build.
 `make gui/debug` leaves its binary in `tools/neoviolet-gui/target/debug/`; it does not replace the
 release binary in the repository root.
 
+### Main window and menus
+
+The GUI uses a dark gray appearance with English controls. The retired `theme`
+setting is ignored and removed when settings are saved; there is no light mode.
+
+On macOS, the title area keeps native traffic lights and the system menu bar.
+Double-clicking the title follows the macOS preference. Windows uses native
+caption hit testing for dragging, resizing, the system window menu, and caption
+buttons while the GUI draws the title area. Linux uses client decorations and
+window-manager drag/resize operations. Full screen hides the custom title area.
+The displayed title follows the TUI's terminal title, including its idle reset.
+
+Windows and Linux default to a compact application menu with File, Edit, View,
+Window, and Help submenus. Use F10 to open the menu, arrow keys to navigate,
+Enter to activate, and Escape to dismiss. F11 toggles full screen. Open,
+clipboard, zoom, and desktop lyrics commands retain their platform shortcuts.
+Menu input is isolated from the terminal while the menu is open.
+
+The following top-level `neoviolet_gui.toml` options apply after restarting the GUI:
+
+- `menu_bar = true` uses a conventional menu bar instead of the compact menu
+  on Windows and Linux. The default is `false`; macOS uses its system menu.
+- `system_decorations = true` leaves the title bar and frame to the desktop
+  on Windows and Linux, retaining an application menu in the client area.
+  The default is `false`.
+- `minimize_button = false` hides the Linux minimize control and menu action
+  for compositors that do not offer minimization. The default is `true`.
+
+### Desktop lyrics
+
+The GUI opens a separate transparent, always-on-top lyrics window. Additional lines
+are enabled by default; the next line is disabled. Hover for playback, move, lock,
+and settings controls. Locked lyrics pass mouse input through to other applications.
+On macOS, transparent pixels also pass clicks through while unlocked; visible
+lyrics and toolbar controls remain interactive. The hit mask follows rendered
+content changes and does not use a continuously running capture loop.
+On macOS, use **View → Desktop Lyrics Settings…** or **Unlock Desktop Lyrics** to
+restore interaction. Other platforms expose these actions in the main window.
+The settings window includes a position reset if a display arrangement changes.
+
+Preferences are saved under `[desktop_lyrics]` in `neoviolet_gui.toml`. The TUI
+streams the lyric data and elapsed time; the GUI does not run a playback clock.
+The standalone TUI can toggle an attached overlay with `:lrc desktop`.
+The GUI shortcut is **Cmd+Shift+L** on macOS and **Ctrl+Shift+L** on other platforms.
+
 ### macOS App Bundle
 
 ```bash
 make build/osxappbundle
 ```
 
-Packages `neoviolet`, `neoviolet-gui` and `apecli` into `dist/NeoViolet GUI.app/`. The bundle script
+Packages `neoviolet`, `neoviolet-gui` and `apecli` into `dist/NeoViolet.app/`. The bundle script
 (`tools/osx-appbundle-builder/build.sh`) writes `Info.plist`, picks the icon (compiling it with
 `actool` only when Xcode 26+ is installed, otherwise using the assets committed to the repo) and signs
 the bundle ad hoc.
@@ -536,18 +579,14 @@ sudo dnf install pkgconf        # Fedora
 sudo pacman -S pkgconf          # Arch Linux
 ```
 
-### Metal Shader Compilation (macOS)
+### GUI renderer (macOS)
 
-```
-error: failed to run `xcrun metal` …
-```
+The Iced GUI uses the system Metal backend through wgpu. It does not require the
+former GPUI shader flags or a separate Metal shader compilation step. Build it
+through `make gui` or `make gui/debug`.
 
-`gpui-ce` compiles its shaders ahead of time by default, which requires the full Xcode Metal Toolchain.
-`make gui` avoids that on macOS by passing `--no-default-features -F gpui/runtime_shaders`, so shaders
-are compiled at run time through the system Metal framework instead. Use the Makefile entry points
-so those flags are applied automatically:
-
-```bash
-make gui
-make gui/debug
-```
+If the standalone GUI exits before printing any startup output and the macOS system
+log reports `load code signature error 2`, its executable may have been overwritten
+in place after an earlier run. `make gui` installs the binary by atomic replacement
+to avoid reusing the old file's cached signature. Rebuild with that target; no
+system security settings need to change.

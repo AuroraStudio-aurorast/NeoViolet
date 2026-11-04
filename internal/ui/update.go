@@ -85,6 +85,9 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 				logger.Debug("IPC: invalid JSON", "line", raw, "err", err)
 			} else {
 				switch ipcMsg.Type {
+				case "quit":
+					m.cleanup()
+					return m, tea.Quit
 				case "open":
 					if ipcMsg.Path != "" {
 						if !isValidAudioPath(ipcMsg.Path) {
@@ -102,7 +105,7 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 					}
 				case "desktop_lyrics":
 					if ipcMsg.Enable != nil {
-						m.DesktopLyricsEnabled = *ipcMsg.Enable
+						m.setDesktopLyricsEnabled(*ipcMsg.Enable)
 						logger.Info("IPC: desktop lyrics", "enabled", *ipcMsg.Enable)
 					}
 				case "play_pause":

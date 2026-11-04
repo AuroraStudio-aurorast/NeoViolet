@@ -117,7 +117,6 @@ Check out [`BUILD.md`](./docs/BUILD.md) for more information!
 
 ## License
 
-- TUI is licensed under **MIT License**
-- GUI is licensed under **GPLv3 License**
+Licensed under **MIT License**
 
 For the licenses of its dependencies, please refer to [`ACKNOWLEDGEMENTS.md`](./docs/ACKNOWLEDGEMENTS.md).

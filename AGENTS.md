@@ -32,19 +32,19 @@ For AI agents. Read [Keeping this file honest](#keeping-this-file-honest) before
 - **Never commit build artifacts or local state** — root binaries, `coverage.*`, `config.json`,
   `history.txt`, `caches/`.
 
-## License boundary — GPL must not reach the MIT side
+## License and source provenance
 
 | Path | License |
 |---|---|
 | root, `cmd/`, `internal/` (TUI) | MIT |
 | `tools/apecli/` | MIT |
-| `tools/neoviolet-gui/` (GUI) | GPL-3.0-or-later |
+| `tools/neoviolet-gui/` (GUI, excluding third-party sources) | MIT |
 
-Copyleft must never flow into the MIT side: don't copy code, types, strings or comments out of the
-GUI; don't link, embed, vendor or share sources across them; don't add copyleft dependencies to the
-MIT side. MIT → GUI is compatible. Keep them **separate programs** — the PTY + IPC split is the
-license boundary, so never merge them into one binary. Leave the license fields and the
-per-component `LICENSE` files alone; the app bundle ships both.
+The former GUI implementation in Git history is GPL: do not reuse its code, types, comments or
+tests in the replacement. Derive IPC implementations from the TUI contract. Preserved icon assets
+are independent of that implementation. Third-party sources retain their licenses and documented
+upstream origins; do not add copyleft dependencies. Keep the TUI and GUI **separate programs** with
+the PTY + IPC boundary, and ship the applicable component and dependency license notices.
 
 ## Quality gates
 
@@ -60,13 +60,14 @@ Rust checks warn and skip; passing the remaining checks does not validate Rust c
 
 ```
 neoviolet (Go)        TUI — Bubble Tea, Elm-style model/view/update
-neoviolet-gui (Rust)  optional native wrapper (gpui-ce + yororen-ui)
+neoviolet-gui (Rust)  optional native wrapper (Iced + iced_term)
 apecli (Rust)         optional APE decoder subprocess, stdin → PCM stdout
 ```
 
 - The GUI holds no playback state: it spawns `neoviolet` in a PTY and drives it over TCP IPC
   (loopback, random port + token in a temp file). **The TUI must run standalone** — anything that
   works only with the GUI attached is a bug.
+- GUI controls use English and a dark gray appearance; do not introduce a light mode.
 - IPC message types live in the `internal/ipc` package comment, the contract both sides are
   written against. Add the variant there first.
 - OS integration sits behind per-OS build tags or platform modules; don't branch on
@@ -83,8 +84,8 @@ Register in `init()` beside the existing entries:
 | Lyric source | `internal/lyrics/fetch` (client, matching, cache, rate limit) | package comment |
 | Keybinding | `KeyMap` + a handler beside the others, `internal/ui` | `grep -rn 'KeyMap' internal/ui` |
 | TUI styling | Lipgloss styles beside the views, `internal/ui` | `grep -rn 'lipgloss.Style' internal/ui` |
-| GUI menu action | action in `menus.rs` → `setup()` → handled in `neo_violet_app.rs` | read `menus.rs` |
-| GUI dialog / theme | `AppState` flag + dialogs module; theme module + `GuiConfig` | module docs |
+| GUI action / dialog | Iced message → update → view, `tools/neoviolet-gui` | application module |
+| GUI terminal | patched upstream `iced_term`, `tools/neoviolet-gui/deps` | dependency provenance |
 
 ## Working in this repo
 
