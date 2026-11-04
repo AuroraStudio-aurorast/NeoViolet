@@ -78,6 +78,10 @@ impl Overlay {
                     crate::desktop::link_lyrics(lyrics, id, TOOLBAR_OFFSET)
                         .map(move |linked| Event::Linked(id, linked))
                 }));
+                #[cfg(target_os = "linux")]
+                let task = task.chain(self.window.map_or_else(Task::none, |lyrics| {
+                    crate::desktop::link_lyrics(lyrics, id).map(|_| Event::Ready)
+                }));
                 task
             }
             #[cfg(target_os = "macos")]

@@ -4,15 +4,35 @@ use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ClientMessageEvent, ConnectionExt, EventMask, PropMode};
 use x11rb::wrapper::ConnectionExt as _;
 
+#[path = "desktop_lyrics_linux.rs"]
+mod lyrics;
+
+pub fn link_lyrics(lyrics: window::Id, toolbar: window::Id) -> iced::Task<()> {
+    window::run(lyrics, native_window).then(move |lyrics| {
+        lyrics.map_or_else(iced::Task::none, move |lyrics| {
+            window::run(toolbar, move |handle| {
+                if let Some(toolbar) = native_window(handle)
+                    && let Err(error) = self::lyrics::follow_toolbar(lyrics, toolbar)
+                {
+                    eprintln!("NeoViolet GUI: could not link X11 lyric windows: {error}");
+                }
+            })
+        })
+    })
+}
+
+fn native_window(handle: &dyn window::Window) -> Option<u32> {
+    match handle.window_handle().ok()?.as_raw() {
+        RawWindowHandle::Xlib(handle) => Some(handle.window as u32),
+        RawWindowHandle::Xcb(handle) => Some(handle.window.get()),
+        _ => None,
+    }
+}
+
 pub fn configure_lyrics(id: window::Id) -> iced::Task<()> {
     window::run(id, |handle| {
-        let Ok(handle) = handle.window_handle() else {
+        let Some(xid) = native_window(handle) else {
             return;
-        };
-        let xid = match handle.as_raw() {
-            RawWindowHandle::Xlib(handle) => handle.window as u32,
-            RawWindowHandle::Xcb(handle) => handle.window.get(),
-            _ => return,
         };
         if let Err(error) = utility_hints(xid) {
             eprintln!("NeoViolet GUI: could not configure X11 lyric window: {error}");

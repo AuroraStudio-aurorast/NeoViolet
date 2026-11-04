@@ -112,6 +112,11 @@ pub fn resize_lyrics(id: iced::window::Id, size: iced::Size, offset: f32) -> ice
     iced::window::run(id, move |_| hit_test::resize(id, size, f64::from(offset)))
 }
 
+#[cfg(target_os = "linux")]
+pub fn link_lyrics(lyrics: iced::window::Id, toolbar: iced::window::Id) -> iced::Task<()> {
+    linux::link_lyrics(lyrics, toolbar)
+}
+
 #[cfg(target_os = "macos")]
 pub fn set_lyrics_mask(
     id: iced::window::Id,
