@@ -484,12 +484,21 @@ impl State {
             ));
         }
         let title = mouse_area(
-            container(text(title).size(12).wrapping(text::Wrapping::None))
-                .width(Length::Fill)
-                .height(HEIGHT)
-                .padding([0, 10])
-                .center_y(Length::Fill)
-                .clip(true),
+            container(
+                text(title)
+                    .size(13)
+                    .font(iced::Font {
+                        weight: iced::font::Weight::Semibold,
+                        ..iced::Font::DEFAULT
+                    })
+                    .color(Color::from_rgb8(224, 224, 230))
+                    .wrapping(text::Wrapping::None),
+            )
+            .width(Length::Fill)
+            .height(HEIGHT)
+            .padding([0, 10])
+            .center_y(Length::Fill)
+            .clip(true),
         )
         .on_press(Message::PressTitle)
         .on_release(Message::ReleaseTitle)

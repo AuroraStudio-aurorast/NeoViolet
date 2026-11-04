@@ -53,6 +53,30 @@ fn obsolete_session_cannot_install_its_connection() {
 }
 
 #[test]
+fn restart_discards_initial_flags_and_queued_files_even_if_the_new_launch_fails() {
+    let mut app = app();
+    app.arguments = launch::arguments(["--seek", "99", "--invalid", "old.flac"].map(String::from));
+    app.window_title = "NeoViolet | Old track".into();
+    let temporary = tempfile::tempdir().unwrap();
+    let config = config::Config {
+        neoviolet_path: Some(
+            temporary
+                .path()
+                .join("missing-player")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        ..Default::default()
+    };
+    let _ = app.restart_with_config(config, None);
+    assert_eq!(app.arguments, ["--xdg-config"]);
+    assert!(app.pending.is_empty());
+    assert_eq!(app.title(), "NeoViolet");
+    assert_eq!(app.session, 3);
+    assert!(!app.running);
+}
+
+#[test]
 fn terminal_titles_replace_and_clear_the_window_title() {
     let mut app = app();
     app.dialog = None;

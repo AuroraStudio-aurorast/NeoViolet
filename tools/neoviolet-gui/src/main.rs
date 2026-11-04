@@ -6,6 +6,7 @@ mod app;
 mod chrome_hit_test;
 mod config;
 mod desktop;
+mod dialog;
 mod ipc;
 mod launch;
 mod lyrics;
@@ -17,6 +18,11 @@ mod titlebar;
 mod view;
 
 fn main() -> iced::Result {
+    launch::prepare_console();
+    if launch::help_requested(std::env::args().skip(1)) {
+        println!("{}", launch::help());
+        return Ok(());
+    }
     let (settings, warning) = config::Config::load();
     let desktop = desktop::Desktop::install();
     iced::daemon(

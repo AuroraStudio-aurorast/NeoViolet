@@ -49,6 +49,16 @@ pub fn chrome_input(id: iced::window::Id, menu: bool, fullscreen: bool) -> iced:
     }
 }
 
+pub fn align_main_controls(id: iced::window::Id) -> iced::Task<()> {
+    #[cfg(target_os = "macos")]
+    return macos::align_main_controls(id);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = id;
+        iced::Task::none()
+    }
+}
+
 pub fn title_double_click<T: Send + 'static>(id: iced::window::Id) -> iced::Task<T> {
     #[cfg(target_os = "macos")]
     return macos::title_double_click(id).discard();

@@ -304,6 +304,7 @@ impl App {
             Message::ChromeState(maximized, mode) => {
                 self.titlebar.maximized = maximized;
                 self.titlebar.fullscreen = mode == window::Mode::Fullscreen;
+                return desktop::align_main_controls(self.main_window).map(|_| Message::Ready);
             }
             Message::Lyrics(event) => {
                 let opened = matches!(&event, lyrics_window::Event::Opened(id) if Some(*id) == self.lyrics.window);
@@ -653,16 +654,27 @@ impl App {
             Message::QuitDeadline => return self.finish_quit(),
             Message::Restart => {
                 let (config, warning) = config::Config::load();
-                if self.config.monospace_font != config.monospace_font {
-                    self.family = Box::leak(config.monospace_font.clone().into_boxed_str());
-                }
-                self.config = config;
-                self.save_settings = warning.is_none();
-                self.dialog = warning.map(Dialog::Error);
-                return self.start();
+                return self.restart_with_config(config, warning);
             }
         }
         Task::none()
+    }
+
+    fn restart_with_config(
+        &mut self,
+        config: config::Config,
+        warning: Option<String>,
+    ) -> Task<Message> {
+        if self.config.monospace_font != config.monospace_font {
+            self.family = Box::leak(config.monospace_font.clone().into_boxed_str());
+        }
+        self.config = config;
+        self.save_settings = warning.is_none();
+        self.dialog = warning.map(Dialog::Error);
+        self.arguments = launch::arguments(std::iter::empty());
+        self.pending.clear();
+        self.window_title = "NeoViolet".into();
+        self.start()
     }
 
     fn action(&mut self, action: Action) -> Task<Message> {

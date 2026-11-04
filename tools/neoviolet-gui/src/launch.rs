@@ -2,6 +2,41 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+pub fn prepare_console() {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
+        // SAFETY: Attach to an existing parent console; never allocate a console for desktop launches.
+        unsafe {
+            AttachConsole(ATTACH_PARENT_PROCESS);
+        }
+    }
+}
+
+pub fn help_requested(input: impl IntoIterator<Item = String>) -> bool {
+    input
+        .into_iter()
+        .take_while(|argument| argument != "--")
+        .any(|argument| argument == "--help" || argument == "-h")
+}
+
+pub fn help() -> String {
+    format!(
+        "NeoViolet GUI {}\n\n\
+Usage: neoviolet-gui [OPTIONS] [--] [FILE]\n\n\
+Options:\n  -h, --help       Show help.\n  \
+--vol PERCENT    Initial volume (0-100).\n  \
+--seek SECONDS   Initial playback position.\n\n\
+Other options: neoviolet --help\n\
+GUI settings: {}\n\n\
+Example: neoviolet-gui --vol 50 song.flac",
+        env!("CARGO_PKG_VERSION"),
+        crate::config::directory()
+            .join("neoviolet_gui.toml")
+            .display(),
+    )
+}
+
 pub fn player(configured: Option<&str>) -> PathBuf {
     if let Some(path) = configured.filter(|path| !path.is_empty()) {
         return path.into();
@@ -127,5 +162,14 @@ mod tests {
     fn forwards_flags_and_preserves_flag_shaped_filename_after_separator() {
         let input = ["--xdg-config", "--vol", "35", "--", "--xdg-config"];
         assert_eq!(arguments(input.map(String::from)), input);
+    }
+
+    #[test]
+    fn gui_help_is_local_and_a_help_named_file_after_separator_is_forwarded() {
+        assert!(help_requested(["--help"].map(String::from)));
+        assert!(help_requested(["--vol", "35", "-h"].map(String::from)));
+        assert!(!help_requested(["--", "--help"].map(String::from)));
+        assert!(!help_requested(["--", "-h"].map(String::from)));
+        assert!(!help_requested(["track.flac"].map(String::from)));
     }
 }
