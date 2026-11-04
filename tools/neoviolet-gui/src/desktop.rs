@@ -8,6 +8,8 @@ pub enum Event {
     Action(Action),
     Files(Vec<PathBuf>),
     Reopen,
+    #[cfg(any(target_os = "windows", test))]
+    CaptionHover(iced::window::Id, Option<crate::titlebar::CaptionControl>),
     #[cfg(target_os = "macos")]
     LyricsHover(iced::window::Id, bool),
     #[cfg(target_os = "macos")]
@@ -31,21 +33,25 @@ mod lyrics;
 #[cfg(target_os = "windows")]
 #[path = "desktop_windows.rs"]
 mod windows;
+#[cfg(target_os = "windows")]
+pub use windows::Desktop;
 
-pub fn configure_main(id: iced::window::Id, system_decorations: bool) -> iced::Task<()> {
-    let _ = system_decorations;
-    #[cfg(target_os = "macos")]
-    return macos::configure_main(id);
-    #[cfg(target_os = "windows")]
-    return if system_decorations {
-        iced::Task::none()
-    } else {
-        windows::configure(id)
-    };
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        let _ = id;
-        iced::Task::none()
+impl Desktop {
+    pub fn configure_main(&self, id: iced::window::Id, system_decorations: bool) -> iced::Task<()> {
+        let _ = system_decorations;
+        #[cfg(target_os = "macos")]
+        return macos::configure_main(id);
+        #[cfg(target_os = "windows")]
+        return if system_decorations {
+            iced::Task::none()
+        } else {
+            windows::configure(id, self.sender.clone())
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = id;
+            iced::Task::none()
+        }
     }
 }
 
@@ -122,11 +128,11 @@ pub fn close_lyrics(id: iced::window::Id) -> iced::Task<crate::lyrics_window::Ev
     iced::window::close(id)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[derive(Clone)]
 pub struct Desktop;
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Desktop {
     pub fn sync_lyrics(&self, _enabled: bool) {}
     pub fn configure_lyrics_window(&self, _id: iced::window::Id) -> iced::Task<()> {

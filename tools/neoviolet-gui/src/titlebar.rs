@@ -252,6 +252,13 @@ pub enum Message {
     Resize(window::Direction),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptionControl {
+    Minimize,
+    Maximize,
+    Close,
+}
+
 #[derive(Debug, Default)]
 pub struct State {
     menu_open: bool,
@@ -259,6 +266,7 @@ pub struct State {
     selected_item: usize,
     in_submenu: bool,
     pub maximized: bool,
+    pub caption_hover: Option<CaptionControl>,
     pub fullscreen: bool,
     press: Option<Point>,
     pub size: Size,
@@ -485,7 +493,7 @@ impl State {
                     .size(13)
                     .font(iced::Font {
                         weight: iced::font::Weight::Semibold,
-                        ..iced::Font::DEFAULT
+                        ..crate::launch::interface_font()
                     })
                     .color(Color::from_rgb8(224, 224, 230))
                     .wrapping(text::Wrapping::None),
@@ -525,6 +533,13 @@ impl State {
                     continue;
                 }
                 let linux = platform == Platform::Linux;
+                let native_hover = platform == Platform::Windows
+                    && self.caption_hover
+                        == Some(match action {
+                            Action::Minimize => CaptionControl::Minimize,
+                            Action::ZoomWindow => CaptionControl::Maximize,
+                            _ => CaptionControl::Close,
+                        });
                 let control = button(
                     container(icon(glyph))
                         .center_x(Length::Fill)
@@ -535,6 +550,15 @@ impl State {
                 .width(if linux { 24 } else { 42 })
                 .height(if linux { 24 } else { HEIGHT as u32 })
                 .style(move |theme, status| {
+                    let status = if platform == Platform::Windows {
+                        if native_hover {
+                            button::Status::Hovered
+                        } else {
+                            button::Status::Active
+                        }
+                    } else {
+                        status
+                    };
                     caption_style(theme, status, linux, matches!(glyph, Glyph::Close))
                 });
                 controls = controls.push(hint(control, label));
@@ -605,7 +629,7 @@ impl State {
             let item = button(row![
                 text(group.name).size(12).font(iced::Font {
                     weight: iced::font::Weight::Medium,
-                    ..iced::Font::DEFAULT
+                    ..crate::launch::interface_font()
                 }),
                 iced::widget::Space::new().width(Length::Fill),
                 icon(Glyph::Chevron)
@@ -782,7 +806,7 @@ fn menu_heading(label: &'static str) -> Element<'static, Message> {
             .size(11)
             .font(iced::Font {
                 weight: iced::font::Weight::Semibold,
-                ..iced::Font::DEFAULT
+                ..crate::launch::interface_font()
             })
             .color(Color::from_rgb8(164, 164, 176)),
     )
@@ -942,6 +966,57 @@ impl canvas::Program<Message> for Drawing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn windows_caption_hover_survives_a_client_cursor_leave_and_clears_on_native_leave() {
+        use iced::advanced::{
+            mouse,
+            renderer::{Headless, Style},
+        };
+        let size = Size::new(800.0, 600.0);
+        let mut state = State::new(size);
+        let render = |state: &State| {
+            let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+                iced::Font::DEFAULT,
+                14.0.into(),
+            ));
+            let content = container(text("Terminal"))
+                .width(Length::Fill)
+                .height(Length::Fill);
+            let view = state.wrap_for(content.into(), "NeoViolet", true, Platform::Windows);
+            let mut ui = iced_runtime::UserInterface::build(
+                view,
+                size,
+                iced_runtime::user_interface::Cache::new(),
+                &mut renderer,
+            );
+            ui.draw(
+                &mut renderer,
+                &Theme::Dark,
+                &Style {
+                    text_color: Color::WHITE,
+                },
+                mouse::Cursor::Unavailable,
+            );
+            renderer.screenshot(Size::new(800, 600), 1.0, Color::BLACK)
+        };
+        let idle = render(&state);
+        state.caption_hover = Some(CaptionControl::Close);
+        let close = render(&state);
+        assert_ne!(
+            idle, close,
+            "native hover must paint even without a client-area cursor"
+        );
+        let index = (18 * 800 + 770) * 4;
+        assert!(
+            close[index] > 200 && close[index + 1] < 60,
+            "Close must have its Windows red hover"
+        );
+        state.caption_hover = Some(CaptionControl::Maximize);
+        assert_ne!(idle, render(&state));
+        state.caption_hover = None;
+        assert_eq!(idle, render(&state));
+    }
 
     #[test]
     fn windows_and_linux_menus_are_grouped_and_platform_shortcuts_are_distinct() {

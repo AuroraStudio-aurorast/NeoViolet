@@ -2,6 +2,17 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
+pub fn interface_font() -> iced::Font {
+    #[cfg(target_os = "windows")]
+    {
+        iced::Font::with_name("Segoe UI")
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        iced::Font::DEFAULT
+    }
+}
+
 pub fn prepare_console() {
     #[cfg(windows)]
     {

@@ -690,6 +690,7 @@ impl Overlay {
                 {
                     let additional_text = |color| {
                         text(additional.as_str())
+                            .font(crate::launch::interface_font())
                             .size(preferences.font_size as f32 * 0.46)
                             .shaping(iced::advanced::text::Shaping::Advanced)
                             .color(color)
@@ -942,6 +943,7 @@ impl Overlay {
 fn caption<'a>(label: String, size: f32, opacity: f32, outline_opacity: f32) -> Element<'a, Event> {
     let make_text = |label, color| {
         text(label)
+            .font(crate::launch::interface_font())
             .size(size)
             .shaping(iced::advanced::text::Shaping::Advanced)
             .color(color)
@@ -1854,7 +1856,7 @@ impl iced::widget::canvas::Program<Event> for Glyph {
 fn primary_font() -> Font {
     Font {
         weight: iced::font::Weight::Semibold,
-        ..Font::DEFAULT
+        ..crate::launch::interface_font()
     }
 }
 
@@ -1884,7 +1886,7 @@ fn measure_primary(line: &crate::lyrics::Line, size: f32, width: f32) -> Size {
 }
 
 fn measure_caption(content: &str, size: f32, width: f32) -> Size {
-    measure_with_font(content, size, width, Font::DEFAULT)
+    measure_with_font(content, size, width, crate::launch::interface_font())
 }
 
 fn measure_text(content: &str, size: f32, width: f32) -> Size {

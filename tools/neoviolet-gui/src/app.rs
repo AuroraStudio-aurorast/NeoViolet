@@ -78,9 +78,9 @@ impl App {
         let save_settings = warning.is_none();
         let warning = warning.or_else(|| desktop.as_ref().err().cloned());
         let family = Box::leak(config.monospace_font.clone().into_boxed_str());
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
         let window_decorations = true;
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let window_decorations = config.system_decorations;
         let (main_window, open_main) = window::open(window::Settings {
             size: iced::Size::new(config.window_width as f32, config.window_height as f32),
@@ -308,8 +308,11 @@ impl App {
             Message::Ready => {}
             Message::MainOpened => {
                 return Task::batch([
-                    desktop::configure_main(self.main_window, self.config.system_decorations)
-                        .map(|_| Message::MainConfigured),
+                    self.desktop.as_ref().map_or_else(Task::none, |desktop| {
+                        desktop
+                            .configure_main(self.main_window, self.config.system_decorations)
+                            .map(|_| Message::MainConfigured)
+                    }),
                     self.refresh_chrome(),
                 ]);
             }
@@ -372,6 +375,12 @@ impl App {
                     return Task::none();
                 }
             },
+            #[cfg(any(target_os = "windows", test))]
+            Message::Desktop(desktop::Event::CaptionHover(id, control)) => {
+                if id == self.main_window {
+                    self.titlebar.caption_hover = control;
+                }
+            }
             #[cfg(target_os = "macos")]
             Message::Desktop(desktop::Event::LyricsHover(id, hovered)) => {
                 if self.lyrics.window == Some(id) {

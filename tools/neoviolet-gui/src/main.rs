@@ -30,6 +30,7 @@ fn main() -> iced::Result {
         app::App::update,
         app::App::view,
     )
+    .default_font(launch::interface_font())
     .title(app::App::title_for_window)
     .theme(|app: &app::App, id| {
         if id == app.main_window {

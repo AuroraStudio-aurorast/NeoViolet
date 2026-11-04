@@ -1,5 +1,31 @@
 use super::*;
 
+#[test]
+fn native_caption_hover_belongs_to_the_main_window_and_survives_client_leave() {
+    let mut app = app();
+    app.dialog = None;
+    let close = titlebar::CaptionControl::Close;
+    let _ = app.update(Message::Desktop(desktop::Event::CaptionHover(
+        window::Id::unique(),
+        Some(close),
+    )));
+    assert!(app.titlebar.caption_hover.is_none());
+    let _ = app.update(Message::Desktop(desktop::Event::CaptionHover(
+        app.main_window,
+        Some(close),
+    )));
+    let _ = app.update(Message::Native(
+        app.main_window,
+        iced::Event::Mouse(iced::mouse::Event::CursorLeft),
+    ));
+    assert_eq!(app.titlebar.caption_hover, Some(close));
+    let _ = app.update(Message::Desktop(desktop::Event::CaptionHover(
+        app.main_window,
+        None,
+    )));
+    assert!(app.titlebar.caption_hover.is_none());
+}
+
 fn app() -> App {
     App {
         main_window: window::Id::unique(),
