@@ -8,9 +8,11 @@ use iced::widget::{
 use iced::{Border, Color, Element, Length, Point, Shadow, Size, Theme, Vector, window};
 
 pub const HEIGHT: f32 = 34.0;
+pub const MENU_BUTTON_WIDTH: f32 = 68.0;
 const ROOT_WIDTH: f32 = 164.0;
 const MENU_WIDTH: f32 = 282.0;
 const ROW_HEIGHT: f32 = 30.0;
+const MENU_HEADING: f32 = 26.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -475,13 +477,7 @@ impl State {
         if platform == Platform::MacOs {
             bar = bar.push(iced::widget::Space::new().width(78));
         } else if !self.menu_bar {
-            bar = bar.push(hint(
-                button(icon(Glyph::Menu))
-                    .on_press(Message::ToggleMenu)
-                    .padding([7, 9])
-                    .style(chrome_button),
-                "Application menu",
-            ));
+            bar = bar.push(hint(menu_trigger(), "Application menu"));
         }
         let title = mouse_area(
             container(
@@ -556,15 +552,10 @@ impl State {
         };
         if caption_height > 0.0 {
             let bar: Element<'a, Message> = if self.system_decorations {
-                container(
-                    button(icon(Glyph::Menu))
-                        .padding([7, 9])
-                        .on_press(Message::ToggleMenu)
-                        .style(chrome_button),
-                )
-                .width(Length::Fill)
-                .height(HEIGHT)
-                .into()
+                container(menu_trigger())
+                    .width(Length::Fill)
+                    .height(HEIGHT)
+                    .into()
             } else {
                 bar.into()
             };
@@ -612,7 +603,10 @@ impl State {
         let root = column(groups.iter().enumerate().map(|(index, group)| {
             let selected = self.selected_group == Some(index);
             let item = button(row![
-                text(group.name).size(12),
+                text(group.name).size(12).font(iced::Font {
+                    weight: iced::font::Weight::Medium,
+                    ..iced::Font::DEFAULT
+                }),
                 iced::widget::Space::new().width(Length::Fill),
                 icon(Glyph::Chevron)
             ])
@@ -625,7 +619,7 @@ impl State {
         }))
         .spacing(1);
         let root: Element<'a, Message> = menu_panel(
-            scrollable(root).height(Length::Shrink),
+            scrollable(column![menu_heading("NeoViolet"), root]).height(Length::Shrink),
             ROOT_WIDTH,
             max_height,
         );
@@ -662,8 +656,8 @@ impl State {
                     text(item.label).size(12),
                     iced::widget::Space::new().width(Length::Fill),
                     text(item.shortcut.unwrap_or(""))
-                        .size(10)
-                        .color(Color::from_rgb8(172, 172, 172))
+                        .size(11)
+                        .color(Color::from_rgb8(175, 175, 185))
                 ]
                 .spacing(6)
                 .align_y(iced::Center);
@@ -692,7 +686,7 @@ impl State {
             }))
             .spacing(1);
             let panel = menu_panel(
-                scrollable(items).height(Length::Shrink),
+                scrollable(column![menu_heading(group.name), items]).height(Length::Shrink),
                 MENU_WIDTH,
                 max_height,
             );
@@ -705,8 +699,10 @@ impl State {
             let y = if self.menu_bar {
                 menu_y
             } else {
-                (menu_y + index as f32 * (ROW_HEIGHT + 1.0))
-                    .min((self.size.height - group.items.len() as f32 * 31.0 - 14.0).max(menu_y))
+                (menu_y + MENU_HEADING + index as f32 * (ROW_HEIGHT + 1.0)).min(
+                    (self.size.height - group.items.len() as f32 * 31.0 - MENU_HEADING - 32.0)
+                        .max(menu_y),
+                )
             };
             layers = layers.push(
                 pin(opaque(panel.map(crate::app::Message::Titlebar)))
@@ -767,6 +763,33 @@ fn chrome_background(_: &Theme) -> container::Style {
         background: Some(Color::from_rgb8(43, 43, 43).into()),
         ..Default::default()
     }
+}
+fn menu_trigger() -> Element<'static, Message> {
+    button(
+        row![icon(Glyph::Menu), text("Menu").size(12)]
+            .spacing(6)
+            .align_y(iced::Center),
+    )
+    .on_press(Message::ToggleMenu)
+    .padding([7, 8])
+    .width(MENU_BUTTON_WIDTH)
+    .style(chrome_button)
+    .into()
+}
+fn menu_heading(label: &'static str) -> Element<'static, Message> {
+    container(
+        text(label)
+            .size(11)
+            .font(iced::Font {
+                weight: iced::font::Weight::Semibold,
+                ..iced::Font::DEFAULT
+            })
+            .color(Color::from_rgb8(164, 164, 176)),
+    )
+    .height(MENU_HEADING)
+    .padding([4, 9])
+    .width(Length::Fill)
+    .into()
 }
 fn menu_panel<'a>(
     content: impl Into<Element<'a, Message>>,
@@ -1008,7 +1031,10 @@ mod interaction_tests {
             14.0.into(),
         ));
         for platform in [Platform::Windows, Platform::Linux] {
-            for size in [Size::new(480.0, 320.0), Size::new(1000.0, 700.0)] {
+            for (size, position) in [
+                (Size::new(480.0, 320.0), Point::new(195.0, 122.0)),
+                (Size::new(1000.0, 700.0), Point::new(195.0, 172.0)),
+            ] {
                 let mut state = State::new(size);
                 state.update(Message::ToggleMenu);
                 state.update(Message::SelectGroup(2));
@@ -1030,7 +1056,6 @@ mod interaction_tests {
                 );
                 let mut messages = Vec::new();
                 let mut clipboard = iced::advanced::clipboard::Null;
-                let position = Point::new(195.0, 110.0);
                 let events = [
                     iced::Event::Mouse(mouse::Event::CursorMoved { position }),
                     iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),

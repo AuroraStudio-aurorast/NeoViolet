@@ -7,7 +7,7 @@ use iced_term::{BackendCommand, Terminal, TerminalView, actions, settings};
 use tokio::sync::mpsc;
 
 use crate::actions::Action;
-use crate::{config, desktop, ipc, launch, lyrics_window, titlebar};
+use crate::{config, desktop, dialog, ipc, launch, lyrics_window, titlebar};
 
 #[cfg(test)]
 #[path = "app_tests.rs"]
@@ -21,6 +21,7 @@ pub struct App {
     pub terminal: Option<Terminal>,
     pub running: bool,
     pub dialog: Option<Dialog>,
+    pub dialog_navigation: dialog::Navigation,
     pub version: String,
     pub window_title: String,
     pub desktop: Option<desktop::Desktop>,
@@ -55,6 +56,7 @@ pub enum Message {
     Titlebar(titlebar::Message),
     Ready,
     MainOpened,
+    MainConfigured,
     ChromeState(bool, window::Mode),
     SetMode(window::Mode),
     Picked(Option<PathBuf>),
@@ -105,6 +107,7 @@ impl App {
             terminal: None,
             running: false,
             dialog: warning.map(Dialog::Error),
+            dialog_navigation: dialog::Navigation::default(),
             version: "Loading…".into(),
             window_title: "NeoViolet".into(),
             desktop: desktop.ok(),
@@ -244,6 +247,7 @@ impl App {
                         iced::mouse::Event::WheelScrolled { .. }
                             | iced::mouse::Event::CursorMoved { .. }
                             | iced::mouse::Event::ButtonReleased(_)
+                            | iced::mouse::Event::ButtonPressed(_)
                     )
             )
             .then_some(Message::Native(id, event))
@@ -268,18 +272,28 @@ impl App {
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let menu = self.titlebar.visible();
+        let modal = self.dialog.as_ref().map(std::mem::discriminant);
+        let running = self.running;
         let fullscreen = self.titlebar.fullscreen;
         let mut task = self.update_inner(message);
+        if modal != self.dialog.as_ref().map(std::mem::discriminant) || running != self.running {
+            self.dialog_navigation.reset();
+        }
+        if self.dialog.is_some() {
+            self.titlebar.close();
+        }
         if menu && !self.titlebar.visible() && self.dialog.is_none() {
             task = task.chain(self.focus());
         }
         if let Some(desktop) = &self.desktop {
             desktop.sync_lyrics(self.config.desktop_lyrics.enabled);
         }
-        if menu != self.titlebar.visible() || fullscreen != self.titlebar.fullscreen {
+        if (menu || modal.is_some()) != (self.titlebar.visible() || self.dialog.is_some())
+            || fullscreen != self.titlebar.fullscreen
+        {
             return desktop::chrome_input(
                 self.main_window,
-                self.titlebar.visible(),
+                self.titlebar.visible() || self.dialog.is_some(),
                 self.titlebar.fullscreen,
             )
             .discard()
@@ -294,9 +308,17 @@ impl App {
             Message::MainOpened => {
                 return Task::batch([
                     desktop::configure_main(self.main_window, self.config.system_decorations)
-                        .map(|_| Message::Ready),
+                        .map(|_| Message::MainConfigured),
                     self.refresh_chrome(),
                 ]);
+            }
+            Message::MainConfigured => {
+                return desktop::chrome_input(
+                    self.main_window,
+                    self.titlebar.visible() || self.dialog.is_some(),
+                    self.titlebar.fullscreen,
+                )
+                .map(|_| Message::Ready);
             }
             Message::SetMode(mode) => {
                 return window::set_mode(self.main_window, mode).chain(self.refresh_chrome());
@@ -363,6 +385,7 @@ impl App {
                                 iced::mouse::Event::WheelScrolled { .. }
                                     | iced::mouse::Event::CursorMoved { .. }
                                     | iced::mouse::Event::ButtonReleased(_)
+                                    | iced::mouse::Event::ButtonPressed(_)
                             )
                     )
                 {
@@ -541,7 +564,31 @@ impl App {
             },
             Message::Native(_, iced::Event::Keyboard(event)) => match event {
                 iced::keyboard::Event::ModifiersChanged(modifiers) => self.modifiers = modifiers,
-                iced::keyboard::Event::KeyPressed { key, modifiers, .. } => {
+                iced::keyboard::Event::KeyPressed {
+                    key,
+                    modifiers,
+                    repeat,
+                    ..
+                } => {
+                    if let Some(dialog) = &self.dialog {
+                        if key == Key::Named(Named::Escape) {
+                            return self.update(Message::Dismiss);
+                        }
+                        if !modifiers.command() && !modifiers.alt() && !modifiers.control() {
+                            if repeat && matches!(key, Key::Named(Named::Enter | Named::Space)) {
+                                return Task::none();
+                            }
+                            if let Some(message) = self.dialog_navigation.key(
+                                dialog,
+                                self.running,
+                                &key,
+                                modifiers.shift(),
+                            ) {
+                                return self.update(message);
+                            }
+                        }
+                        return Task::none();
+                    }
                     if let Some(action) = Action::shortcut(&key, modifiers) {
                         return self.action(action);
                     }
@@ -575,6 +622,9 @@ impl App {
                 }
                 _ => {}
             },
+            Message::Native(_, iced::Event::Mouse(iced::mouse::Event::ButtonPressed(_))) => {
+                self.dialog_navigation.reset()
+            }
             Message::Native(
                 _,
                 iced::Event::Mouse(iced::mouse::Event::CursorMoved { position }),

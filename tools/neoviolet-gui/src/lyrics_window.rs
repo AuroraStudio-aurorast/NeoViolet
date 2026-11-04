@@ -231,7 +231,7 @@ impl Overlay {
                     window::gain_focus(id)
                 } else {
                     let (id, open) = window::open(window::Settings {
-                        size: Size::new(300.0, 416.0),
+                        size: Size::new(320.0, 520.0),
                         position: window::Position::Centered,
                         resizable: false,
                         minimizable: false,
@@ -497,15 +497,24 @@ impl Overlay {
     pub fn settings_view(&self, preferences: &Preferences) -> Element<'_, Event> {
         let label = |name, value| {
             row![
-                text(name).size(12).color(Color::from_rgb8(199, 196, 207)),
+                text(name).size(12).color(Color::from_rgb8(206, 204, 214)),
                 space().width(Length::Fill),
-                text(value).size(11).color(Color::from_rgb8(139, 136, 148)),
+                text(value).size(12).color(Color::from_rgb8(228, 220, 242)),
             ]
             .align_y(iced::Center)
         };
+        let heading = |name| {
+            text(name)
+                .size(12)
+                .font(Font {
+                    weight: iced::font::Weight::Semibold,
+                    ..Font::DEFAULT
+                })
+                .color(Color::from_rgb8(236, 232, 242))
+        };
         let toggle = |title, checked, event: fn(bool) -> Event| {
             row![
-                text(title).size(12).color(Color::from_rgb8(199, 196, 207)),
+                text(title).size(12).color(Color::from_rgb8(206, 204, 214)),
                 space().width(Length::Fill),
                 toggler(checked)
                     .size(16)
@@ -525,27 +534,32 @@ impl Overlay {
             .align_y(iced::Center)
         };
         let color_button = |name, color, selected| {
-            button(text(name).size(12))
-                .padding([5, 18])
-                .on_press(Event::Highlight(color))
-                .style(move |_, status| control_style(selected, status))
+            button(
+                row![
+                    text(if selected { "✓" } else { "" }).size(11).width(12),
+                    text(name).size(12)
+                ]
+                .spacing(5),
+            )
+            .padding([5, 12])
+            .on_press(Event::Highlight(color))
+            .style(move |_, status| control_style(selected, status))
         };
-        let content = column![
+        let appearance = column![
+            heading("Appearance"),
             label("Text size", format!("{} px", preferences.font_size)),
             slider(22.0..=48.0, preferences.font_size as f32, Event::FontSize)
                 .step(1.0_f32)
                 .height(14)
                 .style(slider_style),
-            space().height(2),
             label("Opacity", format!("{:.0}%", preferences.opacity * 100.0)),
             slider(0.4..=1.0, preferences.opacity, Event::Opacity)
                 .step(0.01_f32)
                 .height(14)
                 .style(slider_style),
-            space().height(2),
-            text("Highlight")
+            text("Highlight color")
                 .size(12)
-                .color(Color::from_rgb8(199, 196, 207)),
+                .color(Color::from_rgb8(206, 204, 214)),
             row![
                 color_button(
                     "Violet",
@@ -556,42 +570,76 @@ impl Overlay {
                     "White",
                     Highlight::White,
                     matches!(preferences.highlight, Highlight::White)
-                ),
+                )
             ]
-            .spacing(4),
-            rule::horizontal(1),
+            .spacing(6),
+        ]
+        .spacing(8);
+        let lines = column![
+            heading("Lines"),
             toggle(
                 "Additional lines",
                 preferences.additional_lines,
                 Event::AdditionalLines
             ),
             toggle("Next line", preferences.next_line, Event::NextLine),
-            toggle("Lock position", preferences.locked, Event::Locked),
+        ]
+        .spacing(10);
+        let window = column![
+            heading("Window"),
+            toggle("Lock position", preferences.locked, Event::Locked)
+        ]
+        .spacing(10);
+        let content = column![
             toggle("Show lyrics", preferences.enabled, Event::Visible),
-            row![
-                button(text("Reset position").size(11))
-                    .on_press(Event::ResetPosition)
-                    .padding([5, 0])
-                    .style(button::text),
-                space().width(Length::Fill),
-                button(text("Close").size(12))
-                    .on_press(Event::CloseSettings)
-                    .padding([5, 14])
-                    .style(|_, status| control_style(false, status)),
-            ]
-            .align_y(iced::Center),
+            rule::horizontal(1).style(rule::weak),
+            appearance,
+            rule::horizontal(1).style(rule::weak),
+            lines,
+            rule::horizontal(1).style(rule::weak),
+            window,
         ]
         .spacing(12);
-        container(scrollable(content))
-            .padding(20)
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .style(|_| container::Style {
-                background: Some(Color::from_rgb8(32, 32, 35).into()),
-                text_color: Some(Color::from_rgb8(232, 230, 237)),
-                ..Default::default()
-            })
-            .into()
+        let header = column![
+            text("Desktop Lyrics").size(17).font(Font {
+                weight: iced::font::Weight::Semibold,
+                ..Font::DEFAULT
+            }),
+            text("Display settings")
+                .size(11)
+                .color(Color::from_rgb8(160, 157, 170))
+        ]
+        .spacing(3);
+        let footer = row![
+            button(text("Reset position").size(11))
+                .on_press(Event::ResetPosition)
+                .padding([7, 0])
+                .style(button::text),
+            space().width(Length::Fill),
+            button(text("Close").size(12))
+                .on_press(Event::CloseSettings)
+                .padding([7, 18])
+                .style(|_, status| control_style(true, status)),
+        ]
+        .align_y(iced::Center);
+        container(
+            column![
+                header,
+                scrollable(container(content).padding(iced::Padding::ZERO.right(8)))
+                    .height(Length::Fill),
+                rule::horizontal(1).style(rule::weak),
+                footer,
+            ]
+            .spacing(14),
+        )
+        .padding(20)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(Color::from_rgb8(32, 32, 35).into()),
+            ..Default::default()
+        })
+        .into()
     }
 }
 
@@ -657,6 +705,57 @@ mod tests {
         if let Some(stream) = iced_runtime::task::into_stream(ready) {
             assert!(stream.collect::<Vec<_>>().await.is_empty());
         }
+    }
+
+    #[test]
+    fn settings_groups_fit_at_the_default_size_and_footer_stays_outside_scroll_content() {
+        use iced::advanced::{layout, widget};
+        #[derive(Default)]
+        struct Bounds(Vec<(iced::Rectangle, iced::Rectangle)>);
+        impl widget::Operation for Bounds {
+            fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn widget::Operation)) {
+                operate(self);
+            }
+            fn scrollable(
+                &mut self,
+                _: Option<&widget::Id>,
+                bounds: iced::Rectangle,
+                content: iced::Rectangle,
+                _: iced::Vector,
+                _: &mut dyn widget::operation::Scrollable,
+            ) {
+                self.0.push((bounds, content));
+            }
+        }
+        let overlay = Overlay::default();
+        let preferences = Preferences::default();
+        let renderer =
+            iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(Font::DEFAULT, 14.0.into()));
+        let size = Size::new(320.0, 520.0);
+        let mut view = overlay.settings_view(&preferences);
+        let mut tree = widget::Tree::new(&view);
+        let layout =
+            view.as_widget_mut()
+                .layout(&mut tree, &renderer, &layout::Limits::new(size, size));
+        let mut bounds = Bounds::default();
+        view.as_widget_mut().operate(
+            &mut tree,
+            layout::Layout::new(&layout),
+            &renderer,
+            &mut bounds,
+        );
+        assert_eq!(bounds.0.len(), 1);
+        let (viewport, content) = bounds.0[0];
+        assert!(
+            content.height <= viewport.height + 0.5,
+            "settings content {} exceeds {}",
+            content.height,
+            viewport.height
+        );
+        assert!(
+            viewport.y + viewport.height < size.height - 55.0,
+            "footer must be separate from scrolling preferences"
+        );
     }
 
     #[test]

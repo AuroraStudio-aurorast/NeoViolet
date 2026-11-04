@@ -30,7 +30,12 @@ impl App {
         if let Some(dialog) = &self.dialog {
             return stack![
                 content,
-                crate::dialog::overlay(dialog, &self.version, self.running)
+                crate::dialog::overlay(
+                    dialog,
+                    &self.version,
+                    self.running,
+                    &self.dialog_navigation
+                )
             ]
             .into();
         }

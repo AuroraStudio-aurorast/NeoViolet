@@ -6,9 +6,61 @@ use crate::app::{Dialog, Message};
 
 const FOREGROUND: Color = Color::from_rgb8(239, 239, 242);
 const SECONDARY: Color = Color::from_rgb8(181, 181, 189);
-const MUTED: Color = Color::from_rgb8(143, 143, 153);
+const MUTED: Color = Color::from_rgb8(155, 155, 165);
 
-pub fn overlay<'a>(dialog: &'a Dialog, version: &'a str, running: bool) -> Element<'a, Message> {
+#[derive(Debug, Default)]
+pub struct Navigation {
+    selected: Option<usize>,
+}
+
+impl Navigation {
+    pub fn reset(&mut self) {
+        self.selected = None;
+    }
+    pub fn visible(&self) -> bool {
+        self.selected.is_some()
+    }
+    pub fn key(
+        &mut self,
+        dialog: &Dialog,
+        running: bool,
+        key: &iced::keyboard::Key,
+        shift: bool,
+    ) -> Option<Message> {
+        use iced::keyboard::{Key, key::Named};
+        let actions = match dialog {
+            Dialog::Quit => vec![Message::Dismiss, Message::ConfirmQuit],
+            Dialog::Error(_) if !running => vec![Message::ConfirmQuit, Message::Restart],
+            _ => vec![Message::Dismiss],
+        };
+        let default = usize::from(matches!(dialog, Dialog::Error(_)) && !running);
+        let current = self.selected.unwrap_or(default).min(actions.len() - 1);
+        match key {
+            Key::Named(Named::Tab) => {
+                self.selected =
+                    Some((current + if shift { actions.len() - 1 } else { 1 }) % actions.len());
+                None
+            }
+            Key::Named(Named::Enter | Named::Space) => Some(actions[current].clone()),
+            _ => None,
+        }
+    }
+}
+
+pub fn overlay<'a>(
+    dialog: &'a Dialog,
+    version: &'a str,
+    running: bool,
+    navigation: &Navigation,
+) -> Element<'a, Message> {
+    let action = |label, message, tone, index| {
+        action(
+            label,
+            message,
+            tone,
+            navigation.visible() && navigation.selected == Some(index),
+        )
+    };
     let (heading, mark, details, actions, width): (
         &str,
         Mark,
@@ -28,7 +80,7 @@ pub fn overlay<'a>(dialog: &'a Dialog, version: &'a str, running: bool) -> Eleme
             ]
             .spacing(4)
             .into(),
-            row![action("Close", Message::Dismiss, Tone::Primary)],
+            row![action("Close", Message::Dismiss, Tone::Primary, 0)],
             408,
         ),
         Dialog::Quit => (
@@ -36,8 +88,8 @@ pub fn overlay<'a>(dialog: &'a Dialog, version: &'a str, running: bool) -> Eleme
             Mark::Leave,
             paragraph("Playback will stop when the player closes."),
             row![
-                action("Cancel", Message::Dismiss, Tone::Neutral),
-                action("Close player", Message::ConfirmQuit, Tone::Danger),
+                action("Cancel", Message::Dismiss, Tone::Neutral, 0),
+                action("Close player", Message::ConfirmQuit, Tone::Danger, 1),
             ],
             408,
         ),
@@ -50,11 +102,11 @@ pub fn overlay<'a>(dialog: &'a Dialog, version: &'a str, running: bool) -> Eleme
             Mark::Attention,
             paragraph(error),
             if running {
-                row![action("Continue", Message::Dismiss, Tone::Primary)]
+                row![action("Continue", Message::Dismiss, Tone::Primary, 0)]
             } else {
                 row![
-                    action("Close", Message::ConfirmQuit, Tone::Neutral),
-                    action("Restart", Message::Restart, Tone::Primary),
+                    action("Close", Message::ConfirmQuit, Tone::Neutral, 0),
+                    action("Restart", Message::Restart, Tone::Primary, 1),
                 ]
             },
             432,
@@ -184,7 +236,12 @@ enum Tone {
     Danger,
 }
 
-fn action(label: &'static str, message: Message, tone: Tone) -> Element<'static, Message> {
+fn action(
+    label: &'static str,
+    message: Message,
+    tone: Tone,
+    focused: bool,
+) -> Element<'static, Message> {
     button(
         container(text(label).size(12).font(Font {
             weight: iced::font::Weight::Medium,
@@ -229,12 +286,16 @@ fn action(label: &'static str, message: Message, tone: Tone) -> Element<'static,
             ),
             text_color: foreground,
             border: Border {
-                color: Color::WHITE.scale_alpha(if matches!(tone, Tone::Neutral) {
-                    0.08
+                color: if focused {
+                    Color::from_rgb8(226, 208, 250)
                 } else {
-                    0.06
-                }),
-                width: 1.0,
+                    Color::WHITE.scale_alpha(if matches!(tone, Tone::Neutral) {
+                        0.08
+                    } else {
+                        0.06
+                    })
+                },
+                width: if focused { 2.0 } else { 1.0 },
                 radius: 7.0.into(),
             },
             ..Default::default()
@@ -358,6 +419,51 @@ mod tests {
     use iced::{Length, Point, Size};
 
     #[test]
+    fn keyboard_navigation_keeps_quit_safe_and_reaches_both_actions() {
+        use iced::keyboard::{Key, key::Named};
+        let mut focus = Navigation::default();
+        assert!(matches!(
+            focus.key(&Dialog::Quit, true, &Key::Named(Named::Enter), false),
+            Some(Message::Dismiss)
+        ));
+        assert!(!focus.visible());
+        assert!(
+            focus
+                .key(&Dialog::Quit, true, &Key::Named(Named::Tab), false)
+                .is_none()
+        );
+        assert!(focus.visible());
+        assert!(matches!(
+            focus.key(&Dialog::Quit, true, &Key::Named(Named::Enter), false),
+            Some(Message::ConfirmQuit)
+        ));
+        focus.key(&Dialog::Quit, true, &Key::Named(Named::Tab), true);
+        assert!(matches!(
+            focus.key(&Dialog::Quit, true, &Key::Named(Named::Space), false),
+            Some(Message::Dismiss)
+        ));
+    }
+
+    #[test]
+    fn stopped_player_prefers_restart_and_single_action_dialogs_do_not_escape_focus() {
+        use iced::keyboard::{Key, key::Named};
+        let mut focus = Navigation::default();
+        let error = Dialog::Error("Player stopped".into());
+        assert!(matches!(
+            focus.key(&error, false, &Key::Named(Named::Enter), false),
+            Some(Message::Restart)
+        ));
+        for shift in [true, false] {
+            focus.reset();
+            focus.key(&Dialog::About, true, &Key::Named(Named::Tab), shift);
+            assert!(matches!(
+                focus.key(&Dialog::About, true, &Key::Named(Named::Enter), false),
+                Some(Message::Dismiss)
+            ));
+        }
+    }
+
+    #[test]
     fn long_errors_keep_the_restart_action_clickable_at_the_minimum_window_size() {
         let message = "An audio file could not be opened. ".repeat(100);
         let dialog = Dialog::Error(message);
@@ -366,12 +472,13 @@ mod tests {
             iced::Font::DEFAULT,
             14.0.into(),
         ));
+        let navigation = Navigation::default();
         let view = iced::widget::stack![
             iced::widget::button("Terminal")
                 .width(Length::Fill)
                 .height(Length::Fill)
                 .on_press(Message::ConfirmQuit),
-            overlay(&dialog, "NeoViolet test", false),
+            overlay(&dialog, "NeoViolet test", false, &navigation),
         ];
         let mut ui = iced_runtime::UserInterface::build(
             view,

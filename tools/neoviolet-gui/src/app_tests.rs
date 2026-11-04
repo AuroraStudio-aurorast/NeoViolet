@@ -9,6 +9,7 @@ fn app() -> App {
         terminal: None,
         running: true,
         dialog: Some(Dialog::Quit),
+        dialog_navigation: dialog::Navigation::default(),
         version: String::new(),
         window_title: "NeoViolet".into(),
         desktop: None,
@@ -318,4 +319,45 @@ async fn closing_a_menu_restores_the_terminal_widget_focus() {
             "{action}: terminal must receive widget focus when the menu closes"
         );
     }
+}
+
+fn modal_key(key: Key, modifiers: Modifiers) -> iced::Event {
+    iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+        modified_key: key.clone(),
+        key,
+        physical_key: iced::keyboard::key::Physical::Code(iced::keyboard::key::Code::Tab),
+        location: iced::keyboard::Location::Standard,
+        modifiers,
+        text: None,
+        repeat: false,
+    })
+}
+
+#[test]
+fn modal_keys_keep_shortcuts_behind_the_dialog_and_preserve_focus_across_updates() {
+    let mut app = app();
+    let _ = app.update(Message::Native(
+        app.main_window,
+        modal_key(Key::Character("+".into()), Modifiers::COMMAND),
+    ));
+    assert_eq!(app.config.font_size, 14);
+    assert!(matches!(app.dialog, Some(Dialog::Quit)));
+    let _ = app.update(Message::Native(
+        app.main_window,
+        modal_key(Key::Named(Named::Tab), Modifiers::empty()),
+    ));
+    assert!(app.dialog_navigation.visible());
+    let _ = app.update(Message::Version("Updated version".into()));
+    assert!(app.dialog_navigation.visible());
+    let _ = app.update(Message::Native(
+        app.main_window,
+        modal_key(Key::Named(Named::Tab), Modifiers::SHIFT),
+    ));
+    let _ = app.update(Message::Native(
+        app.main_window,
+        modal_key(Key::Named(Named::Enter), Modifiers::empty()),
+    ));
+    assert!(app.dialog.is_none());
+    assert!(!app.dialog_navigation.visible());
+    assert!(!app.closing);
 }

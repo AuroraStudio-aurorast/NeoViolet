@@ -47,7 +47,7 @@ pub fn hit(point: Point, size: Size, maximized: bool, fullscreen: bool, menu_ope
             _ => {}
         }
     }
-    if point.y >= crate::titlebar::HEIGHT || point.x < 38.0 {
+    if point.y >= crate::titlebar::HEIGHT || point.x < crate::titlebar::MENU_BUTTON_WIDTH {
         return Hit::Client;
     }
     if point.x >= size.width - 42.0 {
@@ -69,6 +69,7 @@ mod tests {
         let size = Size::new(800.0, 600.0);
         let at = |x, y| hit(Point::new(x, y), size, false, false, false);
         assert_eq!(at(15.0, 18.0), Hit::Client);
+        assert_eq!(at(62.0, 18.0), Hit::Client);
         assert_eq!(at(150.0, 18.0), Hit::Caption);
         assert_eq!(at(690.0, 18.0), Hit::Minimize);
         assert_eq!(at(735.0, 18.0), Hit::Maximize);
