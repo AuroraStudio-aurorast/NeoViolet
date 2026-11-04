@@ -182,6 +182,15 @@ impl Overlay {
                     );
                 }
                 if self.embedded_toolbar {
+                    #[cfg(target_os = "linux")]
+                    return (
+                        window::set_max_size(id, None)
+                            .chain(window::set_min_size(id, Some(size)))
+                            .chain(window::set_max_size(id, Some(size)))
+                            .chain(window::resize(id, size)),
+                        None,
+                    );
+                    #[cfg(not(target_os = "linux"))]
                     return (window::resize(id, size), None);
                 }
                 let position = self.toolbar_position.map_or_else(

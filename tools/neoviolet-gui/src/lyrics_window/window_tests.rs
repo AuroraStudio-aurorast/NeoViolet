@@ -1,5 +1,28 @@
 use super::*;
 
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn compositor_sized_lyrics_update_fixed_size_hints_before_resizing() {
+    let id = window::Id::unique();
+    let size = Size::new(650.0, 210.0);
+    let mut overlay = Overlay {
+        window: Some(id),
+        embedded_toolbar: true,
+        ..Default::default()
+    };
+    let (task, _) = overlay.update(
+        Event::Sized(id, 0, Point::ORIGIN, Size::new(300.0, 50.0), size),
+        &mut Preferences::default(),
+    );
+    let actions = window_actions(task, Point::ORIGIN, size).await;
+    assert!(matches!(actions.as_slice(), [
+        iced_runtime::Action::Window(iced_runtime::window::Action::SetMaxSize(_, None)),
+        iced_runtime::Action::Window(iced_runtime::window::Action::SetMinSize(_, Some(min))),
+        iced_runtime::Action::Window(iced_runtime::window::Action::SetMaxSize(_, Some(max))),
+        iced_runtime::Action::Window(iced_runtime::window::Action::Resize(_, resized)),
+    ] if *min == size && *max == size && *resized == size));
+}
+
 #[test]
 fn hover_must_not_force_the_next_lyric_into_the_previous_lines_width() {
     let mut overlay = Overlay {

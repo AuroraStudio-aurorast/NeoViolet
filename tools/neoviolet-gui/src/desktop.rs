@@ -32,6 +32,9 @@ mod chrome;
 #[path = "desktop_lyrics_macos.rs"]
 mod lyrics;
 
+#[cfg(target_os = "linux")]
+#[path = "desktop_linux.rs"]
+mod linux;
 #[cfg(target_os = "windows")]
 #[path = "desktop_windows.rs"]
 mod windows;
@@ -137,8 +140,14 @@ pub struct Desktop;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Desktop {
     pub fn sync_lyrics(&self, _enabled: bool) {}
-    pub fn configure_lyrics_window(&self, _id: iced::window::Id) -> iced::Task<()> {
-        iced::Task::none()
+    pub fn configure_lyrics_window(&self, id: iced::window::Id) -> iced::Task<()> {
+        #[cfg(target_os = "linux")]
+        return linux::configure_lyrics(id);
+        #[cfg(not(target_os = "linux"))]
+        {
+            let _ = id;
+            iced::Task::none()
+        }
     }
     pub fn install() -> Result<Self, String> {
         Ok(Self)
