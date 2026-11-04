@@ -235,10 +235,11 @@ async fn reusing_the_overlay_reconciles_native_lock_state_after_settings_reload(
     for locked in [false, true] {
         preferences.locked = locked;
         let (task, _) = overlay.update(lyrics_window::Event::Visible(true), &mut preferences);
-        let mut actions = iced_runtime::task::into_stream(task)
+        let actions = iced_runtime::task::into_stream(task)
             .expect("an existing window must apply the current passthrough setting");
         #[cfg(target_os = "macos")]
         {
+            let mut actions = actions;
             assert!(
                 matches!(actions.next().await, Some(iced_runtime::Action::Window(
                 window::Action::Run(window, _)

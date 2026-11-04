@@ -81,43 +81,55 @@ impl Overlay {
         } else {
             0.0
         };
-        let mut rows = Vec::new();
-        for line in active {
-            rows.push((
-                format!("{}{}", line.prefix, line.first_text()),
-                preferences.font_size as f32,
-            ));
-            if preferences.additional_lines {
-                rows.extend(
-                    line.additional_lines()
-                        .iter()
-                        .filter(|line| !line.trim().is_empty())
-                        .map(|line| (line.clone(), preferences.font_size as f32 * 0.46)),
-                );
-            }
-        }
-        if preferences.next_line
-            && let Some(next) = frame.next_line()
-        {
-            rows.push((format!("{}{}", next.prefix, next.first_text()), 13.0));
-        }
-        if rows.is_empty() {
+        let next = preferences.next_line.then(|| frame.next_line()).flatten();
+        if active.is_empty() && next.is_none() {
             return Size::new(300.0, 50.0 + toolbar_height);
         }
-        let width = (rows
-            .iter()
-            .map(|(line, size)| measure_text(line, *size, f32::INFINITY).width)
-            .fold(0.0_f32, f32::max)
-            .ceil()
-            + 40.0)
-            .clamp(300.0, 880.0);
-        let height = rows
-            .iter()
-            .map(|(line, size)| measure_text(line, *size, width - 40.0).height)
-            .sum::<f32>()
-            + 20.0
-            + (rows.len() - 1) as f32 * 8.0;
-        Size::new(width, height.ceil().clamp(50.0, 420.0) + toolbar_height)
+        let measure = |width| {
+            let mut bounds = Size::ZERO;
+            let mut groups = 0;
+            for line in &active {
+                if groups > 0 {
+                    bounds.height += 12.0;
+                }
+                groups += 1;
+                let primary = measure_primary(line, preferences.font_size as f32, width);
+                bounds.width = bounds.width.max(primary.width);
+                bounds.height += primary.height;
+                if preferences.additional_lines {
+                    for additional in line
+                        .additional_lines()
+                        .iter()
+                        .filter(|line| !line.trim().is_empty())
+                    {
+                        let size =
+                            measure_caption(additional, preferences.font_size as f32 * 0.46, width);
+                        bounds.width = bounds.width.max(size.width);
+                        bounds.height += 5.0 + size.height;
+                    }
+                }
+            }
+            if active.is_empty() {
+                let quiet = measure_caption("···", 17.0, width);
+                bounds.width = bounds.width.max(quiet.width);
+                bounds.height += quiet.height;
+                groups += 1;
+            }
+            if let Some(next) = next {
+                let size = measure_caption(
+                    &format!("{}{}", next.prefix, next.first_text()),
+                    13.0,
+                    width,
+                );
+                bounds.width = bounds.width.max(size.width);
+                bounds.height += if groups > 0 { 12.0 } else { 0.0 };
+                bounds.height += size.height;
+            }
+            bounds
+        };
+        let width = (measure(f32::INFINITY).width.ceil() + 40.0).clamp(300.0, 880.0);
+        let height = (measure(width - 40.0).height.ceil() + 16.0).clamp(50.0, 420.0);
+        Size::new(width, height + toolbar_height)
     }
 
     pub fn fit(&mut self, preferences: &Preferences) -> Task<Event> {
@@ -661,10 +673,7 @@ impl Overlay {
             let make_text = |fragments| {
                 rich_text::<(), _, _, _>(fragments)
                     .size(preferences.font_size)
-                    .font(Font {
-                        weight: iced::font::Weight::Semibold,
-                        ..Font::DEFAULT
-                    })
+                    .font(primary_font())
                     .align_x(iced::Center)
                     .width(Length::Fill)
             };
@@ -1540,42 +1549,60 @@ mod tests {
                 self.0.push((bounds, content));
             }
         }
-        let overlay = Overlay {
-            frame: serde_json::from_value(serde_json::json!({
-                "elapsed":1,"lines":[{"time":0,"text":"把未说完的话，交给夜色",
-                    "parts":["把未说完的话，交给夜色","Let the quiet carry what we left unsaid."]}]
-            }))
-            .unwrap(),
-            ..Default::default()
-        };
+        let frames = [
+            serde_json::json!({"elapsed":1,"lines":[
+                {"time":0,"text":"把未说完的话，交给夜色",
+                 "parts":["把未说完的话，交给夜色","Let the quiet carry what we left unsaid."]}
+            ]}),
+            serde_json::json!({"elapsed":1,"lines":[
+                {"time":0,"text":"First voice"},
+                {"time":0,"text":"Second voice"},
+                {"time":0,"text":"Third voice"}
+            ]}),
+            serde_json::json!({"elapsed":1,"lines":[
+                {"time":0,"prefix":"Voice A: ","text":"Hello, world!",
+                 "words":[{"time":0,"end":0.5,"text":"Hello, "},{"time":0.7,"end":1.5,"text":"world!"}],
+                 "parts":["Hello, world!","A longer translation with punctuation and spaces.","另一个翻译。"]},
+                {"time":2,"end":4,"text":"Next cue"}
+            ]}),
+        ];
         let renderer =
             iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(Font::DEFAULT, 16.0.into()));
-        for font_size in [22, 32, 48] {
-            let preferences = Preferences {
-                font_size,
+        for frame in frames {
+            let overlay = Overlay {
+                frame: serde_json::from_value(frame).unwrap(),
                 ..Default::default()
             };
-            let size = overlay.display_size(&preferences);
-            let mut view = overlay.view(&preferences);
-            let mut tree = widget::Tree::new(&view);
-            let node =
-                view.as_widget_mut()
-                    .layout(&mut tree, &renderer, &layout::Limits::new(size, size));
-            let mut bounds = Bounds::default();
-            view.as_widget_mut().operate(
-                &mut tree,
-                layout::Layout::new(&node),
-                &renderer,
-                &mut bounds,
-            );
-            assert!(!bounds.0.is_empty());
-            for (viewport, content) in bounds.0 {
-                assert!(
-                    content.height <= viewport.height + 0.5,
-                    "font size {font_size}: content {} exceeds viewport {}",
-                    content.height,
-                    viewport.height
+            for font_size in [22, 32, 48] {
+                let preferences = Preferences {
+                    font_size,
+                    next_line: true,
+                    ..Default::default()
+                };
+                let size = overlay.display_size(&preferences);
+                let mut view = overlay.view(&preferences);
+                let mut tree = widget::Tree::new(&view);
+                let node = view.as_widget_mut().layout(
+                    &mut tree,
+                    &renderer,
+                    &layout::Limits::new(size, size),
                 );
+                let mut bounds = Bounds::default();
+                view.as_widget_mut().operate(
+                    &mut tree,
+                    layout::Layout::new(&node),
+                    &renderer,
+                    &mut bounds,
+                );
+                assert!(!bounds.0.is_empty());
+                for (viewport, content) in bounds.0 {
+                    assert!(
+                        content.height <= viewport.height + 0.5,
+                        "font size {font_size}: content {} exceeds viewport {}",
+                        content.height,
+                        viewport.height
+                    );
+                }
             }
         }
     }
@@ -1824,21 +1851,58 @@ impl iced::widget::canvas::Program<Event> for Glyph {
     }
 }
 
+fn primary_font() -> Font {
+    Font {
+        weight: iced::font::Weight::Semibold,
+        ..Font::DEFAULT
+    }
+}
+
+fn measure_primary(line: &crate::lyrics::Line, size: f32, width: f32) -> Size {
+    use iced::advanced::text::{Paragraph, Shaping};
+    let mut spans: Vec<iced::advanced::text::Span<'_, (), Font>> = Vec::new();
+    if !line.prefix.is_empty() {
+        spans.push(span(line.prefix.as_str()).size(size * 0.5));
+    }
+    spans.extend(
+        line.fragments(0.0, |_| 1.0)
+            .into_iter()
+            .map(|(text, _)| span(text)),
+    );
+    iced::advanced::graphics::text::paragraph::Paragraph::with_spans(iced::advanced::Text {
+        content: spans.as_slice(),
+        bounds: Size::new(width, f32::INFINITY),
+        size: size.into(),
+        line_height: Default::default(),
+        font: primary_font(),
+        align_x: iced::advanced::text::Alignment::Center,
+        align_y: iced::alignment::Vertical::Top,
+        shaping: Shaping::Advanced,
+        wrapping: Default::default(),
+    })
+    .min_bounds()
+}
+
+fn measure_caption(content: &str, size: f32, width: f32) -> Size {
+    measure_with_font(content, size, width, Font::DEFAULT)
+}
+
 fn measure_text(content: &str, size: f32, width: f32) -> Size {
-    use iced::advanced::text::{Alignment, LineHeight, Paragraph, Shaping, Wrapping};
+    measure_with_font(content, size, width, primary_font())
+}
+
+fn measure_with_font(content: &str, size: f32, width: f32, font: Font) -> Size {
+    use iced::advanced::text::{Alignment, LineHeight, Paragraph, Shaping};
     iced::advanced::graphics::text::paragraph::Paragraph::with_text(iced::advanced::Text {
         content,
         bounds: Size::new(width, f32::INFINITY),
         size: size.into(),
-        line_height: LineHeight::Relative(1.3),
-        font: Font {
-            weight: iced::font::Weight::Semibold,
-            ..Font::DEFAULT
-        },
+        line_height: LineHeight::default(),
+        font,
         align_x: Alignment::Center,
         align_y: iced::alignment::Vertical::Top,
         shaping: Shaping::Advanced,
-        wrapping: Wrapping::WordOrGlyph,
+        wrapping: Default::default(),
     })
     .min_bounds()
 }
