@@ -364,6 +364,38 @@ fn modal_keys_keep_shortcuts_behind_the_dialog_and_preserve_focus_across_updates
 
 #[cfg(target_os = "macos")]
 #[tokio::test]
+async fn opening_a_file_from_lyrics_uses_the_main_windows_native_handle() {
+    use iced::futures::StreamExt;
+    let mut app = app();
+    app.dialog = None;
+    app.lyrics.window = Some(window::Id::unique());
+    app.lyrics.toolbar_window = Some(window::Id::unique());
+    let mut actions = iced_runtime::task::into_stream(app.action(Action::Open)).unwrap();
+    let mut revealed = false;
+    let mut focused = false;
+    while let Some(action) = actions.next().await {
+        match action {
+            iced_runtime::Action::Window(window::Action::Minimize(id, false)) => {
+                assert_eq!(id, app.main_window);
+                revealed = true;
+            }
+            iced_runtime::Action::Window(window::Action::GainFocus(id)) => {
+                assert_eq!(id, app.main_window);
+                focused = true;
+            }
+            iced_runtime::Action::Window(window::Action::Run(id, _)) => {
+                assert!(revealed && focused);
+                assert_eq!(id, app.main_window);
+                return;
+            }
+            _ => panic!("unexpected action before the parent window callback"),
+        }
+    }
+    panic!("opening a file must obtain the main native window handle");
+}
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
 async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_focus() {
     use iced::futures::StreamExt;
     use iced::window::raw_window_handle::{
@@ -394,6 +426,7 @@ async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_f
             .expect("selection and cancellation must restore window state");
         let mut aligned = false;
         let mut focused = false;
+        let mut main_focused = false;
         while let Some(action) = actions.next().await {
             match action {
                 iced_runtime::Action::Window(window::Action::Run(id, callback)) => {
@@ -406,9 +439,17 @@ async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_f
                     callback(&NoNativeWindow);
                 }
                 iced_runtime::Action::Widget(_) => focused = true,
+                iced_runtime::Action::Window(window::Action::GainFocus(id)) => {
+                    assert_eq!(id, app.main_window);
+                    main_focused = true;
+                }
                 _ => {}
             }
         }
+        assert!(
+            main_focused,
+            "picker completion must restore the main native window"
+        );
         assert!(
             aligned,
             "the file picker must reapply the main window's title bar layout"

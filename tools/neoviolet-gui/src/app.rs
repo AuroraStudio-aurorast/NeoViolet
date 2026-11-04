@@ -694,6 +694,7 @@ impl App {
                 let open = path.map_or_else(Task::none, |path| self.open(path));
                 return Task::batch([
                     open,
+                    window::gain_focus(self.main_window),
                     self.focus(),
                     desktop::align_main_controls(self.main_window).map(|_| Message::Ready),
                 ]);
@@ -782,15 +783,19 @@ impl App {
                 return self.update(Message::Lyrics(lyrics_window::Event::Locked(false)));
             }
             Action::Open => {
-                return Task::perform(
-                    async {
+                return self.reveal_main().chain(
+                    window::run(self.main_window, |parent| {
                         rfd::AsyncFileDialog::new()
                             .set_title("Open Audio File")
+                            .set_parent(&parent)
                             .pick_file()
-                            .await
-                            .map(|file| file.path().to_path_buf())
-                    },
-                    Message::Picked,
+                    })
+                    .then(|picker| {
+                        Task::perform(
+                            async move { picker.await.map(|file| file.path().to_path_buf()) },
+                            Message::Picked,
+                        )
+                    }),
                 );
             }
             Action::Preferences => {
