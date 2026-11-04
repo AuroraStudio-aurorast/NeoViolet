@@ -11,6 +11,20 @@ pub fn outlined<'a, Message: 'a>(
         foreground: foreground.into(),
         outline: outline.into(),
         radius,
+        emphasis: None,
+    })
+}
+
+pub fn emphasized<'a, Message: 'a>(
+    foreground: impl Into<Element<'a, Message>>,
+    outline: impl Into<Element<'a, Message>>,
+    emphasis: impl Into<Element<'a, Message>>,
+) -> Element<'a, Message> {
+    Element::new(Outlined {
+        foreground: foreground.into(),
+        outline: outline.into(),
+        radius: 1.05,
+        emphasis: Some(emphasis.into()),
     })
 }
 
@@ -18,6 +32,7 @@ struct Outlined<'a, Message> {
     foreground: Element<'a, Message>,
     outline: Element<'a, Message>,
     radius: f32,
+    emphasis: Option<Element<'a, Message>>,
 }
 
 impl<Message> Widget<Message, Theme, iced::Renderer> for Outlined<'_, Message> {
@@ -26,14 +41,20 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Outlined<'_, Message> {
     }
 
     fn children(&self) -> Vec<widget::Tree> {
-        vec![
+        let mut children = vec![
             widget::Tree::new(&self.foreground),
             widget::Tree::new(&self.outline),
-        ]
+        ];
+        if let Some(emphasis) = &self.emphasis {
+            children.push(widget::Tree::new(emphasis));
+        }
+        children
     }
 
     fn diff(&self, tree: &mut widget::Tree) {
-        tree.diff_children(&[&self.foreground, &self.outline]);
+        let mut children = vec![&self.foreground, &self.outline];
+        children.extend(self.emphasis.iter());
+        tree.diff_children(&children);
     }
 
     fn layout(
@@ -50,7 +71,16 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Outlined<'_, Message> {
             .outline
             .as_widget_mut()
             .layout(&mut tree.children[1], renderer, limits);
-        layout::Node::with_children(foreground.size(), vec![foreground, outline])
+        let size = foreground.size();
+        let mut children = vec![foreground, outline];
+        if let Some(emphasis) = &mut self.emphasis {
+            children.push(
+                emphasis
+                    .as_widget_mut()
+                    .layout(&mut tree.children[2], renderer, limits),
+            );
+        }
+        layout::Node::with_children(size, children)
     }
 
     fn draw(
@@ -88,6 +118,23 @@ impl<Message> Widget<Message, Theme, iced::Renderer> for Outlined<'_, Message> {
                     viewport,
                 );
             });
+        }
+        if let (Some(emphasis), Some(layout)) = (&self.emphasis, children.next()) {
+            for radius in [0.4, 2.0] {
+                for (x, y) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+                    renderer.with_translation(Vector::new(x * radius, y * radius), |renderer| {
+                        emphasis.as_widget().draw(
+                            &tree.children[2],
+                            renderer,
+                            theme,
+                            style,
+                            layout,
+                            mouse::Cursor::Unavailable,
+                            viewport,
+                        );
+                    });
+                }
+            }
         }
         self.foreground.as_widget().draw(
             &tree.children[0],

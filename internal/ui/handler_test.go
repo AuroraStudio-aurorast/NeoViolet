@@ -544,7 +544,7 @@ func TestBuildLyricLinesJSON_CarriesParts(t *testing.T) {
 func TestBuildLyricLinesJSON_CarriesWords(t *testing.T) {
 	data := &lyrics.Data{Lines: []lyrics.LyricLine{
 		{Time: 0, Text: "Stop and stare", Words: []lyrics.WordFragment{
-			{Time: 0, Text: "Stop "},
+			{Time: 0, End: 500 * time.Millisecond, Text: "Stop "},
 			{Time: time.Second, Text: "and "},
 			{Time: 2 * time.Second, Text: "stare"},
 		}},
@@ -556,6 +556,10 @@ func TestBuildLyricLinesJSON_CarriesWords(t *testing.T) {
 	}
 	if len(got[0].Words) != 3 {
 		t.Fatalf("Words = %+v, want 3 fragments", got[0].Words)
+	}
+	wordJSON, wordErr := json.Marshal(got[0].Words[0])
+	if wordErr != nil || !strings.Contains(string(wordJSON), `"end":0.5`) {
+		t.Fatalf("word end must preserve the silence before the next word: %s (%v)", wordJSON, wordErr)
 	}
 	if got[0].Words[1].Time != 1.0 || got[0].Words[1].Text != "and " {
 		t.Errorf("Words[1] = %+v, want 1s %q", got[0].Words[1], "and ")

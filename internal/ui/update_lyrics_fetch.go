@@ -308,7 +308,7 @@ func wordFragmentsJSON(words []lyrics.WordFragment) []ipc.WordJSON {
 	}
 	out := make([]ipc.WordJSON, 0, len(words))
 	for _, w := range words {
-		out = append(out, ipc.WordJSON{Time: w.Time.Seconds(), Text: w.Text})
+		out = append(out, ipc.WordJSON{Time: w.Time.Seconds(), End: w.End.Seconds(), Text: w.Text})
 	}
 	return out
 }

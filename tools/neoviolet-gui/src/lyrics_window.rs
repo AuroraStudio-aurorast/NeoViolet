@@ -7,7 +7,7 @@ use iced::{Color, Element, Font, Length, Point, Size, Task, window};
 
 use crate::ipc::Request;
 use crate::lyrics::{Frame, Highlight, Position, Preferences};
-use crate::lyrics_text::outlined;
+use crate::lyrics_text::{emphasized, outlined};
 
 const TOOLBAR_SIZE: Size = Size::new(240.0, 88.0);
 const TOOLBAR_OFFSET: f32 = 80.0;
@@ -599,8 +599,8 @@ impl Overlay {
     pub fn view(&self, preferences: &Preferences) -> Element<'_, Event> {
         let alpha = preferences.opacity;
         let sung = match preferences.highlight {
-            Highlight::Violet => Color::from_rgb8(220, 205, 255),
-            Highlight::White => Color::from_rgb8(245, 243, 250),
+            Highlight::Violet => Color::from_rgb8(224, 189, 255),
+            Highlight::White => Color::WHITE,
         }
         .scale_alpha(alpha);
         let frame = self.display_frame();
@@ -621,18 +621,34 @@ impl Overlay {
         }
         for line in active {
             let mut fragments = Vec::new();
+            let mut emphasis = Vec::new();
             if !line.prefix.is_empty() {
                 fragments.push(
                     span(line.prefix.as_str())
                         .size(preferences.font_size as f32 * 0.5)
                         .color(sung),
                 );
+                emphasis.push(
+                    span(line.prefix.as_str())
+                        .size(preferences.font_size as f32 * 0.5)
+                        .color(Color::TRANSPARENT),
+                );
             }
-            for (fragment, played) in line.fragments(frame.elapsed) {
-                fragments.push(span(fragment).color(if played {
-                    sung
-                } else {
-                    Color::from_rgb8(220, 218, 226).scale_alpha(0.95 * alpha)
+            for (fragment, intensity) in line.fragments(frame.elapsed, |text| {
+                measure_text(text, preferences.font_size as f32, f32::INFINITY).width
+            }) {
+                let grey = Color::from_rgb8(181, 177, 188);
+                fragments.push(span(fragment).color(Color {
+                    r: grey.r + (sung.r - grey.r) * intensity,
+                    g: grey.g + (sung.g - grey.g) * intensity,
+                    b: grey.b + (sung.b - grey.b) * intensity,
+                    a: alpha,
+                }));
+                emphasis.push(span(fragment).color(Color {
+                    r: sung.r * intensity,
+                    g: sung.g * intensity,
+                    b: sung.b * intensity,
+                    a: 0.22 * alpha,
                 }));
             }
             let shadow = fragments
@@ -646,13 +662,13 @@ impl Overlay {
                 rich_text::<(), _, _, _>(fragments)
                     .size(preferences.font_size)
                     .font(Font {
-                        weight: iced::font::Weight::Medium,
+                        weight: iced::font::Weight::Semibold,
                         ..Font::DEFAULT
                     })
                     .align_x(iced::Center)
                     .width(Length::Fill)
             };
-            let primary = outlined(make_text(fragments), make_text(shadow), 0.95);
+            let primary = emphasized(make_text(fragments), make_text(shadow), make_text(emphasis));
             let mut group = column![primary]
                 .spacing(5)
                 .align_x(iced::Center)
@@ -1276,6 +1292,100 @@ mod tests {
         }
     }
 
+    #[test]
+    fn word_sweep_changes_pixels_without_shifting_english_or_bilingual_layout() {
+        use iced::advanced::{
+            layout, mouse,
+            renderer::{Headless, Style},
+            widget,
+        };
+        fn geometry(node: &layout::Node, out: &mut Vec<iced::Rectangle>) {
+            out.push(node.bounds());
+            for child in node.children() {
+                geometry(child, out);
+            }
+        }
+        for phrase in [
+            "Let the quiet carry what we left unsaid",
+            "把未说完的话，交给夜色",
+        ] {
+            let mut overlay = Overlay {
+                frame: serde_json::from_value(serde_json::json!({
+                    "elapsed":0,"lines":[{"time":0,"end":8,"text":phrase,
+                        "parts":[phrase,"A quieter additional line"],
+                        "words":[{"time":0,"end":8,"text":phrase}]}]
+                }))
+                .unwrap(),
+                ..Default::default()
+            };
+            let preferences = Preferences::default();
+            let size = overlay.display_size(&preferences);
+            let mut reference = None;
+            let mut images = Vec::new();
+            for elapsed in [0.0, 3.7, 7.999] {
+                overlay.frame.elapsed = elapsed;
+                assert_eq!(overlay.display_size(&preferences), size);
+                let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+                    Font::DEFAULT,
+                    16.0.into(),
+                ));
+                let mut view = overlay.view(&preferences);
+                let mut tree = widget::Tree::new(&view);
+                let node = view.as_widget_mut().layout(
+                    &mut tree,
+                    &renderer,
+                    &layout::Limits::new(size, size),
+                );
+                let mut bounds = Vec::new();
+                geometry(&node, &mut bounds);
+                if let Some(reference) = &reference {
+                    assert_eq!(
+                        &bounds, reference,
+                        "word color must not alter wrapping or baselines"
+                    );
+                } else {
+                    reference = Some(bounds);
+                }
+                let mut ui = iced_runtime::UserInterface::build(
+                    view,
+                    size,
+                    iced_runtime::user_interface::Cache::new(),
+                    &mut renderer,
+                );
+                ui.draw(
+                    &mut renderer,
+                    &iced::Theme::Dark,
+                    &Style {
+                        text_color: Color::WHITE,
+                    },
+                    mouse::Cursor::Unavailable,
+                );
+                images.push(renderer.screenshot(
+                    Size::new(size.width as u32, size.height as u32),
+                    1.0,
+                    Color::TRANSPARENT,
+                ));
+            }
+            assert_eq!(
+                images[0].iter().skip(3).step_by(4).collect::<Vec<_>>(),
+                images[1].iter().skip(3).step_by(4).collect::<Vec<_>>(),
+                "the click-through alpha mask must not change with word progress"
+            );
+            assert_eq!(
+                images[1].iter().skip(3).step_by(4).collect::<Vec<_>>(),
+                images[2].iter().skip(3).step_by(4).collect::<Vec<_>>()
+            );
+            assert_ne!(
+                images[0], images[1],
+                "the emphasis front must advance within a word"
+            );
+            assert_ne!(
+                images[1], images[2],
+                "the completed phrase must have a different color"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn the_toolbar_opens_at_a_fixed_size_above_the_lyrics_without_moving_them() {
         use iced::futures::StreamExt;
@@ -1722,7 +1832,7 @@ fn measure_text(content: &str, size: f32, width: f32) -> Size {
         size: size.into(),
         line_height: LineHeight::Relative(1.3),
         font: Font {
-            weight: iced::font::Weight::Medium,
+            weight: iced::font::Weight::Semibold,
             ..Font::DEFAULT
         },
         align_x: Alignment::Center,

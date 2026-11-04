@@ -79,9 +79,11 @@ type LyricLineJSON struct {
 // WordJSON is one timed fragment of a line's first display sub-line. The
 // fragments concatenate back to that sub-line exactly, so a karaoke renderer can
 // split it at any elapsed value without losing or reordering characters: a
-// fragment is sung once its Time is not after elapsed.
+// fragment starts at Time. End optionally bounds it before the next fragment;
+// when absent, use the next fragment's Time or the line's End.
 type WordJSON struct {
 	Time float64 `json:"time"` // seconds
+	End  float64 `json:"end,omitempty"`
 	Text string  `json:"text"`
 }
 

@@ -40,12 +40,23 @@ fn parts_replace_text_and_timings_preserve_utf8_and_whitespace() {
     assert_eq!(line.first_text(), "你 Hello 🌙");
     assert_eq!(line.additional_lines(), ["Additional", "Another"]);
     assert_eq!(
-        line.fragments(3.0),
-        [("你 ", true), ("Hello ", true), ("🌙", false)]
+        line.fragments(4.5, |_| 1.0),
+        [
+            ("你", 1.0),
+            (" ", 1.0),
+            ("H", 1.0),
+            ("e", 1.0),
+            ("l", 1.0),
+            ("l", 0.0),
+            ("o", 0.0),
+            (" ", 0.0),
+            ("🌙", 0.0)
+        ]
     );
-    assert_eq!(
-        line.fragments(0.0),
-        [("你 ", false), ("Hello ", false), ("🌙", false)]
+    assert!(
+        line.fragments(0.0, |_| 1.0)
+            .iter()
+            .all(|(_, intensity)| *intensity == 0.0)
     );
     assert_eq!(line.prefix, "Voice A:");
 }
@@ -58,8 +69,82 @@ fn invalid_word_tiling_or_order_falls_back_to_the_actual_line() {
     ] {
         let line: Line =
             serde_json::from_str(&format!(r#"{{"text":"Hello world","words":{words}}}"#)).unwrap();
-        assert_eq!(line.fragments(3.0), [("Hello world", true)]);
+        assert_eq!(line.fragments(3.0, |_| 1.0), [("Hello world", 1.0)]);
     }
+}
+
+#[test]
+fn word_sweep_respects_explicit_pauses_widths_and_rewinds() {
+    let line: Line = serde_json::from_str(
+        r#"{"time":1,"end":8,"text":"你 Hi!",
+        "words":[{"time":1,"end":3,"text":"你 "},{"time":5,"end":7,"text":"Hi!"}]}"#,
+    )
+    .unwrap();
+    let width = |s: &str| if s == "你" { 2.0 } else { 1.0 };
+    assert_eq!(
+        line.fragments(2.0, width),
+        [("你", 0.75), (" ", 0.0), ("H", 0.0), ("i", 0.0), ("!", 0.0)]
+    );
+    assert_eq!(
+        line.fragments(4.0, width),
+        [("你", 1.0), (" ", 1.0), ("H", 0.0), ("i", 0.0), ("!", 0.0)]
+    );
+    assert_eq!(
+        line.fragments(6.0, width),
+        [("你", 1.0), (" ", 1.0), ("H", 1.0), ("i", 0.5), ("!", 0.0)]
+    );
+    assert_eq!(line.fragments(2.0, width)[0].1, 0.75);
+    assert!(
+        line.fragments(8.0, width)
+            .iter()
+            .all(|(_, intensity)| *intensity == 1.0)
+    );
+}
+
+#[test]
+fn sweep_keeps_combining_marks_and_emoji_as_complete_graphemes() {
+    let line: Line = serde_json::from_str(
+        r#"{"time":0,"end":4,"text":"é👩‍🚀!",
+        "words":[{"time":0,"text":"é👩‍🚀!"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        line.fragments(2.0, |_| 1.0),
+        [("é", 1.0), ("👩‍🚀", 0.5), ("!", 0.0)]
+    );
+    let unknown: Line = serde_json::from_str(
+        r#"{"time":0,"text":"Hello",
+        "words":[{"time":0,"text":"Hello"}]}"#,
+    )
+    .unwrap();
+    assert!(
+        unknown
+            .fragments(1.0, |_| 1.0)
+            .iter()
+            .all(|(_, i)| *i == 1.0)
+    );
+}
+
+#[test]
+fn a_later_word_advances_past_an_overlapping_previous_fragment() {
+    let line: Line = serde_json::from_str(
+        r#"{"end":8,"text":"one two",
+        "words":[{"time":0,"end":6,"text":"one "},{"time":2,"end":4,"text":"two"}]}"#,
+    )
+    .unwrap();
+    let fragments = line.fragments(3.0, |_| 1.0);
+    assert!(
+        fragments[..4]
+            .iter()
+            .all(|(_, intensity)| *intensity == 1.0)
+    );
+    assert_eq!(fragments[4..], [("t", 1.0), ("w", 0.5), ("o", 0.0)]);
+    let split: Line = serde_json::from_str(
+        r#"{"end":8,"text":"é!",
+        "words":[{"time":0,"text":"e"},{"time":2,"text":"́!"}]}"#,
+    )
+    .unwrap();
+    assert_eq!(split.fragments(1.0, |_| 1.0), [("é!", 1.0)]);
 }
 
 #[test]

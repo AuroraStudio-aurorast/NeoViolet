@@ -2,6 +2,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use unicode_segmentation::UnicodeSegmentation;
 
 #[cfg(test)]
 #[path = "lyrics_tests.rs"]
@@ -37,6 +38,8 @@ pub struct Line {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Word {
     pub time: f64,
+    #[serde(default)]
+    pub end: f64,
     pub text: String,
 }
 
@@ -123,7 +126,9 @@ impl Line {
         self.parts.get(1..).unwrap_or_default()
     }
 
-    pub fn fragments(&self, elapsed: f64) -> Vec<(&str, bool)> {
+    pub fn fragments(&self, elapsed: f64, width: impl Fn(&str) -> f32) -> Vec<(&str, f32)> {
+        let text = self.first_text();
+        let graphemes: Vec<_> = text.grapheme_indices(true).collect();
         let valid = !self.words.is_empty()
             && self
                 .words
@@ -138,15 +143,64 @@ impl Line {
                 .iter()
                 .map(|word| word.text.as_str())
                 .collect::<String>()
-                == self.first_text();
-        if valid {
-            self.words
-                .iter()
-                .map(|word| (word.text.as_str(), word.time <= elapsed))
-                .collect()
-        } else {
-            vec![(self.first_text(), true)]
+                == text;
+        let mut boundary = 0;
+        let aligned = self.words.iter().all(|word| {
+            let start = boundary;
+            boundary += word.text.len();
+            start == text.len() || graphemes.iter().any(|(offset, _)| *offset == start)
+        });
+        if !valid || !aligned {
+            return vec![(text, 1.0)];
         }
+        // Keep the same grapheme boundaries at every elapsed value. Only color changes.
+        let mut fragments: Vec<_> = graphemes.iter().map(|(_, text)| (*text, 0.0)).collect();
+        let elapsed = if elapsed.is_finite() { elapsed } else { 0.0 };
+        let current = self.words.iter().rposition(|word| word.time <= elapsed);
+        let mut byte = 0;
+        for (index, word) in self.words.iter().enumerate() {
+            let end_byte = byte + word.text.len();
+            let start = graphemes.partition_point(|(offset, _)| *offset < byte);
+            let end = graphemes.partition_point(|(offset, _)| *offset < end_byte);
+            byte = end_byte;
+            let progress = if current.is_some_and(|current| index < current) {
+                1.0
+            } else if current != Some(index) {
+                0.0
+            } else {
+                let end_time = if word.end.is_finite() && word.end > word.time {
+                    word.end
+                } else if let Some(next) = self.words.get(index + 1) {
+                    next.time
+                } else if self.end > word.time && self.end.is_finite() {
+                    self.end
+                } else {
+                    word.time
+                };
+                if end_time > word.time {
+                    ((elapsed - word.time) / (end_time - word.time)).clamp(0.0, 1.0) as f32
+                } else {
+                    1.0
+                }
+            };
+            let widths: Vec<_> = fragments[start..end]
+                .iter()
+                .map(|(text, _)| {
+                    let measured = width(text);
+                    if measured.is_finite() && measured > 0.0 {
+                        measured
+                    } else {
+                        1.0
+                    }
+                })
+                .collect();
+            let mut front = progress * widths.iter().sum::<f32>();
+            for ((_, intensity), width) in fragments[start..end].iter_mut().zip(widths) {
+                *intensity = (front / width).clamp(0.0, 1.0);
+                front -= width;
+            }
+        }
+        fragments
     }
 }
 

@@ -2418,6 +2418,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 1.1.8+spec-1.1.0",
+ "unicode-segmentation",
  "windows-sys 0.61.2",
 ]
 
