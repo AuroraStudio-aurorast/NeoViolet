@@ -245,6 +245,7 @@ impl App {
                     | iced::Event::Keyboard(_)
                     | iced::Event::Mouse(
                         iced::mouse::Event::WheelScrolled { .. }
+                            | iced::mouse::Event::CursorEntered
                             | iced::mouse::Event::CursorMoved { .. }
                             | iced::mouse::Event::ButtonReleased(_)
                             | iced::mouse::Event::ButtonPressed(_)
@@ -329,14 +330,15 @@ impl App {
                 return desktop::align_main_controls(self.main_window).map(|_| Message::Ready);
             }
             Message::Lyrics(event) => {
-                let opened = matches!(&event, lyrics_window::Event::Opened(id) if Some(*id) == self.lyrics.window);
+                let opened = match &event {
+                    lyrics_window::Event::Opened(id) if self.lyrics.contains(*id) => Some(*id),
+                    _ => None,
+                };
                 let closed_settings = matches!(&event, lyrics_window::Event::CloseSettings)
                     && self.lyrics.settings_window.is_some();
-                let native_setup = if opened {
+                let native_setup = if let Some(id) = opened {
                     self.desktop.as_ref().map_or_else(Task::none, |desktop| {
-                        desktop
-                            .configure_lyrics_window(self.lyrics.window.unwrap())
-                            .map(|_| Message::Ready)
+                        desktop.configure_lyrics_window(id).map(|_| Message::Ready)
                     })
                 } else {
                     Task::none()
@@ -345,7 +347,7 @@ impl App {
                 return Task::batch([
                     native_setup.chain(task.map(Message::Lyrics)),
                     self.send_all(request.into_iter().collect()),
-                    if opened {
+                    if opened.is_some() {
                         window::gain_focus(self.lyrics.settings_window.unwrap_or(self.main_window))
                     } else if closed_settings {
                         window::gain_focus(self.main_window)
@@ -375,9 +377,39 @@ impl App {
                 if self.lyrics.window == Some(id) {
                     return self.update(Message::Lyrics(lyrics_window::Event::Hover(hovered)));
                 }
+                if self.lyrics.toolbar_window == Some(id) {
+                    return self
+                        .update(Message::Lyrics(lyrics_window::Event::ToolbarHover(hovered)));
+                }
+            }
+            #[cfg(target_os = "macos")]
+            Message::Desktop(desktop::Event::LyricsReleased(id)) => {
+                if self.lyrics.contains(id) {
+                    return self.update(Message::Lyrics(lyrics_window::Event::DragEnded));
+                }
             }
             Message::Native(id, event) if id != self.main_window => {
-                if self.lyrics.window == Some(id)
+                // Linux window managers can consume the release after taking the drag grab.
+                #[cfg(target_os = "linux")]
+                if self.lyrics.contains(id)
+                    && matches!(
+                        &event,
+                        iced::Event::Mouse(iced::mouse::Event::CursorEntered)
+                    )
+                {
+                    return self.update(Message::Lyrics(lyrics_window::Event::DragEnded));
+                }
+                if self.lyrics.contains(id)
+                    && matches!(
+                        &event,
+                        iced::Event::Mouse(iced::mouse::Event::ButtonReleased(
+                            iced::mouse::Button::Left,
+                        ))
+                    )
+                {
+                    return self.update(Message::Lyrics(lyrics_window::Event::DragEnded));
+                }
+                if self.lyrics.contains(id)
                     && matches!(
                         &event,
                         iced::Event::Window(window::Event::Resized(_))
@@ -392,11 +424,13 @@ impl App {
                     return self.lyrics.refresh_mask().map(Message::Lyrics);
                 }
                 if let iced::Event::Window(window::Event::Moved(point)) = &event {
-                    self.lyrics
-                        .moved(id, *point, &mut self.config.desktop_lyrics);
+                    return self
+                        .lyrics
+                        .moved(id, *point, &mut self.config.desktop_lyrics)
+                        .map(Message::Lyrics);
                 }
                 if matches!(event, iced::Event::Window(window::Event::CloseRequested)) {
-                    if Some(id) == self.lyrics.window {
+                    if self.lyrics.contains(id) {
                         return self.update(Message::Lyrics(lyrics_window::Event::Visible(false)));
                     }
                     if Some(id) == self.lyrics.settings_window {
@@ -496,7 +530,7 @@ impl App {
             }
             Message::Ipc(_, ipc::Event::Received(ipc::Incoming::Lyrics(frame))) => {
                 if self.config.desktop_lyrics.enabled {
-                    let changed = self.lyrics.frame.active_lines() != frame.active_lines()
+                    let changed = self.lyrics.frame.display_lines() != frame.display_lines()
                         || self.lyrics.frame.next_line() != frame.next_line()
                         || self.lyrics.frame.title != frame.title
                         || self.lyrics.frame.artist != frame.artist;

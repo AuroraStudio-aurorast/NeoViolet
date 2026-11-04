@@ -173,6 +173,13 @@ func buildLyricLinesJSON(data *lyrics.Data, elapsed time.Duration) []ipc.LyricLi
 	for _, line := range active {
 		addTime(line.Time)
 	}
+	// An explicit cue gap has no active line, but the GUI still needs its
+	// neighboring cues to distinguish a short transition from missing lyrics.
+	if len(active) == 0 {
+		for _, line := range data.Lines {
+			addTime(line.Time)
+		}
+	}
 
 	// Find context: up to 2 previous and 2 next time slots.
 	// Walk backwards from the smallest active time.
@@ -212,6 +219,10 @@ func buildLyricLinesJSON(data *lyrics.Data, elapsed time.Duration) []ipc.LyricLi
 			lastActiveIdx = i
 		}
 	}
+	if len(active) == 0 {
+		firstActiveIdx = sort.Search(len(times), func(i int) bool { return times[i] > elapsed })
+		lastActiveIdx = firstActiveIdx - 1
+	}
 
 	keepStart := firstActiveIdx - 2
 	if keepStart < 0 {
@@ -225,6 +236,23 @@ func buildLyricLinesJSON(data *lyrics.Data, elapsed time.Duration) []ipc.LyricLi
 	keepSet := make(map[time.Duration]bool)
 	for i := keepStart; i <= keepEnd; i++ {
 		keepSet[times[i]] = true
+	}
+	if len(active) == 0 {
+		// Start-time neighbors can omit a sustained voice that ended after more
+		// recent, shorter cues. Include every voice ending at the gap boundary.
+		var latestEnd time.Duration
+		for _, line := range data.Lines {
+			if line.End > line.Time && line.End <= elapsed && line.End > latestEnd {
+				latestEnd = line.End
+			}
+		}
+		if latestEnd > 0 {
+			for _, line := range data.Lines {
+				if line.End == latestEnd && line.End > line.Time {
+					keepSet[line.Time] = true
+				}
+			}
+		}
 	}
 
 	// The overlay draws one line at a time, so a label belongs to the line where

@@ -6,6 +6,12 @@ use crate::app::{App, Message};
 
 impl App {
     pub fn view(&self, id: iced::window::Id) -> Element<'_, Message> {
+        if Some(id) == self.lyrics.toolbar_window {
+            return self
+                .lyrics
+                .toolbar_view(&self.config.desktop_lyrics)
+                .map(Message::Lyrics);
+        }
         if Some(id) == self.lyrics.window {
             return self
                 .lyrics

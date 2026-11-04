@@ -2,6 +2,77 @@
 #[cfg(target_os = "macos")]
 #[path = "../src/desktop_chrome_macos.rs"]
 mod chrome;
+#[cfg(target_os = "macos")]
+#[path = "../src/desktop_lyrics_macos.rs"]
+mod lyrics_pair;
+
+#[cfg(target_os = "macos")]
+fn check_native_lyrics_pair(marker: objc2_foundation::MainThreadMarker) {
+    use objc2::MainThreadOnly;
+    use objc2_app_kit::{NSBackingStoreType, NSWindow, NSWindowStyleMask};
+    use objc2_foundation::{NSPoint, NSRect, NSSize};
+    let create = |rect| {
+        // SAFETY: Both test windows stay hidden and are owned on this main thread.
+        let window = unsafe {
+            NSWindow::initWithContentRect_styleMask_backing_defer(
+                NSWindow::alloc(marker),
+                rect,
+                NSWindowStyleMask::Borderless,
+                NSBackingStoreType::Buffered,
+                false,
+            )
+        };
+        // SAFETY: The test retains ownership until after closing.
+        unsafe {
+            window.setReleasedWhenClosed(false);
+        }
+        window
+    };
+    let toolbar = create(NSRect::new(
+        NSPoint::new(500.0, 600.0),
+        NSSize::new(240.0, 88.0),
+    ));
+    let lyrics = create(NSRect::new(
+        NSPoint::new(470.0, 558.0),
+        NSSize::new(300.0, 50.0),
+    ));
+    let offset = NSPoint::new(-30.0, -42.0);
+    lyrics_pair::attach(&lyrics, &toolbar, 80.0);
+    for step in 1..=20 {
+        let origin = NSPoint::new(500.0 + step as f64 * 7.0, 600.0 - step as f64 * 3.0);
+        toolbar.setFrameOrigin(origin);
+        assert_eq!(
+            lyrics.frame().origin,
+            NSPoint::new(origin.x + offset.x, origin.y + offset.y),
+            "lyrics must follow immediately without an Iced event or run-loop drain"
+        );
+    }
+    lyrics_pair::resize(&lyrics, NSSize::new(880.0, 120.0), 80.0);
+    let parent = toolbar.frame();
+    let frame = lyrics.frame();
+    assert_eq!(
+        frame.origin.x + frame.size.width / 2.0,
+        parent.origin.x + parent.size.width / 2.0
+    );
+    assert_eq!(
+        frame.origin.y + frame.size.height,
+        parent.origin.y + parent.size.height - 80.0
+    );
+    toolbar.setFrameOrigin(NSPoint::new(-200.0, 100.0));
+    assert_eq!(lyrics.frame().origin, NSPoint::new(-520.0, -12.0));
+    lyrics_pair::detach(&toolbar);
+    assert!(lyrics.parentWindow().is_none());
+    let detached = lyrics.frame();
+    toolbar.setFrameOrigin(NSPoint::new(300.0, 500.0));
+    assert_eq!(lyrics.frame(), detached);
+    lyrics_pair::attach(&lyrics, &toolbar, 80.0);
+    lyrics_pair::attach(&lyrics, &toolbar, 80.0);
+    assert_eq!(toolbar.childWindows().unwrap().count(), 1);
+    lyrics_pair::detach(&lyrics);
+    assert!(lyrics.parentWindow().is_none());
+    toolbar.close();
+    lyrics.close();
+}
 
 #[cfg(not(target_os = "macos"))]
 fn main() {
@@ -24,6 +95,7 @@ fn check_native_layout() {
         || NSRunLoop::mainRunLoop().runUntilDate(&NSDate::dateWithTimeIntervalSinceNow(0.01));
     let marker = MainThreadMarker::new().expect("native regression must run on the main thread");
     let _application = NSApplication::sharedApplication(marker);
+    check_native_lyrics_pair(marker);
     // SAFETY: The window and all its native views are confined to this main thread.
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(

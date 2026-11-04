@@ -10,6 +10,8 @@ pub enum Event {
     Reopen,
     #[cfg(target_os = "macos")]
     LyricsHover(iced::window::Id, bool),
+    #[cfg(target_os = "macos")]
+    LyricsReleased(iced::window::Id),
 }
 
 #[cfg(target_os = "macos")]
@@ -21,6 +23,10 @@ pub use macos::Desktop;
 #[cfg(target_os = "macos")]
 #[path = "desktop_chrome_macos.rs"]
 mod chrome;
+
+#[cfg(target_os = "macos")]
+#[path = "desktop_lyrics_macos.rs"]
+mod lyrics;
 
 #[cfg(target_os = "windows")]
 #[path = "desktop_windows.rs"]
@@ -77,6 +83,22 @@ pub(crate) mod hit_test;
 #[cfg(target_os = "macos")]
 pub fn set_lyrics_locked(id: iced::window::Id, locked: bool) -> iced::Task<()> {
     iced::window::run(id, move |_| hit_test::set_locked(id, locked))
+}
+
+#[cfg(target_os = "macos")]
+pub fn link_lyrics(
+    id: iced::window::Id,
+    toolbar: iced::window::Id,
+    offset: f32,
+) -> iced::Task<bool> {
+    iced::window::run(toolbar, move |_| {
+        hit_test::link(id, toolbar, f64::from(offset))
+    })
+}
+
+#[cfg(target_os = "macos")]
+pub fn resize_lyrics(id: iced::window::Id, size: iced::Size, offset: f32) -> iced::Task<()> {
+    iced::window::run(id, move |_| hit_test::resize(id, size, f64::from(offset)))
 }
 
 #[cfg(target_os = "macos")]

@@ -41,6 +41,37 @@ pub struct Word {
 }
 
 impl Frame {
+    /// Bridge only short, bounded cue gaps without caching stale track data or
+    /// changing the actual timing used by word highlighting and next-line lookup.
+    pub fn display_lines(&self) -> Vec<&Line> {
+        let active = self.active_lines();
+        if !active.is_empty() {
+            return active;
+        }
+        let Some(next) = self.next_line() else {
+            return active;
+        };
+        let Some(end) = self
+            .lines
+            .iter()
+            .filter(|line| line.valid_interval() && line.end > 0.0 && line.end <= self.elapsed)
+            .map(|line| line.end)
+            .max_by(f64::total_cmp)
+        else {
+            return active;
+        };
+        if next.time - end > 0.35 + 1e-9 {
+            return active;
+        }
+        let mut previous: Vec<_> = self
+            .lines
+            .iter()
+            .filter(|line| line.valid_interval() && line.end == end)
+            .collect();
+        previous.sort_by(|a, b| a.time.total_cmp(&b.time));
+        previous
+    }
+
     pub fn active_lines(&self) -> Vec<&Line> {
         let elapsed = self.elapsed.max(0.0);
         let mut active: Vec<_> = self

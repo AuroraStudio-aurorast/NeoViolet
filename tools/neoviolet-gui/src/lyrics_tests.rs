@@ -89,3 +89,77 @@ fn invalid_line_intervals_do_not_replace_valid_current_or_upcoming_lines() {
     assert_eq!(frame.active_lines()[0].text, "current");
     assert_eq!(frame.next_line().unwrap().text, "upcoming");
 }
+
+#[test]
+fn short_interline_gaps_hold_the_previous_voices_until_the_next_line_starts() {
+    let mut frame: Frame = serde_json::from_str(
+        r#"{"elapsed":2.05,"lines":[
+        {"time":0,"end":2,"text":"First","parts":["First","Translation"]},
+        {"time":0,"end":2,"text":"Other voice","agent":"b"},
+        {"time":2.15,"end":4,"text":"Next"}
+    ]}"#,
+    )
+    .unwrap();
+    assert!(frame.active_lines().is_empty());
+    assert_eq!(
+        frame
+            .display_lines()
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>(),
+        ["First", "Other voice"]
+    );
+    assert_eq!(frame.display_lines()[0].additional_lines(), ["Translation"]);
+    frame.elapsed = 2.15;
+    assert_eq!(frame.display_lines()[0].text, "Next");
+    frame.elapsed = 1.0;
+    assert_eq!(frame.display_lines().len(), 2);
+    frame.elapsed = 0.0;
+    assert_eq!(frame.display_lines().len(), 2);
+}
+
+#[test]
+fn long_gaps_intro_outro_and_empty_payloads_do_not_hold_stale_lyrics() {
+    let mut frame: Frame = serde_json::from_str(
+        r#"{"elapsed":2.05,"lines":[
+        {"time":1,"end":2,"text":"First"},{"time":3,"end":4,"text":"Next"}
+    ]}"#,
+    )
+    .unwrap();
+    assert!(frame.display_lines().is_empty());
+    frame.elapsed = 0.5;
+    assert!(frame.display_lines().is_empty());
+    frame.elapsed = 4.05;
+    assert!(frame.display_lines().is_empty());
+    frame.lines.clear();
+    assert!(frame.display_lines().is_empty());
+}
+
+#[test]
+fn gap_threshold_uses_the_whole_gap_and_never_revives_an_earlier_voice() {
+    let mut frame: Frame = serde_json::from_str(
+        r#"{"elapsed":10.05,"lines":[
+        {"time":8,"end":9.9,"text":"Earlier voice"},
+        {"time":9,"end":10,"text":"Last voice"},
+        {"time":10.35,"end":12,"text":"Next"}
+    ]}"#,
+    )
+    .unwrap();
+    assert_eq!(
+        frame
+            .display_lines()
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>(),
+        ["Last voice"]
+    );
+    frame.lines[2].time = 10.351;
+    assert!(frame.display_lines().is_empty());
+    frame.elapsed = 10.3509;
+    assert!(
+        frame.display_lines().is_empty(),
+        "do not show old text just because the next cue is close now"
+    );
+    frame.elapsed = 9.0;
+    assert_eq!(frame.display_lines().len(), 2);
+}

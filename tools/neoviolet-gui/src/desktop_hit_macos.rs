@@ -23,6 +23,7 @@ struct State {
     mask: Option<Mask>,
     locked: bool,
     hovered: bool,
+    mouse_down: bool,
 }
 
 impl State {
@@ -32,7 +33,12 @@ impl State {
         };
         // Keep native drag/click sequences intact until the mouse is released.
         if NSEvent::pressedMouseButtons() != 0 {
+            self.mouse_down = true;
             return;
+        }
+        if self.mouse_down {
+            self.mouse_down = false;
+            let _ = self.sender.send(Event::LyricsReleased(self.id));
         }
         let Some(view) = window.contentView() else {
             return;
@@ -88,8 +94,10 @@ pub fn install(id: iced::window::Id, window: &NSWindow, sender: mpsc::UnboundedS
         mask: None,
         locked: false,
         hovered: false,
+        mouse_down: false,
     }));
     let mask = NSEventMask::MouseMoved
+        | NSEventMask::LeftMouseDown
         | NSEventMask::LeftMouseDragged
         | NSEventMask::RightMouseDragged
         | NSEventMask::OtherMouseDragged
@@ -144,6 +152,42 @@ pub fn set_locked(id: iced::window::Id, locked: bool) {
 
 pub fn remove(id: iced::window::Id) {
     TRACKERS.with_borrow_mut(|trackers| {
-        trackers.remove(&id);
+        if let Some(tracker) = trackers.remove(&id)
+            && let Some(window) = tracker.state.borrow().window.load()
+        {
+            super::lyrics::detach(&window);
+        }
+    });
+}
+
+pub fn link(id: iced::window::Id, toolbar: iced::window::Id, offset: f64) -> bool {
+    TRACKERS.with_borrow(|trackers| {
+        let lyrics = trackers
+            .get(&id)
+            .and_then(|t| t.state.borrow().window.load());
+        let toolbar = trackers
+            .get(&toolbar)
+            .and_then(|t| t.state.borrow().window.load());
+        if let (Some(lyrics), Some(toolbar)) = (lyrics, toolbar) {
+            super::lyrics::attach(&lyrics, &toolbar, offset);
+            true
+        } else {
+            false
+        }
+    })
+}
+
+pub fn resize(id: iced::window::Id, size: iced::Size, offset: f64) {
+    TRACKERS.with_borrow(|trackers| {
+        if let Some(window) = trackers
+            .get(&id)
+            .and_then(|t| t.state.borrow().window.load())
+        {
+            super::lyrics::resize(
+                &window,
+                objc2_foundation::NSSize::new(f64::from(size.width), f64::from(size.height)),
+                offset,
+            );
+        }
     });
 }

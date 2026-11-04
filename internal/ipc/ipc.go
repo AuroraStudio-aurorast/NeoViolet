@@ -26,6 +26,8 @@
 // sub-lines (Parts when it has any, otherwise Text). Words carries the timings
 // of the first sub-line when the format has them, so the overlay can highlight
 // each fragment as it is sung instead of re-deriving the split.
+// Lines includes neighboring cues during timed gaps; an empty list means no
+// lyric data is available, rather than merely that no cue is active right now.
 package ipc
 
 import (
