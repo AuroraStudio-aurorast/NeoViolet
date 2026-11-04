@@ -14,6 +14,7 @@ archive caches stay outside Git. Git is required to apply the patches.
 | iced_term | `230945e443c7bded8eac0786240210a51a0e8303` (PR 73) | MIT | Validated IME fixes, process ID and selection access, terminal query responses, bracketed paste, application and menu shortcuts, opacity and scroll zoom, modal input isolation, subscription shutdown |
 | winit | 0.30.13 / `e9809ef54b18499bb4f2cac945719ecc2a61061b` | Apache-2.0 | Discard marked text when disabling IME; retain document/reopen/quit callbacks and preinstalled macOS menus; refresh the final size and frame after native fullscreen transitions |
 | iced_wgpu | 0.14.0 / `3997291f318a8bc06fa522f5579836fb3feb94df` | MIT | Use DirectComposition for DX12 transparency and select premultiplied alpha; keep other backends' alpha selection |
+| muda | 0.17.2 | MIT OR Apache-2.0 | Render the macOS Equal accelerator as `+`; remove redundant unsafe blocks for safe objc2 calls |
 
 Original license texts are retained under `licenses/` and shipped in macOS bundles.
 iced_term's manifest is made standalone to avoid depending on example assets.
@@ -29,3 +30,4 @@ Upstream references:
 - https://github.com/kemokempo/iced_term/pull/73
 - https://github.com/rust-windowing/winit/tree/v0.30.13
 - https://github.com/iced-rs/iced/tree/3997291f318a8bc06fa522f5579836fb3feb94df/wgpu
+- https://github.com/tauri-apps/muda/tree/v0.17.2

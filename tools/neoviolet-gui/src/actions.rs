@@ -75,4 +75,17 @@ mod tests {
             .is_none()
         );
     }
+
+    #[test]
+    fn zoom_in_accepts_both_plus_and_equals_key_events() {
+        for (key, modifiers) in [
+            ("+", Modifiers::COMMAND | Modifiers::SHIFT),
+            ("=", Modifiers::COMMAND),
+        ] {
+            assert!(matches!(
+                Action::shortcut(&Key::Character(key.into()), modifiers),
+                Some(Action::ZoomIn)
+            ));
+        }
+    }
 }
