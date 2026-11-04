@@ -1,7 +1,6 @@
 package soundfont
 
 import (
-	"maps"
 	"slices"
 	"unsafe"
 )
@@ -12,8 +11,10 @@ import (
 func (s *Synthesizer) Clone() *Synthesizer {
 	c := copyState(s)
 	c.SoundFont = slices.Clone(s.SoundFont)
-	c.presetLookup = maps.Clone(s.presetLookup)
-	c.presetFonts = maps.Clone(s.presetFonts)
+	// presetLookup and presetFonts are built once and only read afterwards, so
+	// clones can share them without copying hundreds of map entries.
+	c.presetLookup = s.presetLookup
+	c.presetFonts = s.presetFonts
 	c.channels = make([]*channel, len(s.channels))
 	for i, ch := range s.channels {
 		c.channels[i] = copyState(ch)

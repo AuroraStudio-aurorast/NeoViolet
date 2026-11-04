@@ -33,6 +33,8 @@ type channel struct {
 	pressure     uint8
 
 	lastDataType uint8
+	// version advances whenever state observed by modulators changes.
+	version uint64
 }
 
 func newChannel(s *Synthesizer, isPercussionChannel bool) *channel {
@@ -79,6 +81,7 @@ func (ch *channel) reset() {
 	ch.cc[91] = 40
 	ch.polyPressure = [128]uint8{}
 	ch.pressure = 0
+	ch.version++
 }
 
 func (ch *channel) resetAllControllers() {
@@ -97,6 +100,7 @@ func (ch *channel) resetAllControllers() {
 	ch.pressure = 0
 	ch.polyPressure = [128]uint8{}
 	ch.lastDataType = datNone
+	ch.version++
 }
 
 func (ch *channel) setBank(value int32) {

@@ -6,7 +6,12 @@ import "math"
 // elapsed time; changing their rates never starts a new attack.
 func (v *voice) updateModulation() {
 	c := v.synthesizer.channels[v.channel]
+	if v.modValuesCached && c.version == v.channelVersion {
+		return
+	}
 	evaluateRegion(v.region, c, v.key, v.velocity, &v.modValues)
+	v.channelVersion = c.version
+	v.modValuesCached = true
 	r := v.region
 	r.values = &v.modValues
 	v.noteGain = calcDecibelsToLinear(-r.getInitialAttenuation() - 0.5*r.getInitialFilterQ())

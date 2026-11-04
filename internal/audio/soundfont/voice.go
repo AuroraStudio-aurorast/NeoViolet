@@ -23,7 +23,11 @@ type voice struct {
 	block     []float32
 	region    regionPair
 	modValues [61]float32
-	killed    bool
+	// channelVersion identifies the cached modulation inputs. It is reset on
+	// note start; channel mutations advance channel.version.
+	channelVersion  uint64
+	modValuesCached bool
+	killed          bool
 
 	// A sudden change in the mix gain will cause pop noise.
 	// To avoid this, we save the mix gain of the previous block,
@@ -39,6 +43,15 @@ type voice struct {
 	previousChorusSend float32
 	currentReverbSend  float32
 	currentChorusSend  float32
+
+	// Pan gains only change when the effective pan generator changes. Cache
+	// the trigonometric factors so steady notes do not recompute them each
+	// DSP block.
+	panGainLeft  float32
+	panGainRight float32
+	panValue     float32
+	panMode      uint8
+	panCached    bool
 
 	exclusiveClass int32
 	channel        int32
@@ -67,10 +80,41 @@ type voice struct {
 
 	// Some instruments require fast cutoff change, which can cause pop noise.
 	// This is used to smooth out the cutoff frequency.
-	smoothedCutoff float32
+	smoothedCutoff      float32
+	lastFilterCutoff    float32
+	lastFilterResonance float32
 
 	voiceState  int32
 	voiceLength int32
+}
+
+const (
+	panModeCenter uint8 = iota
+	panModeLeft
+	panModeRight
+)
+
+// refreshPanGains recomputes the cached pan factors from instrumentPan. The
+// factoring is kept identical to the previous inline calculation so PCM output
+// does not change when the cache is reused.
+func (v *voice) refreshPanGains() {
+	angle := float32(math.Pi/200) * (v.instrumentPan + 50)
+	switch {
+	case angle <= 0:
+		v.panMode = panModeLeft
+		v.panGainLeft = 1
+		v.panGainRight = 0
+	case angle >= halfPi:
+		v.panMode = panModeRight
+		v.panGainLeft = 0
+		v.panGainRight = 1
+	default:
+		v.panMode = panModeCenter
+		v.panGainLeft = float32(math.Cos(float64(angle)))
+		v.panGainRight = float32(math.Sin(float64(angle)))
+	}
+	v.panValue = v.instrumentPan
+	v.panCached = true
 }
 
 func newVoice(s *Synthesizer) *voice {
@@ -94,6 +138,7 @@ func (v *voice) start(region regionPair, channel int32, key int32, velocity int3
 
 	v.region = region
 	v.killed = false
+	v.modValuesCached = false
 	v.updateModulation()
 	region.values = &v.modValues
 
@@ -114,6 +159,7 @@ func (v *voice) start(region regionPair, channel int32, key int32, velocity int3
 	v.instrumentPan = calcClamp(region.getPan(), -50, 50)
 	v.instrumentReverb = 0.01 * region.getReverbEffectsSend()
 	v.instrumentChorus = 0.01 * region.getChorusEffectsSend()
+	v.refreshPanGains()
 
 	v.volEnv.startByRegion(region, key, velocity)
 	v.modEnv.startByRegion(region, key, velocity)
@@ -122,6 +168,8 @@ func (v *voice) start(region regionPair, channel int32, key int32, velocity int3
 	v.oscillator.startByRegion(v.synthesizer.SoundFont[sf].WaveData, region)
 	v.filter.clearBuffer()
 	v.filter.setLowPassFilter(v.cutoff, v.resonance)
+	v.lastFilterCutoff = v.cutoff
+	v.lastFilterResonance = v.resonance
 
 	v.smoothedCutoff = v.cutoff
 
@@ -176,7 +224,11 @@ func (v *voice) process() bool {
 		upperLimit := 2 * v.smoothedCutoff
 		v.smoothedCutoff = calcClamp(newCutoff, lowerLimit, upperLimit)
 
-		v.filter.setLowPassFilter(v.smoothedCutoff, v.resonance)
+		if v.smoothedCutoff != v.lastFilterCutoff || v.resonance != v.lastFilterResonance {
+			v.filter.setLowPassFilter(v.smoothedCutoff, v.resonance)
+			v.lastFilterCutoff = v.smoothedCutoff
+			v.lastFilterResonance = v.resonance
+		}
 	}
 	v.filter.process(v.block)
 
@@ -191,17 +243,19 @@ func (v *voice) process() bool {
 		mixGain *= calcDecibelsToLinear(decibels)
 	}
 
-	angle := float32(math.Pi/200) * (v.instrumentPan + 50)
-	switch {
-	case angle <= 0:
+	if !v.panCached || v.instrumentPan != v.panValue {
+		v.refreshPanGains()
+	}
+	switch v.panMode {
+	case panModeLeft:
 		v.currentMixGainLeft = mixGain
 		v.currentMixGainRight = 0
-	case angle >= halfPi:
+	case panModeRight:
 		v.currentMixGainLeft = 0
 		v.currentMixGainRight = mixGain
 	default:
-		v.currentMixGainLeft = mixGain * float32(math.Cos(float64(angle)))
-		v.currentMixGainRight = mixGain * float32(math.Sin(float64(angle)))
+		v.currentMixGainLeft = mixGain * v.panGainLeft
+		v.currentMixGainRight = mixGain * v.panGainRight
 	}
 
 	v.currentReverbSend = calcClamp(v.instrumentReverb, 0, 1)

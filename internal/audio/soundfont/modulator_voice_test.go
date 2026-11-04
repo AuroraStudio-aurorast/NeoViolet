@@ -57,3 +57,22 @@ func TestLiveModulatorInputs(t *testing.T) {
 		t.Fatal("temporary attenuation killed held voice")
 	}
 }
+
+func TestFilterCacheTracksModulatedCutoff(t *testing.T) {
+	s := modVoice(t, []modulator{{Source: 0x81, Destination: genInitialFilterCutoffFrequency, Amount: -6000}})
+	s.NoteOn(0, 60, 100)
+	s.Render(make([]float32, 512), make([]float32, 512))
+	v := s.voices.voices[0]
+	if !v.filter.active {
+		t.Fatal("fixture filter unexpectedly bypassed")
+	}
+	before := v.filter.a0
+	s.ProcessMidiMessage(0, 0xB0, 1, 127)
+	s.Render(make([]float32, 512), make([]float32, 512))
+	if v.filter.a0 == before {
+		t.Fatal("filter cache kept stale coefficients")
+	}
+	if v.lastFilterCutoff != v.smoothedCutoff || v.lastFilterResonance != v.resonance {
+		t.Fatal("filter cache bookkeeping out of sync")
+	}
+}

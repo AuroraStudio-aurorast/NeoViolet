@@ -12,6 +12,7 @@ func (s *Synthesizer) Stats() Stats {
 func (s *Synthesizer) ReleaseAll() {
 	for _, c := range s.channels {
 		c.setHoldPedal(0)
+		c.version++
 	}
 	s.NoteOffAll(false)
 }
@@ -21,6 +22,7 @@ func (s *Synthesizer) ReleaseAll() {
 func (s *Synthesizer) SetRawController(ch, cc, value uint8) {
 	if ch < 16 && cc < 128 && value < 128 {
 		s.channels[ch].cc[cc] = value
+		s.channels[ch].version++
 	}
 }
 
@@ -39,4 +41,5 @@ func (s *Synthesizer) SelectPreset(channel, bank, program int32, percussion bool
 	c.bankNumber = bank
 	c.patchNumber = program
 	c.isPercussionChannel = percussion
+	c.version++
 }

@@ -131,6 +131,9 @@ func (s *Synthesizer) ProcessMidiMessage(channel int32, command int32, data1 int
 		return
 	}
 	channelInfo := s.channels[channel]
+	if command != 0x80 && command != 0x90 {
+		channelInfo.version++
+	}
 
 	switch command {
 	case 0x80: // Note Off

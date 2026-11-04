@@ -15,6 +15,9 @@ type oscillator struct {
 	looping                                                                   bool
 	positionFP                                                                int64
 	valid                                                                     bool
+	lastPitchChange                                                           float32
+	cachedRatio                                                               float64
+	ratioValid                                                                bool
 }
 
 func newOscillator(s *Synthesizer) *oscillator { return &oscillator{synthesizer: s} }
@@ -33,6 +36,7 @@ func (o *oscillator) start(data []int16, loopMode, sampleRate, start, end, start
 	o.sampleRateRatio = float32(sampleRate) / float32(o.synthesizer.SampleRate)
 	o.looping = (loopMode == loopContinuous || loopMode == loopLoopUntilNoteOff) && start <= startLoop && startLoop < endLoop && endLoop <= end
 	o.positionFP = int64(start) << fracBits
+	o.ratioValid = false
 }
 func (o *oscillator) release() {
 	if o.loopMode == loopLoopUntilNoteOff {
@@ -41,7 +45,12 @@ func (o *oscillator) release() {
 }
 func (o *oscillator) process(block []float32, pitch float32) bool {
 	change := o.pitchChangeScale*(pitch-float32(o.rootKey)) + o.tune + o.pitchOffset
-	return o.fillBlock(block, float64(o.sampleRateRatio)*math.Pow(2, float64(change)/12))
+	if !o.ratioValid || change != o.lastPitchChange {
+		o.cachedRatio = float64(o.sampleRateRatio) * math.Pow(2, float64(change)/12)
+		o.lastPitchChange = change
+		o.ratioValid = true
+	}
+	return o.fillBlock(block, o.cachedRatio)
 }
 func (o *oscillator) fillBlock(block []float32, ratio float64) bool {
 	// Bound the conversion and addition; arbitrary non-finite/extreme modulation ends a voice.
