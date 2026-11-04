@@ -1,4 +1,8 @@
 use super::*;
+use crate::{actions::Action, launch};
+use iced::keyboard::{Key, key::Named};
+#[cfg(not(target_os = "windows"))]
+use iced_term::settings;
 
 #[test]
 fn native_caption_hover_belongs_to_the_main_window_and_survives_client_leave() {
