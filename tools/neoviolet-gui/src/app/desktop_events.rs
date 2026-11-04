@@ -7,6 +7,16 @@ impl App {
     pub(super) fn desktop_event(&mut self, event: desktop::Event) -> Task<Message> {
         match event {
             #[cfg(any(target_os = "windows", test))]
+            desktop::Event::CaptionAction(id, action) => {
+                if id == self.main_window
+                    && self.dialog.is_none()
+                    && !self.titlebar.visible()
+                    && !self.titlebar.fullscreen
+                {
+                    return self.action(action);
+                }
+            }
+            #[cfg(any(target_os = "windows", test))]
             desktop::Event::CaptionHover(id, control) => {
                 if id == self.main_window {
                     self.titlebar.caption_hover = control;

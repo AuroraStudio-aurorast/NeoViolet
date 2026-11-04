@@ -22,7 +22,7 @@ impl Overlay {
                 .size(12)
                 .font(Font {
                     weight: iced::font::Weight::Semibold,
-                    ..Font::DEFAULT
+                    ..crate::launch::interface_font()
                 })
                 .color(Color::from_rgb8(236, 232, 242))
         };
@@ -117,7 +117,7 @@ impl Overlay {
         let header = column![
             text("Desktop Lyrics").size(17).font(Font {
                 weight: iced::font::Weight::Semibold,
-                ..Font::DEFAULT
+                ..crate::launch::interface_font()
             }),
             text("Display settings")
                 .size(11)

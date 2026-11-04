@@ -116,7 +116,7 @@ pub fn overlay<'a>(
         .size(18)
         .font(Font {
             weight: iced::font::Weight::Semibold,
-            ..Font::DEFAULT
+            ..crate::launch::interface_font()
         })
         .color(FOREGROUND);
     let title: Element<'a, Message> = if matches!(dialog, Dialog::About) {
@@ -245,7 +245,7 @@ fn action(
     button(
         container(text(label).size(12).font(Font {
             weight: iced::font::Weight::Medium,
-            ..Font::DEFAULT
+            ..crate::launch::interface_font()
         }))
         .center_x(Length::Fill)
         .center_y(Length::Fill),

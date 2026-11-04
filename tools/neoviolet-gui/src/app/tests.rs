@@ -30,6 +30,45 @@ fn native_caption_hover_belongs_to_the_main_window_and_survives_client_leave() {
     assert!(app.titlebar.caption_hover.is_none());
 }
 
+#[tokio::test]
+async fn queued_caption_actions_recheck_modal_and_menu_isolation() {
+    use iced::futures::StreamExt;
+    for (blocked, menu, fullscreen) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let mut app = app();
+        app.dialog = blocked.then_some(Dialog::Quit);
+        app.titlebar.fullscreen = fullscreen;
+        if menu {
+            app.titlebar.update(titlebar::Message::ToggleMenu);
+        }
+        let task = app.update(Message::Desktop(desktop::Event::CaptionAction(
+            app.main_window,
+            Action::Minimize,
+        )));
+        let mut minimized = false;
+        if let Some(mut stream) = iced_runtime::task::into_stream(task) {
+            while let Some(action) = stream.next().await {
+                if matches!(action, iced_runtime::Action::Window(window::Action::Minimize(id,true)) if id==app.main_window)
+                {
+                    minimized = true;
+                }
+            }
+        }
+        assert_eq!(minimized, !blocked && !menu && !fullscreen);
+    }
+    let mut app = app();
+    app.dialog = None;
+    let task = app.update(Message::Desktop(desktop::Event::CaptionAction(
+        window::Id::unique(),
+        Action::ZoomWindow,
+    )));
+    assert!(iced_runtime::task::into_stream(task).is_none());
+}
+
 fn app() -> App {
     App {
         main_window: window::Id::unique(),

@@ -4,6 +4,46 @@ use iced::advanced::mouse;
 use iced::{Length, Point, Size};
 
 #[test]
+fn modal_headings_and_actions_keep_the_interface_font_when_selecting_a_weight() {
+    use iced::advanced::{layout, text::paragraph::Plain, widget};
+    type Paragraph = iced::advanced::graphics::text::paragraph::Paragraph;
+    fn inspect(tree: &widget::Tree, fonts: &mut Vec<(String, Font)>) {
+        if let widget::tree::State::Some(state) = &tree.state
+            && let Some(paragraph) = state.downcast_ref::<Plain<Paragraph>>()
+        {
+            fonts.push((paragraph.content().to_owned(), paragraph.as_text().font));
+        }
+        for child in &tree.children {
+            inspect(child, fonts);
+        }
+    }
+    let renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+        crate::launch::interface_font(),
+        14.0.into(),
+    ));
+    let dialog = Dialog::Quit;
+    let mut view = overlay(&dialog, "test", true, &Navigation::default());
+    let mut tree = widget::Tree::new(&view);
+    let size = Size::new(640.0, 400.0);
+    let _ = view
+        .as_widget_mut()
+        .layout(&mut tree, &renderer, &layout::Limits::new(size, size));
+    let mut fonts = Vec::new();
+    inspect(&tree, &mut fonts);
+    for label in ["Close NeoViolet?", "Cancel", "Close player"] {
+        let (_, font) = fonts
+            .iter()
+            .find(|(text, _)| text == label)
+            .expect("modal text must be laid out");
+        assert_eq!(
+            font.family,
+            crate::launch::interface_font().family,
+            "{label} must keep the interface family when changing weight"
+        );
+    }
+}
+
+#[test]
 fn keyboard_navigation_keeps_quit_safe_and_reaches_both_actions() {
     use iced::keyboard::{Key, key::Named};
     let mut focus = Navigation::default();

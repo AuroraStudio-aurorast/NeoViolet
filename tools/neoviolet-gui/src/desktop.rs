@@ -10,6 +10,8 @@ pub enum Event {
     Reopen,
     #[cfg(any(target_os = "windows", test))]
     CaptionHover(iced::window::Id, Option<crate::titlebar::CaptionControl>),
+    #[cfg(any(target_os = "windows", test))]
+    CaptionAction(iced::window::Id, Action),
     #[cfg(target_os = "macos")]
     LyricsHover(iced::window::Id, bool),
     #[cfg(target_os = "macos")]

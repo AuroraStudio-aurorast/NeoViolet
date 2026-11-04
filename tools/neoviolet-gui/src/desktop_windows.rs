@@ -1,6 +1,6 @@
 //! Keep native caption operations while Iced paints the main window's chrome.
 use super::Event;
-use crate::chrome_hit_test::{self, Hit};
+use crate::chrome_hit_test::{self, CaptionPress, Hit};
 use crate::titlebar::CaptionControl;
 use iced::futures::SinkExt;
 use iced::window::raw_window_handle::RawWindowHandle;
@@ -18,7 +18,8 @@ use windows_sys::Win32::Graphics::Gdi::ScreenToClient;
 use windows_sys::Win32::UI::Controls::{MARGINS, WM_MOUSELEAVE};
 use windows_sys::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent,
+    GetCapture, ReleaseCapture, SetCapture, TME_LEAVE, TME_NONCLIENT, TRACKMOUSEEVENT,
+    TrackMouseEvent,
 };
 use windows_sys::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
@@ -34,6 +35,7 @@ struct WindowState {
     id: iced::window::Id,
     sender: mpsc::UnboundedSender<Event>,
     hovered: Option<CaptionControl>,
+    press: CaptionPress,
 }
 thread_local! { static WINDOWS: RefCell<HashMap<isize, WindowState>> = RefCell::new(HashMap::new()); }
 
@@ -112,6 +114,7 @@ pub fn configure(id: iced::window::Id, sender: mpsc::UnboundedSender<Event>) -> 
                         id,
                         sender,
                         hovered: None,
+                        press: CaptionPress::default(),
                     },
                 )
             });
@@ -169,8 +172,64 @@ pub fn input_state(id: iced::window::Id, menu: bool, fullscreen: bool) -> iced::
         });
         if menu || fullscreen {
             hover(handle.hwnd.get() as HWND, None);
+            cancel_press(handle.hwnd.get() as HWND);
         }
     })
+}
+
+fn cancel_press(hwnd: HWND) {
+    let owned = WINDOWS.with(|windows| {
+        if let Some(state) = windows.borrow_mut().get_mut(&(hwnd as isize)) {
+            let active = state.press.active();
+            state.press.cancel();
+            active
+        } else {
+            false
+        }
+    });
+    // SAFETY: Releasing capture is confined to this window's owning thread.
+    unsafe {
+        if owned && GetCapture() == hwnd {
+            ReleaseCapture();
+        }
+    }
+}
+
+fn caption_control(hit: Hit) -> Option<CaptionControl> {
+    match hit {
+        Hit::Minimize => Some(CaptionControl::Minimize),
+        Hit::Maximize => Some(CaptionControl::Maximize),
+        Hit::Close => Some(CaptionControl::Close),
+        _ => None,
+    }
+}
+
+fn control_hit(value: WPARAM) -> Hit {
+    match value as u32 {
+        HTMINBUTTON => Hit::Minimize,
+        HTMAXBUTTON => Hit::Maximize,
+        HTCLOSE => Hit::Close,
+        _ => Hit::Client,
+    }
+}
+
+unsafe fn point_hit(hwnd: HWND, mut point: POINT, screen: bool, state: InputState) -> Hit {
+    // SAFETY: Both output values are local, and hwnd belongs to the current callback.
+    unsafe {
+        let mut rect = RECT::default();
+        if (screen && ScreenToClient(hwnd, &mut point) == 0) || GetClientRect(hwnd, &mut rect) == 0
+        {
+            return Hit::Client;
+        }
+        let scale = GetDpiForWindow(hwnd).max(96) as f32 / 96.0;
+        chrome_hit_test::hit(
+            iced::Point::new(point.x as f32 / scale, point.y as f32 / scale),
+            iced::Size::new(rect.right as f32 / scale, rect.bottom as f32 / scale),
+            IsZoomed(hwnd) != 0,
+            state.fullscreen,
+            state.menu,
+        )
+    }
 }
 
 unsafe extern "system" fn procedure(
@@ -190,6 +249,92 @@ unsafe extern "system" fn procedure(
                 .map(|state| state.input)
         });
         if let Some(state) = state {
+            if message == WM_CAPTURECHANGED {
+                // SetCapture can notify while winit holds its own window-state lock.
+                // Never call ReleaseCapture here or disturb capture retained by this HWND.
+                WINDOWS.with(|windows| {
+                    if let Some(window) = windows.borrow_mut().get_mut(&(hwnd as isize)) {
+                        window.press.capture_changed(lparam as HWND == hwnd);
+                    }
+                });
+                if lparam as HWND != hwnd {
+                    hover(hwnd, None);
+                }
+            }
+            if message == WM_CANCELMODE
+                || (message == WM_ACTIVATE && wparam & 0xffff == WA_INACTIVE as usize)
+            {
+                // DefWindowProc owns cancellation/deactivation. Do not enter another
+                // capture-change callback while a native window transition is in progress.
+                WINDOWS.with(|windows| {
+                    if let Some(window) = windows.borrow_mut().get_mut(&(hwnd as isize)) {
+                        window.press.cancel();
+                    }
+                });
+                hover(hwnd, None);
+            }
+            if matches!(message, WM_NCLBUTTONDOWN | WM_NCLBUTTONDBLCLK)
+                && matches!(
+                    control_hit(wparam),
+                    Hit::Minimize | Hit::Maximize | Hit::Close
+                )
+            {
+                if state.menu || state.fullscreen {
+                    return 0;
+                }
+                let captured = WINDOWS.with(|windows| {
+                    windows
+                        .borrow_mut()
+                        .get_mut(&(hwnd as isize))
+                        .is_some_and(|window| window.press.begin(control_hit(wparam)))
+                });
+                if captured {
+                    SetCapture(hwnd);
+                    if GetCapture() != hwnd {
+                        cancel_press(hwnd);
+                    }
+                    return 0;
+                }
+            }
+            if matches!(message, WM_LBUTTONUP | WM_NCLBUTTONUP) {
+                // Use the release event's position, not a newer global cursor sample.
+                let point = POINT {
+                    x: lparam as i16 as i32,
+                    y: (lparam >> 16) as i16 as i32,
+                };
+                let hit = point_hit(hwnd, point, message == WM_NCLBUTTONUP, state);
+                let released = WINDOWS.with(|windows| {
+                    let mut windows = windows.borrow_mut();
+                    let window = windows.get_mut(&(hwnd as isize))?;
+                    if !window.press.active() {
+                        return None;
+                    }
+                    Some((window.id, window.sender.clone(), window.press.release(hit)))
+                });
+                if let Some((id, sender, action)) = released {
+                    if GetCapture() == hwnd {
+                        ReleaseCapture();
+                    }
+                    if let Some(action) = action {
+                        let _ = sender.send(Event::CaptionAction(id, action));
+                    }
+                    return 0;
+                }
+            }
+            if message == WM_MOUSEMOVE
+                && WINDOWS.with(|windows| {
+                    windows
+                        .borrow()
+                        .get(&(hwnd as isize))
+                        .is_some_and(|window| window.press.active())
+                })
+            {
+                let point = POINT {
+                    x: lparam as i16 as i32,
+                    y: (lparam >> 16) as i16 as i32,
+                };
+                hover(hwnd, caption_control(point_hit(hwnd, point, false, state)));
+            }
             // Native styles change synchronously during fullscreen transitions;
             // the application learns the new mode only after this calculation.
             if message == WM_NCCALCSIZE && GetWindowLongW(hwnd, GWL_STYLE) as u32 & WS_CAPTION != 0
@@ -251,18 +396,10 @@ unsafe extern "system" fn procedure(
                     } as LRESULT;
                 }
             }
-            // Iced still needs pointer position for its caption hover painting. Button presses
-            // stay non-client so DefWindowProc owns activation, snapping, and the close request.
+            // Keep native hit testing for snap layouts; custom buttons dispatch
+            // through the application's normal command path after captured release.
             if message == WM_NCMOUSEMOVE {
-                hover(
-                    hwnd,
-                    match wparam as u32 {
-                        HTMINBUTTON => Some(CaptionControl::Minimize),
-                        HTMAXBUTTON => Some(CaptionControl::Maximize),
-                        HTCLOSE => Some(CaptionControl::Close),
-                        _ => None,
-                    },
-                );
+                hover(hwnd, caption_control(control_hit(wparam)));
                 let mut tracking = TRACKMOUSEEVENT {
                     cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
                     dwFlags: TME_LEAVE | TME_NONCLIENT,
@@ -292,3 +429,7 @@ unsafe extern "system" fn procedure(
         DefSubclassProc(hwnd, message, wparam, lparam)
     }
 }
+
+#[cfg(test)]
+#[path = "desktop_windows_tests.rs"]
+mod tests;

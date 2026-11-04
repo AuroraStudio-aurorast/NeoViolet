@@ -18,6 +18,40 @@ pub enum Hit {
     SouthEast,
 }
 
+#[derive(Default)]
+pub struct CaptionPress(Option<Hit>);
+
+impl CaptionPress {
+    pub fn begin(&mut self, hit: Hit) -> bool {
+        self.0 = matches!(hit, Hit::Minimize | Hit::Maximize | Hit::Close).then_some(hit);
+        self.0.is_some()
+    }
+
+    pub fn release(&mut self, hit: Hit) -> Option<crate::actions::Action> {
+        if self.0.take() != Some(hit) {
+            return None;
+        }
+        match hit {
+            Hit::Minimize => Some(crate::actions::Action::Minimize),
+            Hit::Maximize => Some(crate::actions::Action::ZoomWindow),
+            Hit::Close => Some(crate::actions::Action::Quit),
+            _ => None,
+        }
+    }
+
+    pub fn cancel(&mut self) {
+        self.0 = None;
+    }
+    pub fn capture_changed(&mut self, retained: bool) {
+        if !retained {
+            self.cancel();
+        }
+    }
+    pub fn active(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
 pub fn hit(point: Point, size: Size, maximized: bool, fullscreen: bool, menu_open: bool) -> Hit {
     if fullscreen
         || menu_open
@@ -64,6 +98,48 @@ pub fn hit(point: Point, size: Size, maximized: bool, fullscreen: bool, menu_ope
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::actions::Action;
+
+    #[test]
+    fn caption_actions_require_release_over_the_pressed_button_and_fire_once() {
+        let mut press = CaptionPress::default();
+        assert!(!press.active());
+        for (hit, action) in [
+            (Hit::Minimize, Action::Minimize),
+            (Hit::Maximize, Action::ZoomWindow),
+            (Hit::Close, Action::Quit),
+        ] {
+            assert!(press.begin(hit));
+            assert!(press.active());
+            assert_eq!(
+                press.release(hit).map(|a| std::mem::discriminant(&a)),
+                Some(std::mem::discriminant(&action))
+            );
+            assert!(press.release(hit).is_none());
+        }
+        assert!(press.begin(Hit::Maximize));
+        assert!(press.release(Hit::Caption).is_none());
+        assert!(press.begin(Hit::Minimize));
+        press.cancel();
+        assert!(press.release(Hit::Minimize).is_none());
+        assert!(!press.begin(Hit::Client));
+    }
+
+    #[test]
+    fn retaining_native_capture_preserves_the_press_and_losing_capture_cancels_it() {
+        let mut press = CaptionPress::default();
+        assert!(press.begin(Hit::Maximize));
+        press.capture_changed(true);
+        assert!(press.active());
+        assert!(matches!(
+            press.release(Hit::Maximize),
+            Some(Action::ZoomWindow)
+        ));
+        assert!(press.begin(Hit::Minimize));
+        press.capture_changed(false);
+        assert!(!press.active());
+        assert!(press.release(Hit::Minimize).is_none());
+    }
     #[test]
     fn caption_regions_preserve_menu_client_input_and_all_native_controls() {
         let size = Size::new(800.0, 600.0);
