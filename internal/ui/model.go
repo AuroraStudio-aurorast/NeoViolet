@@ -177,7 +177,8 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	// Initialize IPC server for bidirectional GUI communication.
 	// Only start when running inside neoviolet-gui (not a standard terminal).
 	// The GUI sets TERM_PROGRAM=neoviolet-gui as the terminal emulator name.
-	if os.Getenv("TERM_PROGRAM") == "neoviolet-gui" {
+	m.guiHosted = os.Getenv("TERM_PROGRAM") == "neoviolet-gui"
+	if m.guiHosted {
 		if srv, err := ipc.NewServer(); err != nil {
 			logger.Warn("IPC server init failed", "err", err)
 		} else {
@@ -211,15 +212,9 @@ func (m *Model) Init() tea.Cmd {
 		cmds = append(cmds, m.startAudioLoad(path))
 	}
 
-	// Accept GUI IPC connection in the background
 	if m.ipcServer != nil {
-		go func() {
-			if err := m.ipcServer.Accept(); err != nil {
-				logger.Warn("IPC accept failed", "err", err)
-			}
-		}()
+		cmds = append(cmds, m.waitIPC())
 	}
-
 	cmds = append(cmds, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(_ time.Time) tea.Msg {
 		return TickMsg{}
 	}))
@@ -229,7 +224,9 @@ func (m *Model) Init() tea.Cmd {
 
 // Update handles a Bubble Tea message and returns the next model and command.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return updateDispatcher(m, msg)
+	model, cmd := updateDispatcher(m, msg)
+	m.pushIPCState(false)
+	return model, cmd
 }
 
 // View renders the current UI state.
@@ -252,7 +249,12 @@ func (m *Model) View() tea.View {
 
 // Helper methods
 func (m *Model) togglePlayback() {
-	m.Audio.TogglePlayback()
+	if m.Audio.Player == nil {
+		return
+	}
+	if err := m.Audio.SetPlaying(!m.Audio.Player.IsPlaying()); err != nil {
+		m.Error.Set(err.Error(), m.Config.Error.Duration)
+	}
 }
 
 func (m *Model) cleanup() {
@@ -276,7 +278,7 @@ func (m *Model) cleanup() {
 // accidental quit via Ctrl+C or double-tap q is disabled — the user
 // must use :quit / :q to exit gracefully.
 func (m *Model) isGUI() bool {
-	return m.ipcServer != nil
+	return m.guiHosted || m.ipcServer != nil
 }
 
 // buildPlayState builds a mediactl.PlayState from the current audio state.
@@ -299,9 +301,7 @@ func (m *Model) buildPlayState() mediactl.PlayState {
 }
 
 func (m *Model) adjustVolume(delta float64) {
-	m.Audio.AdjustVolume(delta)
-	m.Components.VolumeBar.SetPercent(m.Audio.Volume)
-	m.saveVolumeConfig()
+	m.setVolume(m.Audio.Volume + delta)
 }
 
 // saveVolumeConfig persists the current volume to config if it changed.

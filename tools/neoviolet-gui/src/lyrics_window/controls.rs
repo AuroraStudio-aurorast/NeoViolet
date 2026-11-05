@@ -14,7 +14,22 @@ impl Overlay {
                         "Drag to move",
                         tooltip::Position::Top
                     ),
-                    icon_button(Icon::Playback, "Play / Pause", Event::PlayPause),
+                    hint(
+                        button(icon(if self.playback == Some(true) {
+                            Icon::Pause
+                        } else {
+                            Icon::Play
+                        }))
+                        .padding(6)
+                        .on_press_maybe(self.playback.map(|_| Event::PlayPause))
+                        .style(|_, status| control_style(false, status)),
+                        if self.playback == Some(true) {
+                            "Pause"
+                        } else {
+                            "Play"
+                        },
+                        tooltip::Position::Top,
+                    ),
                     icon_button(Icon::Lock, "Lock position", Event::Locked(true)),
                     icon_button(Icon::Settings, "Lyrics settings", Event::Settings),
                 ]
@@ -97,7 +112,8 @@ pub(super) fn slider_style(theme: &iced::Theme, status: slider::Status) -> slide
 #[derive(Clone, Copy)]
 enum Icon {
     Move,
-    Playback,
+    Play,
+    Pause,
     Lock,
     Settings,
 }
@@ -173,11 +189,13 @@ impl iced::widget::canvas::Program<Event> for Glyph {
                         line((10.5, y), (11.0, y));
                     }
                 }
-                Icon::Playback => {
+                Icon::Play => {
                     line((2.0, 3.0), (8.0, 8.0));
                     line((8.0, 8.0), (2.0, 13.0));
                     line((2.0, 13.0), (2.0, 3.0));
-                    line((11.0, 3.0), (11.0, 13.0));
+                }
+                Icon::Pause => {
+                    line((5.0, 3.0), (5.0, 13.0));
                     line((14.0, 3.0), (14.0, 13.0));
                 }
                 Icon::Lock => {

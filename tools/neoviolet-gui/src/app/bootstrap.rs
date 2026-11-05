@@ -49,6 +49,15 @@ impl App {
             window_title: "NeoViolet".into(),
             desktop: desktop.ok(),
             ipc_connected: false,
+            playback: None,
+            notice: None,
+            connection_error: None,
+            seek_preview: None,
+            volume_preview: None,
+            handshake: Default::default(),
+            connection_epoch: 0,
+            request_sequence: 0,
+            requests: Default::default(),
             session: 0,
             pid: None,
             connection: None,
@@ -85,6 +94,14 @@ impl App {
         self.connection = None;
         self.pid = None;
         self.ipc_connected = false;
+        self.playback = None;
+        self.notice = None;
+        self.connection_error = None;
+        self.handshake = Default::default();
+        self.requests.clear();
+        self.seek_preview = None;
+        self.volume_preview = None;
+        self.lyrics.playback = None;
         self.exit_code = None;
         self.closing = false;
         self.lyrics.clear();

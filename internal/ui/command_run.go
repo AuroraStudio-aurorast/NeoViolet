@@ -31,7 +31,7 @@ func runSaveQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	if err := m.Config.Save(); err != nil {
 		m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
 	}
-	if m.isGUI() {
+	if m.ipcServer != nil {
 		f := false
 		_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
 	}
@@ -42,10 +42,11 @@ func runSaveQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 // runQuit implements ":quit" / ":q". In GUI mode it asks the wrapper for
 // confirmation instead of quitting: the wrapper may deny and keep the TUI up.
 func runQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
-	if m.isGUI() {
+	if m.ipcServer != nil {
 		t := true
-		_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &t})
-		return m, nil
+		if err := m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &t}); err == nil {
+			return m, nil
+		}
 	}
 	m.cleanup()
 	return m, tea.Quit
@@ -75,12 +76,7 @@ func runVolume(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	vol = math.Round(vol*100) / 100
-	m.Audio.Volume = vol
-	if m.Audio.Player != nil {
-		m.Audio.Player.SetVolume(vol)
-	}
-	m.Components.VolumeBar.SetPercent(vol)
-	m.saveVolumeConfig()
+	m.setVolume(vol)
 	return m, nil
 }
 

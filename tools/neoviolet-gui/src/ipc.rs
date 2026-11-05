@@ -19,12 +19,26 @@ pub enum Request {
     Quit,
     DesktopLyrics(bool),
     PlayPause,
+    Play,
+    Pause,
+    Seek(f64),
+    SetVolume(f64),
+    GetState,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Incoming {
-    Hello,
+    Hello(Handshake),
+    State {
+        state: PlaybackState,
+    },
+    Result {
+        request_id: String,
+        status: String,
+        #[serde(default)]
+        error: String,
+    },
     Lyrics(crate::lyrics::Frame),
     DesktopLyrics {
         enable: bool,
@@ -36,59 +50,116 @@ pub enum Incoming {
     Other,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Handshake {
+    pub protocol: u32,
+    pub capabilities: Vec<String>,
+}
+
+impl Handshake {
+    pub fn supports(&self, capability: &str) -> bool {
+        self.capabilities.iter().any(|value| value == capability)
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct PlaybackState {
+    pub revision: u64,
+    pub track_id: u64,
+    pub path: String,
+    pub title: String,
+    pub artist: String,
+    pub album: String,
+    pub has_track: bool,
+    pub playing: bool,
+    pub loading: bool,
+    pub desktop_lyrics: bool,
+    pub duration: f64,
+    pub position: f64,
+    pub volume: f64,
+    pub config_dir: PathBuf,
+}
+
+#[derive(Debug, Clone)]
+pub struct Command {
+    pub request: Request,
+    pub id: String,
+}
+
 #[derive(Debug, Clone)]
 pub enum Event {
-    Connected(mpsc::Sender<Request>),
+    Connected(mpsc::Sender<Command>),
+    Handshake(Handshake),
     Received(Incoming),
     Disconnected(String),
 }
 
 pub fn subscription(session: u64, pid: u32) -> Subscription<Event> {
     Subscription::run_with((session, pid), |&(_, pid)| {
-        stream::channel(16, async move |mut output| {
-            let (sender, mut requests) = mpsc::channel(32);
-            let path = std::env::temp_dir().join(format!("neoviolet-ipc-{pid}"));
-            let connection = discover(&path).await;
-            let peer = match connection {
+        events(std::env::temp_dir().join(format!("neoviolet-ipc-{pid}")))
+    })
+}
+
+fn events(path: PathBuf) -> impl iced::futures::Stream<Item = Event> {
+    stream::channel(16, async move |mut output| {
+        loop {
+            let (peer, handshake) = match discover(&path).await {
                 Ok(peer) => peer,
                 Err(error) => {
-                    let _ = output.send(Event::Disconnected(error)).await;
-                    return;
+                    let incompatible = error.starts_with("Incompatible");
+                    if output.send(Event::Disconnected(error)).await.is_err() || incompatible {
+                        return;
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                    continue;
                 }
             };
-            if output.send(Event::Connected(sender)).await.is_err() {
+            let (sender, mut requests) = mpsc::channel::<Command>(32);
+            if output.send(Event::Handshake(handshake)).await.is_err()
+                || output.send(Event::Connected(sender)).await.is_err()
+            {
                 return;
             }
             let (reader, mut writer) = tokio::io::split(peer);
             let mut reader = BufReader::new(reader);
-            let result: Result<(), String> = {
-                let receive = async {
-                    loop {
-                        match read_frame(&mut reader).await? {
-                            Some(message) => {
-                                if output.send(Event::Received(message)).await.is_err() {
-                                    return Ok(());
-                                }
+            let receive = async {
+                loop {
+                    match read_frame(&mut reader).await? {
+                        Some(message) => {
+                            if output.send(Event::Received(message)).await.is_err() {
+                                return Ok(());
                             }
-                            None => return Err("Player IPC connection closed".into()),
                         }
+                        None => return Err("Player connection interrupted. Reconnecting…".into()),
                     }
-                };
-                let transmit = async {
-                    while let Some(request) = requests.recv().await {
-                        write_request(&mut writer, &request).await?;
-                    }
-                    Ok(())
-                };
-                tokio::select! {
-                    result = receive => result,
-                    result = transmit => result,
                 }
             };
+            let transmit = async {
+                while let Some(command) = requests.recv().await {
+                    tokio::time::timeout(
+                        Duration::from_secs(2),
+                        write_request(&mut writer, &command.request, &command.id),
+                    )
+                    .await
+                    .map_err(|_| "Player command timed out".to_string())??;
+                }
+                Ok(())
+            };
+            let result: Result<(), String> = tokio::select! {
+                result = receive => result,
+                result = transmit => result,
+            };
             if let Err(error) = result {
-                let _ = output.send(Event::Disconnected(error)).await;
+                if output.send(Event::Disconnected(error)).await.is_err() {
+                    return;
+                }
+            } else {
+                return;
             }
-        })
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
     })
 }
 
@@ -109,7 +180,7 @@ fn parse_endpoint(contents: &str) -> Result<(SocketAddr, &str), String> {
     Ok((address, token))
 }
 
-async fn discover(path: &Path) -> Result<BufReader<TcpStream>, String> {
+async fn discover(path: &Path) -> Result<(BufReader<TcpStream>, Handshake), String> {
     loop {
         if let Ok(contents) = tokio::fs::read_to_string(path).await
             && let Ok((address, token)) = parse_endpoint(&contents)
@@ -123,14 +194,21 @@ async fn discover(path: &Path) -> Result<BufReader<TcpStream>, String> {
     }
 }
 
-async fn authenticate(mut stream: TcpStream, token: &str) -> Result<BufReader<TcpStream>, String> {
+async fn authenticate(
+    mut stream: TcpStream,
+    token: &str,
+) -> Result<(BufReader<TcpStream>, Handshake), String> {
     stream
         .write_all(format!("{token}\n").as_bytes())
         .await
         .map_err(|error| error.to_string())?;
     let mut peer = BufReader::new(stream);
     match read_frame(&mut peer).await? {
-        Some(Incoming::Hello) => Ok(peer),
+        Some(Incoming::Hello(hello)) if hello.protocol <= 1 => Ok((peer, hello)),
+        Some(Incoming::Hello(hello)) => Err(format!(
+            "Incompatible player protocol {}. Update the player and GUI together.",
+            hello.protocol
+        )),
         _ => Err("Player did not acknowledge IPC authentication".into()),
     }
 }
@@ -156,15 +234,24 @@ async fn read_frame<R: AsyncBufRead + Unpin>(reader: &mut R) -> Result<Option<In
 async fn write_request<W: AsyncWrite + Unpin>(
     stream: &mut W,
     request: &Request,
+    id: &str,
 ) -> Result<(), String> {
-    let value = match request {
+    let mut value = match request {
         Request::Open(path) => serde_json::json!({"type": "open", "path": path}),
         Request::Quit => serde_json::json!({"type": "quit"}),
         Request::DesktopLyrics(enable) => {
             serde_json::json!({"type": "desktop_lyrics", "enable": enable})
         }
         Request::PlayPause => serde_json::json!({"type": "play_pause"}),
+        Request::Play => serde_json::json!({"type": "play"}),
+        Request::Pause => serde_json::json!({"type": "pause"}),
+        Request::Seek(position) => serde_json::json!({"type": "seek", "position":position}),
+        Request::SetVolume(volume) => serde_json::json!({"type": "set_volume", "volume":volume}),
+        Request::GetState => serde_json::json!({"type": "get_state"}),
     };
+    if !id.is_empty() {
+        value["request_id"] = id.into();
+    }
     let mut data = serde_json::to_vec(&value).map_err(|error| error.to_string())?;
     data.push(b'\n');
     stream

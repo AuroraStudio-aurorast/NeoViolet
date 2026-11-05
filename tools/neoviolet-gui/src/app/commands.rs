@@ -38,10 +38,14 @@ impl App {
                 );
             }
             Action::Preferences => {
+                let directory = self
+                    .playback
+                    .as_ref()
+                    .map(|state| state.config_dir.clone())
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .unwrap_or_else(config::directory);
                 return Task::perform(
-                    async {
-                        open::that_detached(config::directory()).map_err(|error| error.to_string())
-                    },
+                    async move { open::that_detached(directory).map_err(|error| error.to_string()) },
                     Message::Sent,
                 );
             }
@@ -112,29 +116,12 @@ impl App {
             self.pending.push_back(path);
             return Task::none();
         }
-        if self.connection.is_some() {
-            return self.send_all(vec![ipc::Request::Open(path)]);
-        }
         self.pending.push_back(path);
+        if self.connection.is_some() {
+            let requests = self.pending.drain(..).map(ipc::Request::Open).collect();
+            return self.send_all(requests);
+        }
         Task::none()
-    }
-
-    pub(super) fn send_all(&self, requests: Vec<ipc::Request>) -> Task<Message> {
-        let Some(sender) = self.connection.clone() else {
-            return Task::none();
-        };
-        Task::perform(
-            async move {
-                for request in requests {
-                    sender
-                        .send(request)
-                        .await
-                        .map_err(|_| "Player IPC is unavailable".to_string())?;
-                }
-                Ok(())
-            },
-            Message::Sent,
-        )
     }
 
     pub(super) fn finish_quit(&mut self) -> Task<Message> {

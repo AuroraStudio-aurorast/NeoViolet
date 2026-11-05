@@ -19,13 +19,13 @@ async fn lyric_stream_frames_are_not_discarded_as_unknown_messages() {
 #[tokio::test]
 async fn overlay_commands_use_existing_tui_protocol_and_newline_framing() {
     let mut output = Vec::new();
-    write_request(&mut output, &Request::DesktopLyrics(true))
+    write_request(&mut output, &Request::DesktopLyrics(true), "")
         .await
         .unwrap();
-    write_request(&mut output, &Request::PlayPause)
+    write_request(&mut output, &Request::PlayPause, "")
         .await
         .unwrap();
-    write_request(&mut output, &Request::DesktopLyrics(false))
+    write_request(&mut output, &Request::DesktopLyrics(false), "")
         .await
         .unwrap();
     let frames: Vec<serde_json::Value> = String::from_utf8(output)
@@ -74,10 +74,14 @@ async fn authentication_requires_server_acknowledgement() {
         assert_eq!(value["path"], "/tmp/a song\".flac");
     });
     let stream = tokio::net::TcpStream::connect(address).await.unwrap();
-    let mut peer = authenticate(stream, &token).await.unwrap();
-    write_request(peer.get_mut(), &Request::Open("/tmp/a song\".flac".into()))
-        .await
-        .unwrap();
+    let (mut peer, _) = authenticate(stream, &token).await.unwrap();
+    write_request(
+        peer.get_mut(),
+        &Request::Open("/tmp/a song\".flac".into()),
+        "",
+    )
+    .await
+    .unwrap();
     server.await.unwrap();
 }
 
@@ -148,32 +152,78 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     .expect("start real TUI in a PTY without a GUI window");
     let pid = terminal.child_process_id().unwrap();
     let port = std::env::temp_dir().join(format!("neoviolet-ipc-{pid}"));
-    let mut peer = tokio::time::timeout(Duration::from_secs(10), discover(&port))
+    let (mut peer, _) = tokio::time::timeout(Duration::from_secs(10), discover(&port))
         .await
         .expect("TUI must start IPC without a desktop window")
         .expect("real authentication acknowledgement");
-    write_request(peer.get_mut(), &Request::DesktopLyrics(true))
+    write_request(peer.get_mut(), &Request::DesktopLyrics(true), "")
         .await
         .unwrap();
-    let frame = tokio::time::timeout(Duration::from_secs(5), read_frame(&mut peer))
+    live_message(&mut peer, |frame| matches!(frame, Incoming::Lyrics(_))).await;
+    write_request(peer.get_mut(), &Request::DesktopLyrics(false), "")
         .await
-        .expect("enabling desktop lyrics must send an initial frame")
+        .unwrap();
+    write_request(peer.get_mut(), &Request::DesktopLyrics(true), "")
+        .await
+        .unwrap();
+    live_message(&mut peer, |frame| matches!(frame, Incoming::Lyrics(_))).await;
+    write_request(peer.get_mut(), &Request::SetVolume(0.0), "mute")
+        .await
+        .unwrap();
+    let result = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="mute"),
+    )
+    .await;
+    assert!(matches!(result,Incoming::Result{status,..} if status=="succeeded"));
+    let state = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::State{state} if state.volume==0.0),
+    )
+    .await;
+    assert!(matches!(state,Incoming::State{state} if !state.has_track && state.config_dir==config));
+    let broken = directory.path().join("broken.flac");
+    std::fs::write(&broken, b"not audio").unwrap();
+    write_request(peer.get_mut(), &Request::Open(broken), "broken")
+        .await
+        .unwrap();
+    let accepted = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="broken"),
+    )
+    .await;
+    assert!(matches!(accepted,Incoming::Result{status,..} if status=="accepted"));
+    let failed = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="broken"),
+    )
+    .await;
+    assert!(
+        matches!(failed,Incoming::Result{status,error,..} if status=="failed" && !error.is_empty())
+    );
+    drop(peer);
+    let (mut recovered, hello) = tokio::time::timeout(Duration::from_secs(5), discover(&port))
+        .await
         .unwrap()
         .unwrap();
-    assert!(matches!(frame, Incoming::Lyrics(_)));
-    write_request(peer.get_mut(), &Request::DesktopLyrics(false))
+    assert!(hello.supports("state") && hello.supports("results"));
+    let state = live_message(&mut recovered, |frame| {
+        matches!(frame, Incoming::State { .. })
+    })
+    .await;
+    assert!(matches!(state,Incoming::State{state} if state.volume==0.0 && !state.loading));
+    write_request(recovered.get_mut(), &Request::Play, "empty")
         .await
         .unwrap();
-    write_request(peer.get_mut(), &Request::DesktopLyrics(true))
+    let failed = live_message(
+        &mut recovered,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="empty"),
+    )
+    .await;
+    assert!(matches!(failed,Incoming::Result{status,..} if status=="failed"));
+    write_request(recovered.get_mut(), &Request::Quit, "quit")
         .await
         .unwrap();
-    let frame = tokio::time::timeout(Duration::from_secs(5), read_frame(&mut peer))
-        .await
-        .expect("re-enabling a paused stream must send a fresh frame")
-        .unwrap()
-        .unwrap();
-    assert!(matches!(frame, Incoming::Lyrics(_)));
-    write_request(peer.get_mut(), &Request::Quit).await.unwrap();
     tokio::time::timeout(Duration::from_secs(5), async {
         while port.exists() {
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -182,4 +232,168 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     .await
     .expect("confirmed GUI quit must clean up the TUI IPC endpoint");
     drop(terminal);
+}
+
+#[tokio::test]
+async fn playback_snapshots_and_results_are_recognized() {
+    let payload = b"{\"type\":\"state\",\"state\":{\"revision\":1,\"track_id\":0,\"has_track\":false,\"playing\":false,\"loading\":false,\"volume\":0,\"position\":0,\"duration\":0}}\n{\"type\":\"result\",\"request_id\":\"mute\",\"status\":\"failed\",\"error\":\"invalid volume\"}\n";
+    let mut reader = BufReader::new(&payload[..]);
+    assert!(!matches!(
+        read_frame(&mut reader).await.unwrap(),
+        Some(Incoming::Other)
+    ));
+    assert!(!matches!(
+        read_frame(&mut reader).await.unwrap(),
+        Some(Incoming::Other)
+    ));
+}
+
+#[tokio::test]
+async fn incompatible_protocol_is_rejected_before_commands_are_sent() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        let mut peer = BufReader::new(socket);
+        let mut token = String::new();
+        peer.read_line(&mut token).await.unwrap();
+        peer.get_mut()
+            .write_all(b"{\"type\":\"hello\",\"protocol\":999}\n")
+            .await
+            .unwrap();
+    });
+    let socket = tokio::net::TcpStream::connect(address).await.unwrap();
+    assert!(authenticate(socket, "token").await.is_err());
+    server.await.unwrap();
+}
+
+#[cfg(unix)]
+async fn live_message(
+    peer: &mut BufReader<TcpStream>,
+    accept: impl Fn(&Incoming) -> bool,
+) -> Incoming {
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let message = read_frame(peer)
+                .await
+                .unwrap()
+                .expect("player closed before expected message");
+            if accept(&message) {
+                return message;
+            }
+        }
+    })
+    .await
+    .expect("player must deliver expected state or result")
+}
+
+#[tokio::test]
+async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../internal/ipc/testdata/protocol.json")).unwrap();
+    let mut payload = serde_json::to_vec(&fixture["state"]).unwrap();
+    payload.push(b'\n');
+    let mut reader = BufReader::new(payload.as_slice());
+    let Some(Incoming::State { state }) = read_frame(&mut reader).await.unwrap() else {
+        panic!("snapshot discarded")
+    };
+    assert_eq!(state.revision, 7);
+    assert_eq!(state.track_id, 3);
+    assert_eq!(state.title, "雪");
+    assert_eq!(state.position, 0.0);
+    assert_eq!(state.volume, 0.0);
+    assert!(!state.playing);
+    let commands = [
+        (Request::SetVolume(0.0), "mute"),
+        (Request::Seek(0.0), "rewind"),
+        (Request::Open("/music/a \"song\" 雪.flac".into()), "open"),
+    ];
+    for (index, (request, id)) in commands.into_iter().enumerate() {
+        let mut data = Vec::new();
+        write_request(&mut data, &request, id).await.unwrap();
+        let actual: serde_json::Value = serde_json::from_slice(&data).unwrap();
+        for (key, expected) in fixture["requests"][index].as_object().unwrap() {
+            if key == "volume" || key == "position" {
+                assert_eq!(actual[key].as_f64(), expected.as_f64());
+            } else {
+                assert_eq!(&actual[key], expected);
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn connection_stream_reauthenticates_without_replaying_old_commands() {
+    use iced::futures::StreamExt;
+    let directory = tempfile::tempdir().unwrap();
+    let endpoint = directory.path().join("endpoint");
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let token = "c".repeat(64);
+    tokio::fs::write(
+        &endpoint,
+        format!("{}\n{token}", listener.local_addr().unwrap()),
+    )
+    .await
+    .unwrap();
+    let server = tokio::spawn(async move {
+        for attempt in 0..2 {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut peer = BufReader::new(socket);
+            let mut input = String::new();
+            peer.read_line(&mut input).await.unwrap();
+            assert_eq!(input.trim(), token);
+            peer.get_mut()
+                .write_all(b"{\"type\":\"hello\",\"protocol\":1,\"capabilities\":[\"results\"]}\n")
+                .await
+                .unwrap();
+            input.clear();
+            if attempt == 0 {
+                peer.read_line(&mut input).await.unwrap();
+                let request: serde_json::Value = serde_json::from_str(&input).unwrap();
+                assert_eq!(request["request_id"], "once");
+            } else {
+                assert!(
+                    tokio::time::timeout(Duration::from_millis(150), peer.read_line(&mut input))
+                        .await
+                        .is_err(),
+                    "old command replayed after reconnect"
+                );
+            }
+        }
+    });
+    let events = events(endpoint);
+    iced::futures::pin_mut!(events);
+    let mut old = None;
+    let mut connections = 0;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = events.next().await {
+            if let Event::Connected(sender) = event {
+                connections += 1;
+                if connections == 1 {
+                    sender
+                        .send(Command {
+                            request: Request::PlayPause,
+                            id: "once".into(),
+                        })
+                        .await
+                        .unwrap();
+                    old = Some(sender);
+                } else {
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(connections, 2);
+    assert!(
+        old.unwrap()
+            .try_send(Command {
+                request: Request::PlayPause,
+                id: "late".into()
+            })
+            .is_err()
+    );
+    server.await.unwrap();
 }

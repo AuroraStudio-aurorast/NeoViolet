@@ -16,15 +16,26 @@ func (a *AudioState) TogglePlayback() {
 	if a.Player == nil {
 		return
 	}
-	if a.Player.IsPlaying() {
-		logger.Debug("TogglePlayback: pause")
-		a.Player.Pause()
-		a.IsPlaying = false
-	} else {
-		logger.Debug("TogglePlayback: play")
-		_ = a.Player.Play()
-		a.IsPlaying = true
+	if err := a.SetPlaying(!a.Player.IsPlaying()); err != nil {
+		logger.Warn("Playback failed", "err", err)
 	}
+}
+
+// SetPlaying applies an idempotent playback operation and records actual state.
+func (a *AudioState) SetPlaying(playing bool) error {
+	if a.Player == nil {
+		return fmt.Errorf("no audio loaded")
+	}
+	if playing && !a.Player.IsPlaying() {
+		if err := a.Player.Play(); err != nil {
+			a.IsPlaying = a.Player.IsPlaying()
+			return fmt.Errorf("playback failed: %w", err)
+		}
+	} else if !playing && a.Player.IsPlaying() {
+		a.Player.Pause()
+	}
+	a.IsPlaying = a.Player.IsPlaying()
+	return nil
 }
 
 // Close releases the underlying player.
@@ -118,7 +129,12 @@ func (a *AudioState) SeekPlayer(pos time.Duration) error {
 		return nil
 	}
 	logger.Debug("SeekPlayer", "position", pos)
-	return a.Player.Seek(pos)
+	if err := a.Player.Seek(pos); err != nil {
+		return err
+	}
+	a.seekRevision++
+	a.UpdatePosition()
+	return nil
 }
 
 // SeekRelative seeks forward or backward by the given delta.
@@ -135,7 +151,10 @@ func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
 		newPos = a.Duration
 	}
 	logger.Debug("SeekRelative", "delta", delta, "from", current, "to", newPos)
-	_ = a.Player.Seek(newPos)
+	if err := a.SeekPlayer(newPos); err != nil {
+		logger.Warn("Seek failed", "err", err)
+		return current
+	}
 	return newPos
 }
 

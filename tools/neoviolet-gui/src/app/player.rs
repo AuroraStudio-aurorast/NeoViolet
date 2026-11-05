@@ -17,10 +17,14 @@ impl App {
                 {
                     self.exit_code = Some(*code);
                 }
-                if matches!(
-                    &command,
-                    BackendCommand::ProcessAlacrittyEvent(iced_term::AlacrittyEvent::ResetTitle)
-                ) {
+                if self.playback.is_none()
+                    && matches!(
+                        &command,
+                        BackendCommand::ProcessAlacrittyEvent(
+                            iced_term::AlacrittyEvent::ResetTitle
+                        )
+                    )
+                {
                     self.window_title = "NeoViolet".into();
                 }
                 if let Some(terminal) = &mut self.terminal {
@@ -30,6 +34,9 @@ impl App {
                             self.connection = None;
                             self.ipc_connected = false;
                             self.lyrics.clear();
+                            self.lyrics.playback = None;
+                            self.playback = None;
+                            self.requests.clear();
                             if self.closing {
                                 return self.finish_quit();
                             }
@@ -51,7 +58,7 @@ impl App {
                                 self.lyrics.refresh_mask().map(Message::Lyrics),
                             ]);
                         }
-                        actions::Action::ChangeTitle(title) => {
+                        actions::Action::ChangeTitle(title) if self.playback.is_none() => {
                             self.window_title = if title.trim().is_empty() {
                                 "NeoViolet".into()
                             } else {
@@ -72,6 +79,10 @@ impl App {
         }
         match event {
             ipc::Event::Connected(sender) => {
+                self.connection_epoch += 1;
+                self.connection_error = None;
+                self.playback = None;
+                self.lyrics.playback = (self.handshake.protocol == 0).then_some(false);
                 self.connection = Some(sender);
                 self.ipc_connected = true;
                 eprintln!(
@@ -86,6 +97,15 @@ impl App {
                 }
                 return self.send_all(requests);
             }
+            ipc::Event::Handshake(handshake) => self.handshake = handshake,
+            ipc::Event::Received(ipc::Incoming::State { state }) => {
+                return self.apply_snapshot(state);
+            }
+            ipc::Event::Received(ipc::Incoming::Result {
+                request_id,
+                status,
+                error,
+            }) => return self.command_result(request_id, status, error),
             ipc::Event::Received(ipc::Incoming::Lyrics(frame)) => {
                 if self.config.desktop_lyrics.enabled {
                     let changed = self.lyrics.frame.display_lines() != frame.display_lines()
@@ -123,6 +143,16 @@ impl App {
             ipc::Event::Disconnected(error) => {
                 self.connection = None;
                 self.ipc_connected = false;
+                self.playback = None;
+                self.lyrics.playback = None;
+                self.window_title = "NeoViolet".into();
+                self.connection_error = Some(error.clone());
+                if !self.requests.is_empty() {
+                    self.notice = Some("The connection was interrupted before some actions could be confirmed. Check playback before trying again.".into());
+                }
+                self.requests.clear();
+                self.seek_preview = None;
+                self.volume_preview = None;
                 self.lyrics.clear();
                 if !self.closing && self.running {
                     eprintln!("NeoViolet GUI: {error}");

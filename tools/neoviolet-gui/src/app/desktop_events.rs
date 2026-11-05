@@ -54,6 +54,9 @@ impl App {
     }
 
     pub(super) fn lyrics_event(&mut self, event: lyrics_window::Event) -> Task<Message> {
+        if matches!(&event, lyrics_window::Event::PlayPause) {
+            return self.toggle_playback();
+        }
         let opened = match &event {
             lyrics_window::Event::Opened(id) if self.lyrics.contains(*id) => Some(*id),
             _ => None,

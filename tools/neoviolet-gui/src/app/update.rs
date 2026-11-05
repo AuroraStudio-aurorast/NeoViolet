@@ -7,6 +7,62 @@ impl App {
     pub(super) fn update_inner(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Ready => {}
+            Message::FlushPending { session, epoch } => {
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && self.dialog.is_none()
+                    && self.connection.is_some()
+                    && !self.pending.is_empty()
+                {
+                    let requests = self.pending.drain(..).map(ipc::Request::Open).collect();
+                    return self.send_all(requests);
+                }
+            }
+            Message::DismissNotice => self.notice = None,
+            Message::RefreshState => return self.send_all(vec![ipc::Request::GetState]),
+            Message::PlaybackToggle => return self.toggle_playback(),
+            Message::SeekPreview(value) => {
+                if self.controls_available() {
+                    self.seek_preview = Some(value);
+                }
+            }
+            Message::VolumePreview(value) => {
+                if self.controls_available() {
+                    self.volume_preview = Some(value);
+                }
+            }
+            Message::SeekCommit => {
+                if let Some(value) = self
+                    .seek_preview
+                    .take()
+                    .filter(|_| self.controls_available())
+                {
+                    return self.send_all(vec![ipc::Request::Seek(value)]);
+                }
+            }
+            Message::VolumeCommit => {
+                if let Some(value) = self
+                    .volume_preview
+                    .take()
+                    .filter(|_| self.controls_available())
+                {
+                    return self.send_all(vec![ipc::Request::SetVolume(value)]);
+                }
+            }
+            Message::RequestTimeout {
+                session,
+                epoch,
+                id,
+                accepted,
+            } => {
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && self.requests.get(&id) == Some(&accepted)
+                {
+                    self.requests.remove(&id);
+                    self.notice = Some("The player did not confirm the action in time. Check playback before trying again.".into());
+                }
+            }
             Message::MainOpened => {
                 return Task::batch([
                     self.desktop.as_ref().map_or_else(Task::none, |desktop| {

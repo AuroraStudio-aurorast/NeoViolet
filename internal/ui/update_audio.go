@@ -32,6 +32,7 @@ func handleAudioLoadFailed(m *Model, msg AudioLoadFailedMsg) (tea.Model, tea.Cmd
 	}
 	m.finishAudioLoad()
 	m.Error.Set(msg.Message, msg.Timer)
+	m.finishIPCOpen("failed", msg.Message)
 	return m, nil
 }
 
@@ -61,6 +62,7 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 			m.Audio.IsPlaying = current.IsPlaying()
 		}
 		m.Error.Set(message, 180)
+		m.finishIPCOpen("failed", message)
 		return m, nil
 	}
 
@@ -119,6 +121,7 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	m.finishIPCOpen("succeeded", "")
 	cmds := []tea.Cmd{m.loadTrackAnimation(msg.Path)}
 	if m.fetchCmd != nil {
 		cmds = append(cmds, m.fetchCmd)
@@ -138,6 +141,7 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	if m.exiting {
 		return m, nil
 	}
+	m.finishIPCOpen("cancelled", "Superseded by another file")
 	logger.Info("Loading new track", "path", msg.Path)
 	m.loadGeneration++
 	m.pendingSeek = 0

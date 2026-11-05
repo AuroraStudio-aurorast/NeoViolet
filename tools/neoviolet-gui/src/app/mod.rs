@@ -2,6 +2,7 @@
 mod bootstrap;
 mod commands;
 mod desktop_events;
+mod integration;
 mod native;
 mod player;
 #[cfg(test)]
@@ -29,9 +30,18 @@ pub struct App {
     pub window_title: String,
     pub desktop: Option<desktop::Desktop>,
     pub ipc_connected: bool,
+    pub playback: Option<ipc::PlaybackState>,
+    pub notice: Option<String>,
+    pub connection_error: Option<String>,
+    pub seek_preview: Option<f64>,
+    pub volume_preview: Option<f64>,
+    handshake: ipc::Handshake,
+    connection_epoch: u64,
+    request_sequence: u64,
+    requests: std::collections::HashMap<String, bool>,
     session: u64,
     pid: Option<u32>,
-    connection: Option<mpsc::Sender<ipc::Request>>,
+    connection: Option<mpsc::Sender<ipc::Command>>,
     pending: VecDeque<PathBuf>,
     arguments: Vec<String>,
     family: &'static str,
@@ -70,6 +80,23 @@ pub enum Message {
     ConfirmQuit,
     Restart,
     QuitDeadline,
+    DismissNotice,
+    RefreshState,
+    PlaybackToggle,
+    SeekPreview(f64),
+    SeekCommit,
+    VolumePreview(f64),
+    VolumeCommit,
+    FlushPending {
+        session: u64,
+        epoch: u64,
+    },
+    RequestTimeout {
+        session: u64,
+        epoch: u64,
+        id: String,
+        accepted: bool,
+    },
 }
 
 impl App {

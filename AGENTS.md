@@ -64,8 +64,8 @@ also runs `govulncheck`, which has no local target.
     apecli (Rust)         optional APE decoder subprocess, stdin → PCM stdout
 
 - **Two separate programs** joined by PTY + TCP IPC (loopback, random port, token in a temp file).
-  The GUI holds no playback state, and the TUI must run standalone: anything that needs the GUI
-  attached is a bug.
+  The GUI owns no playback decisions; IPC snapshots are display-only.
+  The TUI must run standalone: anything that needs the GUI attached is a bug.
 - IPC message types are defined in the `internal/ipc` package comment — that is the contract; add
   a variant there first.
 - OS APIs live behind per-OS build tags or files (`internal/mediactl/controller_stub.go` covers the

@@ -18,8 +18,6 @@ func TestAuthenticationAcknowledged(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	accepted := make(chan error, 1)
-	go func() { accepted <- s.Accept() }()
 	conn, err := net.Dial("tcp", s.listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
@@ -38,9 +36,6 @@ func TestAuthenticationAcknowledged(t *testing.T) {
 	if reply.Type != "hello" {
 		t.Fatalf("got %q, want hello", reply.Type)
 	}
-	if err := <-accepted; err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestServerLifecycle(t *testing.T) {
@@ -52,7 +47,6 @@ func TestServerLifecycle(t *testing.T) {
 
 	// Accept blocks until a client connects; run it in the background and
 	// drive the handshake from a loopback client.
-	go func() { _ = s.Accept() }()
 
 	conn, err := net.Dial("tcp", s.listener.Addr().String())
 	if err != nil {
@@ -72,7 +66,7 @@ func TestServerLifecycle(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		s.mu.Lock()
-		connected := s.conn != nil
+		connected := s.peer != nil
 		s.mu.Unlock()
 		if connected {
 			break
