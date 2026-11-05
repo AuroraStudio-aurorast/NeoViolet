@@ -1,13 +1,52 @@
 package ui
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/accent"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestFocusedTabUsesThemeAccentSurface(t *testing.T) {
+	for _, hex := range []string{"#62cc9b", "#df9b67", "#cb5264", "#8baeca", "#46536b"} {
+		t.Run(hex, func(t *testing.T) {
+			m := setupModel()
+			m.UI.Focus = FocusTabBar
+			m.UI.ActiveTab = 0
+			m.Icons = FallbackIcons
+			m.Accent = &accent.Accent{Main: mustColorful(t, hex)}
+			palette := newInteractionPalette(m.Accent)
+			row := renderTabs(m)
+			cells := frameBackgrounds(t, row)[0]
+			for x := 1; x < 7; x++ { // " Home " on the first tab.
+				if !sameRGB(cells[x], palette.main) {
+					t.Fatalf("focused tab background at cell %d = %v, want theme main %v", x, cells[x], palette.main)
+				}
+			}
+			plain, inks := warningForegrounds(t, row)
+			start := strings.Index(plain, "Home")
+			if start < 0 {
+				t.Fatal("active tab label missing")
+			}
+			for i := range len("Home") {
+				fgColor := inks[start+i]
+				if fgColor == nil {
+					t.Fatalf("active tab foreground = %v, want explicit RGB", inks[start+i])
+				}
+				fg := color.RGBAModel.Convert(fgColor).(color.RGBA)
+				fgLum, bgLum := testLuminance(fg), testLuminance(palette.main)
+				contrast := (max(fgLum, bgLum) + .05) / (min(fgLum, bgLum) + .05)
+				if contrast < 4.5 {
+					t.Fatalf("active tab contrast = %.2f on %s", contrast, hex)
+				}
+			}
+		})
+	}
+}
 
 func TestAnimationFocus_AnimLabelOwnsContentFocus(t *testing.T) {
 	for _, fixture := range []string{animPlainFixture, animGateFixture} {

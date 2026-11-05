@@ -31,8 +31,8 @@ func renderTabs(m *Model) string {
 			lineStyle = lineStyle.Foreground(palette.prompt)
 			line = strings.Repeat("━", lipgloss.Width(label))
 			if m.UI.Focus == FocusTabBar {
-				style = style.Foreground(lipgloss.Color("#171020")).Background(palette.prompt)
-				lineStyle = lineStyle.Foreground(lipgloss.Color("#e8dcfa"))
+				style = style.Foreground(interactionTextOn(palette.main)).Background(palette.main)
+				lineStyle = lineStyle.Foreground(palette.main)
 			}
 		}
 		labels = append(labels, style.Render(label))

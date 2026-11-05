@@ -60,6 +60,15 @@ func interactionContrast(a, b color.RGBA) float64 {
 	return (max(x, y) + .05) / (min(x, y) + .05)
 }
 
+func interactionTextOn(bg color.RGBA) color.RGBA {
+	light := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	dark := color.RGBA{A: 255}
+	if interactionContrast(light, bg) > interactionContrast(dark, bg) {
+		return light
+	}
+	return dark
+}
+
 type completionStyles struct{ text, description lipgloss.Style }
 
 func (p interactionPalette) completion(selected bool) completionStyles {
