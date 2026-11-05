@@ -17,14 +17,10 @@ impl App {
                 {
                     self.exit_code = Some(*code);
                 }
-                if self.playback.is_none()
-                    && matches!(
-                        &command,
-                        BackendCommand::ProcessAlacrittyEvent(
-                            iced_term::AlacrittyEvent::ResetTitle
-                        )
-                    )
-                {
+                if matches!(
+                    &command,
+                    BackendCommand::ProcessAlacrittyEvent(iced_term::AlacrittyEvent::ResetTitle)
+                ) {
                     self.window_title = "NeoViolet".into();
                 }
                 if let Some(terminal) = &mut self.terminal {
@@ -56,7 +52,7 @@ impl App {
                             }));
                             return Task::batch([self.reveal_main(), lyrics]);
                         }
-                        actions::Action::ChangeTitle(title) if self.playback.is_none() => {
+                        actions::Action::ChangeTitle(title) => {
                             self.window_title = if title.trim().is_empty() {
                                 "NeoViolet".into()
                             } else {
@@ -177,7 +173,6 @@ impl App {
                 }
                 self.playback = None;
                 self.lyrics.playback = None;
-                self.window_title = "NeoViolet".into();
                 self.connection_error = Some(error.clone());
                 if !self.requests.is_empty() {
                     self.notice = Some("The connection was interrupted before some actions could be confirmed. Check playback before trying again.".into());

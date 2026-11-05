@@ -157,7 +157,7 @@ fn restart_discards_initial_flags_and_queued_files_even_if_the_new_launch_fails(
 }
 
 #[test]
-fn terminal_titles_replace_and_clear_the_window_title() {
+fn terminal_titles_replace_and_clear_the_window_title_even_after_ipc_snapshots() {
     let mut app = app();
     app.dialog = None;
     app.terminal =
@@ -172,6 +172,21 @@ fn terminal_titles_replace_and_clear_the_window_title() {
         "Current Track".into(),
     )));
     assert_eq!(app.title(), "Current Track");
+    app.ipc_connected = true;
+    let _ = app.apply_snapshot(ipc::PlaybackState {
+        revision: 1,
+        has_track: true,
+        title: "Snapshot title".into(),
+        ..Default::default()
+    });
+    assert_eq!(app.title(), "Current Track");
+    let _ = app.update(command(iced_term::AlacrittyEvent::Title(
+        "NeoViolet | 下一首 - Artist".into(),
+    )));
+    assert_eq!(app.title(), "NeoViolet | 下一首 - Artist");
+    let _ = app.update(Message::Ipc(2, ipc::Event::Disconnected("test".into())));
+    assert_eq!(app.title(), "NeoViolet | 下一首 - Artist");
+    app.playback = Some(ipc::PlaybackState::default());
     let _ = app.update(command(iced_term::AlacrittyEvent::ResetTitle));
     assert_eq!(app.title(), "NeoViolet");
 }
@@ -550,9 +565,10 @@ async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_f
 }
 
 #[test]
-fn snapshots_drive_window_title_without_accepting_old_child_sessions() {
+fn snapshots_preserve_the_terminal_title_without_accepting_old_child_sessions() {
     let mut app = app();
     app.ipc_connected = true;
+    app.window_title = "NeoViolet | From the TUI".into();
     let snapshot = |title: &str| ipc::Incoming::State {
         state: ipc::PlaybackState {
             revision: 1,
@@ -563,9 +579,11 @@ fn snapshots_drive_window_title_without_accepting_old_child_sessions() {
         },
     };
     let _ = app.update(Message::Ipc(1, ipc::Event::Received(snapshot("Old"))));
-    assert_eq!(app.title(), "NeoViolet");
+    assert_eq!(app.title(), "NeoViolet | From the TUI");
+    assert!(app.playback.is_none());
     let _ = app.update(Message::Ipc(2, ipc::Event::Received(snapshot("Current"))));
-    assert_eq!(app.title(), "Current");
+    assert_eq!(app.title(), "NeoViolet | From the TUI");
+    assert_eq!(app.playback.as_ref().unwrap().title, "Current");
 }
 
 #[path = "integration_tests.rs"]

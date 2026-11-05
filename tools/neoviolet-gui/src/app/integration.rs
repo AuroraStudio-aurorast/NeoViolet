@@ -190,11 +190,6 @@ impl App {
         {
             return Task::none();
         }
-        self.window_title = if state.has_track && !state.title.is_empty() {
-            state.title.clone()
-        } else {
-            "NeoViolet".into()
-        };
         self.lyrics.playback = state.has_track.then_some(state.playing);
         // The desktop window is GUI-owned; its explicit preference wins at each
         // connection. Runtime changes in the TUI arrive through desktop_lyrics.

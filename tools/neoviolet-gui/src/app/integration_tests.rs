@@ -61,7 +61,7 @@ fn obsolete_snapshots_and_results_cannot_change_the_current_session() {
             ..Default::default()
         });
     }
-    assert_eq!(app.title(), "Current");
+    assert_eq!(app.playback.as_ref().unwrap().title, "Current");
     let _ = app.send_all(vec![ipc::Request::Open("missing.flac".into())]);
     let old = receiver.try_recv().unwrap();
     let old_epoch = app.connection_epoch;
@@ -90,7 +90,7 @@ fn obsolete_snapshots_and_results_cannot_change_the_current_session() {
         title: "Recovered".into(),
         ..Default::default()
     });
-    assert_eq!(app.title(), "Recovered");
+    assert_eq!(app.playback.as_ref().unwrap().title, "Recovered");
 }
 
 #[test]
