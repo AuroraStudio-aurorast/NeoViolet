@@ -153,6 +153,7 @@ func (m *Model) View() tea.View {
 	view := m.player.View()
 	if m.gui && m.phase == "initial_loading" {
 		view.AltScreen = true
+		view.Content = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, view.Content)
 	}
 	return view
 }
