@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
     Open,
+    OpenOnlineAudio,
     Preferences,
     About,
     Quit,
@@ -23,7 +24,11 @@ impl Action {
     pub fn requires_player(self) -> bool {
         matches!(
             self,
-            Self::Open | Self::DesktopLyrics | Self::LyricsSettings | Self::UnlockLyrics
+            Self::Open
+                | Self::OpenOnlineAudio
+                | Self::DesktopLyrics
+                | Self::LyricsSettings
+                | Self::UnlockLyrics
         )
     }
 

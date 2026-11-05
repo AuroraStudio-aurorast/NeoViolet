@@ -1,5 +1,5 @@
 //! Compact dialog surfaces; lifecycle and playback actions stay in the application.
-use iced::widget::{button, column, container, opaque, row, rule, scrollable, text};
+use iced::widget::{button, column, container, opaque, row, rule, scrollable, text, text_input};
 use iced::{Border, Color, Element, Font, Length, Padding, Shadow, Theme, Vector};
 
 use crate::app::{Dialog, Message};
@@ -31,9 +31,13 @@ impl Navigation {
         let actions = match dialog {
             Dialog::Quit => vec![Message::Dismiss, Message::ConfirmQuit],
             Dialog::Error(_) if !running => vec![Message::ConfirmQuit, Message::Restart],
+            Dialog::OpenOnlineAudio(_) => vec![Message::Dismiss, Message::SubmitOnlineAudio],
             _ => vec![Message::Dismiss],
         };
-        let default = usize::from(matches!(dialog, Dialog::Error(_)) && !running);
+        let default = usize::from(
+            (matches!(dialog, Dialog::Error(_)) && !running)
+                || matches!(dialog, Dialog::OpenOnlineAudio(_)),
+        );
         let current = self.selected.unwrap_or(default).min(actions.len() - 1);
         match key {
             Key::Named(Named::Tab) => {
@@ -121,6 +125,25 @@ pub fn overlay<'a>(
                 ]
             },
             432,
+        ),
+        Dialog::OpenOnlineAudio(url) => (
+            "Open Online Audio",
+            Mark::Music,
+            column![
+                paragraph("Enter a direct HTTP or HTTPS link to an audio stream."),
+                text_input("https://example.com/audio.mp3", url)
+                    .on_input(Message::OnlineAudioURLChanged)
+                    .on_submit(Message::SubmitOnlineAudio)
+                    .padding([9, 10])
+                    .size(13),
+            ]
+            .spacing(10)
+            .into(),
+            row![
+                action("Cancel", Message::Dismiss, Tone::Neutral, 0),
+                action("Open", Message::SubmitOnlineAudio, Tone::Primary, 1),
+            ],
+            480,
         ),
     };
     let heading = text(heading)

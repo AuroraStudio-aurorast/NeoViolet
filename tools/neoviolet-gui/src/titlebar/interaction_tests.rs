@@ -17,6 +17,16 @@ fn keyboard_traversal_dispatches_existing_actions_and_skips_unavailable_unlock()
 }
 
 #[test]
+fn file_menu_exposes_online_audio_without_reusing_the_file_picker_shortcut() {
+    let groups = MenuGroup::all(Platform::Linux, false, false);
+    let file = &groups[0];
+    assert!(matches!(file.items[0].action, Action::Open));
+    assert_eq!(file.items[0].shortcut, Some("Ctrl+O"));
+    assert!(matches!(file.items[1].action, Action::OpenOnlineAudio));
+    assert_eq!(file.items[1].shortcut, None);
+}
+
+#[test]
 fn press_only_starts_a_drag_after_movement_and_does_not_change_maximize_state() {
     let mut state = State::new(Size::new(800.0, 600.0));
     state.cursor = Point::new(200.0, 15.0);

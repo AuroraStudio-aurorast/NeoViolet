@@ -10,6 +10,9 @@ mod startup;
 mod tests;
 mod update;
 
+#[cfg(test)]
+mod online_audio_tests;
+
 use crate::{config, desktop, dialog, ipc, lyrics_window, titlebar};
 use iced::keyboard::Modifiers;
 use iced::{Subscription, Task, window};
@@ -19,6 +22,18 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 pub(crate) const TERMINAL_BACKGROUND: iced::Color = iced::Color::BLACK;
+
+pub(super) fn online_audio_url_is_valid(value: &str) -> bool {
+    let value = value.trim();
+    let Some((scheme, authority)) = value.split_once("://") else {
+        return false;
+    };
+    if !(scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https")) {
+        return false;
+    }
+    let authority = authority.split(['/', '?', '#']).next().unwrap_or_default();
+    !authority.is_empty() && !authority.chars().any(char::is_whitespace)
+}
 
 pub struct App {
     pub main_window: window::Id,
@@ -61,6 +76,7 @@ pub enum Dialog {
     About,
     Quit,
     Error(String),
+    OpenOnlineAudio(String),
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +100,8 @@ pub enum Message {
         result: Result<Option<PathBuf>, String>,
     },
     Pasted(Option<String>),
+    OnlineAudioURLChanged(String),
+    SubmitOnlineAudio,
     Sent(Result<(), String>),
     LifecycleSent {
         session: u64,

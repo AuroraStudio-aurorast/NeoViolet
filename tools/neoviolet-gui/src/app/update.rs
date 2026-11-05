@@ -1,5 +1,5 @@
 //! Message routing and application lifecycle decisions.
-use super::{App, Dialog, Message};
+use super::{App, Dialog, Message, online_audio_url_is_valid};
 use crate::{config, desktop, ipc};
 use iced::{Task, window};
 
@@ -102,6 +102,24 @@ impl App {
                 }
             }
             Message::Pasted(None) => {}
+            Message::OnlineAudioURLChanged(value) => {
+                if let Some(Dialog::OpenOnlineAudio(url)) = &mut self.dialog {
+                    *url = value;
+                }
+            }
+            Message::SubmitOnlineAudio => {
+                let Some(Dialog::OpenOnlineAudio(url)) = self.dialog.take() else {
+                    return Task::none();
+                };
+                let url = url.trim().to_owned();
+                if !online_audio_url_is_valid(&url) {
+                    self.dialog = Some(Dialog::OpenOnlineAudio(url));
+                    self.notice = Some("Enter a valid HTTP or HTTPS audio URL.".into());
+                    return self.reveal_main();
+                }
+                self.notice = None;
+                return self.open(std::path::PathBuf::from(url));
+            }
             Message::Sent(Err(error)) => {
                 self.dialog = Some(Dialog::Error(error));
                 return self.reveal_main();

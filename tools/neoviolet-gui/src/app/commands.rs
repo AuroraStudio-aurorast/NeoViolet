@@ -53,6 +53,10 @@ impl App {
                     }),
                 );
             }
+            Action::OpenOnlineAudio => {
+                self.dialog = Some(Dialog::OpenOnlineAudio(String::new()));
+                return self.reveal_main();
+            }
             Action::Preferences => {
                 let directory = self
                     .playback
