@@ -534,11 +534,7 @@ sudo dnf install pkgconf        # Fedora
 sudo pacman -S pkgconf          # Arch Linux
 ```
 
-### GUI renderer (macOS)
-
-The Iced GUI uses the system Metal backend through wgpu. It does not require the
-former GPUI shader flags or a separate Metal shader compilation step. Build it
-through `make gui` or `make gui/debug`.
+### GUI related issues (macOS)
 
 If the standalone GUI exits before printing any startup output and the macOS system
 log reports `load code signature error 2`, its executable may have been overwritten
