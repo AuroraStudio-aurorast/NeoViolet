@@ -51,6 +51,7 @@ pub enum Event {
 #[derive(Default)]
 pub struct Overlay {
     pub frame: Frame,
+    pub playback: Option<bool>,
     pub window: Option<window::Id>,
     pub toolbar_window: Option<window::Id>,
     pub settings_window: Option<window::Id>,

@@ -33,8 +33,9 @@ pub(super) struct MenuItem {
 }
 
 impl MenuItem {
-    pub(super) fn enabled(&self, lyrics: bool) -> bool {
-        !matches!(self.action, Action::UnlockLyrics) || lyrics
+    pub(super) fn enabled(&self, lyrics: bool, available: bool) -> bool {
+        (available || !self.action.requires_player())
+            && (!matches!(self.action, Action::UnlockLyrics) || lyrics)
     }
 }
 

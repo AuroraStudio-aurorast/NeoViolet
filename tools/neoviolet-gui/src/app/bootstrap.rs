@@ -49,6 +49,16 @@ impl App {
             window_title: "NeoViolet".into(),
             desktop: desktop.ok(),
             ipc_connected: false,
+            playback: None,
+            notice: None,
+            connection_error: None,
+            startup: Default::default(),
+            lyrics_restored: false,
+            picker: None,
+            handshake: Default::default(),
+            connection_epoch: 0,
+            request_sequence: 0,
+            requests: Default::default(),
             session: 0,
             pid: None,
             connection: None,
@@ -63,28 +73,25 @@ impl App {
         };
         app.titlebar.configure(&app.config);
         let start = app.start();
-        let executable = launch::player(app.config.neoviolet_path.as_deref());
-        let version = Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || launch::version(&executable))
-                    .await
-                    .unwrap_or_else(|_| "unavailable".into())
-            },
-            Message::Version,
-        );
-        (
-            app,
-            open_main
-                .map(|_| Message::MainOpened)
-                .chain(Task::batch([start, version])),
-        )
+        (app, open_main.map(|_| Message::MainOpened).chain(start))
     }
 
     pub(super) fn start(&mut self) -> Task<Message> {
+        let lyrics = self.suspend_lyrics();
         self.terminal = None;
         self.connection = None;
         self.pid = None;
         self.ipc_connected = false;
+        self.playback = None;
+        self.notice = None;
+        self.connection_error = None;
+        self.handshake = Default::default();
+        self.startup = Default::default();
+        self.lyrics_restored = false;
+        self.titlebar.commands_disabled = true;
+        self.version = "Waiting for player…".into();
+        self.requests.clear();
+        self.lyrics.playback = None;
         self.exit_code = None;
         self.closing = false;
         self.lyrics.clear();
@@ -117,11 +124,7 @@ impl App {
                 terminal.set_application_shortcuts(true);
                 self.terminal = Some(terminal);
                 self.running = true;
-                let (lyrics, _) = self.lyrics.update(
-                    lyrics_window::Event::Visible(self.config.desktop_lyrics.enabled),
-                    &mut self.config.desktop_lyrics,
-                );
-                Task::batch([self.focus(), lyrics.map(Message::Lyrics)])
+                Task::batch([self.focus(), lyrics])
             }
             Err(error) => {
                 self.running = false;
@@ -129,7 +132,7 @@ impl App {
                     "Could not start {}: {error}\nCheck neoviolet_path in the GUI settings.",
                     executable.display()
                 )));
-                Task::none()
+                lyrics
             }
         }
     }
@@ -138,7 +141,7 @@ impl App {
         Theme::custom(
             "NeoViolet",
             iced::theme::Palette {
-                background: iced::Color::from_rgb8(32, 32, 32),
+                background: super::TERMINAL_BACKGROUND,
                 ..Theme::Dark.palette()
             },
         )
@@ -168,7 +171,7 @@ impl App {
 
     pub(super) fn terminal_theme(&self) -> settings::ThemeSettings {
         let palette = iced_term::ColorPalette {
-            background: "#202020".into(),
+            background: super::TERMINAL_BACKGROUND.to_string(),
             ..Default::default()
         };
         settings::ThemeSettings::new(Box::new(palette))

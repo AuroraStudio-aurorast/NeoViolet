@@ -296,13 +296,14 @@ func TestAnimWarningForegroundsDoNotChangeGUIDefaults(t *testing.T) {
 		}
 		m.ipcServer = &ipc.Server{}
 		view := m.View()
-		if view.Content != renderMainView(m).Content || view.BackgroundColor != nil || view.ForegroundColor != nil {
+		if view.BackgroundColor != nil || view.ForegroundColor != nil {
 			t.Errorf("%s warning changed GUI default colours", kind)
 		}
-		for y, row := range frameBackgrounds(t, view.Content) {
+		assertFrameBackgrounds(t, m)
+		for y, row := range frameBackgrounds(t, renderMainView(m).Content) {
 			for x, bg := range row {
 				if bg != nil {
-					t.Fatalf("%s GUI cell %d,%d acquired an explicit background", kind, x, y)
+					t.Fatalf("%s warning cell %d,%d hides the page gradient", kind, x, y)
 				}
 			}
 		}

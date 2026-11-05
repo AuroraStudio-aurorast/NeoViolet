@@ -84,6 +84,15 @@ var keys = KeyMap{
 
 // NewModel constructs the application model with the given config.
 func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Model {
+	return newModel(filePath, cfg, nil, false, seekTo...)
+}
+
+// NewModelWithIPC shares the startup host's session and input/event owner.
+func NewModelWithIPC(filePath string, cfg *config.Config, server *ipc.Server, seekTo ...time.Duration) *Model {
+	return newModel(filePath, cfg, server, true, seekTo...)
+}
+
+func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed bool, seekTo ...time.Duration) *Model {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
@@ -177,13 +186,15 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	// Initialize IPC server for bidirectional GUI communication.
 	// Only start when running inside neoviolet-gui (not a standard terminal).
 	// The GUI sets TERM_PROGRAM=neoviolet-gui as the terminal emulator name.
-	if os.Getenv("TERM_PROGRAM") == "neoviolet-gui" {
+	m.ipcServer, m.ipcManaged = server, managed
+	m.guiHosted = os.Getenv("TERM_PROGRAM") == "neoviolet-gui"
+	if m.guiHosted && !managed {
 		if srv, err := ipc.NewServer(); err != nil {
 			logger.Warn("IPC server init failed", "err", err)
 		} else {
 			m.ipcServer = srv
 		}
-	} else {
+	} else if !managed {
 		logger.Debug("Not running inside neoviolet-gui, IPC disabled")
 	}
 
@@ -211,15 +222,9 @@ func (m *Model) Init() tea.Cmd {
 		cmds = append(cmds, m.startAudioLoad(path))
 	}
 
-	// Accept GUI IPC connection in the background
 	if m.ipcServer != nil {
-		go func() {
-			if err := m.ipcServer.Accept(); err != nil {
-				logger.Warn("IPC accept failed", "err", err)
-			}
-		}()
+		cmds = append(cmds, m.waitIPC())
 	}
-
 	cmds = append(cmds, tea.Tick(time.Second/time.Duration(m.Config.TickRate), func(_ time.Time) tea.Msg {
 		return TickMsg{}
 	}))
@@ -229,33 +234,45 @@ func (m *Model) Init() tea.Cmd {
 
 // Update handles a Bubble Tea message and returns the next model and command.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return updateDispatcher(m, msg)
+	model, cmd := updateDispatcher(m, msg)
+	m.pushIPCState(false)
+	return model, cmd
 }
 
 // View renders the current UI state.
 //
-// Every frame passes through here, so this is where the background goes on
-// -- for the frames that have the screen to themselves: the loading screen and the
-// too-small warning are drawn on the shell's own screen, and under the GUI the
-// frame is drawn on the wrapper's canvas, so both keep the terminal's own colours.
-// Painting either would outlast the app if it died before the renderer could
-// undo the pin.
+// Complete alternate-screen frames carry their own row backgrounds in both hosts.
+// Loading and too-small frames leave the canvas alone. Only standalone terminals
+// pin their default colours; the GUI wrapper owns its canvas and terminal defaults.
 func (m *Model) View() tea.View {
 	view := renderMainView(m)
-	if view.AltScreen && !m.isGUI() {
+	if view.AltScreen {
 		view.Content = paintBackground(view.Content, frameBackground(m))
-		view.BackgroundColor = uiBackground
-		view.ForegroundColor = uiForeground
+		if !m.isGUI() {
+			view.BackgroundColor = uiBackground
+			view.ForegroundColor = uiForeground
+		}
 	}
 	return view
 }
 
 // Helper methods
 func (m *Model) togglePlayback() {
-	m.Audio.TogglePlayback()
+	if m.Audio.Player == nil {
+		return
+	}
+	if err := m.Audio.SetPlaying(!m.Audio.Player.IsPlaying()); err != nil {
+		m.Error.Set(err.Error(), m.Config.Error.Duration)
+	}
 }
 
+// Close releases owned playback resources on every host exit path.
+func (m *Model) Close() { m.cleanup() }
+
 func (m *Model) cleanup() {
+	if m.exiting {
+		return
+	}
 	m.exiting = true
 	m.pendingLoad.cancel()
 	m.pendingLoad = nil
@@ -276,7 +293,7 @@ func (m *Model) cleanup() {
 // accidental quit via Ctrl+C or double-tap q is disabled — the user
 // must use :quit / :q to exit gracefully.
 func (m *Model) isGUI() bool {
-	return m.ipcServer != nil
+	return m.guiHosted || m.ipcServer != nil
 }
 
 // buildPlayState builds a mediactl.PlayState from the current audio state.
@@ -299,9 +316,7 @@ func (m *Model) buildPlayState() mediactl.PlayState {
 }
 
 func (m *Model) adjustVolume(delta float64) {
-	m.Audio.AdjustVolume(delta)
-	m.Components.VolumeBar.SetPercent(m.Audio.Volume)
-	m.saveVolumeConfig()
+	m.setVolume(m.Audio.Volume + delta)
 }
 
 // saveVolumeConfig persists the current volume to config if it changed.

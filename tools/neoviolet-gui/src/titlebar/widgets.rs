@@ -3,9 +3,9 @@ use super::{MENU_BUTTON_WIDTH, MENU_HEADING, Message};
 use iced::widget::{button, canvas, container, row, text, tooltip};
 use iced::{Border, Color, Element, Length, Point, Shadow, Theme, Vector};
 
-pub(super) fn chrome_background(_: &Theme) -> container::Style {
+pub(super) fn chrome_background(color: Color) -> container::Style {
     container::Style {
-        background: Some(Color::from_rgb8(43, 43, 43).into()),
+        background: Some(color.into()),
         ..Default::default()
     }
 }

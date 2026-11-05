@@ -1,8 +1,11 @@
 //! Main-window chrome and local menu navigation. Playback remains in the TUI.
+mod appearance;
 mod menus;
 mod view;
 mod widgets;
 
+#[cfg(test)]
+mod appearance_tests;
 #[cfg(test)]
 mod interaction_tests;
 #[cfg(test)]
@@ -22,12 +25,15 @@ const MENU_HEADING: f32 = 26.0;
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Hover(bool),
+    Animate,
     ToggleMenu,
     SelectGroup(usize),
     HoverGroup(usize),
     HoverItem(usize),
     Dismiss,
     Action(Action),
+    WindowAction(Action),
     PressTitle,
     ReleaseTitle,
     DoubleClick,
@@ -43,10 +49,13 @@ pub enum CaptionControl {
 
 #[derive(Debug, Default)]
 pub struct State {
+    appearance: appearance::Appearance,
     menu_open: bool,
     selected_group: Option<usize>,
     selected_item: usize,
     in_submenu: bool,
+    pub commands_disabled: bool,
+    pub player_unavailable: bool,
     pub maximized: bool,
     pub caption_hover: Option<CaptionControl>,
     pub fullscreen: bool,
@@ -68,6 +77,7 @@ impl State {
     }
     pub fn update(&mut self, message: Message) -> Option<Action> {
         match message {
+            Message::Hover(hovered) => self.appearance.hovered = hovered,
             Message::ToggleMenu => {
                 self.menu_open = !self.menu_open;
                 self.selected_group = if self.menu_open && self.menu_bar {
@@ -97,8 +107,12 @@ impl State {
             }
             Message::Dismiss => self.close(),
             Message::Action(action) => {
-                self.close();
-                return Some(action);
+                if !self.commands_disabled
+                    && (!action.requires_player() || !self.player_unavailable)
+                {
+                    self.close();
+                    return Some(action);
+                }
             }
             Message::PressTitle => {
                 self.close();
@@ -111,6 +125,7 @@ impl State {
     }
 
     pub fn configure(&mut self, config: &crate::config::Config) {
+        self.appearance.opacity = config.opacity;
         self.menu_bar = config.menu_bar && Platform::current() != Platform::MacOs;
         self.system_decorations =
             config.system_decorations && Platform::current() != Platform::MacOs;
@@ -148,6 +163,10 @@ impl State {
                 .retain(|item| !matches!(item.action, Action::Minimize));
         }
         groups
+    }
+
+    fn item_enabled(&self, item: &menus::MenuItem, lyrics: bool) -> bool {
+        !self.commands_disabled && item.enabled(lyrics, !self.player_unavailable)
     }
 
     pub fn key(&mut self, key: &Key, lyrics: bool) -> Option<Action> {
@@ -195,13 +214,19 @@ impl State {
                 };
                 if self.in_submenu {
                     let items = &groups[self.selected_group.unwrap_or(0)].items;
-                    self.selected_item = if items[next].enabled(lyrics) {
-                        next
-                    } else if matches!(key, Key::Named(Named::ArrowUp | Named::End)) {
-                        (next + count - 1) % count
-                    } else {
-                        (next + 1) % count
-                    };
+                    let backwards = matches!(key, Key::Named(Named::ArrowUp | Named::End));
+                    if let Some(index) = (0..count)
+                        .map(|offset| {
+                            if backwards {
+                                (next + count - offset) % count
+                            } else {
+                                (next + offset) % count
+                            }
+                        })
+                        .find(|&index| self.item_enabled(&items[index], lyrics))
+                    {
+                        self.selected_item = index;
+                    }
                 } else {
                     self.selected_group = Some(next);
                 }
@@ -209,7 +234,7 @@ impl State {
             Key::Named(Named::Enter | Named::Space) => {
                 if self.in_submenu {
                     let item = &groups[self.selected_group.unwrap_or(0)].items[self.selected_item];
-                    if !item.enabled(lyrics) {
+                    if !self.item_enabled(item, lyrics) {
                         return None;
                     }
                     let action = item.action;

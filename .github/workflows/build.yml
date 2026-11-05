@@ -76,6 +76,8 @@ jobs:
           version: ${{ env.GOLANGCI_VERSION }}
       - name: Rust tests
         run: make test/rust
+      - name: TUI and GUI protocol integration
+        run: make test/gui-ipc
       - name: Rust fmt + clippy
         run: make lint/rust
       # The coverage run recompiles every package with instrumentation, so

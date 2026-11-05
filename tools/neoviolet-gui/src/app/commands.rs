@@ -8,6 +8,22 @@ use std::path::PathBuf;
 
 impl App {
     pub(super) fn action(&mut self, action: Action) -> Task<Message> {
+        if !self.basic_actions_available()
+            || (action.requires_player() && !self.actions_available())
+        {
+            return Task::none();
+        }
+        self.dispatch_action(action)
+    }
+
+    pub(super) fn window_action(&mut self, action: Action) -> Task<Message> {
+        if !matches!(action, Action::Quit | Action::Minimize | Action::ZoomWindow) {
+            return Task::none();
+        }
+        self.dispatch_action(action)
+    }
+
+    fn dispatch_action(&mut self, action: Action) -> Task<Message> {
         self.titlebar.close();
         match action {
             Action::DesktopLyrics => {
@@ -38,10 +54,14 @@ impl App {
                 );
             }
             Action::Preferences => {
+                let directory = self
+                    .playback
+                    .as_ref()
+                    .map(|state| state.config_dir.clone())
+                    .filter(|path| !path.as_os_str().is_empty())
+                    .unwrap_or_else(config::directory);
                 return Task::perform(
-                    async {
-                        open::that_detached(config::directory()).map_err(|error| error.to_string())
-                    },
+                    async move { open::that_detached(directory).map_err(|error| error.to_string()) },
                     Message::Sent,
                 );
             }
@@ -59,8 +79,14 @@ impl App {
                 return self.reveal_main();
             }
             Action::Quit => {
+                if self.closing {
+                    return Task::none();
+                }
                 if !self.running {
                     return self.finish_quit();
+                }
+                if self.ipc_connected && self.handshake.supports("request_quit") {
+                    return self.send_all(vec![ipc::Request::CheckQuit]);
                 }
                 self.dialog = Some(Dialog::Quit);
                 return self.reveal_main();
@@ -103,6 +129,9 @@ impl App {
     }
 
     pub(super) fn open(&mut self, path: PathBuf) -> Task<Message> {
+        if self.closing || !self.actions_available() {
+            return Task::none();
+        }
         if !self.running {
             self.pending.push_back(path);
             self.dialog = None;
@@ -112,29 +141,12 @@ impl App {
             self.pending.push_back(path);
             return Task::none();
         }
-        if self.connection.is_some() {
-            return self.send_all(vec![ipc::Request::Open(path)]);
-        }
         self.pending.push_back(path);
+        if self.connection.is_some() {
+            let requests = self.pending.drain(..).map(ipc::Request::Open).collect();
+            return self.send_all(requests);
+        }
         Task::none()
-    }
-
-    pub(super) fn send_all(&self, requests: Vec<ipc::Request>) -> Task<Message> {
-        let Some(sender) = self.connection.clone() else {
-            return Task::none();
-        };
-        Task::perform(
-            async move {
-                for request in requests {
-                    sender
-                        .send(request)
-                        .await
-                        .map_err(|_| "Player IPC is unavailable".to_string())?;
-                }
-                Ok(())
-            },
-            Message::Sent,
-        )
     }
 
     pub(super) fn finish_quit(&mut self) -> Task<Message> {

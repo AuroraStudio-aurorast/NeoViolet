@@ -10,7 +10,7 @@ import (
 )
 
 // animWarningPalette is foreground-only: both animation gates retain the
-// existing frame background, including the GUI's default canvas.
+// existing frame gradient in both the standalone TUI and the GUI.
 type animWarningPalette struct {
 	title   lipgloss.Style
 	caution lipgloss.Style

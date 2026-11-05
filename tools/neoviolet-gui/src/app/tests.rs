@@ -83,6 +83,16 @@ fn app() -> App {
         window_title: "NeoViolet".into(),
         desktop: None,
         ipc_connected: false,
+        playback: None,
+        notice: None,
+        connection_error: None,
+        startup: super::startup::Stage::Legacy,
+        lyrics_restored: false,
+        picker: None,
+        handshake: Default::default(),
+        connection_epoch: 0,
+        request_sequence: 0,
+        requests: Default::default(),
         session: 2,
         pid: None,
         connection: None,
@@ -147,7 +157,7 @@ fn restart_discards_initial_flags_and_queued_files_even_if_the_new_launch_fails(
 }
 
 #[test]
-fn terminal_titles_replace_and_clear_the_window_title() {
+fn terminal_titles_replace_and_clear_the_window_title_even_after_ipc_snapshots() {
     let mut app = app();
     app.dialog = None;
     app.terminal =
@@ -162,6 +172,21 @@ fn terminal_titles_replace_and_clear_the_window_title() {
         "Current Track".into(),
     )));
     assert_eq!(app.title(), "Current Track");
+    app.ipc_connected = true;
+    let _ = app.apply_snapshot(ipc::PlaybackState {
+        revision: 1,
+        has_track: true,
+        title: "Snapshot title".into(),
+        ..Default::default()
+    });
+    assert_eq!(app.title(), "Current Track");
+    let _ = app.update(command(iced_term::AlacrittyEvent::Title(
+        "NeoViolet | 下一首 - Artist".into(),
+    )));
+    assert_eq!(app.title(), "NeoViolet | 下一首 - Artist");
+    let _ = app.update(Message::Ipc(2, ipc::Event::Disconnected("test".into())));
+    assert_eq!(app.title(), "NeoViolet | 下一首 - Artist");
+    app.playback = Some(ipc::PlaybackState::default());
     let _ = app.update(command(iced_term::AlacrittyEvent::ResetTitle));
     assert_eq!(app.title(), "NeoViolet");
 }
@@ -278,16 +303,12 @@ async fn quit_from_a_secondary_window_reveals_the_main_confirmation() {
 
 #[tokio::test]
 async fn authentication_subscribes_to_lyrics_without_opening_pending_files_during_a_modal() {
-    use iced::futures::StreamExt;
     let mut app = app();
     let (sender, mut receiver) = mpsc::channel(4);
     let task = app.update(Message::Ipc(2, ipc::Event::Connected(sender)));
-    let _ = iced_runtime::task::into_stream(task)
-        .unwrap()
-        .collect::<Vec<_>>()
-        .await;
+    drop(task);
     assert!(matches!(
-        receiver.try_recv().unwrap(),
+        receiver.try_recv().unwrap().request,
         ipc::Request::DesktopLyrics(true)
     ));
     assert!(receiver.try_recv().is_err());
@@ -417,7 +438,13 @@ fn modal_keys_keep_shortcuts_behind_the_dialog_and_preserve_focus_across_updates
         modal_key(Key::Named(Named::Tab), Modifiers::empty()),
     ));
     assert!(app.dialog_navigation.visible());
-    let _ = app.update(Message::Version("Updated version".into()));
+    let _ = app.update(Message::Ipc(
+        2,
+        ipc::Event::Handshake(ipc::Handshake {
+            version: "Updated version".into(),
+            ..Default::default()
+        }),
+    ));
     assert!(app.dialog_navigation.visible());
     let _ = app.update(Message::Native(
         app.main_window,
@@ -530,9 +557,41 @@ async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_f
         );
         match picked {
             Some(path) => assert!(
-                matches!(receiver.try_recv(),Ok(ipc::Request::Open(opened)) if opened == path)
+                matches!(receiver.try_recv().map(|command|command.request),Ok(ipc::Request::Open(opened)) if opened == path)
             ),
             None => assert!(receiver.try_recv().is_err()),
         }
     }
 }
+
+#[test]
+fn snapshots_preserve_the_terminal_title_without_accepting_old_child_sessions() {
+    let mut app = app();
+    app.ipc_connected = true;
+    app.window_title = "NeoViolet | From the TUI".into();
+    let snapshot = |title: &str| ipc::Incoming::State {
+        state: ipc::PlaybackState {
+            revision: 1,
+            has_track: true,
+            playing: true,
+            title: title.into(),
+            ..Default::default()
+        },
+    };
+    let _ = app.update(Message::Ipc(1, ipc::Event::Received(snapshot("Old"))));
+    assert_eq!(app.title(), "NeoViolet | From the TUI");
+    assert!(app.playback.is_none());
+    let _ = app.update(Message::Ipc(2, ipc::Event::Received(snapshot("Current"))));
+    assert_eq!(app.title(), "NeoViolet | From the TUI");
+    assert_eq!(app.playback.as_ref().unwrap().title, "Current");
+}
+
+#[path = "integration_tests.rs"]
+mod integration_tests;
+
+#[path = "startup_tests.rs"]
+mod startup_tests;
+
+#[cfg(unix)]
+#[path = "terminal_background_tests.rs"]
+mod terminal_background_tests;

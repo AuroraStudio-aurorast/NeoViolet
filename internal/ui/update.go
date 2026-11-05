@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,6 +14,8 @@ import (
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case ipc.Event:
+		return handleIPCEvent(m, msg)
 	case TickMsg:
 		return handleTick(m)
 	case tea.WindowSizeMsg:
@@ -76,49 +77,6 @@ func handleTick(m *Model) (tea.Model, tea.Cmd) {
 		m.loadingTick++
 	}
 
-	// Drain IPC messages from GUI wrapper (non-blocking, one per tick)
-	if m.ipcServer != nil {
-		select {
-		case raw := <-m.ipcServer.Incoming:
-			var ipcMsg ipc.Message
-			if err := json.Unmarshal([]byte(raw), &ipcMsg); err != nil {
-				logger.Debug("IPC: invalid JSON", "line", raw, "err", err)
-			} else {
-				switch ipcMsg.Type {
-				case "quit":
-					m.cleanup()
-					return m, tea.Quit
-				case "open":
-					if ipcMsg.Path != "" {
-						if !isValidAudioPath(ipcMsg.Path) {
-							logger.Warn("IPC: invalid audio path from GUI", "path", ipcMsg.Path)
-							m.Error.Set("Invalid or unsupported audio file: "+ipcMsg.Path, 180)
-							break
-						}
-						logger.Info("IPC: loading track", "path", ipcMsg.Path)
-						_, loadCmd := handleLoadTrack(m, LoadTrackMsg{Path: ipcMsg.Path})
-						return m, tea.Batch(loadCmd,
-							tea.Tick(time.Second/time.Duration(m.Config.TickRate),
-								func(_ time.Time) tea.Msg { return TickMsg{} },
-							),
-						)
-					}
-				case "desktop_lyrics":
-					if ipcMsg.Enable != nil {
-						m.setDesktopLyricsEnabled(*ipcMsg.Enable)
-						logger.Info("IPC: desktop lyrics", "enabled", *ipcMsg.Enable)
-					}
-				case "play_pause":
-					logger.Debug("IPC: play_pause from GUI")
-					m.togglePlayback()
-				default:
-					logger.Debug("IPC: unhandled message type", "type", ipcMsg.Type)
-				}
-			}
-		default:
-		}
-	}
-
 	// Push current playback state to OS media control layer (MPRIS on Linux)
 	if m.MediaCtl != nil {
 		m.MediaCtl.Update(m.buildPlayState())
@@ -174,9 +132,9 @@ func handleProgressFrame(m *Model, msg progress.FrameMsg) (tea.Model, tea.Cmd) {
 
 func handleVolume(m *Model, msg VolumeMsg) (tea.Model, tea.Cmd) {
 	if msg.Delta != 0 {
-		m.Audio.AdjustVolume(msg.Delta)
+		m.adjustVolume(msg.Delta)
 	} else if msg.Level >= 0 && msg.Level <= 1.0 {
-		m.Audio.SetVolume(msg.Level)
+		m.setVolume(msg.Level)
 	}
 	logger.Debug("Volume", "newVolume", m.Audio.Volume)
 	m.Components.VolumeBar.SetPercent(m.Audio.Volume)

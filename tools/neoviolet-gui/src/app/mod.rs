@@ -2,8 +2,10 @@
 mod bootstrap;
 mod commands;
 mod desktop_events;
+mod integration;
 mod native;
 mod player;
+mod startup;
 #[cfg(test)]
 mod tests;
 mod update;
@@ -15,6 +17,8 @@ use iced_term::Terminal;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
+
+pub(crate) const TERMINAL_BACKGROUND: iced::Color = iced::Color::BLACK;
 
 pub struct App {
     pub main_window: window::Id,
@@ -29,9 +33,19 @@ pub struct App {
     pub window_title: String,
     pub desktop: Option<desktop::Desktop>,
     pub ipc_connected: bool,
+    pub playback: Option<ipc::PlaybackState>,
+    pub notice: Option<String>,
+    pub connection_error: Option<String>,
+    startup: startup::Stage,
+    lyrics_restored: bool,
+    picker: Option<startup::Picker>,
+    handshake: ipc::Handshake,
+    connection_epoch: u64,
+    request_sequence: u64,
+    requests: std::collections::HashMap<String, bool>,
     session: u64,
     pid: Option<u32>,
-    connection: Option<mpsc::Sender<ipc::Request>>,
+    connection: Option<mpsc::Sender<ipc::Command>>,
     pending: VecDeque<PathBuf>,
     arguments: Vec<String>,
     family: &'static str,
@@ -63,13 +77,35 @@ pub enum Message {
     ChromeState(bool, window::Mode),
     SetMode(window::Mode),
     Picked(Option<PathBuf>),
+    SetupPicked {
+        session: u64,
+        epoch: u64,
+        request_id: String,
+        result: Result<Option<PathBuf>, String>,
+    },
     Pasted(Option<String>),
     Sent(Result<(), String>),
-    Version(String),
+    LifecycleSent {
+        session: u64,
+        epoch: u64,
+        result: Result<(), String>,
+    },
     Dismiss,
     ConfirmQuit,
     Restart,
     QuitDeadline,
+    DismissNotice,
+    RefreshState,
+    FlushPending {
+        session: u64,
+        epoch: u64,
+    },
+    RequestTimeout {
+        session: u64,
+        epoch: u64,
+        id: String,
+        accepted: bool,
+    },
 }
 
 impl App {
@@ -82,6 +118,7 @@ impl App {
                     | iced::Event::Mouse(
                         iced::mouse::Event::WheelScrolled { .. }
                             | iced::mouse::Event::CursorEntered
+                            | iced::mouse::Event::CursorLeft
                             | iced::mouse::Event::CursorMoved { .. }
                             | iced::mouse::Event::ButtonReleased(_)
                             | iced::mouse::Event::ButtonPressed(_)
@@ -89,6 +126,10 @@ impl App {
             )
             .then_some(Message::Native(id, event))
         })];
+        if self.titlebar.chrome_animating() {
+            subscriptions
+                .push(window::frames().map(|_| Message::Titlebar(titlebar::Message::Animate)));
+        }
         if self.running {
             if let Some(terminal) = &self.terminal {
                 subscriptions.push(terminal.subscription().map(Message::Terminal));
@@ -113,17 +154,24 @@ impl App {
         let running = self.running;
         let fullscreen = self.titlebar.fullscreen;
         let mut task = self.update_inner(message);
+        self.titlebar.commands_disabled = !self.basic_actions_available();
+        self.titlebar.player_unavailable = !self.actions_available();
         if modal != self.dialog.as_ref().map(std::mem::discriminant) || running != self.running {
             self.dialog_navigation.reset();
         }
         if self.dialog.is_some() {
             self.titlebar.close();
         }
+        self.titlebar.animate_chrome(iced::time::Instant::now());
         if menu && !self.titlebar.visible() && self.dialog.is_none() {
             task = task.chain(self.focus());
         }
         if let Some(desktop) = &self.desktop {
-            desktop.sync_lyrics(self.config.desktop_lyrics.enabled);
+            desktop.sync_menus(
+                self.basic_actions_available(),
+                self.actions_available(),
+                self.config.desktop_lyrics.enabled,
+            );
         }
         if (menu || modal.is_some()) != (self.titlebar.visible() || self.dialog.is_some())
             || fullscreen != self.titlebar.fullscreen

@@ -7,6 +7,39 @@ impl App {
     pub(super) fn update_inner(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Ready => {}
+            Message::FlushPending { session, epoch } => {
+                if self.actions_available()
+                    && !self.closing
+                    && session == self.session
+                    && epoch == self.connection_epoch
+                    && self.dialog.is_none()
+                    && self.connection.is_some()
+                    && !self.pending.is_empty()
+                {
+                    let requests = self.pending.drain(..).map(ipc::Request::Open).collect();
+                    return self.send_all(requests);
+                }
+            }
+            Message::DismissNotice => self.notice = None,
+            Message::RefreshState => {
+                if self.actions_available() {
+                    return self.send_all(vec![ipc::Request::GetState]);
+                }
+            }
+            Message::RequestTimeout {
+                session,
+                epoch,
+                id,
+                accepted,
+            } => {
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && self.requests.get(&id) == Some(&accepted)
+                {
+                    self.requests.remove(&id);
+                    self.notice = Some("The player did not confirm the action in time. Check playback before trying again.".into());
+                }
+            }
             Message::MainOpened => {
                 return Task::batch([
                     self.desktop.as_ref().map_or_else(Task::none, |desktop| {
@@ -26,6 +59,9 @@ impl App {
                 .map(|_| Message::Ready);
             }
             Message::SetMode(mode) => {
+                if !self.basic_actions_available() {
+                    return Task::none();
+                }
                 return window::set_mode(self.main_window, mode).chain(self.refresh_chrome());
             }
             Message::ChromeState(maximized, mode) => {
@@ -39,6 +75,14 @@ impl App {
             Message::Terminal(event) => return self.terminal_event(event),
             Message::Desktop(event) => return self.desktop_event(event),
             Message::Native(id, event) => return self.native_event(id, event),
+            Message::SetupPicked {
+                session,
+                epoch,
+                request_id,
+                result,
+            } => {
+                return self.setup_picked(session, epoch, request_id, result);
+            }
             Message::Picked(path) => {
                 let open = path.map_or_else(Task::none, |path| self.open(path));
                 return Task::batch([
@@ -49,7 +93,8 @@ impl App {
                 ]);
             }
             Message::Pasted(Some(text)) => {
-                if self.dialog.is_none()
+                if self.basic_actions_available()
+                    && self.dialog.is_none()
                     && self.running
                     && let Some(terminal) = &mut self.terminal
                 {
@@ -57,16 +102,30 @@ impl App {
                 }
             }
             Message::Pasted(None) => {}
-            Message::Version(version) => self.version = version,
             Message::Sent(Err(error)) => {
                 self.dialog = Some(Dialog::Error(error));
                 return self.reveal_main();
             }
             Message::Sent(Ok(())) => {}
+            Message::LifecycleSent {
+                session,
+                epoch,
+                result,
+            } => {
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && let Err(error) = result
+                {
+                    if self.closing {
+                        return self.finish_quit();
+                    }
+                    self.notice = Some(error);
+                }
+            }
             Message::Dismiss => {
                 if self.running {
                     self.dialog = None;
-                    let requests = if self.connection.is_some() {
+                    let requests = if self.actions_available() && self.connection.is_some() {
                         self.pending.drain(..).map(ipc::Request::Open).collect()
                     } else {
                         Vec::new()
@@ -79,7 +138,13 @@ impl App {
                 }
             }
             Message::ConfirmQuit => {
+                if self.closing {
+                    return Task::none();
+                }
                 self.closing = true;
+                self.dialog = None;
+                self.pending.clear();
+                self.requests.clear();
                 if self.connection.is_some() {
                     return Task::batch([
                         self.send_all(vec![ipc::Request::Quit]),

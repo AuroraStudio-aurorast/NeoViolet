@@ -22,7 +22,7 @@ fn modal_headings_and_actions_keep_the_interface_font_when_selecting_a_weight() 
         14.0.into(),
     ));
     let dialog = Dialog::Quit;
-    let mut view = overlay(&dialog, "test", true, &Navigation::default());
+    let mut view = overlay(&dialog, "test", None, true, &Navigation::default());
     let mut tree = widget::Tree::new(&view);
     let size = Size::new(640.0, 400.0);
     let _ = view
@@ -103,7 +103,7 @@ fn long_errors_keep_the_restart_action_clickable_at_the_minimum_window_size() {
             .width(Length::Fill)
             .height(Length::Fill)
             .on_press(Message::ConfirmQuit),
-        overlay(&dialog, "NeoViolet test", false, &navigation),
+        overlay(&dialog, "NeoViolet test", None, false, &navigation),
     ];
     let mut ui = iced_runtime::UserInterface::build(
         view,
