@@ -118,6 +118,7 @@ impl State {
         }
         let groups = self.groups(platform, lyrics);
         let mut chrome = column![];
+        let background = self.chrome_color();
         let caption_height = if self.system_decorations {
             if self.menu_bar { 0.0 } else { HEIGHT }
         } else {
@@ -132,7 +133,7 @@ impl State {
             } else {
                 bar.into()
             };
-            chrome = chrome.push(container(bar).style(chrome_background));
+            chrome = chrome.push(container(bar).style(move |_| chrome_background(background)));
         }
         if self.menu_bar {
             let headings = row(groups.iter().enumerate().map(|(index, group)| {
@@ -150,7 +151,7 @@ impl State {
             chrome = chrome.push(
                 container(headings)
                     .width(Length::Fill)
-                    .style(chrome_background),
+                    .style(move |_| chrome_background(background)),
             );
         }
         let chrome_height = caption_height + if self.menu_bar { 28.0 } else { 0.0 };
@@ -158,7 +159,12 @@ impl State {
             content
         } else {
             column![
-                Element::from(chrome).map(crate::app::Message::Titlebar),
+                Element::from(
+                    mouse_area(chrome)
+                        .on_enter(Message::Hover(true))
+                        .on_exit(Message::Hover(false))
+                )
+                .map(crate::app::Message::Titlebar),
                 content
             ]
             .height(Length::Fill)

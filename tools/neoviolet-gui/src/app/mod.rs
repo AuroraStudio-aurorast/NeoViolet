@@ -18,6 +18,8 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
+pub(crate) const TERMINAL_BACKGROUND: iced::Color = iced::Color::from_rgb8(32, 32, 32);
+
 pub struct App {
     pub main_window: window::Id,
     pub lyrics: lyrics_window::Overlay,
@@ -116,6 +118,7 @@ impl App {
                     | iced::Event::Mouse(
                         iced::mouse::Event::WheelScrolled { .. }
                             | iced::mouse::Event::CursorEntered
+                            | iced::mouse::Event::CursorLeft
                             | iced::mouse::Event::CursorMoved { .. }
                             | iced::mouse::Event::ButtonReleased(_)
                             | iced::mouse::Event::ButtonPressed(_)
@@ -123,6 +126,10 @@ impl App {
             )
             .then_some(Message::Native(id, event))
         })];
+        if self.titlebar.chrome_animating() {
+            subscriptions
+                .push(window::frames().map(|_| Message::Titlebar(titlebar::Message::Animate)));
+        }
         if self.running {
             if let Some(terminal) = &self.terminal {
                 subscriptions.push(terminal.subscription().map(Message::Terminal));
@@ -155,6 +162,7 @@ impl App {
         if self.dialog.is_some() {
             self.titlebar.close();
         }
+        self.titlebar.animate_chrome(iced::time::Instant::now());
         if menu && !self.titlebar.visible() && self.dialog.is_none() {
             task = task.chain(self.focus());
         }

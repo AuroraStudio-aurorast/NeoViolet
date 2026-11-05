@@ -14,7 +14,11 @@ impl App {
             iced::Event::Window(event) => match event {
                 window::Event::CloseRequested => return self.window_action(Action::Quit),
                 window::Event::FileDropped(path) => return self.open(path),
-                window::Event::Unfocused => self.titlebar.close(),
+                window::Event::Unfocused => {
+                    self.titlebar.close();
+                    self.titlebar.update(titlebar::Message::Hover(false));
+                    self.titlebar.caption_hover = None;
+                }
                 window::Event::Focused => return self.refresh_chrome(),
                 window::Event::Resized(size) => {
                     self.titlebar.size = size;
@@ -92,6 +96,9 @@ impl App {
                 if self.titlebar.take_drag(position) {
                     return window::drag(self.main_window);
                 }
+            }
+            iced::Event::Mouse(iced::mouse::Event::CursorLeft) => {
+                self.titlebar.update(titlebar::Message::Hover(false));
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
                 self.titlebar.update(titlebar::Message::ReleaseTitle);

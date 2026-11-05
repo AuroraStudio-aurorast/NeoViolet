@@ -141,7 +141,7 @@ impl App {
         Theme::custom(
             "NeoViolet",
             iced::theme::Palette {
-                background: iced::Color::from_rgb8(32, 32, 32),
+                background: super::TERMINAL_BACKGROUND,
                 ..Theme::Dark.palette()
             },
         )
@@ -171,7 +171,7 @@ impl App {
 
     pub(super) fn terminal_theme(&self) -> settings::ThemeSettings {
         let palette = iced_term::ColorPalette {
-            background: "#202020".into(),
+            background: super::TERMINAL_BACKGROUND.to_string(),
             ..Default::default()
         };
         settings::ThemeSettings::new(Box::new(palette))

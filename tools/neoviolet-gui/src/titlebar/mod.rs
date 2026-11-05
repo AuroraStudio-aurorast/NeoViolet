@@ -1,8 +1,11 @@
 //! Main-window chrome and local menu navigation. Playback remains in the TUI.
+mod appearance;
 mod menus;
 mod view;
 mod widgets;
 
+#[cfg(test)]
+mod appearance_tests;
 #[cfg(test)]
 mod interaction_tests;
 #[cfg(test)]
@@ -22,6 +25,8 @@ const MENU_HEADING: f32 = 26.0;
 
 #[derive(Debug, Clone)]
 pub enum Message {
+    Hover(bool),
+    Animate,
     ToggleMenu,
     SelectGroup(usize),
     HoverGroup(usize),
@@ -44,6 +49,7 @@ pub enum CaptionControl {
 
 #[derive(Debug, Default)]
 pub struct State {
+    appearance: appearance::Appearance,
     menu_open: bool,
     selected_group: Option<usize>,
     selected_item: usize,
@@ -71,6 +77,7 @@ impl State {
     }
     pub fn update(&mut self, message: Message) -> Option<Action> {
         match message {
+            Message::Hover(hovered) => self.appearance.hovered = hovered,
             Message::ToggleMenu => {
                 self.menu_open = !self.menu_open;
                 self.selected_group = if self.menu_open && self.menu_bar {
@@ -118,6 +125,7 @@ impl State {
     }
 
     pub fn configure(&mut self, config: &crate::config::Config) {
+        self.appearance.opacity = config.opacity;
         self.menu_bar = config.menu_bar && Platform::current() != Platform::MacOs;
         self.system_decorations =
             config.system_decorations && Platform::current() != Platform::MacOs;
