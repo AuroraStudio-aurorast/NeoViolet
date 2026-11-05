@@ -190,13 +190,13 @@ impl iced::widget::canvas::Program<Event> for Glyph {
                     }
                 }
                 Icon::Play => {
-                    line((2.0, 3.0), (8.0, 8.0));
-                    line((8.0, 8.0), (2.0, 13.0));
-                    line((2.0, 13.0), (2.0, 3.0));
+                    line((5.0, 3.0), (11.0, 8.0));
+                    line((11.0, 8.0), (5.0, 13.0));
+                    line((5.0, 13.0), (5.0, 3.0));
                 }
                 Icon::Pause => {
                     line((5.0, 3.0), (5.0, 13.0));
-                    line((14.0, 3.0), (14.0, 13.0));
+                    line((11.0, 3.0), (11.0, 13.0));
                 }
                 Icon::Lock => {
                     line((3.0, 7.0), (13.0, 7.0));
@@ -224,5 +224,64 @@ impl iced::widget::canvas::Program<Event> for Glyph {
                 .with_color(Color::from_rgb8(205, 201, 216)),
         );
         vec![frame.into_geometry()]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iced::advanced::{
+        mouse,
+        renderer::{Headless, Style},
+    };
+
+    fn visible_bounds(kind: Icon) -> (u32, u32) {
+        let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+            iced::Font::DEFAULT,
+            14.0.into(),
+        ));
+        let view: Element<'static, Event> = container(icon(kind)).width(16).height(16).into();
+        let mut ui = iced_runtime::UserInterface::build(
+            view,
+            iced::Size::new(16.0, 16.0),
+            iced_runtime::user_interface::Cache::new(),
+            &mut renderer,
+        );
+        ui.draw(
+            &mut renderer,
+            &iced::Theme::Dark,
+            &Style {
+                text_color: Color::WHITE,
+            },
+            mouse::Cursor::Unavailable,
+        );
+        let pixels = renderer.screenshot(iced::Size::new(16, 16), 1.0, Color::TRANSPARENT);
+        let (pixels, _) = pixels.as_chunks::<4>();
+        let mut min_x = 16;
+        let mut max_x = 0;
+        for (index, pixel) in pixels.iter().enumerate() {
+            if pixel[3] > 0 {
+                let x = (index % 16) as u32;
+                min_x = min_x.min(x);
+                max_x = max_x.max(x);
+            }
+        }
+        (min_x, max_x)
+    }
+
+    #[test]
+    fn play_and_pause_glyphs_share_a_centered_visual_width() {
+        let play = visible_bounds(Icon::Play);
+        let pause = visible_bounds(Icon::Pause);
+        assert_eq!(
+            play.1 - play.0,
+            pause.1 - pause.0,
+            "glyph bounds differ: play={play:?}, pause={pause:?}"
+        );
+        assert_eq!(
+            play.0 + play.1,
+            pause.0 + pause.1,
+            "glyph centers differ: play={play:?}, pause={pause:?}"
+        );
     }
 }
