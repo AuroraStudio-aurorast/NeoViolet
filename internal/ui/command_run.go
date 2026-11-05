@@ -132,9 +132,13 @@ func runLrc(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	return executeLrcCommand(m, inv.Parts)
 }
 
-// runOpen implements ":open <path>" / ":load" / ":e".
+// runOpen implements ":open [path]" / ":load" / ":e".
+// Without a path, a capable attached GUI hosts the native audio picker.
 func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	if inv.Rest == "" {
+		if m.ipcAudioPicker && m.ipcSession != 0 {
+			return m, m.requestAudioPicker()
+		}
 		m.Error.Set("Usage: open <path>", m.Config.Error.Duration)
 		return m, nil
 	}

@@ -188,3 +188,36 @@ func TestAcceptedSetupPreservesInitialFileSeekAndVolume(t *testing.T) {
 		t.Fatal("initial file skipped")
 	}
 }
+
+func TestReadyOpenCommandUsesAudioPickerBeforeAndAfterWizard(t *testing.T) {
+	for _, firstRun := range []bool{false, true} {
+		t.Run(fmt.Sprint(firstRun), func(t *testing.T) {
+			m, conn, decoder := client(t, firstRun, "")
+			send(t, m, conn, `{"type":"client_hello","client":"neoviolet-gui","protocol":1,"capabilities":["file_picker","audio_file_picker"]}`)
+			if firstRun {
+				cfg := config.DefaultConfig()
+				m.Update(settingsSaved{Config: &cfg})
+			}
+			player := m.Player()
+			player.Components.CommandInput.SetValue("open")
+			player.UI.Mode = ui.ModeCommand
+			m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+			if player.Error.Message != "" {
+				t.Fatalf("picker request rejected: %s", player.Error.Message)
+			}
+			pick := read(t, decoder, "pick_file")
+			if pick["purpose"] != "audio" {
+				t.Fatalf("wrong picker: %v", pick)
+			}
+			path := filepath.Join(t.TempDir(), "song.flac")
+			if err := os.WriteFile(path, []byte("invalid"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			raw, _ := json.Marshal(map[string]any{"type": "file_picked", "purpose": "audio", "request_id": pick["request_id"], "status": "selected", "path": path})
+			send(t, m, conn, string(raw))
+			if !player.Loading {
+				t.Fatal("startup host swallowed the audio picker selection")
+			}
+		})
+	}
+}

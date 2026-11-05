@@ -9,8 +9,10 @@
       "playback",
       "request_quit",
       "startup",
-      "file_picker"
-    ]
+      "file_picker",
+      "audio_file_picker"
+    ],
+    "libopenmpt_version": "0.8.9"
   },
   "state": {
     "type": "state",
@@ -67,7 +69,8 @@
     "client": "neoviolet-gui",
     "protocol": 1,
     "capabilities": [
-      "file_picker"
+      "file_picker",
+      "audio_file_picker"
     ]
   },
   "file_picked": {

@@ -82,6 +82,7 @@ impl App {
                 crate::dialog::overlay(
                     dialog,
                     &self.version,
+                    self.libopenmpt_version(),
                     self.running,
                     &self.dialog_navigation
                 )

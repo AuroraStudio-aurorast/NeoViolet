@@ -125,7 +125,7 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     let config = directory.path().join("neoviolet");
     std::fs::create_dir_all(&config).unwrap();
     std::fs::write(config.join("config.json"), "{}").unwrap();
-    let terminal = iced_term::Terminal::new(
+    let mut terminal = iced_term::Terminal::new(
         700,
         iced_term::settings::Settings {
             backend: iced_term::settings::BackendSettings {
@@ -189,7 +189,7 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     assert!(matches!(state,Incoming::State{state} if !state.has_track && state.config_dir==config));
     let broken = directory.path().join("broken.flac");
     std::fs::write(&broken, b"not audio").unwrap();
-    write_request(peer.get_mut(), &Request::Open(broken), "broken")
+    write_request(peer.get_mut(), &Request::Open(broken.clone()), "broken")
         .await
         .unwrap();
     let accepted = live_message(
@@ -206,6 +206,49 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     assert!(
         matches!(failed,Incoming::Result{status,error,..} if status=="failed" && !error.is_empty())
     );
+    // Exercise the actual command through the PTY, including cancellation and
+    // loading the selected path through the startup host rather than GUI state.
+    let mut previous_pick = String::new();
+    for status in ["cancelled", "selected"] {
+        terminal.handle(iced_term::Command::ProxyToBackend(
+            iced_term::BackendCommand::Write(b":open\r".to_vec()),
+        ));
+        let pick = live_message(
+            &mut peer,
+            |frame| matches!(frame, Incoming::PickFile { purpose, .. } if purpose == "audio"),
+        )
+        .await;
+        let Incoming::PickFile { request_id, .. } = pick else {
+            unreachable!()
+        };
+        assert_ne!(request_id, previous_pick);
+        previous_pick = request_id.clone();
+        write_request(
+            peer.get_mut(),
+            &Request::FilePicked {
+                purpose: "audio".into(),
+                request_id,
+                status: status.into(),
+                path: (status == "selected").then(|| broken.clone()),
+                error: None,
+            },
+            "",
+        )
+        .await
+        .unwrap();
+        if status == "selected" {
+            live_message(
+                &mut peer,
+                |frame| matches!(frame, Incoming::State { state } if state.loading),
+            )
+            .await;
+            live_message(
+                &mut peer,
+                |frame| matches!(frame, Incoming::State { state } if !state.loading),
+            )
+            .await;
+        }
+    }
     drop(peer);
     let (mut recovered, hello) = tokio::time::timeout(Duration::from_secs(5), discover(&port))
         .await
@@ -497,6 +540,7 @@ async fn first_run_wizard(can_pick: bool) {
         write_request(
             peer.get_mut(),
             &Request::FilePicked {
+                purpose: "soundfont".into(),
                 request_id,
                 status: "cancelled".into(),
                 path: None,
@@ -566,6 +610,7 @@ async fn startup_fixture_preserves_phase_and_scoped_picker_reply() {
     write_request(
         &mut output,
         &Request::FilePicked {
+            purpose: "soundfont".into(),
             request_id: "soundfont-7".into(),
             status: "cancelled".into(),
             path: None,
@@ -577,4 +622,27 @@ async fn startup_fixture_preserves_phase_and_scoped_picker_reply() {
     .unwrap();
     let actual: serde_json::Value = serde_json::from_slice(&output).unwrap();
     assert_eq!(actual, fixture["file_picked"]);
+}
+
+#[tokio::test]
+async fn handshake_library_version_is_optional_and_preserves_runtime_value() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../internal/ipc/testdata/protocol.json")).unwrap();
+    for payload in [
+        fixture["hello"].clone(),
+        serde_json::json!({"type":"hello","version":"dev"}),
+    ] {
+        let expected_library = payload
+            .get("libopenmpt_version")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
+        let mut data = serde_json::to_vec(&payload).unwrap();
+        data.push(b'\n');
+        let mut reader = BufReader::new(data.as_slice());
+        let Some(Incoming::Hello(hello)) = read_frame(&mut reader).await.unwrap() else {
+            panic!("handshake not recognized")
+        };
+        assert_eq!(hello.version, "dev");
+        assert_eq!(hello.libopenmpt_version, expected_library);
+    }
 }

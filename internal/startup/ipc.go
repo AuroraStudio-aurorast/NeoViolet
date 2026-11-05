@@ -50,6 +50,7 @@ func (m *Model) ipcEvent(event ipc.Event) tea.Cmd {
 		}
 		m.session = event.Session
 		m.native = false
+		m.guiCapabilities = nil
 		m.publishPhase(true)
 		if m.player != nil {
 			_, cmd := m.player.Update(event)
@@ -61,6 +62,7 @@ func (m *Model) ipcEvent(event ipc.Event) tea.Cmd {
 		}
 		m.session = 0
 		m.native = false
+		m.guiCapabilities = nil
 		m.pickerID = ""
 		if m.setup != nil {
 			m.setup.SetGUI(m.gui, false)
@@ -81,16 +83,24 @@ func (m *Model) ipcEvent(event ipc.Event) tea.Cmd {
 				return nil
 			}
 			m.gui = true
+			m.guiCapabilities = slices.Clone(message.Capabilities)
 			m.native = slices.Contains(message.Capabilities, "file_picker")
 			if m.setup != nil {
 				m.awaitGUI = false
 				m.phase = "wizard"
 				m.setup.SetGUI(true, m.native)
 			}
+			if m.player != nil {
+				_, cmd := m.player.Update(event)
+				return cmd
+			}
 			m.result(message.RequestID, "succeeded", "")
 			return nil
 		case "file_picked":
-			if m.setup == nil || !m.native || message.Purpose != "soundfont" || message.RequestID != m.pickerID || m.pickerID == "" {
+			if message.Purpose != "soundfont" {
+				break
+			}
+			if m.setup == nil || !m.native || message.RequestID != m.pickerID || m.pickerID == "" {
 				return nil
 			}
 			m.pickerID = ""

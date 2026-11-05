@@ -1,4 +1,4 @@
-//! Go owns startup readiness; the GUI only enables actions and hosts its fixed picker.
+//! Go owns startup readiness; the GUI enables actions and hosts native file pickers.
 use super::{App, Message};
 use crate::{ipc, lyrics_window};
 use iced::window::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
@@ -18,7 +18,32 @@ pub(super) struct Picker {
     session: u64,
     epoch: u64,
     request_id: String,
+    purpose: String,
     cancelled: bool,
+}
+
+impl Picker {
+    fn allowed_in(&self, stage: Stage) -> bool {
+        matches!(
+            (self.purpose.as_str(), stage),
+            ("soundfont", Stage::Phase(ipc::StartupPhase::Wizard))
+                | ("audio", Stage::Phase(ipc::StartupPhase::Ready))
+        )
+    }
+}
+
+fn file_dialog<W: HasWindowHandle + HasDisplayHandle>(
+    parent: &W,
+    purpose: &str,
+) -> Result<rfd::AsyncFileDialog, String> {
+    if purpose == "soundfont" {
+        return soundfont_dialog(parent);
+    }
+    parent.window_handle().map_err(|error| error.to_string())?;
+    parent.display_handle().map_err(|error| error.to_string())?;
+    Ok(rfd::AsyncFileDialog::new()
+        .set_title("Open Audio File")
+        .set_parent(parent))
 }
 
 pub(super) fn soundfont_dialog<W: HasWindowHandle + HasDisplayHandle>(
@@ -53,7 +78,7 @@ impl App {
         }
         self.startup = Stage::Phase(phase);
         if let Some(picker) = &mut self.picker {
-            picker.cancelled |= phase != ipc::StartupPhase::Wizard;
+            picker.cancelled |= !picker.allowed_in(Stage::Phase(phase));
         }
         if phase == ipc::StartupPhase::Ready {
             return self.restore_ready();
@@ -96,8 +121,11 @@ impl App {
         if self.closing
             || !self.ipc_connected
             || !self.handshake.supports("file_picker")
-            || self.startup != Stage::Phase(ipc::StartupPhase::Wizard)
-            || purpose != "soundfont"
+            || !matches!(
+                (purpose.as_str(), self.startup),
+                ("soundfont", Stage::Phase(ipc::StartupPhase::Wizard))
+                    | ("audio", Stage::Phase(ipc::StartupPhase::Ready))
+            )
             || request_id.is_empty()
         {
             return Task::none();
@@ -106,28 +134,29 @@ impl App {
             if active.session == self.session
                 && active.epoch == self.connection_epoch
                 && active.request_id == request_id
+                && active.purpose == purpose
             {
                 return Task::none();
             }
             return self.send_all(vec![ipc::Request::FilePicked {
+                purpose,
                 request_id,
                 status: "failed".into(),
                 path: None,
-                error: Some(
-                    "A SoundFont chooser is still open. Close it before trying again.".into(),
-                ),
+                error: Some("A file chooser is still open. Close it before trying again.".into()),
             }]);
         }
         let picker = Picker {
             session: self.session,
             epoch: self.connection_epoch,
             request_id,
+            purpose: purpose.clone(),
             cancelled: false,
         };
         self.picker = Some(picker.clone());
         self.reveal_main().chain(
-            window::run(self.main_window, |parent| {
-                soundfont_dialog(&parent).map(|dialog| dialog.pick_file())
+            window::run(self.main_window, move |parent| {
+                file_dialog(&parent, &purpose).map(|dialog| dialog.pick_file())
             })
             .then(move |dialog| {
                 let picker = picker.clone();
@@ -162,14 +191,14 @@ impl App {
         if picker.session != session || picker.epoch != epoch || picker.request_id != request_id {
             return Task::none();
         }
-        let cancelled = picker.cancelled;
+        let cancelled = picker.cancelled || !picker.allowed_in(self.startup);
+        let purpose = picker.purpose.clone();
         self.picker = None;
         if cancelled
             || session != self.session
             || epoch != self.connection_epoch
             || !self.ipc_connected
             || self.closing
-            || self.startup != Stage::Phase(ipc::StartupPhase::Wizard)
         {
             return self.restore_ready();
         }
@@ -180,6 +209,7 @@ impl App {
         };
         Task::batch([
             self.send_all(vec![ipc::Request::FilePicked {
+                purpose,
                 request_id,
                 status: status.into(),
                 path,

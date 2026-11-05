@@ -412,7 +412,7 @@ async fn setup_picker_uses_main_window_and_missing_parent_reports_failure() {
     assert!(parent_seen);
     let _ = app.update(completed.expect("missing native handles must complete with failure"));
     assert!(
-        matches!(receiver.try_recv().unwrap().request, ipc::Request::FilePicked { request_id, status, path: None, error: Some(_) } if request_id == "choose-bank" && status == "failed")
+        matches!(receiver.try_recv().unwrap().request, ipc::Request::FilePicked { request_id, status, path: None, error: Some(_), .. } if request_id == "choose-bank" && status == "failed")
     );
 }
 
@@ -527,4 +527,79 @@ fn setup_keeps_basic_menu_commands_and_shortcuts_available() {
         assert!(!app.actions_available(), "basic commands unlocked playback");
         assert!(receiver.try_recv().is_err());
     }
+}
+
+#[test]
+fn audio_picker_requires_ready_and_returns_selection_for_the_current_request() {
+    let (mut app, mut receiver) = starting();
+    app.handshake.capabilities.push("file_picker".into());
+    let request = |id: &str| {
+        ipc::Event::Received(ipc::Incoming::PickFile {
+            purpose: "audio".into(),
+            request_id: id.into(),
+        })
+    };
+    for name in ["wizard", "initial_loading"] {
+        phase(&mut app, name);
+        let task = app.ipc_event(2, request("blocked"));
+        assert!(iced_runtime::task::into_stream(task).is_none());
+        assert!(app.picker.is_none());
+    }
+    phase(&mut app, "ready");
+    while receiver.try_recv().is_ok() {}
+    let task = app.ipc_event(2, request("audio-1"));
+    assert!(
+        iced_runtime::task::into_stream(task).is_some(),
+        "ready audio request must open a native chooser"
+    );
+    assert!(!app.actions_available());
+    let _ = app.update(Message::SetupPicked {
+        session: 2,
+        epoch: app.connection_epoch,
+        request_id: "audio-1".into(),
+        result: Ok(Some("/tmp/a song 雪.flac".into())),
+    });
+    assert!(
+        matches!(receiver.try_recv().unwrap().request, ipc::Request::FilePicked { purpose, request_id, status, path: Some(path), .. } if purpose == "audio" && request_id == "audio-1" && status == "selected" && path == std::path::Path::new("/tmp/a song 雪.flac"))
+    );
+    assert!(app.actions_available());
+}
+
+#[test]
+fn audio_picker_cancellation_and_disconnect_do_not_open_a_track() {
+    let (mut app, mut receiver) = starting();
+    app.handshake.capabilities.push("file_picker".into());
+    phase(&mut app, "ready");
+    while receiver.try_recv().is_ok() {}
+    let _ = app.setup_picker("audio".into(), "cancel".into());
+    let _ = app.update(Message::SetupPicked {
+        session: 2,
+        epoch: app.connection_epoch,
+        request_id: "cancel".into(),
+        result: Ok(None),
+    });
+    assert!(
+        matches!(receiver.try_recv().unwrap().request, ipc::Request::FilePicked { purpose, status, path: None, .. } if purpose == "audio" && status == "cancelled")
+    );
+    let _ = app.setup_picker("audio".into(), "stale".into());
+    let epoch = app.connection_epoch;
+    let _ = app.ipc_event(2, ipc::Event::Disconnected("test".into()));
+    let (sender, mut replacement) = mpsc::channel(32);
+    let _ = app.ipc_event(2, ipc::Event::Connected(sender));
+    phase(&mut app, "ready");
+    let _ = app.update(Message::SetupPicked {
+        session: 2,
+        epoch,
+        request_id: "stale".into(),
+        result: Ok(Some("/tmp/stale.flac".into())),
+    });
+    assert!(matches!(
+        replacement.try_recv().unwrap().request,
+        ipc::Request::DesktopLyrics(_)
+    ));
+    assert!(
+        replacement.try_recv().is_err(),
+        "old chooser result must not reach the replacement connection"
+    );
+    assert!(app.actions_available());
 }

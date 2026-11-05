@@ -39,6 +39,7 @@ type Model struct {
 	saveError             string
 	accepted              *config.Config
 	pickerID              string
+	guiCapabilities       []string
 	controller            mediactl.Controller
 	deferredLoad          *ui.LoadTrackMsg
 	closed                bool
@@ -87,6 +88,7 @@ func (m *Model) activate(cfg *config.Config) {
 	}
 	if m.session != 0 {
 		m.player.Update(ipc.Event{Kind: "connected", Session: m.session})
+		m.player.Update(ipc.Event{Kind: "request", Session: m.session, Message: ipc.Message{Type: "client_hello", Client: "neoviolet-gui", Protocol: 1, Capabilities: m.guiCapabilities}})
 	}
 	m.phase = "ready"
 	if m.player.Loading {

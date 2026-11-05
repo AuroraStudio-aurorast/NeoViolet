@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -34,6 +35,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 	case "connected":
 		if m.ipcServer != nil && event.Session == m.ipcServer.Session() {
 			m.ipcSession = event.Session
+			m.ipcAudioPicker = false
+			m.ipcPickerID = ""
 			m.ipcRevision = 0
 			m.pushIPCState(true)
 			m.Audio.LastSentLyricSig = ""
@@ -41,6 +44,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 	case "disconnected":
 		if event.Session == m.ipcSession {
 			m.ipcSession = 0
+			m.ipcAudioPicker = false
+			m.ipcPickerID = ""
 		}
 		if m.ipcPendingOpen != nil && m.ipcPendingOpen.session == event.Session {
 			m.ipcPendingOpen = nil
@@ -52,7 +57,7 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		cmd, err := m.ipcRequest(event.Message)
 		if err != nil {
 			m.ipcResult(event.Session, event.Message.RequestID, "failed", err.Error())
-		} else if event.Message.Type != "open" {
+		} else if event.Message.Type != "open" && event.Message.Type != "file_picked" {
 			m.ipcResult(event.Session, event.Message.RequestID, "succeeded", "")
 		}
 		if event.Message.Type == "quit" {
@@ -66,6 +71,13 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 
 func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 	switch message.Type {
+	case "client_hello":
+		if message.Client != "neoviolet-gui" || message.Protocol != 1 {
+			return nil, fmt.Errorf("unsupported GUI client")
+		}
+		m.ipcAudioPicker = slices.Contains(message.Capabilities, "audio_file_picker")
+	case "file_picked":
+		return m.audioPicked(message), nil
 	case "request_quit":
 		return nil, m.requestGUIQuit()
 	case "quit":

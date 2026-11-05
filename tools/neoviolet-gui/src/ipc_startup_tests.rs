@@ -42,7 +42,7 @@ async fn startup_handshake_announces_gui_capability_before_any_command() {
             if supports_startup {
                 assert_eq!(
                     first,
-                    serde_json::json!({"type":"client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker"]})
+                    serde_json::json!({"type":"client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker"]})
                 );
                 line.clear();
                 peer.read_line(&mut line).await.unwrap();
@@ -68,31 +68,34 @@ async fn startup_handshake_announces_gui_capability_before_any_command() {
 
 #[tokio::test]
 async fn picker_replies_keep_status_request_and_optional_fields_on_the_wire() {
-    for (status, path, error) in [
-        ("selected", Some(PathBuf::from("/tmp/a bank 雪.sf2")), None),
-        ("cancelled", None, None),
-        ("failed", None, Some("Window unavailable".to_string())),
-    ] {
-        let request = Request::FilePicked {
-            request_id: "pick-1".into(),
-            status: status.into(),
-            path: path.clone(),
-            error: error.clone(),
-        };
-        let mut output = Vec::new();
-        write_request(&mut output, &request, "").await.unwrap();
-        let wire: serde_json::Value = serde_json::from_slice(&output).unwrap();
-        assert_eq!(wire["type"], "file_picked");
-        assert_eq!(wire["purpose"], "soundfont");
-        assert_eq!(wire["request_id"], "pick-1");
-        assert_eq!(wire["status"], status);
-        assert_eq!(
-            wire.get("path").cloned(),
-            path.map(|value| serde_json::json!(value))
-        );
-        assert_eq!(
-            wire.get("error").cloned(),
-            error.map(|value| serde_json::json!(value))
-        );
+    for purpose in ["soundfont", "audio"] {
+        for (status, path, error) in [
+            ("selected", Some(PathBuf::from("/tmp/a bank 雪.sf2")), None),
+            ("cancelled", None, None),
+            ("failed", None, Some("Window unavailable".to_string())),
+        ] {
+            let request = Request::FilePicked {
+                purpose: purpose.into(),
+                request_id: "pick-1".into(),
+                status: status.into(),
+                path: path.clone(),
+                error: error.clone(),
+            };
+            let mut output = Vec::new();
+            write_request(&mut output, &request, "").await.unwrap();
+            let wire: serde_json::Value = serde_json::from_slice(&output).unwrap();
+            assert_eq!(wire["type"], "file_picked");
+            assert_eq!(wire["purpose"], purpose);
+            assert_eq!(wire["request_id"], "pick-1");
+            assert_eq!(wire["status"], status);
+            assert_eq!(
+                wire.get("path").cloned(),
+                path.map(|value| serde_json::json!(value))
+            );
+            assert_eq!(
+                wire.get("error").cloned(),
+                error.map(|value| serde_json::json!(value))
+            );
+        }
     }
 }

@@ -103,7 +103,7 @@ impl App {
                 self.version = if handshake.version.trim().is_empty() {
                     "unavailable".into()
                 } else {
-                    format!("NeoViolet version {}", handshake.version)
+                    handshake.version.trim().to_owned()
                 };
                 self.startup = if handshake.supports("startup") {
                     super::startup::Stage::AwaitingPhase

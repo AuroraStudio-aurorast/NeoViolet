@@ -6,6 +6,7 @@ fn connected() -> (App, mpsc::Receiver<ipc::Command>) {
     app.pending.clear();
     app.handshake = ipc::Handshake {
         version: String::new(),
+        libopenmpt_version: String::new(),
         protocol: 1,
         capabilities: vec!["state".into(), "results".into(), "playback".into()],
     };
@@ -267,7 +268,7 @@ fn about_version_comes_from_the_authenticated_child_and_resets_on_restart() {
     assert!(app.version.is_empty());
     let hello = serde_json::from_value(serde_json::json!({"version":"v9.8.7"})).unwrap();
     let _ = app.update(Message::Ipc(2, ipc::Event::Handshake(hello)));
-    assert_eq!(app.version, "NeoViolet version v9.8.7");
+    assert_eq!(app.version, "v9.8.7");
     let _ = app.update(Message::Ipc(
         2,
         ipc::Event::Handshake(ipc::Handshake::default()),
@@ -396,5 +397,60 @@ async fn close_requests_wait_for_queue_capacity_instead_of_disappearing() {
             receiver.try_recv().unwrap().request,
             ipc::Request::CheckQuit | ipc::Request::Quit
         ));
+    }
+}
+
+#[test]
+fn about_shows_raw_player_and_optional_runtime_library_versions() {
+    use iced::advanced::{layout, text::paragraph::Plain, widget};
+    type Paragraph = iced::advanced::graphics::text::paragraph::Paragraph;
+    fn labels(tree: &widget::Tree, out: &mut Vec<String>) {
+        if let widget::tree::State::Some(state) = &tree.state
+            && let Some(paragraph) = state.downcast_ref::<Plain<Paragraph>>()
+        {
+            out.push(paragraph.content().to_owned());
+        }
+        for child in &tree.children {
+            labels(child, out);
+        }
+    }
+    let renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+        iced::Font::DEFAULT,
+        14.0.into(),
+    ));
+    let mut app = app();
+    app.dialog = Some(Dialog::About);
+    for library in [Some("0.8.9"), None, Some("")] {
+        let mut hello = serde_json::json!({"version":"v9.8.7"});
+        if let Some(version) = library {
+            hello["libopenmpt_version"] = version.into();
+        }
+        let handshake = serde_json::from_value(hello).unwrap();
+        let _ = app.update(Message::Ipc(2, ipc::Event::Handshake(handshake)));
+        let mut view = app.view(app.main_window);
+        let mut tree = widget::Tree::new(&view);
+        let size = iced::Size::new(480.0, 320.0);
+        let _ = view
+            .as_widget_mut()
+            .layout(&mut tree, &renderer, &layout::Limits::new(size, size));
+        let mut text = Vec::new();
+        labels(&tree, &mut text);
+        assert!(
+            text.iter().any(|label| label == "v9.8.7"),
+            "player version is not displayed raw: {text:?}"
+        );
+        assert!(
+            text.iter()
+                .any(|label| label == &format!("GUI {}", env!("CARGO_PKG_VERSION")))
+        );
+        assert_eq!(
+            text.iter().any(|label| label == "libopenmpt"),
+            library == Some("0.8.9"),
+            "optional library row: {text:?}"
+        );
+        assert_eq!(
+            text.iter().any(|label| label == "0.8.9"),
+            library == Some("0.8.9")
+        );
     }
 }

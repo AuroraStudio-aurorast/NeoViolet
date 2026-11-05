@@ -17,6 +17,7 @@ const MAX_FRAME: usize = 10 * 1024 * 1024;
 pub enum Request {
     Open(PathBuf),
     FilePicked {
+        purpose: String,
         request_id: String,
         status: String,
         path: Option<PathBuf>,
@@ -80,6 +81,7 @@ pub enum StartupPhase {
 pub struct Handshake {
     pub protocol: u32,
     pub version: String,
+    pub libopenmpt_version: String,
     pub capabilities: Vec<String>,
 }
 
@@ -233,7 +235,7 @@ async fn authenticate(
         Some(Incoming::Hello(hello)) if hello.protocol <= 1 => {
             if hello.supports("startup") {
                 peer.get_mut().write_all(
-                    b"{\"type\":\"client_hello\",\"client\":\"neoviolet-gui\",\"protocol\":1,\"capabilities\":[\"file_picker\"]}\n"
+                    b"{\"type\":\"client_hello\",\"client\":\"neoviolet-gui\",\"protocol\":1,\"capabilities\":[\"file_picker\",\"audio_file_picker\"]}\n"
                 ).await.map_err(|error| error.to_string())?;
             }
             Ok((peer, hello))
@@ -271,12 +273,13 @@ async fn write_request<W: AsyncWrite + Unpin>(
 ) -> Result<(), String> {
     let mut value = match request {
         Request::FilePicked {
+            purpose,
             request_id,
             status,
             path,
             error,
         } => {
-            let mut value = serde_json::json!({"type":"file_picked", "purpose":"soundfont", "request_id":request_id, "status":status});
+            let mut value = serde_json::json!({"type":"file_picked", "purpose":purpose, "request_id":request_id, "status":status});
             if let Some(path) = path {
                 value["path"] = serde_json::json!(path);
             }

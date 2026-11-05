@@ -4,6 +4,11 @@ use crate::ipc;
 use iced::Task;
 
 impl App {
+    pub fn libopenmpt_version(&self) -> Option<&str> {
+        let version = self.handshake.libopenmpt_version.trim();
+        (!version.is_empty()).then_some(version)
+    }
+
     pub fn handshake_supports_state(&self) -> bool {
         self.handshake.supports("state")
     }

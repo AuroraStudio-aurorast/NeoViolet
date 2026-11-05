@@ -50,6 +50,7 @@ impl Navigation {
 pub fn overlay<'a>(
     dialog: &'a Dialog,
     version: &'a str,
+    libopenmpt_version: Option<&'a str>,
     running: bool,
     navigation: &Navigation,
 ) -> Element<'a, Message> {
@@ -68,21 +69,31 @@ pub fn overlay<'a>(
         iced::widget::Row<'a, Message>,
         u32,
     ) = match dialog {
-        Dialog::About => (
-            "NeoViolet",
-            Mark::Music,
-            column![
+        Dialog::About => {
+            let mut details = column![
                 text("Player version").size(11).color(MUTED),
                 text(version)
                     .size(12)
                     .color(SECONDARY)
                     .wrapping(text::Wrapping::WordOrGlyph),
             ]
-            .spacing(4)
-            .into(),
-            row![action("Close", Message::Dismiss, Tone::Primary, 0)],
-            408,
-        ),
+            .spacing(4);
+            if let Some(version) = libopenmpt_version {
+                details = details.push(text("libopenmpt").size(11).color(MUTED)).push(
+                    text(version)
+                        .size(12)
+                        .color(SECONDARY)
+                        .wrapping(text::Wrapping::WordOrGlyph),
+                );
+            }
+            (
+                "NeoViolet",
+                Mark::Music,
+                details.into(),
+                row![action("Close", Message::Dismiss, Tone::Primary, 0)],
+                408,
+            )
+        }
         Dialog::Quit => (
             "Close NeoViolet?",
             Mark::Leave,
