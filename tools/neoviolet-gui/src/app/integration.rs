@@ -6,6 +6,7 @@ use iced::Task;
 impl App {
     pub(crate) fn controls_available(&self) -> bool {
         self.ipc_connected
+            && !self.closing
             && self.handshake.supports("playback")
             && self.dialog.is_none()
             && !self.titlebar.visible()
@@ -18,9 +19,50 @@ impl App {
         let Some(sender) = self.connection.clone() else {
             return Task::none();
         };
+        let closing = self.closing;
+        let requests = requests
+            .into_iter()
+            .filter(|request| !closing || matches!(request, ipc::Request::Quit));
         let mut timers = Vec::new();
-        let mut requests = requests.into_iter();
+        let mut requests = requests;
         while let Some(request) = requests.next() {
+            if matches!(request, ipc::Request::CheckQuit | ipc::Request::Quit) {
+                let command = ipc::Command {
+                    request,
+                    id: String::new(),
+                };
+                match sender.try_send(command) {
+                    Ok(()) => {}
+                    Err(tokio::sync::mpsc::error::TrySendError::Full(command)) => {
+                        let sender = sender.clone();
+                        let session = self.session;
+                        let epoch = self.connection_epoch;
+                        timers.push(Task::perform(
+                            async move {
+                                tokio::time::timeout(
+                                    std::time::Duration::from_secs(2),
+                                    sender.send(command),
+                                )
+                                .await
+                                .map_err(|_| "The player is busy. Try closing again.".to_string())?
+                                .map_err(|_| {
+                                    "The player connection closed. Try closing again.".to_string()
+                                })
+                            },
+                            move |result| Message::LifecycleSent {
+                                session,
+                                epoch,
+                                result,
+                            },
+                        ));
+                    }
+                    Err(_) => {
+                        self.notice =
+                            Some("The player connection closed. Try closing again.".into());
+                    }
+                }
+                continue;
+            }
             if self.requests.len() >= 64 {
                 self.notice = Some("Too many player actions are pending. File opens will resume when playback responds.".into());
                 self.retain_opens(std::iter::once(request).chain(requests));
@@ -160,6 +202,7 @@ impl App {
 
     pub(super) fn toggle_playback(&mut self) -> Task<Message> {
         if !self.ipc_connected
+            || self.closing
             || self.dialog.is_some()
             || self.titlebar.visible()
             || (self.handshake.protocol > 0 && !self.handshake.supports("playback"))

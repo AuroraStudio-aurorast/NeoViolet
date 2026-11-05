@@ -152,10 +152,15 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     .expect("start real TUI in a PTY without a GUI window");
     let pid = terminal.child_process_id().unwrap();
     let port = std::env::temp_dir().join(format!("neoviolet-ipc-{pid}"));
-    let (mut peer, _) = tokio::time::timeout(Duration::from_secs(10), discover(&port))
+    let (mut peer, hello) = tokio::time::timeout(Duration::from_secs(10), discover(&port))
         .await
         .expect("TUI must start IPC without a desktop window")
         .expect("real authentication acknowledgement");
+    assert!(
+        !hello.version.trim().is_empty(),
+        "the running player must identify its build"
+    );
+    assert!(hello.supports("request_quit"));
     write_request(peer.get_mut(), &Request::DesktopLyrics(true), "")
         .await
         .unwrap();
@@ -221,6 +226,21 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     )
     .await;
     assert!(matches!(failed,Incoming::Result{status,..} if status=="failed"));
+    write_request(recovered.get_mut(), &Request::CheckQuit, "close")
+        .await
+        .unwrap();
+    let decision = live_message(&mut recovered, |frame| {
+        matches!(frame, Incoming::Quit { .. })
+    })
+    .await;
+    assert!(
+        matches!(decision, Incoming::Quit { dialog: false }),
+        "idle player should not ask for confirmation"
+    );
+    assert!(
+        port.exists(),
+        "Go must remain alive until confirmed cleanup is requested"
+    );
     write_request(recovered.get_mut(), &Request::Quit, "quit")
         .await
         .unwrap();

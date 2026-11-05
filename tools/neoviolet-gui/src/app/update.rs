@@ -8,7 +8,8 @@ impl App {
         match message {
             Message::Ready => {}
             Message::FlushPending { session, epoch } => {
-                if session == self.session
+                if !self.closing
+                    && session == self.session
                     && epoch == self.connection_epoch
                     && self.dialog.is_none()
                     && self.connection.is_some()
@@ -113,12 +114,26 @@ impl App {
                 }
             }
             Message::Pasted(None) => {}
-            Message::Version(version) => self.version = version,
             Message::Sent(Err(error)) => {
                 self.dialog = Some(Dialog::Error(error));
                 return self.reveal_main();
             }
             Message::Sent(Ok(())) => {}
+            Message::LifecycleSent {
+                session,
+                epoch,
+                result,
+            } => {
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && let Err(error) = result
+                {
+                    if self.closing {
+                        return self.finish_quit();
+                    }
+                    self.notice = Some(error);
+                }
+            }
             Message::Dismiss => {
                 if self.running {
                     self.dialog = None;
@@ -135,7 +150,13 @@ impl App {
                 }
             }
             Message::ConfirmQuit => {
+                if self.closing {
+                    return Task::none();
+                }
                 self.closing = true;
+                self.dialog = None;
+                self.pending.clear();
+                self.requests.clear();
                 if self.connection.is_some() {
                     return Task::batch([
                         self.send_all(vec![ipc::Request::Quit]),

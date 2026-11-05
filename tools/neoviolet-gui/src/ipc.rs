@@ -17,6 +17,7 @@ const MAX_FRAME: usize = 10 * 1024 * 1024;
 pub enum Request {
     Open(PathBuf),
     Quit,
+    CheckQuit,
     DesktopLyrics(bool),
     PlayPause,
     Play,
@@ -54,6 +55,7 @@ pub enum Incoming {
 #[serde(default)]
 pub struct Handshake {
     pub protocol: u32,
+    pub version: String,
     pub capabilities: Vec<String>,
 }
 
@@ -239,6 +241,7 @@ async fn write_request<W: AsyncWrite + Unpin>(
     let mut value = match request {
         Request::Open(path) => serde_json::json!({"type": "open", "path": path}),
         Request::Quit => serde_json::json!({"type": "quit"}),
+        Request::CheckQuit => serde_json::json!({"type":"request_quit"}),
         Request::DesktopLyrics(enable) => {
             serde_json::json!({"type": "desktop_lyrics", "enable": enable})
         }

@@ -1,5 +1,5 @@
 {
-  "hello": {"type":"hello","protocol":1,"capabilities":["results","state","playback"]},
+  "hello": {"type":"hello","protocol":1,"version":"dev","capabilities":["results","state","playback","request_quit"]},
   "state": {"type":"state","state":{"revision":7,"track_id":3,"path":"/music/a \"song\" 雪.flac","title":"雪","artist":"","album":"","has_track":true,"playing":false,"loading":false,"desktop_lyrics":true,"duration":120,"position":0,"volume":0,"config_dir":"/settings/neoviolet"}},
   "result": {"type":"result","request_id":"mute","status":"succeeded"},
   "requests": [

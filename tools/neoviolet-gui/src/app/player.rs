@@ -97,7 +97,14 @@ impl App {
                 }
                 return self.send_all(requests);
             }
-            ipc::Event::Handshake(handshake) => self.handshake = handshake,
+            ipc::Event::Handshake(handshake) => {
+                self.version = if handshake.version.trim().is_empty() {
+                    "unavailable".into()
+                } else {
+                    format!("NeoViolet version {}", handshake.version)
+                };
+                self.handshake = handshake;
+            }
             ipc::Event::Received(ipc::Incoming::State { state }) => {
                 return self.apply_snapshot(state);
             }
@@ -132,9 +139,14 @@ impl App {
                 return task.map(Message::Lyrics);
             }
             ipc::Event::Received(ipc::Incoming::Quit { dialog }) => {
+                if self.closing {
+                    return Task::none();
+                }
                 if dialog {
                     self.dialog = Some(Dialog::Quit);
                     return self.reveal_main();
+                } else if self.handshake.supports("request_quit") {
+                    return self.update(Message::ConfirmQuit);
                 } else {
                     self.closing = true;
                     return self.finish_quit();

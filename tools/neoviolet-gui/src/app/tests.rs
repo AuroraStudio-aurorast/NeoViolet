@@ -422,7 +422,13 @@ fn modal_keys_keep_shortcuts_behind_the_dialog_and_preserve_focus_across_updates
         modal_key(Key::Named(Named::Tab), Modifiers::empty()),
     ));
     assert!(app.dialog_navigation.visible());
-    let _ = app.update(Message::Version("Updated version".into()));
+    let _ = app.update(Message::Ipc(
+        2,
+        ipc::Event::Handshake(ipc::Handshake {
+            version: "Updated version".into(),
+            ..Default::default()
+        }),
+    ));
     assert!(app.dialog_navigation.visible());
     let _ = app.update(Message::Native(
         app.main_window,

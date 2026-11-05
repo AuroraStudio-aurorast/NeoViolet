@@ -66,6 +66,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 
 func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 	switch message.Type {
+	case "request_quit":
+		return nil, m.requestGUIQuit()
 	case "quit":
 		return nil, nil
 	case "get_state":
@@ -132,4 +134,13 @@ func (m *Model) finishIPCOpen(status, message string) {
 		m.ipcResult(request.session, request.id, status, message)
 		m.ipcPendingOpen = nil
 	}
+}
+
+// requestGUIQuit decides from live Go state; a paused track still needs confirmation.
+func (m *Model) requestGUIQuit() error {
+	if m.ipcSession == 0 {
+		return fmt.Errorf("GUI session is unavailable")
+	}
+	confirm := m.Audio.Player != nil || m.Loading
+	return m.ipcServer.SendTo(m.ipcSession, ipc.Message{Type: "quit", Dialog: &confirm})
 }

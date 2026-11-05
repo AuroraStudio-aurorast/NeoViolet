@@ -16,14 +16,15 @@
 //	{"type": "set_volume", "volume": 0.5} — 0..1, including zero
 //	{"type": "get_state"} — request a full snapshot
 //	{"type": "play_pause"}                  — toggle play/pause
+//	{"type": "request_quit"}                — ask Go whether confirmation is needed
 //	{"type": "quit"}                        — confirmed GUI close, clean up and exit
 //
 // TUI → GUI message types:
 //
 //	{"type": "hello"}                       — authentication succeeded
 //	{"type": "desktop_lyrics", "enable": true|false} — synchronize overlay visibility
-//	{"type": "quit", "dialog": true}     — :q/:quit, show confirmation dialog
-//	{"type": "quit", "dialog": false}    — :wq, quit immediately
+//	{"type": "quit", "dialog": true}     — loaded track or load in progress; show confirmation
+//	{"type": "quit", "dialog": false}    — no track, or :wq; begin graceful shutdown
 //	{"type": "lyrics", "lines": [...], "elapsed": 12.3, "title": "...", "artist": "..."}
 //
 // Requests may include a string request_id. The server sends result messages
@@ -32,7 +33,10 @@
 // fails, or is superseded by another load. Results never migrate to a new session.
 // Commands without request_id remain compatible and receive no result.
 //
-// hello includes protocol:1 and capabilities:["results","state","playback"].
+// hello includes protocol:1, version (the running TUI build), and capabilities
+// ["results","state","playback","request_quit"]. Product versions never gate
+// protocol compatibility. request_quit leaves the TUI running until the GUI
+// sends quit after deciding whether to show the requested confirmation.
 // state messages carry a state object: track_id (accepted load generation),
 // revision (increasing within one authenticated connection), path/title/artist/
 // album, has_track/playing/loading/desktop_lyrics, duration/position in seconds,
@@ -49,10 +53,13 @@
 // lyric data is available, rather than merely that no cue is active right now.
 package ipc
 
+import "github.com/AuroraStudio-aurorast/neoviolet/internal/version"
+
 // Message is a JSON message exchanged between TUI and GUI over IPC.
 type Message struct {
 	Type         string         `json:"type"`
 	RequestID    string         `json:"request_id,omitempty"`
+	Version      string         `json:"version,omitempty"`
 	Protocol     int            `json:"protocol,omitempty"`
 	Capabilities []string       `json:"capabilities,omitempty"`
 	Status       string         `json:"status,omitempty"`
@@ -118,7 +125,7 @@ type PlaybackState struct {
 	ConfigDir     string  `json:"config_dir"`
 }
 
-// Hello advertises compatible wire capabilities rather than product versions.
+// Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Capabilities: []string{"results", "state", "playback"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, Capabilities: []string{"results", "state", "playback", "request_quit"}}
 }

@@ -5,6 +5,7 @@ fn connected() -> (App, mpsc::Receiver<ipc::Command>) {
     app.dialog = None;
     app.pending.clear();
     app.handshake = ipc::Handshake {
+        version: String::new(),
         protocol: 1,
         capabilities: vec!["state".into(), "results".into(), "playback".into()],
     };
@@ -239,4 +240,163 @@ fn newly_selected_file_stays_after_older_unsent_files() {
         matches!(receiver.try_recv().unwrap().request,ipc::Request::Open(path) if path==std::path::Path::new("newest.flac"))
     );
     assert!(app.pending.is_empty());
+}
+
+#[test]
+fn native_quit_asks_the_player_even_when_the_last_snapshot_is_idle() {
+    let (mut app, mut receiver) = connected();
+    app.handshake=serde_json::from_value(serde_json::json!({"protocol":1,"version":"v9.8.7","capabilities":["results","state","playback","request_quit"]})).unwrap();
+    let _ = app.apply_snapshot(ipc::PlaybackState {
+        revision: 1,
+        ..Default::default()
+    });
+    let _ = app.action(Action::Quit);
+    assert!(
+        app.dialog.is_none(),
+        "idle close should not show a local confirmation"
+    );
+    assert!(
+        receiver.try_recv().is_ok(),
+        "Go must decide from live state"
+    );
+}
+
+#[test]
+fn about_version_comes_from_the_authenticated_child_and_resets_on_restart() {
+    let mut app = app();
+    let hello = serde_json::from_value(serde_json::json!({"version":"v9.8.7"})).unwrap();
+    let _ = app.update(Message::Ipc(1, ipc::Event::Handshake(hello)));
+    assert!(app.version.is_empty());
+    let hello = serde_json::from_value(serde_json::json!({"version":"v9.8.7"})).unwrap();
+    let _ = app.update(Message::Ipc(2, ipc::Event::Handshake(hello)));
+    assert_eq!(app.version, "NeoViolet version v9.8.7");
+    let _ = app.update(Message::Ipc(
+        2,
+        ipc::Event::Handshake(ipc::Handshake::default()),
+    ));
+    assert_eq!(app.version, "unavailable");
+}
+
+#[test]
+fn closing_stops_file_opens_and_pending_retries() {
+    let (mut app, mut receiver) = connected();
+    app.pending.push_back("old.flac".into());
+    let _ = app.update(Message::ConfirmQuit);
+    assert!(matches!(
+        receiver.try_recv().unwrap().request,
+        ipc::Request::Quit
+    ));
+    let _ = app.open("new.flac".into());
+    let _ = app.update(Message::FlushPending {
+        session: 2,
+        epoch: app.connection_epoch,
+    });
+    assert!(
+        receiver.try_recv().is_err(),
+        "closing session reopened a file"
+    );
+    assert!(app.pending.is_empty());
+}
+
+#[test]
+fn idle_quit_response_begins_graceful_shutdown_and_is_idempotent() {
+    let (mut app, mut receiver) = connected();
+    app.handshake.capabilities.push("request_quit".into());
+    let _ = app.update(Message::Ipc(
+        2,
+        ipc::Event::Received(ipc::Incoming::Quit { dialog: false }),
+    ));
+    assert!(app.closing);
+    assert!(app.dialog.is_none());
+    assert!(matches!(
+        receiver.try_recv().unwrap().request,
+        ipc::Request::Quit
+    ));
+    let _ = app.update(Message::ConfirmQuit);
+    let _ = app.update(Message::Ipc(
+        2,
+        ipc::Event::Received(ipc::Incoming::Quit { dialog: true }),
+    ));
+    assert!(
+        app.dialog.is_none(),
+        "late decision reopened confirmation while closing"
+    );
+    assert!(receiver.try_recv().is_err(), "quit was sent twice");
+}
+
+#[test]
+fn loaded_player_and_unknown_legacy_state_keep_confirmation() {
+    let (mut app, mut receiver) = connected();
+    app.handshake.capabilities.push("request_quit".into());
+    let _ = app.action(Action::Quit);
+    assert!(matches!(
+        receiver.try_recv().unwrap().request,
+        ipc::Request::CheckQuit
+    ));
+    let _ = app.update(Message::Ipc(
+        2,
+        ipc::Event::Received(ipc::Incoming::Quit { dialog: true }),
+    ));
+    assert!(matches!(app.dialog, Some(Dialog::Quit)));
+    assert!(!app.closing);
+    let _ = app.update(Message::Dismiss);
+    assert!(app.dialog.is_none());
+    assert!(!app.closing);
+    app.handshake = Default::default();
+    app.playback = None;
+    let _ = app.action(Action::Quit);
+    assert!(matches!(app.dialog, Some(Dialog::Quit)));
+    assert!(receiver.try_recv().is_err());
+}
+
+#[test]
+fn graceful_quit_is_not_blocked_by_old_receipt_limits() {
+    let (mut app, mut receiver) = connected();
+    for index in 0..64 {
+        app.requests.insert(format!("old-{index}"), false);
+    }
+    let _ = app.update(Message::ConfirmQuit);
+    assert!(matches!(
+        receiver.try_recv().unwrap().request,
+        ipc::Request::Quit
+    ));
+    assert!(
+        app.requests.is_empty(),
+        "old operations must not interfere with shutdown"
+    );
+}
+
+#[tokio::test]
+async fn close_requests_wait_for_queue_capacity_instead_of_disappearing() {
+    use iced::futures::StreamExt;
+    for request in [ipc::Request::CheckQuit, ipc::Request::Quit] {
+        let (mut app, _receiver) = connected();
+        let (sender, mut receiver) = mpsc::channel(1);
+        sender
+            .try_send(ipc::Command {
+                request: ipc::Request::GetState,
+                id: String::new(),
+            })
+            .unwrap();
+        app.connection = Some(sender);
+        for index in 0..64 {
+            app.requests.insert(format!("old-{index}"), false);
+        }
+        let task = app.send_all(vec![request]);
+        assert!(matches!(
+            receiver.try_recv().unwrap().request,
+            ipc::Request::GetState
+        ));
+        let mut stream =
+            iced_runtime::task::into_stream(task).expect("close must wait for capacity");
+        while let Some(action) = stream.next().await {
+            if let iced_runtime::Action::Output(message) = action {
+                let _ = app.update(message);
+            }
+        }
+        assert!(matches!(
+            receiver.try_recv().unwrap().request,
+            ipc::Request::CheckQuit | ipc::Request::Quit
+        ));
+    }
 }

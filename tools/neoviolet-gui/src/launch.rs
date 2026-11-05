@@ -1,5 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+#[cfg(target_os = "macos")]
 use std::process::{Command, Stdio};
+#[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
 
 pub fn interface_font() -> iced::Font {
@@ -79,41 +81,6 @@ pub fn arguments(input: impl IntoIterator<Item = String>) -> Vec<String> {
         output.push(argument);
     }
     output
-}
-
-pub fn version(path: &Path) -> String {
-    let mut command = Command::new(path);
-    command
-        .arg("--version")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(0x08000000);
-    }
-    let Ok(mut child) = command.spawn() else {
-        return "unavailable".into();
-    };
-    let deadline = Instant::now() + Duration::from_secs(3);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return child
-                    .wait_with_output()
-                    .ok()
-                    .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-                    .filter(|text| !text.is_empty())
-                    .unwrap_or_else(|| "unavailable".into());
-            }
-            Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
-            _ => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return "unavailable".into();
-            }
-        }
-    }
 }
 
 pub fn environment() -> std::collections::HashMap<String, String> {

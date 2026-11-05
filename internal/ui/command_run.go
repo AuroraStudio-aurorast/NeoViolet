@@ -40,11 +40,10 @@ func runSaveQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 }
 
 // runQuit implements ":quit" / ":q". In GUI mode it asks the wrapper for
-// confirmation instead of quitting: the wrapper may deny and keep the TUI up.
+// confirmation for a loaded track or pending load. An idle session closes directly.
 func runQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	if m.ipcServer != nil {
-		t := true
-		if err := m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &t}); err == nil {
+		if err := m.requestGUIQuit(); err == nil {
 			return m, nil
 		}
 	}

@@ -2,6 +2,7 @@ package ipc
 
 import (
 	"encoding/json"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 	"os"
 	"reflect"
 	"testing"
@@ -46,5 +47,32 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	}
 	if requests[2].Path != "/music/a \"song\" 雪.flac" {
 		t.Fatal("quoted Unicode path changed")
+	}
+}
+
+func TestHandshakeDescribesTheRunningPlayer(t *testing.T) {
+	original := version.Version
+	version.Version = "v9.8.7-test"
+	t.Cleanup(func() { version.Version = original })
+	data, err := json.Marshal(Hello())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hello map[string]any
+	if err := json.Unmarshal(data, &hello); err != nil {
+		t.Fatal(err)
+	}
+	if hello["version"] != "v9.8.7-test" {
+		t.Fatalf("handshake version: %s", data)
+	}
+	capabilities := hello["capabilities"].([]any)
+	found := false
+	for _, capability := range capabilities {
+		if capability == "request_quit" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("quit policy capability missing: %s", data)
 	}
 }

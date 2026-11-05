@@ -75,7 +75,11 @@ pub enum Message {
     Picked(Option<PathBuf>),
     Pasted(Option<String>),
     Sent(Result<(), String>),
-    Version(String),
+    LifecycleSent {
+        session: u64,
+        epoch: u64,
+        result: Result<(), String>,
+    },
     Dismiss,
     ConfirmQuit,
     Restart,

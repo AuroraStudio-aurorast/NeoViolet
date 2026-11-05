@@ -72,21 +72,7 @@ impl App {
         };
         app.titlebar.configure(&app.config);
         let start = app.start();
-        let executable = launch::player(app.config.neoviolet_path.as_deref());
-        let version = Task::perform(
-            async move {
-                tokio::task::spawn_blocking(move || launch::version(&executable))
-                    .await
-                    .unwrap_or_else(|_| "unavailable".into())
-            },
-            Message::Version,
-        );
-        (
-            app,
-            open_main
-                .map(|_| Message::MainOpened)
-                .chain(Task::batch([start, version])),
-        )
+        (app, open_main.map(|_| Message::MainOpened).chain(start))
     }
 
     pub(super) fn start(&mut self) -> Task<Message> {
@@ -98,6 +84,7 @@ impl App {
         self.notice = None;
         self.connection_error = None;
         self.handshake = Default::default();
+        self.version = "Waiting for player…".into();
         self.requests.clear();
         self.seek_preview = None;
         self.volume_preview = None;

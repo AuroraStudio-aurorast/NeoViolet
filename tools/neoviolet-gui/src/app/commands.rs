@@ -63,8 +63,14 @@ impl App {
                 return self.reveal_main();
             }
             Action::Quit => {
+                if self.closing {
+                    return Task::none();
+                }
                 if !self.running {
                     return self.finish_quit();
+                }
+                if self.ipc_connected && self.handshake.supports("request_quit") {
+                    return self.send_all(vec![ipc::Request::CheckQuit]);
                 }
                 self.dialog = Some(Dialog::Quit);
                 return self.reveal_main();
@@ -107,6 +113,9 @@ impl App {
     }
 
     pub(super) fn open(&mut self, path: PathBuf) -> Task<Message> {
+        if self.closing {
+            return Task::none();
+        }
         if !self.running {
             self.pending.push_back(path);
             self.dialog = None;
