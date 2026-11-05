@@ -183,8 +183,6 @@ impl App {
                     self.notice = Some("The connection was interrupted before some actions could be confirmed. Check playback before trying again.".into());
                 }
                 self.requests.clear();
-                self.seek_preview = None;
-                self.volume_preview = None;
                 self.lyrics.clear();
                 if !self.closing && self.running {
                     eprintln!("NeoViolet GUI: {error}");

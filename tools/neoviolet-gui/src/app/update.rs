@@ -26,35 +26,6 @@ impl App {
                     return self.send_all(vec![ipc::Request::GetState]);
                 }
             }
-            Message::PlaybackToggle => return self.toggle_playback(),
-            Message::SeekPreview(value) => {
-                if self.controls_available() {
-                    self.seek_preview = Some(value);
-                }
-            }
-            Message::VolumePreview(value) => {
-                if self.controls_available() {
-                    self.volume_preview = Some(value);
-                }
-            }
-            Message::SeekCommit => {
-                if let Some(value) = self
-                    .seek_preview
-                    .take()
-                    .filter(|_| self.controls_available())
-                {
-                    return self.send_all(vec![ipc::Request::Seek(value)]);
-                }
-            }
-            Message::VolumeCommit => {
-                if let Some(value) = self
-                    .volume_preview
-                    .take()
-                    .filter(|_| self.controls_available())
-                {
-                    return self.send_all(vec![ipc::Request::SetVolume(value)]);
-                }
-            }
             Message::RequestTimeout {
                 session,
                 epoch,

@@ -4,15 +4,6 @@ use crate::ipc;
 use iced::Task;
 
 impl App {
-    pub(crate) fn controls_available(&self) -> bool {
-        self.actions_available()
-            && self.ipc_connected
-            && !self.closing
-            && self.handshake.supports("playback")
-            && self.dialog.is_none()
-            && !self.titlebar.visible()
-            && self.playback.as_ref().is_some_and(|state| state.has_track)
-    }
     pub fn handshake_supports_state(&self) -> bool {
         self.handshake.supports("state")
     }
@@ -193,13 +184,6 @@ impl App {
             || state.duration < 0.0
         {
             return Task::none();
-        }
-        if self
-            .playback
-            .as_ref()
-            .is_some_and(|old| old.track_id != state.track_id)
-        {
-            self.seek_preview = None;
         }
         self.window_title = if state.has_track && !state.title.is_empty() {
             state.title.clone()

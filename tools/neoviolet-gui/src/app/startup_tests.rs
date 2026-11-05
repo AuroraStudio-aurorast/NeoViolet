@@ -32,7 +32,7 @@ fn authenticated_startup_waits_for_ready_before_subscribing_or_restoring_lyrics(
         ..Default::default()
     });
     assert!(
-        !app.controls_available(),
+        !app.actions_available(),
         "a snapshot cannot bypass the startup phase"
     );
 }

@@ -52,8 +52,6 @@ impl App {
             playback: None,
             notice: None,
             connection_error: None,
-            seek_preview: None,
-            volume_preview: None,
             startup: Default::default(),
             lyrics_restored: false,
             picker: None,
@@ -93,8 +91,6 @@ impl App {
         self.titlebar.commands_disabled = true;
         self.version = "Waiting for player…".into();
         self.requests.clear();
-        self.seek_preview = None;
-        self.volume_preview = None;
         self.lyrics.playback = None;
         self.exit_code = None;
         self.closing = false;

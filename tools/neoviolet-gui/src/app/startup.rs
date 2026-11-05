@@ -55,8 +55,6 @@ impl App {
             return self.restore_ready();
         }
         self.pending.clear();
-        self.seek_preview = None;
-        self.volume_preview = None;
         self.suspend_lyrics()
     }
 

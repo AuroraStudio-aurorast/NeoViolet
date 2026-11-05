@@ -86,8 +86,6 @@ fn app() -> App {
         playback: None,
         notice: None,
         connection_error: None,
-        seek_preview: None,
-        volume_preview: None,
         startup: super::startup::Stage::Legacy,
         lyrics_restored: false,
         picker: None,

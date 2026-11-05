@@ -17,7 +17,7 @@ fn connected() -> (App, mpsc::Receiver<ipc::Command>) {
 }
 
 #[test]
-fn controls_follow_snapshots_and_do_not_optimistically_change_playback() {
+fn lyric_toolbar_follows_snapshots_without_optimistically_changing_playback() {
     let (mut app, mut receiver) = connected();
     let _ = app.apply_snapshot(ipc::PlaybackState {
         revision: 1,
@@ -36,22 +36,8 @@ fn controls_follow_snapshots_and_do_not_optimistically_change_playback() {
         ipc::Request::Pause
     ));
     assert!(app.playback.as_ref().unwrap().playing);
-    let _ = app.update(Message::SeekPreview(0.0));
-    let _ = app.update(Message::SeekCommit);
-    assert!(matches!(
-        receiver.try_recv().unwrap().request,
-        ipc::Request::Seek(0.0)
-    ));
-    let _ = app.update(Message::VolumePreview(0.0));
-    let _ = app.update(Message::VolumeCommit);
-    assert!(matches!(
-        receiver.try_recv().unwrap().request,
-        ipc::Request::SetVolume(0.0)
-    ));
     app.dialog = Some(Dialog::Quit);
-    let _ = app.update(Message::PlaybackToggle);
-    let _ = app.update(Message::VolumePreview(0.4));
-    let _ = app.update(Message::VolumeCommit);
+    let _ = app.update(Message::Lyrics(lyrics_window::Event::PlayPause));
     assert!(receiver.try_recv().is_err());
 }
 
@@ -145,7 +131,7 @@ fn queued_commands_fail_explicitly_when_the_connection_is_full() {
 }
 
 #[test]
-fn playback_controls_fit_the_minimum_window_and_show_actual_state() {
+fn main_window_leaves_playback_controls_to_the_embedded_terminal() {
     use iced::advanced::{layout, text::paragraph::Plain, widget};
     type Paragraph = iced::advanced::graphics::text::paragraph::Paragraph;
     fn inspect(tree: &widget::Tree, labels: &mut Vec<String>) {
@@ -183,8 +169,20 @@ fn playback_controls_fit_the_minimum_window_and_show_actual_state() {
     assert!(node.size().width <= 480.0 && node.size().height <= 320.0);
     let mut labels = Vec::new();
     inspect(&tree, &mut labels);
-    assert!(labels.iter().any(|label| label == "Pause"));
-    assert!(labels.iter().any(|label| label == "1:05 / 61:12"));
+    assert!(
+        !labels
+            .iter()
+            .any(|label| label == "Play" || label == "Pause" || label == "Vol"),
+        "native playback controls duplicated the TUI"
+    );
+    assert!(
+        !labels.iter().any(|label| label == "1:05 / 61:12"),
+        "native timeline duplicated the TUI"
+    );
+    assert!(
+        labels.iter().any(|label| label == "Starting player…"),
+        "terminal area disappeared"
+    );
 }
 
 #[test]
