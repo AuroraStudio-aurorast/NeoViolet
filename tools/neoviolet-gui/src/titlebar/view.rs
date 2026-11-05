@@ -94,7 +94,7 @@ impl State {
                         .center_x(Length::Fill)
                         .center_y(Length::Fill),
                 )
-                .on_press(Message::Action(action))
+                .on_press(Message::WindowAction(action))
                 .padding(0)
                 .width(if linux { 24 } else { 42 })
                 .height(if linux { 24 } else { HEIGHT as u32 })
@@ -235,7 +235,10 @@ impl State {
                 .spacing(6)
                 .align_y(iced::Center);
                 let item = button(label)
-                    .on_press_maybe(item.enabled(lyrics).then_some(Message::Action(item.action)))
+                    .on_press_maybe(
+                        item.enabled(lyrics, !self.commands_disabled)
+                            .then_some(Message::Action(item.action)),
+                    )
                     .padding([6, 8])
                     .height(ROW_HEIGHT)
                     .width(Length::Fill)

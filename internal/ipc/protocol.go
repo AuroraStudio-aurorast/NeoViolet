@@ -9,6 +9,8 @@
 //
 // GUI → TUI message types:
 //
+//	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker"]}
+//	{"type": "file_picked", "purpose":"soundfont", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
 //	{"type": "open", "path": "/path/to/file"}
 //	{"type": "desktop_lyrics", "enable": true|false}
 //	{"type": "play"} | {"type": "pause"} — idempotent playback control
@@ -21,6 +23,8 @@
 //
 // TUI → GUI message types:
 //
+//	{"type": "phase", "phase":"starting|wizard|initial_loading|ready"}
+//	{"type": "pick_file", "purpose":"soundfont", "request_id":"..."}
 //	{"type": "hello"}                       — authentication succeeded
 //	{"type": "desktop_lyrics", "enable": true|false} — synchronize overlay visibility
 //	{"type": "quit", "dialog": true}     — loaded track or load in progress; show confirmation
@@ -34,9 +38,15 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the running TUI build), and capabilities
-// ["results","state","playback","request_quit"]. Product versions never gate
+// ["results","state","playback","request_quit","startup","file_picker"]. Product versions never gate
 // protocol compatibility. request_quit leaves the TUI running until the GUI
 // sends quit after deciding whether to show the requested confirmation.
+// GUI capability negotiation follows token authentication. The startup host sends
+// phase on connection and on transitions; only ready enables application actions.
+// Initial load failure also reaches ready, allowing recovery; runtime replacements
+// do not re-enter initial_loading. A wizard pick_file request and its file_picked
+// reply are scoped to one connection and request_id. Only purpose soundfont is
+// supported, with .sf2 validation in Go. Cancellation retains the optional value.
 // state messages carry a state object: track_id (accepted load generation),
 // revision (increasing within one authenticated connection), path/title/artist/
 // album, has_track/playing/loading/desktop_lyrics, duration/position in seconds,
@@ -58,6 +68,9 @@ import "github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 // Message is a JSON message exchanged between TUI and GUI over IPC.
 type Message struct {
 	Type         string         `json:"type"`
+	Client       string         `json:"client,omitempty"`
+	Phase        string         `json:"phase,omitempty"`
+	Purpose      string         `json:"purpose,omitempty"`
 	RequestID    string         `json:"request_id,omitempty"`
 	Version      string         `json:"version,omitempty"`
 	Protocol     int            `json:"protocol,omitempty"`
@@ -127,5 +140,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, Capabilities: []string{"results", "state", "playback", "request_quit"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker"}}
 }

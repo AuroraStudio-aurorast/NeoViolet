@@ -5,6 +5,7 @@ mod desktop_events;
 mod integration;
 mod native;
 mod player;
+mod startup;
 #[cfg(test)]
 mod tests;
 mod update;
@@ -35,6 +36,9 @@ pub struct App {
     pub connection_error: Option<String>,
     pub seek_preview: Option<f64>,
     pub volume_preview: Option<f64>,
+    startup: startup::Stage,
+    lyrics_restored: bool,
+    picker: Option<startup::Picker>,
     handshake: ipc::Handshake,
     connection_epoch: u64,
     request_sequence: u64,
@@ -73,6 +77,12 @@ pub enum Message {
     ChromeState(bool, window::Mode),
     SetMode(window::Mode),
     Picked(Option<PathBuf>),
+    SetupPicked {
+        session: u64,
+        epoch: u64,
+        request_id: String,
+        result: Result<Option<PathBuf>, String>,
+    },
     Pasted(Option<String>),
     Sent(Result<(), String>),
     LifecycleSent {
@@ -144,6 +154,7 @@ impl App {
         let running = self.running;
         let fullscreen = self.titlebar.fullscreen;
         let mut task = self.update_inner(message);
+        self.titlebar.commands_disabled = !self.actions_available();
         if modal != self.dialog.as_ref().map(std::mem::discriminant) || running != self.running {
             self.dialog_navigation.reset();
         }
@@ -154,7 +165,7 @@ impl App {
             task = task.chain(self.focus());
         }
         if let Some(desktop) = &self.desktop {
-            desktop.sync_lyrics(self.config.desktop_lyrics.enabled);
+            desktop.sync_menus(self.actions_available(), self.config.desktop_lyrics.enabled);
         }
         if (menu || modal.is_some()) != (self.titlebar.visible() || self.dialog.is_some())
             || fullscreen != self.titlebar.fullscreen

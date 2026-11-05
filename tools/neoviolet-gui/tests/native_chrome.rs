@@ -5,6 +5,9 @@ mod chrome;
 #[cfg(target_os = "macos")]
 #[path = "../src/desktop_lyrics_macos.rs"]
 mod lyrics_pair;
+#[cfg(target_os = "macos")]
+#[path = "../src/desktop_menu_macos.rs"]
+mod startup_menu;
 
 #[cfg(target_os = "macos")]
 fn check_native_lyrics_pair(marker: objc2_foundation::MainThreadMarker) {
@@ -96,6 +99,7 @@ fn check_native_layout() {
     let marker = MainThreadMarker::new().expect("native regression must run on the main thread");
     let _application = NSApplication::sharedApplication(marker);
     check_native_lyrics_pair(marker);
+    check_native_menu(marker);
     // SAFETY: The window and all its native views are confined to this main thread.
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
@@ -194,4 +198,33 @@ fn check_native_layout() {
     println!(
         "Native chrome: late frame resets, container bounds, reinstallation and cleanup passed (hidden window)."
     );
+}
+
+#[cfg(target_os = "macos")]
+fn check_native_menu(marker: objc2_foundation::MainThreadMarker) {
+    use objc2_app_kit::{NSMenu, NSMenuItem};
+    let root = NSMenu::new(marker);
+    let submenu = NSMenu::new(marker);
+    let heading = NSMenuItem::new(marker);
+    heading.setEnabled(true);
+    heading.setSubmenu(Some(&submenu));
+    root.addItem(&heading);
+    let nested = NSMenu::new(marker);
+    let nested_heading = NSMenuItem::new(marker);
+    nested_heading.setSubmenu(Some(&nested));
+    submenu.addItem(&nested_heading);
+    let command = NSMenuItem::new(marker);
+    command.setEnabled(true);
+    nested.addItem(&command);
+    startup_menu::set_commands(&root, false);
+    assert!(
+        heading.isEnabled(),
+        "menu headings must remain visible/openable during startup"
+    );
+    assert!(!nested_heading.isEnabled());
+    assert!(!command.isEnabled(), "nested commands must be disabled");
+    assert!(!submenu.autoenablesItems() && !nested.autoenablesItems());
+    startup_menu::set_commands(&root, true);
+    assert!(command.isEnabled() && nested_heading.isEnabled());
+    assert!(submenu.autoenablesItems() && nested.autoenablesItems());
 }

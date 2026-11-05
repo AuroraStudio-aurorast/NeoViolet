@@ -417,3 +417,164 @@ async fn connection_stream_reauthenticates_without_replaying_old_commands() {
     );
     server.await.unwrap();
 }
+
+#[cfg(unix)]
+async fn first_run_wizard(can_pick: bool) {
+    let player = std::env::var("NEOVIOLET_TEST_PLAYER").expect("make test/gui-ipc provides player");
+    let directory = tempfile::tempdir().unwrap();
+    let mut terminal = iced_term::Terminal::new(
+        710,
+        iced_term::settings::Settings {
+            backend: iced_term::settings::BackendSettings {
+                program: player,
+                args: vec!["--xdg-config".into()],
+                env: std::collections::HashMap::from([
+                    ("TERM_PROGRAM".into(), "neoviolet-gui".into()),
+                    ("TERM".into(), "xterm-256color".into()),
+                    ("NEOVIOLET_FONT".into(), "Menlo".into()),
+                    (
+                        "XDG_CONFIG_HOME".into(),
+                        directory.path().to_string_lossy().into_owned(),
+                    ),
+                    (
+                        "XDG_CACHE_HOME".into(),
+                        directory.path().to_string_lossy().into_owned(),
+                    ),
+                ]),
+                working_directory: Some(directory.path().into()),
+            },
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let pid = terminal.child_process_id().unwrap();
+    let endpoint = std::env::temp_dir().join(format!("neoviolet-ipc-{pid}"));
+    let (mut peer, hello) = tokio::time::timeout(Duration::from_secs(10), discover(&endpoint))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(hello.supports("startup") && hello.supports("file_picker"));
+    live_message(&mut peer, |message| {
+        matches!(
+            message,
+            Incoming::Phase {
+                phase: StartupPhase::Wizard
+            }
+        )
+    })
+    .await;
+    write_request(
+        peer.get_mut(),
+        &Request::Open("ignored.flac".into()),
+        "blocked",
+    )
+    .await
+    .unwrap();
+    let rejected = live_message(
+        &mut peer,
+        |message| matches!(message,Incoming::Result{request_id,..} if request_id=="blocked"),
+    )
+    .await;
+    assert!(matches!(rejected,Incoming::Result{status,..} if status=="failed"));
+    // Wait for Huh's initial focus command; PTY keystrokes then exercise real
+    // navigation instead of calling a testing-only completion hook.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    terminal.handle(iced_term::Command::ProxyToBackend(
+        iced_term::BackendCommand::Write(b"\t".to_vec()),
+    ));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    if can_pick {
+        terminal.handle(iced_term::Command::ProxyToBackend(
+            iced_term::BackendCommand::Write(b"\r".to_vec()),
+        ));
+        let request = live_message(&mut peer, |message| {
+            matches!(message, Incoming::PickFile { .. })
+        })
+        .await;
+        let Incoming::PickFile { request_id, .. } = request else {
+            unreachable!()
+        };
+        write_request(
+            peer.get_mut(),
+            &Request::FilePicked {
+                request_id,
+                status: "cancelled".into(),
+                path: None,
+                error: None,
+            },
+            "",
+        )
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    terminal.handle(iced_term::Command::ProxyToBackend(
+        iced_term::BackendCommand::Write(b"\t".to_vec()),
+    ));
+    live_message(&mut peer, |message| {
+        matches!(
+            message,
+            Incoming::Phase {
+                phase: StartupPhase::Ready
+            }
+        )
+    })
+    .await;
+    let configuration = directory.path().join("neoviolet/config.json");
+    let saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(configuration).unwrap()).unwrap();
+    assert_eq!(saved["soundfont_path"], "");
+    write_request(peer.get_mut(), &Request::Quit, "")
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while endpoint.exists() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+}
+
+#[cfg(unix)]
+#[tokio::test]
+#[ignore = "requires built player; make test/gui-ipc"]
+async fn live_tui_first_run_allows_cancel_and_optional_skip() {
+    first_run_wizard(true).await;
+}
+
+#[tokio::test]
+async fn startup_fixture_preserves_phase_and_scoped_picker_reply() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../internal/ipc/testdata/protocol.json")).unwrap();
+    let mut payload = serde_json::to_vec(&fixture["phase"]).unwrap();
+    payload.push(b'\n');
+    let mut reader = BufReader::new(payload.as_slice());
+    assert!(matches!(
+        read_frame(&mut reader).await.unwrap(),
+        Some(Incoming::Phase {
+            phase: StartupPhase::Wizard
+        })
+    ));
+    let mut payload = serde_json::to_vec(&fixture["pick_file"]).unwrap();
+    payload.push(b'\n');
+    let mut reader = BufReader::new(payload.as_slice());
+    assert!(
+        matches!(read_frame(&mut reader).await.unwrap(),Some(Incoming::PickFile{purpose,request_id}) if purpose=="soundfont" && request_id=="soundfont-7")
+    );
+    let mut output = Vec::new();
+    write_request(
+        &mut output,
+        &Request::FilePicked {
+            request_id: "soundfont-7".into(),
+            status: "cancelled".into(),
+            path: None,
+            error: None,
+        },
+        "",
+    )
+    .await
+    .unwrap();
+    let actual: serde_json::Value = serde_json::from_slice(&output).unwrap();
+    assert_eq!(actual, fixture["file_picked"]);
+}

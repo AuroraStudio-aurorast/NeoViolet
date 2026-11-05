@@ -29,6 +29,10 @@ pub use macos::Desktop;
 mod chrome;
 
 #[cfg(target_os = "macos")]
+#[path = "desktop_menu_macos.rs"]
+mod menus;
+
+#[cfg(target_os = "macos")]
 #[path = "desktop_lyrics_macos.rs"]
 mod lyrics;
 
@@ -144,7 +148,7 @@ pub struct Desktop;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Desktop {
-    pub fn sync_lyrics(&self, _enabled: bool) {}
+    pub fn sync_menus(&self, _available: bool, _enabled: bool) {}
     pub fn configure_lyrics_window(&self, id: iced::window::Id) -> iced::Task<()> {
         #[cfg(target_os = "linux")]
         return linux::configure_lyrics(id);

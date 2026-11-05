@@ -84,6 +84,15 @@ var keys = KeyMap{
 
 // NewModel constructs the application model with the given config.
 func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Model {
+	return newModel(filePath, cfg, nil, false, seekTo...)
+}
+
+// NewModelWithIPC shares the startup host's session and input/event owner.
+func NewModelWithIPC(filePath string, cfg *config.Config, server *ipc.Server, seekTo ...time.Duration) *Model {
+	return newModel(filePath, cfg, server, true, seekTo...)
+}
+
+func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed bool, seekTo ...time.Duration) *Model {
 	if cfg == nil {
 		cfg = &config.Config{}
 	}
@@ -177,14 +186,15 @@ func NewModel(filePath string, cfg *config.Config, seekTo ...time.Duration) *Mod
 	// Initialize IPC server for bidirectional GUI communication.
 	// Only start when running inside neoviolet-gui (not a standard terminal).
 	// The GUI sets TERM_PROGRAM=neoviolet-gui as the terminal emulator name.
+	m.ipcServer, m.ipcManaged = server, managed
 	m.guiHosted = os.Getenv("TERM_PROGRAM") == "neoviolet-gui"
-	if m.guiHosted {
+	if m.guiHosted && !managed {
 		if srv, err := ipc.NewServer(); err != nil {
 			logger.Warn("IPC server init failed", "err", err)
 		} else {
 			m.ipcServer = srv
 		}
-	} else {
+	} else if !managed {
 		logger.Debug("Not running inside neoviolet-gui, IPC disabled")
 	}
 
@@ -257,7 +267,13 @@ func (m *Model) togglePlayback() {
 	}
 }
 
+// Close releases owned playback resources on every host exit path.
+func (m *Model) Close() { m.cleanup() }
+
 func (m *Model) cleanup() {
+	if m.exiting {
+		return
+	}
 	m.exiting = true
 	m.pendingLoad.cancel()
 	m.pendingLoad = nil

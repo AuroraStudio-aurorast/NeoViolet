@@ -8,6 +8,20 @@ use std::path::PathBuf;
 
 impl App {
     pub(super) fn action(&mut self, action: Action) -> Task<Message> {
+        if !self.actions_available() {
+            return Task::none();
+        }
+        self.dispatch_action(action)
+    }
+
+    pub(super) fn window_action(&mut self, action: Action) -> Task<Message> {
+        if !matches!(action, Action::Quit | Action::Minimize | Action::ZoomWindow) {
+            return Task::none();
+        }
+        self.dispatch_action(action)
+    }
+
+    fn dispatch_action(&mut self, action: Action) -> Task<Message> {
         self.titlebar.close();
         match action {
             Action::DesktopLyrics => {
@@ -113,7 +127,7 @@ impl App {
     }
 
     pub(super) fn open(&mut self, path: PathBuf) -> Task<Message> {
-        if self.closing {
+        if self.closing || !self.actions_available() {
             return Task::none();
         }
         if !self.running {

@@ -16,6 +16,12 @@ const MAX_FRAME: usize = 10 * 1024 * 1024;
 #[derive(Debug, Clone)]
 pub enum Request {
     Open(PathBuf),
+    FilePicked {
+        request_id: String,
+        status: String,
+        path: Option<PathBuf>,
+        error: Option<String>,
+    },
     Quit,
     CheckQuit,
     DesktopLyrics(bool),
@@ -31,6 +37,13 @@ pub enum Request {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Incoming {
     Hello(Handshake),
+    Phase {
+        phase: StartupPhase,
+    },
+    PickFile {
+        purpose: String,
+        request_id: String,
+    },
     State {
         state: PlaybackState,
     },
@@ -49,6 +62,17 @@ pub enum Incoming {
     },
     #[serde(other)]
     Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupPhase {
+    Starting,
+    Wizard,
+    InitialLoading,
+    Ready,
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -206,7 +230,14 @@ async fn authenticate(
         .map_err(|error| error.to_string())?;
     let mut peer = BufReader::new(stream);
     match read_frame(&mut peer).await? {
-        Some(Incoming::Hello(hello)) if hello.protocol <= 1 => Ok((peer, hello)),
+        Some(Incoming::Hello(hello)) if hello.protocol <= 1 => {
+            if hello.supports("startup") {
+                peer.get_mut().write_all(
+                    b"{\"type\":\"client_hello\",\"client\":\"neoviolet-gui\",\"protocol\":1,\"capabilities\":[\"file_picker\"]}\n"
+                ).await.map_err(|error| error.to_string())?;
+            }
+            Ok((peer, hello))
+        }
         Some(Incoming::Hello(hello)) => Err(format!(
             "Incompatible player protocol {}. Update the player and GUI together.",
             hello.protocol
@@ -239,6 +270,21 @@ async fn write_request<W: AsyncWrite + Unpin>(
     id: &str,
 ) -> Result<(), String> {
     let mut value = match request {
+        Request::FilePicked {
+            request_id,
+            status,
+            path,
+            error,
+        } => {
+            let mut value = serde_json::json!({"type":"file_picked", "purpose":"soundfont", "request_id":request_id, "status":status});
+            if let Some(path) = path {
+                value["path"] = serde_json::json!(path);
+            }
+            if let Some(error) = error {
+                value["error"] = error.clone().into();
+            }
+            value
+        }
         Request::Open(path) => serde_json::json!({"type": "open", "path": path}),
         Request::Quit => serde_json::json!({"type": "quit"}),
         Request::CheckQuit => serde_json::json!({"type":"request_quit"}),
@@ -266,3 +312,7 @@ async fn write_request<W: AsyncWrite + Unpin>(
 #[cfg(test)]
 #[path = "ipc_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "ipc_startup_tests.rs"]
+mod startup_tests;

@@ -88,6 +88,9 @@ fn app() -> App {
         connection_error: None,
         seek_preview: None,
         volume_preview: None,
+        startup: super::startup::Stage::Legacy,
+        lyrics_restored: false,
+        picker: None,
         handshake: Default::default(),
         connection_epoch: 0,
         request_sequence: 0,
@@ -569,3 +572,6 @@ fn snapshots_drive_window_title_without_accepting_old_child_sessions() {
 
 #[path = "integration_tests.rs"]
 mod integration_tests;
+
+#[path = "startup_tests.rs"]
+mod startup_tests;

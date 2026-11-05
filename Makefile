@@ -258,7 +258,7 @@ test/rust: gui/deps
 test/gui-ipc: build/tui gui/deps
 	@if [ $(HAS_CARGO) -eq 0 ]; then echo "error: test/gui-ipc needs cargo" >&2; exit 1; fi
 	cd $(GUI_DIR) && NEOVIOLET_TEST_PLAYER="$(abspath $(OUTPUT))" \
-		cargo test live_tui_acknowledges_and_exits_on_gui_request -- --ignored
+		cargo test live_tui_ -- --ignored
 
 lint/rust: gui/deps
 	@if [ $(HAS_CARGO) -eq 0 ]; then \

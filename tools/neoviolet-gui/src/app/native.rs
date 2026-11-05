@@ -12,7 +12,7 @@ impl App {
         }
         match event {
             iced::Event::Window(event) => match event {
-                window::Event::CloseRequested => return self.action(Action::Quit),
+                window::Event::CloseRequested => return self.window_action(Action::Quit),
                 window::Event::FileDropped(path) => return self.open(path),
                 window::Event::Unfocused => self.titlebar.close(),
                 window::Event::Focused => return self.refresh_chrome(),

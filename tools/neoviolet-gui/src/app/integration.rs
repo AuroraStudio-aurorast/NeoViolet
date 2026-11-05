@@ -5,7 +5,8 @@ use iced::Task;
 
 impl App {
     pub(crate) fn controls_available(&self) -> bool {
-        self.ipc_connected
+        self.actions_available()
+            && self.ipc_connected
             && !self.closing
             && self.handshake.supports("playback")
             && self.dialog.is_none()
@@ -20,13 +21,25 @@ impl App {
             return Task::none();
         };
         let closing = self.closing;
-        let requests = requests
-            .into_iter()
-            .filter(|request| !closing || matches!(request, ipc::Request::Quit));
+        let available = self.actions_available();
+        let requests = requests.into_iter().filter(|request| {
+            (!closing || matches!(request, ipc::Request::Quit))
+                && (available
+                    || matches!(
+                        request,
+                        ipc::Request::Quit
+                            | ipc::Request::CheckQuit
+                            | ipc::Request::GetState
+                            | ipc::Request::FilePicked { .. }
+                    ))
+        });
         let mut timers = Vec::new();
         let mut requests = requests;
         while let Some(request) = requests.next() {
-            if matches!(request, ipc::Request::CheckQuit | ipc::Request::Quit) {
+            if matches!(
+                request,
+                ipc::Request::CheckQuit | ipc::Request::Quit | ipc::Request::FilePicked { .. }
+            ) {
                 let command = ipc::Command {
                     request,
                     id: String::new(),
@@ -201,7 +214,8 @@ impl App {
     }
 
     pub(super) fn toggle_playback(&mut self) -> Task<Message> {
-        if !self.ipc_connected
+        if !self.actions_available()
+            || !self.ipc_connected
             || self.closing
             || self.dialog.is_some()
             || self.titlebar.visible()

@@ -13,7 +13,7 @@ impl App {
                     && !self.titlebar.visible()
                     && !self.titlebar.fullscreen
                 {
-                    return self.action(action);
+                    return self.window_action(action);
                 }
             }
             #[cfg(any(target_os = "windows", test))]
@@ -54,6 +54,14 @@ impl App {
     }
 
     pub(super) fn lyrics_event(&mut self, event: lyrics_window::Event) -> Task<Message> {
+        if !self.actions_available() {
+            return match event {
+                lyrics_window::Event::Opened(id) | lyrics_window::Event::SettingsOpened(id) => {
+                    window::close(id)
+                }
+                _ => Task::none(),
+            };
+        }
         if matches!(&event, lyrics_window::Event::PlayPause) {
             return self.toggle_playback();
         }
@@ -86,6 +94,7 @@ impl App {
 
     pub(super) fn titlebar_event(&mut self, event: titlebar::Message) -> Task<Message> {
         match event {
+            titlebar::Message::WindowAction(action) => self.window_action(action),
             titlebar::Message::DoubleClick => {
                 self.titlebar.update(titlebar::Message::DoubleClick);
                 desktop::title_double_click(self.main_window).chain(self.refresh_chrome())

@@ -18,9 +18,13 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	messages := map[string]Message{
-		"hello":  Hello(),
-		"result": {Type: "result", RequestID: "mute", Status: "succeeded"},
-		"state":  {Type: "state", State: &PlaybackState{Revision: 7, TrackID: 3, Path: "/music/a \"song\" 雪.flac", Title: "雪", HasTrack: true, DesktopLyrics: true, Duration: 120, ConfigDir: "/settings/neoviolet"}},
+		"hello":        Hello(),
+		"phase":        {Type: "phase", Phase: "wizard"},
+		"pick_file":    {Type: "pick_file", Purpose: "soundfont", RequestID: "soundfont-7"},
+		"client_hello": {Type: "client_hello", Client: "neoviolet-gui", Protocol: 1, Capabilities: []string{"file_picker"}},
+		"file_picked":  {Type: "file_picked", Purpose: "soundfont", RequestID: "soundfont-7", Status: "cancelled"},
+		"result":       {Type: "result", RequestID: "mute", Status: "succeeded"},
+		"state":        {Type: "state", State: &PlaybackState{Revision: 7, TrackID: 3, Path: "/music/a \"song\" 雪.flac", Title: "雪", HasTrack: true, DesktopLyrics: true, Duration: 120, ConfigDir: "/settings/neoviolet"}},
 	}
 	for name, message := range messages {
 		got, err := json.Marshal(message)

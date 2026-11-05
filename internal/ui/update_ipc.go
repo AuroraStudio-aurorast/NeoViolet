@@ -16,7 +16,7 @@ type ipcOpenRequest struct {
 }
 
 func (m *Model) waitIPC() tea.Cmd {
-	if m.ipcServer == nil {
+	if m.ipcServer == nil || m.ipcManaged {
 		return nil
 	}
 	return func() tea.Msg {

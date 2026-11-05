@@ -28,6 +28,7 @@ pub enum Message {
     HoverItem(usize),
     Dismiss,
     Action(Action),
+    WindowAction(Action),
     PressTitle,
     ReleaseTitle,
     DoubleClick,
@@ -47,6 +48,7 @@ pub struct State {
     selected_group: Option<usize>,
     selected_item: usize,
     in_submenu: bool,
+    pub commands_disabled: bool,
     pub maximized: bool,
     pub caption_hover: Option<CaptionControl>,
     pub fullscreen: bool,
@@ -97,8 +99,10 @@ impl State {
             }
             Message::Dismiss => self.close(),
             Message::Action(action) => {
-                self.close();
-                return Some(action);
+                if !self.commands_disabled {
+                    self.close();
+                    return Some(action);
+                }
             }
             Message::PressTitle => {
                 self.close();
@@ -195,7 +199,7 @@ impl State {
                 };
                 if self.in_submenu {
                     let items = &groups[self.selected_group.unwrap_or(0)].items;
-                    self.selected_item = if items[next].enabled(lyrics) {
+                    self.selected_item = if items[next].enabled(lyrics, !self.commands_disabled) {
                         next
                     } else if matches!(key, Key::Named(Named::ArrowUp | Named::End)) {
                         (next + count - 1) % count
@@ -209,7 +213,7 @@ impl State {
             Key::Named(Named::Enter | Named::Space) => {
                 if self.in_submenu {
                     let item = &groups[self.selected_group.unwrap_or(0)].items[self.selected_item];
-                    if !item.enabled(lyrics) {
+                    if !item.enabled(lyrics, !self.commands_disabled) {
                         return None;
                     }
                     let action = item.action;

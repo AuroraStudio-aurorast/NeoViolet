@@ -1,9 +1,10 @@
+use std::cell::Cell;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 use iced::futures::SinkExt;
 use muda::accelerator::{Accelerator, Code, Modifiers};
-use muda::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{CheckMenuItem, ContextMenu, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
@@ -68,6 +69,7 @@ pub struct Desktop {
     events: Events,
     lyrics_item: CheckMenuItem,
     unlock_item: MenuItem,
+    menus_ready: Cell<Option<bool>>,
 }
 
 impl Desktop {
@@ -244,23 +246,31 @@ impl Desktop {
             };
             let _ = sender.send(Event::Action(action));
         }));
-        Ok(Self {
+        let desktop = Self {
             sender: native_sender,
             _menu: menu,
             _delegate: delegate,
             events: Events(Arc::new(Mutex::new(receiver))),
             lyrics_item,
             unlock_item,
-        })
+            menus_ready: Cell::new(None),
+        };
+        desktop.sync_menus(false, false);
+        Ok(desktop)
     }
 
-    pub fn sync_lyrics(&self, enabled: bool) {
+    pub fn sync_menus(&self, available: bool, enabled: bool) {
+        if self.menus_ready.replace(Some(available)) != Some(available) || !available {
+            // SAFETY: muda owns this NSMenu for Desktop's lifetime. Updates run on
+            // the Iced main thread, including all AppKit predefined commands.
+            let menu = unsafe { &*self._menu.ns_menu().cast::<objc2_app_kit::NSMenu>() };
+            super::menus::set_commands(menu, available);
+        }
+        self.lyrics_item.set_enabled(available);
         if self.lyrics_item.is_checked() != enabled {
             self.lyrics_item.set_checked(enabled);
         }
-        if self.unlock_item.is_enabled() != enabled {
-            self.unlock_item.set_enabled(enabled);
-        }
+        self.unlock_item.set_enabled(available && enabled);
     }
 
     pub fn subscription(&self) -> iced::Subscription<Event> {

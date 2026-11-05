@@ -8,7 +8,8 @@ impl App {
         match message {
             Message::Ready => {}
             Message::FlushPending { session, epoch } => {
-                if !self.closing
+                if self.actions_available()
+                    && !self.closing
                     && session == self.session
                     && epoch == self.connection_epoch
                     && self.dialog.is_none()
@@ -20,7 +21,11 @@ impl App {
                 }
             }
             Message::DismissNotice => self.notice = None,
-            Message::RefreshState => return self.send_all(vec![ipc::Request::GetState]),
+            Message::RefreshState => {
+                if self.actions_available() {
+                    return self.send_all(vec![ipc::Request::GetState]);
+                }
+            }
             Message::PlaybackToggle => return self.toggle_playback(),
             Message::SeekPreview(value) => {
                 if self.controls_available() {
@@ -83,6 +88,9 @@ impl App {
                 .map(|_| Message::Ready);
             }
             Message::SetMode(mode) => {
+                if !self.actions_available() {
+                    return Task::none();
+                }
                 return window::set_mode(self.main_window, mode).chain(self.refresh_chrome());
             }
             Message::ChromeState(maximized, mode) => {
@@ -96,6 +104,14 @@ impl App {
             Message::Terminal(event) => return self.terminal_event(event),
             Message::Desktop(event) => return self.desktop_event(event),
             Message::Native(id, event) => return self.native_event(id, event),
+            Message::SetupPicked {
+                session,
+                epoch,
+                request_id,
+                result,
+            } => {
+                return self.setup_picked(session, epoch, request_id, result);
+            }
             Message::Picked(path) => {
                 let open = path.map_or_else(Task::none, |path| self.open(path));
                 return Task::batch([
@@ -106,7 +122,8 @@ impl App {
                 ]);
             }
             Message::Pasted(Some(text)) => {
-                if self.dialog.is_none()
+                if self.actions_available()
+                    && self.dialog.is_none()
                     && self.running
                     && let Some(terminal) = &mut self.terminal
                 {
@@ -137,7 +154,7 @@ impl App {
             Message::Dismiss => {
                 if self.running {
                     self.dialog = None;
-                    let requests = if self.connection.is_some() {
+                    let requests = if self.actions_available() && self.connection.is_some() {
                         self.pending.drain(..).map(ipc::Request::Open).collect()
                     } else {
                         Vec::new()

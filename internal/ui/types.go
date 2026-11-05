@@ -307,6 +307,7 @@ type Model struct {
 
 	// ipcServer handles bidirectional communication with the GUI wrapper
 	// via authenticated loopback TCP. nil when unavailable.
+	ipcManaged bool
 	ipcServer  *ipc.Server
 	ipcSession uint64
 	guiHosted  bool

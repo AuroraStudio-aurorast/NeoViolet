@@ -54,6 +54,9 @@ impl App {
             connection_error: None,
             seek_preview: None,
             volume_preview: None,
+            startup: Default::default(),
+            lyrics_restored: false,
+            picker: None,
             handshake: Default::default(),
             connection_epoch: 0,
             request_sequence: 0,
@@ -76,6 +79,7 @@ impl App {
     }
 
     pub(super) fn start(&mut self) -> Task<Message> {
+        let lyrics = self.suspend_lyrics();
         self.terminal = None;
         self.connection = None;
         self.pid = None;
@@ -84,6 +88,9 @@ impl App {
         self.notice = None;
         self.connection_error = None;
         self.handshake = Default::default();
+        self.startup = Default::default();
+        self.lyrics_restored = false;
+        self.titlebar.commands_disabled = true;
         self.version = "Waiting for player…".into();
         self.requests.clear();
         self.seek_preview = None;
@@ -121,11 +128,7 @@ impl App {
                 terminal.set_application_shortcuts(true);
                 self.terminal = Some(terminal);
                 self.running = true;
-                let (lyrics, _) = self.lyrics.update(
-                    lyrics_window::Event::Visible(self.config.desktop_lyrics.enabled),
-                    &mut self.config.desktop_lyrics,
-                );
-                Task::batch([self.focus(), lyrics.map(Message::Lyrics)])
+                Task::batch([self.focus(), lyrics])
             }
             Err(error) => {
                 self.running = false;
@@ -133,7 +136,7 @@ impl App {
                     "Could not start {}: {error}\nCheck neoviolet_path in the GUI settings.",
                     executable.display()
                 )));
-                Task::none()
+                lyrics
             }
         }
     }

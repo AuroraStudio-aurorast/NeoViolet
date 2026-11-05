@@ -54,7 +54,11 @@ impl App {
                 },
             );
             content = content.push(container(text(status).size(12)).padding([6, 10]));
-        } else if self.ipc_connected && self.handshake_supports_state() && self.playback.is_none() {
+        } else if self.actions_available()
+            && self.ipc_connected
+            && self.handshake_supports_state()
+            && self.playback.is_none()
+        {
             content = content.push(
                 row![
                     text("Waiting for playback status…").size(12),
@@ -99,6 +103,9 @@ impl App {
     }
 
     fn playback_controls(&self) -> Option<Element<'_, Message>> {
+        if !self.actions_available() {
+            return None;
+        }
         let state = self.playback.as_ref()?;
         let can_control = self.controls_available();
         let playback = button(if state.playing { "Pause" } else { "Play" })
