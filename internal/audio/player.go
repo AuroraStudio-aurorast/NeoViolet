@@ -135,7 +135,7 @@ func (p *Player) SetTrackerBackend(backend string) {
 
 // Open loads a local audio file (or remote URL) for playback.
 func (p *Player) Open(path string) error {
-	logger.Debug("Player.Open", "path", path)
+	logger.Debug("Player.Open", "path", RedactSource(path))
 
 	if isURL(path) {
 		return p.openURL(path)

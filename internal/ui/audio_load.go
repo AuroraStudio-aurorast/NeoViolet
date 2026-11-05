@@ -91,7 +91,7 @@ func discardAudioLoaded(msg AudioLoadedMsg) {
 }
 
 func loadAudio(filePath, sfPath, trackerBackend string, generation int) (result tea.Msg) {
-	logger.Info("Loading audio file", "path", filePath)
+	logger.Info("Loading audio file", "path", audio.RedactSource(filePath))
 	player := audio.NewPlayer()
 	defer func() {
 		if _, loaded := result.(AudioLoadedMsg); !loaded {
@@ -109,7 +109,7 @@ func loadAudio(filePath, sfPath, trackerBackend string, generation int) (result 
 	}
 
 	if err := player.Open(filePath); err != nil {
-		logger.Error("Failed to load audio", "path", filePath, "err", err)
+		logger.Error("Failed to load audio", "path", audio.RedactSource(filePath), "err", err)
 		return AudioLoadFailedMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180, Generation: generation}
 	}
 	return AudioLoadedMsg{Player: player, Path: filePath, Generation: generation}

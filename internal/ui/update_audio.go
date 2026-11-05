@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/anim"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
@@ -142,7 +143,7 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.finishIPCOpen("cancelled", "Superseded by another file")
-	logger.Info("Loading new track", "path", msg.Path)
+	logger.Info("Loading new track", "path", audio.RedactSource(msg.Path))
 	m.loadGeneration++
 	m.pendingSeek = 0
 	if m.Audio.Lyrics != nil {

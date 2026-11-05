@@ -22,7 +22,7 @@ func (p *Player) readTags(path string) {
 func (p *Player) Path() string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.path
+	return RedactSource(p.path)
 }
 
 // Title returns the track title of the currently loaded audio source.

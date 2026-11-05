@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,6 +20,32 @@ import (
 func isURL(path string) bool {
 	u, err := url.Parse(path)
 	return err == nil && u.Hostname() != "" && (strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https"))
+}
+
+// RedactSource removes remote URL credentials, query parameters and fragments
+// before a source is shown to the user or written to logs. Local paths pass
+// through unchanged.
+func RedactSource(source string) string {
+	u, err := url.Parse(source)
+	if err != nil || (!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
+		return source
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	u.User = nil
+	u.RawQuery = ""
+	u.ForceQuery = false
+	u.Fragment = ""
+	u.RawFragment = ""
+	return u.String()
+}
+
+func newRemoteHTTPClient() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	transport.TLSHandshakeTimeout = 15 * time.Second
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	transport.ExpectContinueTimeout = 1 * time.Second
+	return &http.Client{Transport: transport}
 }
 
 type remoteReadSeeker struct {
@@ -195,7 +222,7 @@ func (r *remoteReadSeeker) Close() error {
 func (p *Player) openURL(urlStr string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	logger.Info("Opening remote audio", "url", urlStr)
+	logger.Info("Opening remote audio", "url", RedactSource(urlStr))
 
 	u, err := url.Parse(urlStr)
 	if err != nil {
@@ -206,7 +233,7 @@ func (p *Player) openURL(urlStr string) error {
 
 	ext := strings.ToLower(filepath.Ext(u.Path))
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := newRemoteHTTPClient()
 	// #nosec G704 -- fetching a user-supplied remote audio URL is the core
 	// feature of remote playback; the URL comes from the user's own input.
 	resp, err := client.Get(urlStr)
@@ -251,13 +278,13 @@ func (p *Player) openURL(urlStr string) error {
 		return fmt.Errorf("speaker init failed: %w", err)
 	}
 
-	logger.Info("Remote audio opened", "url", urlStr, "format", format.SampleRate)
+	logger.Info("Remote audio opened", "url", RedactSource(urlStr), "format", format.SampleRate)
 
 	p.setupStreamer(streamer, format, rrs, urlStr)
 
-	display := urlStr
-	if u.Scheme != "" {
-		display = u.Host + u.RequestURI()
+	display := RedactSource(urlStr)
+	if safeURL, err := url.Parse(display); err == nil && safeURL.Scheme != "" {
+		display = safeURL.Host + safeURL.RequestURI()
 	}
 	p.title = display
 	p.artist = ""
