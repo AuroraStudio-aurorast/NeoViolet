@@ -134,8 +134,9 @@ func TestInteractionPaletteLeavesGUIFrameDefaultsAlone(t *testing.T) {
 	m := completionModel(t, 80, 24)
 	m.ipcServer = &ipc.Server{}
 	view := m.View()
-	if view.Content != renderMainView(m).Content || view.BackgroundColor != nil || view.ForegroundColor != nil {
-		t.Error("interaction surfaces changed the GUI background exclusion")
+	assertFrameBackgrounds(t, m)
+	if view.BackgroundColor != nil || view.ForegroundColor != nil {
+		t.Error("interaction surfaces pinned the GUI terminal defaults")
 	}
 }
 

@@ -241,18 +241,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the current UI state.
 //
-// Every frame passes through here, so this is where the background goes on
-// -- for the frames that have the screen to themselves: the loading screen and the
-// too-small warning are drawn on the shell's own screen, and under the GUI the
-// frame is drawn on the wrapper's canvas, so both keep the terminal's own colours.
-// Painting either would outlast the app if it died before the renderer could
-// undo the pin.
+// Complete alternate-screen frames carry their own row backgrounds in both hosts.
+// Loading and too-small frames leave the canvas alone. Only standalone terminals
+// pin their default colours; the GUI wrapper owns its canvas and terminal defaults.
 func (m *Model) View() tea.View {
 	view := renderMainView(m)
-	if view.AltScreen && !m.isGUI() {
+	if view.AltScreen {
 		view.Content = paintBackground(view.Content, frameBackground(m))
-		view.BackgroundColor = uiBackground
-		view.ForegroundColor = uiForeground
+		if !m.isGUI() {
+			view.BackgroundColor = uiBackground
+			view.ForegroundColor = uiForeground
+		}
 	}
 	return view
 }

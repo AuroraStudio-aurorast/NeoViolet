@@ -18,7 +18,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
-pub(crate) const TERMINAL_BACKGROUND: iced::Color = iced::Color::from_rgb8(32, 32, 32);
+pub(crate) const TERMINAL_BACKGROUND: iced::Color = iced::Color::BLACK;
 
 pub struct App {
     pub main_window: window::Id,

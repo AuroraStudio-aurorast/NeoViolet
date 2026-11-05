@@ -17,7 +17,7 @@ fn render(state: &State, platform: Platform) -> Vec<u8> {
         .width(Length::Fill)
         .height(Length::Fill)
         .style(move |_| container::Style {
-            background: Some(Color::from_rgba8(32, 32, 32, opacity).into()),
+            background: Some(Color::from_rgba8(0, 0, 0, opacity).into()),
             ..Default::default()
         });
     let view = state.wrap_for(terminal.into(), "NeoViolet", false, platform);
@@ -77,14 +77,11 @@ fn hover_fades_both_ways_without_jumping_on_reversal_and_stops_redrawing() {
     state.update(Message::Hover(true));
     state.animate_chrome(start);
     assert!(state.chrome_animating());
-    assert_eq!(
-        pixel(&render(&state, Platform::MacOs), 3),
-        [32, 32, 32, 255]
-    );
+    assert_eq!(pixel(&render(&state, Platform::MacOs), 3), [0, 0, 0, 255]);
     state.animate_chrome(start + Duration::from_millis(90));
     let middle = state.chrome_color();
     let image = render(&state, Platform::MacOs);
-    assert!(pixel(&image, 3)[0] > 32 && pixel(&image, 3)[0] < 43);
+    assert!(pixel(&image, 3)[0] > 0 && pixel(&image, 3)[0] < 43);
     state.update(Message::Hover(false));
     state.animate_chrome(start + Duration::from_millis(90));
     assert_eq!(
@@ -93,10 +90,7 @@ fn hover_fades_both_ways_without_jumping_on_reversal_and_stops_redrawing() {
         "reversing a hover must start at the displayed color"
     );
     state.animate_chrome(start + Duration::from_millis(280));
-    assert_eq!(
-        pixel(&render(&state, Platform::MacOs), 3),
-        [32, 32, 32, 255]
-    );
+    assert_eq!(pixel(&render(&state, Platform::MacOs), 3), [0, 0, 0, 255]);
     assert!(!state.chrome_animating());
     state.update(Message::Hover(true));
     state.animate_chrome(start + Duration::from_millis(300));
@@ -134,10 +128,7 @@ fn open_menus_drag_and_native_caption_hover_keep_chrome_active_until_finished() 
         state.caption_hover = None;
         state.animate_chrome(start + Duration::from_millis(220));
         state.animate_chrome(start + Duration::from_millis(420));
-        assert_eq!(
-            pixel(&render(&state, Platform::Windows), 3),
-            [32, 32, 32, 255]
-        );
+        assert_eq!(pixel(&render(&state, Platform::Windows), 3), [0, 0, 0, 255]);
     }
 }
 

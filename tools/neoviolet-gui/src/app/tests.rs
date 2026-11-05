@@ -573,3 +573,7 @@ mod integration_tests;
 
 #[path = "startup_tests.rs"]
 mod startup_tests;
+
+#[cfg(unix)]
+#[path = "terminal_background_tests.rs"]
+mod terminal_background_tests;

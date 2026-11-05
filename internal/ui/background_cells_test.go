@@ -139,8 +139,10 @@ func assertFrameBackgrounds(t *testing.T, m *Model) {
 }
 
 func TestView_GradientCoversEveryCell(t *testing.T) {
-	painted, _, _ := splitScreens(t)
-	for name, m := range painted {
+	for name, m := range everyScreen(t) {
+		if !m.View().AltScreen {
+			continue
+		}
 		t.Run(name, func(t *testing.T) {
 			for _, hex := range []string{"#af87ff", "#60b5a6", "#485b80"} {
 				m.Accent = &accent.Accent{Main: mustColorful(t, hex)}
@@ -151,22 +153,27 @@ func TestView_GradientCoversEveryCell(t *testing.T) {
 }
 
 func TestView_GradientSurvivesResizeModeAndOverlayChanges(t *testing.T) {
-	m := panelSongs(t, 0, 40, 20)
-	for _, size := range [][2]int{{120, 30}, {100, 30}, {80, 24}, {68, 17}, {120, 30}} {
-		m = sized(t, m, size[0], size[1])
-		for _, hex := range []string{"#af87ff", "#df9b67"} {
-			m.Accent = &accent.Accent{Main: mustColorful(t, hex)}
-			assertFrameBackgrounds(t, m)
-			m.UI.Mode = ModeCommand
-			m.completionCandidates = []candidate{{Value: "load", Desc: "load a file"}, {Value: "lrc"}}
-			assertFrameBackgrounds(t, m)
-			m.UI.Mode = ModeNormal
-			m.completionCandidates = nil
-			assertFrameBackgrounds(t, m)
-		}
-	}
-	m = sized(t, m, 60, 24)
-	if m.View().BackgroundColor != nil || m.View().Content != renderMainView(m).Content {
-		t.Fatal("too-small frame changed")
+	for _, gui := range []bool{false, true} {
+		t.Run(fmt.Sprintf("gui=%v", gui), func(t *testing.T) {
+			m := panelSongs(t, 0, 40, 20)
+			m.guiHosted = gui
+			for _, size := range [][2]int{{120, 30}, {100, 30}, {80, 24}, {68, 17}, {120, 30}} {
+				m = sized(t, m, size[0], size[1])
+				for _, hex := range []string{"#af87ff", "#df9b67"} {
+					m.Accent = &accent.Accent{Main: mustColorful(t, hex)}
+					assertFrameBackgrounds(t, m)
+					m.UI.Mode = ModeCommand
+					m.completionCandidates = []candidate{{Value: "load", Desc: "load a file"}, {Value: "lrc"}}
+					assertFrameBackgrounds(t, m)
+					m.UI.Mode = ModeNormal
+					m.completionCandidates = nil
+					assertFrameBackgrounds(t, m)
+				}
+			}
+			m = sized(t, m, 60, 24)
+			if m.View().BackgroundColor != nil || m.View().Content != renderMainView(m).Content {
+				t.Fatal("too-small frame changed")
+			}
+		})
 	}
 }
