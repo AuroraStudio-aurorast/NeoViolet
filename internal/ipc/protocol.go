@@ -11,7 +11,7 @@
 //
 //	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker"]}
 //	{"type": "file_picked", "purpose":"soundfont|audio", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
-//	{"type": "open", "path": "/path/to/file"}
+//	{"type": "open", "path": "/path/to/file or https://example.com/audio.mp3"}
 //	{"type": "desktop_lyrics", "enable": true|false}
 //	{"type": "play"} | {"type": "pause"} — idempotent playback control
 //	{"type": "seek", "position": 12.3} — absolute seconds, clamped to duration

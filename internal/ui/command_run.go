@@ -146,8 +146,8 @@ func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	// spaces survives; trailing whitespace is dropped because a dragged file
 	// arrives as "path "; expandTilde so a completed "~/x.mp3" also opens.
 	path := expandTilde(strings.TrimRightFunc(inv.Rest, unicode.IsSpace))
-	if !isValidAudioPath(path) {
-		m.Error.Set("Invalid or unsupported audio file: "+inv.Rest, m.Config.Error.Duration)
+	if !isValidAudioSource(path) {
+		m.Error.Set("Invalid or unsupported audio source: "+inv.Rest, m.Config.Error.Duration)
 		return m, nil
 	}
 	return handleLoadTrack(m, LoadTrackMsg{Path: path})

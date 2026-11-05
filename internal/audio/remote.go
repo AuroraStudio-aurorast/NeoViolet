@@ -17,7 +17,8 @@ import (
 )
 
 func isURL(path string) bool {
-	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
+	u, err := url.Parse(path)
+	return err == nil && u.Hostname() != "" && (strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https"))
 }
 
 type remoteReadSeeker struct {
@@ -200,6 +201,8 @@ func (p *Player) openURL(urlStr string) error {
 	if err != nil {
 		return fmt.Errorf("parse URL: %w", err)
 	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	urlStr = u.String()
 
 	ext := strings.ToLower(filepath.Ext(u.Path))
 
