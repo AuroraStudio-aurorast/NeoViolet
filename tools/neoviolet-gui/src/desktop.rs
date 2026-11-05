@@ -148,7 +148,7 @@ pub struct Desktop;
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 impl Desktop {
-    pub fn sync_menus(&self, _available: bool, _enabled: bool) {}
+    pub fn sync_menus(&self, _basic: bool, _available: bool, _enabled: bool) {}
     pub fn configure_lyrics_window(&self, id: iced::window::Id) -> iced::Task<()> {
         #[cfg(target_os = "linux")]
         return linux::configure_lyrics(id);

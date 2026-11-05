@@ -33,6 +33,10 @@ pub(super) fn soundfont_dialog<W: HasWindowHandle + HasDisplayHandle>(
 }
 
 impl App {
+    pub(crate) fn basic_actions_available(&self) -> bool {
+        !self.closing && self.picker.is_none()
+    }
+
     pub(crate) fn actions_available(&self) -> bool {
         !self.closing
             && self.picker.is_none()

@@ -8,7 +8,9 @@ use std::path::PathBuf;
 
 impl App {
     pub(super) fn action(&mut self, action: Action) -> Task<Message> {
-        if !self.actions_available() {
+        if !self.basic_actions_available()
+            || (action.requires_player() && !self.actions_available())
+        {
             return Task::none();
         }
         self.dispatch_action(action)

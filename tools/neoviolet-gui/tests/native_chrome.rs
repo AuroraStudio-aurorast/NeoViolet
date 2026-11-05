@@ -100,6 +100,7 @@ fn check_native_layout() {
     let _application = NSApplication::sharedApplication(marker);
     check_native_lyrics_pair(marker);
     check_native_menu(marker);
+    check_startup_player_menu();
     // SAFETY: The window and all its native views are confined to this main thread.
     let window = unsafe {
         NSWindow::initWithContentRect_styleMask_backing_defer(
@@ -227,4 +228,70 @@ fn check_native_menu(marker: objc2_foundation::MainThreadMarker) {
     startup_menu::set_commands(&root, true);
     assert!(command.isEnabled() && nested_heading.isEnabled());
     assert!(submenu.autoenablesItems() && nested.autoenablesItems());
+}
+
+#[cfg(target_os = "macos")]
+fn check_startup_player_menu() {
+    use muda::{CheckMenuItem, ContextMenu, Menu, MenuItem, Submenu};
+    let menu = Menu::new();
+    let nested = Submenu::new("Commands", true);
+    let open = MenuItem::with_id("open", "Open File…", true, None);
+    let about = MenuItem::with_id("about", "About", true, None);
+    let zoom = MenuItem::with_id("zoom_in", "Zoom In", true, None);
+    let copy = MenuItem::with_id("copy", "Copy", true, None);
+    let quit = MenuItem::with_id("quit", "Quit", true, None);
+    let settings = MenuItem::with_id("lyrics_settings", "Lyrics Settings", true, None);
+    let unlock = MenuItem::with_id("unlock_lyrics", "Unlock Lyrics", true, None);
+    let lyrics = CheckMenuItem::with_id("desktop_lyrics", "Desktop Lyrics", true, true, None);
+    nested
+        .append_items(&[
+            &open, &about, &zoom, &copy, &quit, &settings, &unlock, &lyrics,
+        ])
+        .unwrap();
+    menu.append(&nested).unwrap();
+    // SAFETY: Menu owns this native object; the harness is on AppKit's main thread.
+    let native = unsafe { &*menu.ns_menu().cast::<objc2_app_kit::NSMenu>() };
+    startup_menu::set_commands(native, true);
+    startup_menu::set_player_commands(&menu, false, true);
+    let native_submenu = native.itemAtIndex(0).unwrap().submenu().unwrap();
+    native_submenu.update();
+    for item in native_submenu.itemArray() {
+        let title = item.title().to_string();
+        if [
+            "Open File…",
+            "Lyrics Settings",
+            "Unlock Lyrics",
+            "Desktop Lyrics",
+        ]
+        .contains(&title.as_str())
+        {
+            assert!(
+                !item.isEnabled(),
+                "AppKit validation re-enabled {title} during setup"
+            );
+        }
+    }
+    assert!(
+        !open.is_enabled()
+            && !settings.is_enabled()
+            && !unlock.is_enabled()
+            && !lyrics.is_enabled()
+    );
+    assert!(about.is_enabled() && zoom.is_enabled() && copy.is_enabled() && quit.is_enabled());
+    startup_menu::set_player_commands(&menu, true, false);
+    assert!(open.is_enabled() && settings.is_enabled() && lyrics.is_enabled());
+    assert!(
+        !unlock.is_enabled(),
+        "lyrics lock controls need an active overlay"
+    );
+    startup_menu::set_commands(native, false);
+    startup_menu::set_player_commands(&menu, false, false);
+    let native_submenu = native.itemAtIndex(0).unwrap().submenu().unwrap();
+    assert!(
+        native_submenu
+            .itemArray()
+            .iter()
+            .all(|item| !item.isEnabled()),
+        "native commands must disable while a setup sheet owns input"
+    );
 }

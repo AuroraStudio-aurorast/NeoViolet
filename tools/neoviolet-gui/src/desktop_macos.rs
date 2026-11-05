@@ -255,22 +255,26 @@ impl Desktop {
             unlock_item,
             menus_ready: Cell::new(None),
         };
-        desktop.sync_menus(false, false);
+        desktop.sync_menus(true, false, false);
         Ok(desktop)
     }
 
-    pub fn sync_menus(&self, available: bool, enabled: bool) {
-        if self.menus_ready.replace(Some(available)) != Some(available) || !available {
+    pub fn sync_menus(&self, basic_available: bool, available: bool, enabled: bool) {
+        if self.menus_ready.replace(Some(basic_available)) != Some(basic_available)
+            || !basic_available
+        {
             // SAFETY: muda owns this NSMenu for Desktop's lifetime. Updates run on
             // the Iced main thread, including all AppKit predefined commands.
             let menu = unsafe { &*self._menu.ns_menu().cast::<objc2_app_kit::NSMenu>() };
-            super::menus::set_commands(menu, available);
+            super::menus::set_commands(menu, basic_available);
         }
-        self.lyrics_item.set_enabled(available);
+        super::menus::set_player_commands(&self._menu, basic_available && available, enabled);
+        self.lyrics_item.set_enabled(basic_available && available);
         if self.lyrics_item.is_checked() != enabled {
             self.lyrics_item.set_checked(enabled);
         }
-        self.unlock_item.set_enabled(available && enabled);
+        self.unlock_item
+            .set_enabled(basic_available && available && enabled);
     }
 
     pub fn subscription(&self) -> iced::Subscription<Event> {

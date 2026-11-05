@@ -73,7 +73,7 @@ impl Desktop {
             })
         })
     }
-    pub fn sync_menus(&self, _: bool, _: bool) {}
+    pub fn sync_menus(&self, _: bool, _: bool, _: bool) {}
     pub fn configure_lyrics_window(&self, _: iced::window::Id) -> iced::Task<()> {
         iced::Task::none()
     }

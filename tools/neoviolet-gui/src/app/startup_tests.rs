@@ -38,10 +38,9 @@ fn authenticated_startup_waits_for_ready_before_subscribing_or_restoring_lyrics(
 }
 
 #[test]
-fn disabled_open_intents_and_application_actions_have_no_effect_or_pending_files() {
+fn disabled_player_actions_and_open_intents_have_no_effect_or_pending_files() {
     let (mut app, mut receiver) = starting();
     while receiver.try_recv().is_ok() {}
-    let font_size = app.config.font_size;
     for message in [
         Message::Desktop(desktop::Event::Files(vec!["/tmp/os.flac".into()])),
         Message::Native(
@@ -49,14 +48,13 @@ fn disabled_open_intents_and_application_actions_have_no_effect_or_pending_files
             iced::Event::Window(window::Event::FileDropped("/tmp/drop.flac".into())),
         ),
         Message::Picked(Some("/tmp/late-picker.flac".into())),
-        Message::Desktop(desktop::Event::Action(Action::ZoomIn)),
-        Message::Titlebar(titlebar::Message::Action(Action::About)),
+        Message::Desktop(desktop::Event::Action(Action::DesktopLyrics)),
+        Message::Titlebar(titlebar::Message::Action(Action::LyricsSettings)),
     ] {
         let _ = app.update(message);
     }
     assert!(app.pending.is_empty());
     assert!(receiver.try_recv().is_err());
-    assert_eq!(app.config.font_size, font_size);
     assert!(app.dialog.is_none());
 }
 
@@ -129,10 +127,11 @@ fn restart_closes_previous_lyrics_before_new_child_readiness() {
 }
 
 #[test]
-fn delayed_window_mode_commands_do_not_escape_startup_gate() {
+fn basic_window_mode_commands_keep_player_gate_closed() {
     let (mut app, _) = starting();
     let task = app.update(Message::SetMode(window::Mode::Fullscreen));
-    assert!(iced_runtime::task::into_stream(task).is_none());
+    assert!(iced_runtime::task::into_stream(task).is_some());
+    assert!(!app.actions_available());
     let task = app.titlebar_event(titlebar::Message::WindowAction(Action::Open));
     assert!(
         iced_runtime::task::into_stream(task).is_none(),
@@ -252,21 +251,9 @@ fn window_manager_close_and_caption_controls_remain_available() {
 }
 
 #[test]
-fn every_application_menu_action_and_shortcut_is_blocked_during_setup() {
+fn player_menu_actions_and_shortcuts_stay_blocked_during_setup() {
     let actions = [
         Action::Open,
-        Action::Preferences,
-        Action::About,
-        Action::Quit,
-        Action::Copy,
-        Action::Paste,
-        Action::ZoomIn,
-        Action::ZoomOut,
-        Action::ZoomReset,
-        Action::Minimize,
-        Action::ZoomWindow,
-        Action::Fullscreen,
-        Action::Repository,
         Action::DesktopLyrics,
         Action::LyricsSettings,
         Action::UnlockLyrics,
@@ -280,7 +267,7 @@ fn every_application_menu_action_and_shortcut_is_blocked_during_setup() {
                 "{name}: {action:?}"
             );
         }
-        for key in ["o", "c", "v", ",", "q", "+", "-", "0", "l"] {
+        for key in ["o", "l"] {
             let modifiers = if key == "l" {
                 Modifiers::COMMAND | Modifiers::SHIFT
             } else {
@@ -499,5 +486,45 @@ fn terminal_child_exit_before_disconnect_closes_all_lyric_windows() {
             app.config.desktop_lyrics.enabled,
             "cleanup preserves the saved preference"
         );
+    }
+}
+
+#[test]
+fn setup_keeps_basic_menu_commands_and_shortcuts_available() {
+    use iced::keyboard::{Key, Modifiers};
+    let (mut app, mut receiver) = starting();
+    for stage in ["starting", "wizard", "initial_loading"] {
+        phase(&mut app, stage);
+        let font = app.config.font_size;
+        let _ = app.update(Message::Desktop(desktop::Event::Action(Action::ZoomIn)));
+        assert_eq!(
+            app.config.font_size,
+            font + 2,
+            "basic zoom disabled during {stage}"
+        );
+        let _ = app.update(Message::Native(
+            app.main_window,
+            iced::Event::Keyboard(iced::keyboard::Event::KeyPressed {
+                key: Key::Character("-".into()),
+                modified_key: Key::Character("-".into()),
+                physical_key: iced::keyboard::key::Physical::Unidentified(
+                    iced::keyboard::key::NativeCode::Unidentified,
+                ),
+                location: iced::keyboard::Location::Standard,
+                modifiers: Modifiers::COMMAND,
+                text: None,
+                repeat: false,
+            }),
+        ));
+        assert_eq!(
+            app.config.font_size, font,
+            "zoom shortcut disabled during {stage}"
+        );
+        let _ = app.action(Action::About);
+        assert!(matches!(app.dialog, Some(Dialog::About)));
+        let _ = app.update(Message::Dismiss);
+        assert!(app.dialog.is_none());
+        assert!(!app.actions_available(), "basic commands unlocked playback");
+        assert!(receiver.try_recv().is_err());
     }
 }

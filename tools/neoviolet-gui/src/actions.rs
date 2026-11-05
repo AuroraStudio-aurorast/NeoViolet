@@ -19,6 +19,14 @@ pub enum Action {
 }
 
 impl Action {
+    /// These commands change player content or depend on its ready state.
+    pub fn requires_player(self) -> bool {
+        matches!(
+            self,
+            Self::Open | Self::DesktopLyrics | Self::LyricsSettings | Self::UnlockLyrics
+        )
+    }
+
     pub fn shortcut(
         key: &iced::keyboard::Key,
         modifiers: iced::keyboard::Modifiers,

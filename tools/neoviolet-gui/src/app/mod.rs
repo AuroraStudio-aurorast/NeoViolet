@@ -147,7 +147,8 @@ impl App {
         let running = self.running;
         let fullscreen = self.titlebar.fullscreen;
         let mut task = self.update_inner(message);
-        self.titlebar.commands_disabled = !self.actions_available();
+        self.titlebar.commands_disabled = !self.basic_actions_available();
+        self.titlebar.player_unavailable = !self.actions_available();
         if modal != self.dialog.as_ref().map(std::mem::discriminant) || running != self.running {
             self.dialog_navigation.reset();
         }
@@ -158,7 +159,11 @@ impl App {
             task = task.chain(self.focus());
         }
         if let Some(desktop) = &self.desktop {
-            desktop.sync_menus(self.actions_available(), self.config.desktop_lyrics.enabled);
+            desktop.sync_menus(
+                self.basic_actions_available(),
+                self.actions_available(),
+                self.config.desktop_lyrics.enabled,
+            );
         }
         if (menu || modal.is_some()) != (self.titlebar.visible() || self.dialog.is_some())
             || fullscreen != self.titlebar.fullscreen

@@ -49,6 +49,7 @@ pub struct State {
     selected_item: usize,
     in_submenu: bool,
     pub commands_disabled: bool,
+    pub player_unavailable: bool,
     pub maximized: bool,
     pub caption_hover: Option<CaptionControl>,
     pub fullscreen: bool,
@@ -99,7 +100,9 @@ impl State {
             }
             Message::Dismiss => self.close(),
             Message::Action(action) => {
-                if !self.commands_disabled {
+                if !self.commands_disabled
+                    && (!action.requires_player() || !self.player_unavailable)
+                {
                     self.close();
                     return Some(action);
                 }
@@ -154,6 +157,10 @@ impl State {
         groups
     }
 
+    fn item_enabled(&self, item: &menus::MenuItem, lyrics: bool) -> bool {
+        !self.commands_disabled && item.enabled(lyrics, !self.player_unavailable)
+    }
+
     pub fn key(&mut self, key: &Key, lyrics: bool) -> Option<Action> {
         let groups = self.groups(Platform::current(), lyrics);
         match key {
@@ -199,13 +206,19 @@ impl State {
                 };
                 if self.in_submenu {
                     let items = &groups[self.selected_group.unwrap_or(0)].items;
-                    self.selected_item = if items[next].enabled(lyrics, !self.commands_disabled) {
-                        next
-                    } else if matches!(key, Key::Named(Named::ArrowUp | Named::End)) {
-                        (next + count - 1) % count
-                    } else {
-                        (next + 1) % count
-                    };
+                    let backwards = matches!(key, Key::Named(Named::ArrowUp | Named::End));
+                    if let Some(index) = (0..count)
+                        .map(|offset| {
+                            if backwards {
+                                (next + count - offset) % count
+                            } else {
+                                (next + offset) % count
+                            }
+                        })
+                        .find(|&index| self.item_enabled(&items[index], lyrics))
+                    {
+                        self.selected_item = index;
+                    }
                 } else {
                     self.selected_group = Some(next);
                 }
@@ -213,7 +226,7 @@ impl State {
             Key::Named(Named::Enter | Named::Space) => {
                 if self.in_submenu {
                     let item = &groups[self.selected_group.unwrap_or(0)].items[self.selected_item];
-                    if !item.enabled(lyrics, !self.commands_disabled) {
+                    if !self.item_enabled(item, lyrics) {
                         return None;
                     }
                     let action = item.action;

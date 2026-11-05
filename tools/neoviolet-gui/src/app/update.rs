@@ -59,7 +59,7 @@ impl App {
                 .map(|_| Message::Ready);
             }
             Message::SetMode(mode) => {
-                if !self.actions_available() {
+                if !self.basic_actions_available() {
                     return Task::none();
                 }
                 return window::set_mode(self.main_window, mode).chain(self.refresh_chrome());
@@ -93,7 +93,7 @@ impl App {
                 ]);
             }
             Message::Pasted(Some(text)) => {
-                if self.actions_available()
+                if self.basic_actions_available()
                     && self.dialog.is_none()
                     && self.running
                     && let Some(terminal) = &mut self.terminal

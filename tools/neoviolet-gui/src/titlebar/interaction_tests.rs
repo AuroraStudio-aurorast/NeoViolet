@@ -103,7 +103,7 @@ fn setup_menus_keep_all_items_visible_but_disable_mouse_and_keyboard_dispatch() 
             assert_eq!(before.items.len(), during.items.len());
             for (before, during) in before.items.iter().zip(during.items.iter()) {
                 assert_eq!(before.label, during.label);
-                assert!(!during.enabled(true, !state.commands_disabled));
+                assert!(!state.item_enabled(during, true));
             }
         }
         for (group, items) in disabled.iter().enumerate() {
@@ -154,4 +154,62 @@ fn setup_menus_keep_all_items_visible_but_disable_mouse_and_keyboard_dispatch() 
             "disabled menu must neither dispatch nor click through"
         );
     }
+}
+
+#[test]
+fn startup_menus_keep_zoom_and_help_enabled_but_block_open_and_lyrics() {
+    let mut state = State::new(Size::new(800.0, 600.0));
+    state.player_unavailable = true;
+    for platform in [Platform::Windows, Platform::Linux] {
+        let groups = state.groups(platform, true);
+        for group in &groups {
+            for item in &group.items {
+                if matches!(
+                    item.action,
+                    Action::ZoomIn | Action::About | Action::Quit | Action::Copy
+                ) {
+                    assert!(
+                        state.item_enabled(item, true),
+                        "basic command disabled: {}",
+                        item.label
+                    );
+                }
+                if matches!(item.action, Action::Open | Action::DesktopLyrics) {
+                    assert!(
+                        !state.item_enabled(item, true),
+                        "playback command enabled: {}",
+                        item.label
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn startup_menu_keyboard_skips_unavailable_player_commands() {
+    let mut state = State::new(Size::new(800.0, 600.0));
+    state.player_unavailable = true;
+    state.update(Message::SelectGroup(0));
+    state.update(Message::HoverItem(0));
+    assert!(state.key(&Key::Named(Named::Enter), true).is_none());
+    assert!(state.update(Message::Action(Action::Open)).is_none());
+    state.key(&Key::Named(Named::ArrowDown), true);
+    assert!(matches!(
+        state.key(&Key::Named(Named::Enter), true),
+        Some(Action::Quit)
+    ));
+    state.update(Message::SelectGroup(2));
+    state.update(Message::HoverItem(0));
+    state.key(&Key::Named(Named::End), true);
+    assert!(matches!(
+        state.key(&Key::Named(Named::Enter), true),
+        Some(Action::ZoomReset)
+    ));
+    state.update(Message::SelectGroup(4));
+    state.update(Message::HoverItem(1));
+    assert!(matches!(
+        state.key(&Key::Named(Named::Enter), true),
+        Some(Action::About)
+    ));
 }

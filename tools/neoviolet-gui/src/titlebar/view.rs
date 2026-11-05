@@ -236,7 +236,7 @@ impl State {
                 .align_y(iced::Center);
                 let item = button(label)
                     .on_press_maybe(
-                        item.enabled(lyrics, !self.commands_disabled)
+                        self.item_enabled(item, lyrics)
                             .then_some(Message::Action(item.action)),
                     )
                     .padding([6, 8])
