@@ -226,6 +226,35 @@ fn wizard_picker_keeps_one_dialog_and_replies_to_only_current_session_epoch_and_
     assert!(next.try_recv().is_err());
 }
 
+#[tokio::test]
+async fn lyrics_window_lifecycle_finishes_while_audio_picker_is_open() {
+    use iced::futures::StreamExt;
+    let (mut app, _) = starting();
+    app.handshake.capabilities.push("file_picker".into());
+    app.config.desktop_lyrics.enabled = true;
+    phase(&mut app, "ready");
+    let lyrics = app.lyrics.window.expect("ready restores the lyrics window");
+    let _ = app.setup_picker("audio".into(), "audio-1".into());
+    assert!(!app.actions_available());
+    let blocked = app.lyrics_event(lyrics_window::Event::PlayPause);
+    assert!(iced_runtime::task::into_stream(blocked).is_none());
+    let task = app.lyrics_event(lyrics_window::Event::Opened(lyrics));
+    if let Some(mut stream) = iced_runtime::task::into_stream(task) {
+        let action = tokio::time::timeout(std::time::Duration::from_secs(1), stream.next())
+            .await
+            .expect("lyrics lifecycle task must produce an immediate action")
+            .expect("lyrics lifecycle task unexpectedly ended");
+        assert!(
+            !matches!(
+                action,
+                iced_runtime::Action::Window(iced::window::Action::Close(id)) if id == lyrics
+            ),
+            "a valid lyrics Opened event must not be closed while the picker is active"
+        );
+    }
+    assert_eq!(app.lyrics.window, Some(lyrics));
+}
+
 #[test]
 fn window_manager_close_and_caption_controls_remain_available() {
     let (mut app, _) = starting();

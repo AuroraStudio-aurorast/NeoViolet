@@ -23,7 +23,7 @@ pub(super) struct Picker {
 }
 
 impl Picker {
-    fn allowed_in(&self, stage: Stage) -> bool {
+    pub(super) fn allowed_in(&self, stage: Stage) -> bool {
         matches!(
             (self.purpose.as_str(), stage),
             ("soundfont", Stage::Phase(ipc::StartupPhase::Wizard))

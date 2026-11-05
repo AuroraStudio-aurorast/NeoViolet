@@ -3,6 +3,31 @@ use super::{App, Message};
 use crate::{desktop, lyrics_window, titlebar};
 use iced::{Task, window};
 
+fn lyrics_lifecycle_event(event: &lyrics_window::Event) -> bool {
+    matches!(
+        event,
+        lyrics_window::Event::Opened(_)
+            | lyrics_window::Event::SettingsOpened(_)
+            | lyrics_window::Event::Ready
+            | lyrics_window::Event::Sized(..)
+            | lyrics_window::Event::ToolbarRequested(..)
+    ) || {
+        #[cfg(target_os = "macos")]
+        {
+            matches!(
+                event,
+                lyrics_window::Event::Capture(..)
+                    | lyrics_window::Event::Mask(..)
+                    | lyrics_window::Event::Linked(..)
+            )
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            false
+        }
+    }
+}
+
 impl App {
     pub(super) fn desktop_event(&mut self, event: desktop::Event) -> Task<Message> {
         match event {
@@ -54,7 +79,14 @@ impl App {
     }
 
     pub(super) fn lyrics_event(&mut self, event: lyrics_window::Event) -> Task<Message> {
-        if !self.actions_available() {
+        let picker_lifecycle = !self.closing
+            && self.ipc_connected
+            && self
+                .picker
+                .as_ref()
+                .is_some_and(|picker| picker.allowed_in(self.startup))
+            && lyrics_lifecycle_event(&event);
+        if !self.actions_available() && !picker_lifecycle {
             return match event {
                 lyrics_window::Event::Opened(id) | lyrics_window::Event::SettingsOpened(id) => {
                     window::close(id)
