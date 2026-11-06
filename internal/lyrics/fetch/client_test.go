@@ -20,10 +20,11 @@ func testClient(t *testing.T, h http.Handler) (*Client, string) {
 }
 
 func TestClientGet(t *testing.T) {
-	var gotURL, gotUA string
+	var gotURL, gotUA, gotAppID string
 	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotURL = r.URL.String()
 		gotUA = r.Header.Get("User-Agent")
+		gotAppID = r.Header.Get("Lrclib-App-Id")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":1,"trackName":"Shelter","artistName":"Porter Robinson & Madeon","duration":219,"syncedLyrics":"[00:01.00]hi"}`))
 	}))
@@ -41,6 +42,9 @@ func TestClientGet(t *testing.T) {
 	if !strings.HasPrefix(gotUA, "NEOVIOLET v") {
 		t.Errorf("User-Agent = %q, want NEOVIOLET prefix", gotUA)
 	}
+	if gotAppID != "DoSBIMmbA4hJzJ3r94uJ6dbYqllFGz4O5nkltzwu6bs" {
+		t.Errorf("Lrclib-App-Id = %q, want registered public app ID", gotAppID)
+	}
 }
 
 func TestClientGetNotFound(t *testing.T) {
@@ -56,7 +60,10 @@ func TestClientGetNotFound(t *testing.T) {
 func TestClientGetRateLimitedRetry(t *testing.T) {
 	var attempts atomic.Int32
 	rl := &RateLimit{}
-	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	c, _ := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Lrclib-App-Id"); got != "DoSBIMmbA4hJzJ3r94uJ6dbYqllFGz4O5nkltzwu6bs" {
+			t.Errorf("Lrclib-App-Id = %q, want registered public app ID on every attempt", got)
+		}
 		if attempts.Add(1) == 1 {
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusTooManyRequests)

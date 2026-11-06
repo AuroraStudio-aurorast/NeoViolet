@@ -21,6 +21,9 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 )
 
+// lrclibAppID is a public identifier for the registered client application.
+const lrclibAppID = "DoSBIMmbA4hJzJ3r94uJ6dbYqllFGz4O5nkltzwu6bs"
+
 const (
 	maxFetchResponse    = 2 << 20 // 2 MiB response cap
 	minRequestGap       = 200 * time.Millisecond
@@ -112,6 +115,7 @@ func (c *Client) throttle() {
 func (c *Client) do(ctx context.Context, req *http.Request) (*http.Response, error) {
 	c.throttle()
 	req.Header.Set("User-Agent", version.UserAgent())
+	req.Header.Set("Lrclib-App-Id", lrclibAppID)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
