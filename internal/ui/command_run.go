@@ -18,6 +18,8 @@ func runSave(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	m.Config.DefaultVolume = m.Audio.Volume
 	if err := m.Config.Save(); err != nil {
 		m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
+	} else {
+		m.Info.SetSuccess("Configuration saved", m.Config.Error.Duration)
 	}
 	return m, nil
 }
@@ -29,7 +31,7 @@ func runSaveQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 	if err := m.Config.Save(); err != nil {
 		m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
 	}
-	if m.isGUI() {
+	if m.ipcServer != nil {
 		f := false
 		_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
 	}
@@ -38,12 +40,12 @@ func runSaveQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 }
 
 // runQuit implements ":quit" / ":q". In GUI mode it asks the wrapper for
-// confirmation instead of quitting: the wrapper may deny and keep the TUI up.
+// confirmation for a loaded track or pending load. An idle session closes directly.
 func runQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
-	if m.isGUI() {
-		t := true
-		_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &t})
-		return m, nil
+	if m.ipcServer != nil {
+		if err := m.requestGUIQuit(); err == nil {
+			return m, nil
+		}
 	}
 	m.cleanup()
 	return m, tea.Quit
@@ -73,12 +75,7 @@ func runVolume(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	vol = math.Round(vol*100) / 100
-	m.Audio.Volume = vol
-	if m.Audio.Player != nil {
-		m.Audio.Player.SetVolume(vol)
-	}
-	m.Components.VolumeBar.SetPercent(vol)
-	m.saveVolumeConfig()
+	m.setVolume(vol)
 	return m, nil
 }
 
@@ -135,9 +132,13 @@ func runLrc(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	return executeLrcCommand(m, inv.Parts)
 }
 
-// runOpen implements ":open <path>" / ":load" / ":e".
+// runOpen implements ":open [path]" / ":load" / ":e".
+// Without a path, a capable attached GUI hosts the native audio picker.
 func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	if inv.Rest == "" {
+		if m.ipcAudioPicker && m.ipcSession != 0 {
+			return m, m.requestAudioPicker()
+		}
 		m.Error.Set("Usage: open <path>", m.Config.Error.Duration)
 		return m, nil
 	}

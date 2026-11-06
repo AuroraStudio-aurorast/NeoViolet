@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Unified patches contain blank context lines and must apply identically on Windows.
+tools/neoviolet-gui/deps/*.patch text eol=lf whitespace=-blank-at-eol

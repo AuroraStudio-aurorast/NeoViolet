@@ -91,39 +91,19 @@ func renderLogo(isDark bool) string {
 type logoNote struct {
 	*huh.Note
 	requestedBackground bool
-	isDark              bool
-	fallback            string
 }
 
 func newLogoNote() *logoNote {
-	n := &logoNote{Note: huh.NewNote(), isDark: true}
-	n.refresh()
-	return n
+	return &logoNote{Note: huh.NewNote().Title(logoTitle(true))}
 }
 
 func logoTitle(isDark bool) string {
 	return renderLogo(isDark) + "\nWelcome to NeoViolet — a terminal music player."
 }
 
-// setFallback replaces the logo with a short title when the terminal is too
-// small for it; an empty title restores the pixel logo.
-func (n *logoNote) setFallback(title string) {
-	n.fallback = title
-	n.refresh()
-}
-
-func (n *logoNote) refresh() {
-	if n.fallback != "" {
-		n.Title(n.fallback)
-		return
-	}
-	n.Title(logoTitle(n.isDark))
-}
-
 func (n *logoNote) Update(msg tea.Msg) (huh.Model, tea.Cmd) {
 	if background, ok := msg.(tea.BackgroundColorMsg); ok {
-		n.isDark = background.IsDark()
-		n.refresh()
+		n.Title(logoTitle(background.IsDark()))
 	}
 	_, cmd := n.Note.Update(msg)
 	// Huh groups update skipped notes but do not call their Init methods.

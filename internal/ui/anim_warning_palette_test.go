@@ -84,11 +84,11 @@ func assertWarningInk(t *testing.T, frame, token string, want color.Color) {
 	}
 }
 
-func TestAnimWarningTitleUsesWarmColour(t *testing.T) {
+func TestAnimWarningTitleUsesRiskColour(t *testing.T) {
 	m := animModel(t, animGateFixture, 100, 30)
 	m.Accent = &accent.Accent{Main: mustColorful(t, "#62cc9b")}
 	body := renderAnimWarning(m, m.layoutPlan())
-	assertWarningInk(t, body, "PHOTOSENSITIVITY WARNING", color.RGBA{R: 255, G: 208, B: 138, A: 255})
+	assertWarningInk(t, body, "Photosensitivity warning", color.RGBA{R: 255, G: 180, B: 180, A: 255})
 	assertWarningInk(t, body, "The animation is not playing yet.", color.RGBA{R: 238, G: 238, B: 242, A: 255})
 }
 
@@ -97,9 +97,9 @@ func TestBatteryWarningUsesWarmTitleAndCharge(t *testing.T) {
 	runAnim(m, invocation{})
 	body := renderAnimPowerWarning(m, m.layoutPlan())
 	warm := color.RGBA{R: 255, G: 208, B: 138, A: 255}
-	assertWarningInk(t, body, "LOW BATTERY WARNING", warm)
+	assertWarningInk(t, body, "Low battery", warm)
 	assertWarningInk(t, body, "18%", warm)
-	assertWarningInk(t, body, "below 20%.", color.RGBA{R: 238, G: 238, B: 242, A: 255})
+	assertWarningInk(t, body, "below 20%", color.RGBA{R: 181, G: 181, B: 190, A: 255})
 }
 
 func warningLineContaining(t *testing.T, body, text string) string {
@@ -169,7 +169,7 @@ func TestAnimWarningMissingAnalysisAndCompactRate(t *testing.T) {
 	compact := layoutWarnLines(warnCompact(p, palette), 62, 4)
 	assertWarningInk(t, compact, "5", color.RGBA{R: 255, G: 180, B: 180, A: 255})
 	assertWarningInk(t, compact, "limit 3/s", color.RGBA{R: 238, G: 238, B: 242, A: 255})
-	if !strings.Contains(ansi.Strip(compact), "[esc]") {
+	if !strings.Contains(ansi.Strip(compact), "Esc") {
 		t.Error("compact warning lost its way out")
 	}
 }
@@ -186,7 +186,7 @@ func TestBatteryWarningColoursItsChargeInBothLayouts(t *testing.T) {
 	} {
 		body := layoutWarnLines(tc.lines, 64, tc.h)
 		assertWarningInk(t, body, "5%", color.RGBA{R: 255, G: 208, B: 138, A: 255})
-		assertWarningInk(t, body, "below 20%", color.RGBA{R: 238, G: 238, B: 242, A: 255})
+		assertWarningInk(t, body, "below 20%", color.RGBA{R: 181, G: 181, B: 190, A: 255})
 		if strings.Contains(ansi.Strip(body), "not playing yet") || strings.Contains(ansi.Strip(body), "WCAG") {
 			t.Error("battery warning acquired photosensitivity-specific content")
 		}
@@ -296,13 +296,14 @@ func TestAnimWarningForegroundsDoNotChangeGUIDefaults(t *testing.T) {
 		}
 		m.ipcServer = &ipc.Server{}
 		view := m.View()
-		if view.Content != renderMainView(m).Content || view.BackgroundColor != nil || view.ForegroundColor != nil {
+		if view.BackgroundColor != nil || view.ForegroundColor != nil {
 			t.Errorf("%s warning changed GUI default colours", kind)
 		}
-		for y, row := range frameBackgrounds(t, view.Content) {
+		assertFrameBackgrounds(t, m)
+		for y, row := range frameBackgrounds(t, renderMainView(m).Content) {
 			for x, bg := range row {
 				if bg != nil {
-					t.Fatalf("%s GUI cell %d,%d acquired an explicit background", kind, x, y)
+					t.Fatalf("%s warning cell %d,%d hides the page gradient", kind, x, y)
 				}
 			}
 		}

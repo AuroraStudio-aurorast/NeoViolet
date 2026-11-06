@@ -12,32 +12,28 @@ const (
 	minWidth  = 68 // smallest usable terminal width
 	minHeight = 17 // smallest usable terminal height
 
-	tabsHeight = 3 // tab bar including its border
+	tabsHeight = 2 // compact tabs and their shared baseline
 	helpHeight = 1 // help / status line
 
 	// footerBaseRows is the footer without a lyric row:
-	// rounded border (2) + song (1) + progress (1) + volume (1).
-	footerBaseRows = 5
+	// top separator (1) + song (1) + progress (1) + volume (1).
+	footerBaseRows = 4
 	// footerLyricRows is the row the one_line lyric renderer adds.
 	footerLyricRows = 1
 
-	// Panel box chrome: rounded border plus one column of padding per side.
-	panelBorderW  = 2
-	panelBorderH  = 2
+	// Panel chrome: left divider plus one column of padding per side.
+	panelBorderW  = 1
+	panelBorderH  = 0
 	panelPaddingH = 1
 
-	// Content box chrome, from contentStyle in styles.go: a rounded border plus
-	// Padding(1, 2), so one row of padding above and below and two columns on
-	// each side. A lipgloss Width or Height is the total, border and padding
-	// included, which is why ContentWidth already counts the border.
-	contentBorderW  = 2
-	contentBorderH  = 2
-	contentPaddingH = 2 // per side
-	contentPaddingV = 1 // above and below
+	// Content has no border or vertical padding; one column per side remains.
+	contentBorderW  = 0
+	contentBorderH  = 0
+	contentPaddingH = 1
+	contentPaddingV = 0
 
-	// oneLineWidthInset is the footer chrome the one_line lyric row leaves
-	// free: border (2) + padding (2) + 2 spare columns.
-	oneLineWidthInset = 6
+	// One-line lyrics share the footer's one-column horizontal padding.
+	oneLineWidthInset = 2
 
 	// autoPanelRatioNum/Den is the share of the terminal an auto-width panel
 	// asks for: 3/10 = 30%.
@@ -231,4 +227,9 @@ func (m *Model) layoutPlan() layoutPlan {
 // combinations of (Lyrics != nil, ShowLyrics, LyricsFetching).
 func (m *Model) oneLineVisible() bool {
 	return (m.Audio.Lyrics != nil && m.Audio.ShowLyrics) || m.LyricsFetching
+}
+
+// oneLineLyricY is the last footer row, immediately above help.
+func (p layoutPlan) oneLineLyricY() int {
+	return p.Height - helpHeight - 1
 }

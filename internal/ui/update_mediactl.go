@@ -24,14 +24,12 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 	case mediactl.CmdPlayPause:
 		m.togglePlayback()
 	case mediactl.CmdPlay:
-		if !m.Audio.Player.IsPlaying() {
-			_ = m.Audio.Player.Play()
-			m.Audio.IsPlaying = true
+		if err := m.Audio.SetPlaying(true); err != nil {
+			m.Error.Set(err.Error(), m.Config.Error.Duration)
 		}
 	case mediactl.CmdPause:
-		if m.Audio.Player.IsPlaying() {
-			m.Audio.Player.Pause()
-			m.Audio.IsPlaying = false
+		if err := m.Audio.SetPlaying(false); err != nil {
+			m.Error.Set(err.Error(), m.Config.Error.Duration)
 		}
 	case mediactl.CmdStop:
 		m.Audio.Player.Pause()
@@ -59,7 +57,7 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 			m.MediaCtl.Update(m.buildPlayState())
 		}
 	case mediactl.CmdSetVolume:
-		m.Audio.SetVolume(msg.Command.Volume)
+		m.setVolume(msg.Command.Volume)
 	}
 
 	return m, nil

@@ -17,13 +17,19 @@ import (
 // Caller MUST be inside an autorelease pool.
 
 func (c *darwinCtrl) buildArtwork(cover image.Image) objc.ID {
-	if cover == nil {
-		return 0
+	// Fast path: same image object as last time — reuse cached artwork.
+	if cover != nil && cover == c.lastCoverImg && c.coverArtwork != 0 {
+		return c.coverArtwork
 	}
 
-	// Fast path: same image object as last time — reuse cached artwork.
-	if cover == c.lastCoverImg && c.coverArtwork != 0 {
-		return c.coverArtwork
+	// A missing or unusable replacement must not retain the previous cover.
+	if c.coverArtwork != 0 {
+		c.coverArtwork.Send(selRelease)
+		c.coverArtwork = 0
+	}
+	c.lastCoverImg = nil
+	if cover == nil {
+		return 0
 	}
 
 	// Encode to PNG (only when cover has changed).
@@ -34,12 +40,6 @@ func (c *darwinCtrl) buildArtwork(cover image.Image) objc.ID {
 	pngBytes := buf.Bytes()
 	if len(pngBytes) == 0 {
 		return 0
-	}
-
-	// Release previous artwork
-	if c.coverArtwork != 0 {
-		c.coverArtwork.Send(selRelease)
-		c.coverArtwork = 0
 	}
 
 	// #nosec G103 -- ObjC interop requires passing a raw pointer to the PNG
@@ -66,6 +66,7 @@ func (c *darwinCtrl) Update(state PlayState) {
 	autoPool(func() {
 		if !state.HasTrack {
 			// An unloaded track must remove the previous metadata and artwork.
+			c.buildArtwork(nil)
 			np.Send(selSetPlaybackState, playbackStateStopped)
 			np.Send(selSetNowPlayingInfo, objc.ID(0))
 			return
@@ -92,8 +93,13 @@ func (c *darwinCtrl) Update(state PlayState) {
 		dictSetKV(dict, nsString("playbackDuration"), nsDouble(dur))
 		dictSetKV(dict, nsString("mediaType"), nsInt(1))
 
+		hadArtwork := c.coverArtwork != 0
 		if art := c.buildArtwork(state.Cover); art != 0 {
 			dictSetKV(dict, nsString("artwork"), art)
+		} else if hadArtwork {
+			// Omitting artwork can leave the previous cover in Control Center.
+			// Clear it once, then publish the current track's metadata below.
+			np.Send(selSetNowPlayingInfo, objc.ID(0))
 		}
 
 		st := playbackStatePaused

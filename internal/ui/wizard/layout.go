@@ -1,52 +1,28 @@
 package wizard
 
 import (
-	"errors"
+	"strings"
 
-	tea "charm.land/bubbletea/v2"
-	"charm.land/huh/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
-// setupForm sizes the real form before forwarding resize events. Huh's group
-// appends a blank line before its help footer; reserve that line and the inline
-// renderer's cursor row rather than filling the entire terminal height.
-type setupForm struct {
-	form    *huh.Form
-	welcome *logoNote
-	picker  *huh.FilePicker
-}
-
-func (m *setupForm) Init() tea.Cmd { return m.form.Init() }
-
-func (m *setupForm) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if size, ok := msg.(tea.WindowSizeMsg); ok {
-		title := ""
-		if size.Height < 36 || size.Width < 70 {
-			title = "Welcome to NeoViolet — a terminal music player."
-		}
-		if size.Width < 50 {
-			title = "NeoViolet setup"
-		}
-		m.welcome.setFallback(title)
-		m.picker.Height(min(8, max(1, size.Height-12)))
-		m.form.WithWidth(max(1, size.Width)).WithHeight(max(1, size.Height-2))
+func centerForm(width, height int, text string) string {
+	lines := strings.Split(text, "\n")
+	for len(lines) > 0 && strings.TrimSpace(ansi.Strip(lines[len(lines)-1])) == "" {
+		lines = lines[:len(lines)-1]
 	}
-	_, cmd := m.form.Update(msg)
-	return m, cmd
-}
-
-func (m *setupForm) View() tea.View {
-	v := tea.NewView(m.form.View())
-	v.ReportFocus = true
-	return v
-}
-
-func (m *setupForm) Run() error {
-	m.form.SubmitCmd = tea.Quit
-	m.form.CancelCmd = tea.Interrupt
-	_, err := tea.NewProgram(m).Run()
-	if m.form.State == huh.StateAborted || errors.Is(err, tea.ErrInterrupted) {
-		return huh.ErrUserAborted
+	used := 0
+	for _, line := range lines {
+		used = max(used, lipgloss.Width(strings.TrimRight(ansi.Strip(line), " ")))
 	}
-	return err
+	used = min(used, width)
+	for i, line := range lines {
+		lines[i] = ansi.Truncate(line, used, "")
+		lines[i] += strings.Repeat(" ", max(0, used-lipgloss.Width(lines[i])))
+	}
+	if len(lines) > height {
+		lines = lines[len(lines)-height:]
+	}
+	return lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, strings.Join(lines, "\n"))
 }

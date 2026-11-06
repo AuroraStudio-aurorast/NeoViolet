@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"strings"
 	"testing"
 
@@ -9,6 +10,39 @@ import (
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 )
+
+func TestHelpBar_NormalHintsRemainReadableOnTheFrameGradient(t *testing.T) {
+	m := setupModel()
+	m.Audio.Player = &mockPlayer{}
+	for _, size := range [][2]int{{68, 17}, {80, 24}, {120, 32}} {
+		m = sized(t, m, size[0], size[1])
+		for _, focus := range []Focus{FocusTabBar, FocusContent, FocusFooter} {
+			m.UI.Focus = focus
+			row := renderHelp(m)
+			plain, inks := warningForegrounds(t, row)
+			bg := frameBackground(m)[m.UI.Height-1]
+			for i, char := range plain {
+				if char == ' ' {
+					continue
+				}
+				if inks[i] == nil {
+					t.Fatalf("hint at byte %d has no foreground", i)
+				}
+				fg := color.RGBAModel.Convert(inks[i]).(color.RGBA)
+				if contrast := interactionContrast(fg, bg); contrast < 4.5 {
+					t.Fatalf("%v focus %d: hint %q uses %v, contrast %.2f below 4.5",
+						size, focus, string(char), fg, contrast)
+				}
+			}
+			cells := frameBackgrounds(t, m.View().Content)
+			for x, cell := range cells[m.UI.Height-1] {
+				if !sameRGB(cell, bg) {
+					t.Fatalf("help background broken at column %d: %v, want %v", x, cell, bg)
+				}
+			}
+		}
+	}
+}
 
 func TestHelpBar_FollowsFocus(t *testing.T) {
 	m := setupModel()

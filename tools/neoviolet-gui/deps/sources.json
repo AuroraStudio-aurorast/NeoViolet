@@ -1,0 +1,26 @@
+[
+  {
+    "name": "iced_term",
+    "url": "https://api.github.com/repos/kemokempo/iced_term/tarball/230945e443c7bded8eac0786240210a51a0e8303",
+    "sha256": "7548cb6860d5f1c2ef834cbde3c107537f9b094cdb31154058e784e413a3e7c5",
+    "patch": "iced_term.patch"
+  },
+  {
+    "name": "winit",
+    "url": "https://static.crates.io/crates/winit/winit-0.30.13.crate",
+    "sha256": "a6755fa58a9f8350bd1e472d4c3fcc25f824ec358933bba33306d0b63df5978d",
+    "patch": "winit.patch"
+  },
+  {
+    "name": "iced_wgpu",
+    "url": "https://static.crates.io/crates/iced_wgpu/iced_wgpu-0.14.0.crate",
+    "sha256": "ff144a999b0ca0f8a10257934500060240825c42e950ec0ebee9c8ae30561c13",
+    "patch": "iced_wgpu.patch"
+  },
+  {
+    "name": "muda",
+    "url": "https://static.crates.io/crates/muda/muda-0.17.2.crate",
+    "sha256": "7c9fec5a4e89860383d778d10563a605838f8f0b2f9303868937e5ff32e86177",
+    "patch": "muda.patch"
+  }
+]

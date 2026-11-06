@@ -1,6 +1,7 @@
 package wizard
 
 import (
+	tea "charm.land/bubbletea/v2"
 	"os"
 
 	"charm.land/huh/v2"
@@ -30,31 +31,19 @@ func (o iconOption) ConfigValue() string {
 	return "nerd"
 }
 
-// Run shows the first-run setup wizard and returns the resulting config.
-func Run() (*config.Config, error) {
-	var sfPath string
+// New constructs the existing Huh form for embedding in the application loop.
+func New() *Model {
+	m := &Model{}
 
 	home, _ := os.UserHomeDir()
 
 	// Detect Nerd Font support: preselect Nerd Font if terminal has it,
 	// otherwise fall back to Fallback for maximum compatibility.
-	selected := IconFallback
+	m.selected = IconFallback
 	if detectNerdFont() {
-		selected = IconNerd
+		m.selected = IconNerd
 	}
 
-	form := newSetupForm(&selected, &sfPath, home)
-	if err := form.Run(); err != nil {
-		return nil, err
-	}
-
-	cfg := config.DefaultConfig()
-	cfg.IconTheme = selected.ConfigValue()
-	cfg.SoundfontPath = sfPath
-	return &cfg, nil
-}
-
-func newSetupForm(selected *iconOption, sfPath *string, home string) *setupForm {
 	descriptions := map[iconOption]string{
 		IconNerd:     "Nerd Font: Requires a Nerd Font. (Recommended)",
 		IconEmoji:    "Emoji:     Uses emoji characters. No special font needed.",
@@ -67,25 +56,31 @@ func newSetupForm(selected *iconOption, sfPath *string, home string) *setupForm 
 		huh.NewOption(descriptions[IconFallback], IconFallback),
 	}
 
-	welcome := newLogoNote()
-	picker := huh.NewFilePicker().
+	m.picker = &optionalPicker{FilePicker: huh.NewFilePicker().
 		Title("Choose a SoundFont file (optional)").
 		Description("Pick a .sf2 file for MIDI playback, or leave empty to skip.").
-		AllowedTypes([]string{".sf2"}).
-		CurrentDirectory(home).
-		Height(8).
-		Value(sfPath)
-	form := huh.NewForm(
-		huh.NewGroup(
-			welcome,
-			huh.NewSelect[iconOption]().
-				Title("Select your favorite icon theme (also based on your terminal)").
-				Options(opts...).
-				Value(selected),
-			picker,
-		),
-	).WithTheme(huh.ThemeFunc(wizardTheme))
-	return &setupForm{form: form, welcome: welcome, picker: picker}
+		AllowedTypes([]string{".sf2"}).CurrentDirectory(home).Height(8).Value(&m.sfPath)}
+	m.logo = newLogoNote()
+	m.icons = huh.NewSelect[iconOption]().
+		Title("Select your favorite icon theme (also based on your terminal)").
+		Options(opts...).Value(&m.selected)
+	m.form = huh.NewForm(huh.NewGroup(m.logo, m.icons, m.picker)).WithTheme(huh.ThemeFunc(wizardTheme))
+
+	return m
+}
+
+// Run preserves the standalone wizard entry point.
+func Run() (*config.Config, error) {
+	model := New()
+	model.form.SubmitCmd = tea.Quit
+	if _, err := tea.NewProgram(model).Run(); err != nil {
+		return nil, err
+	}
+	cfg, done := model.Result()
+	if !done {
+		return nil, huh.ErrUserAborted
+	}
+	return cfg, nil
 }
 
 func wizardTheme(isDark bool) *huh.Styles {

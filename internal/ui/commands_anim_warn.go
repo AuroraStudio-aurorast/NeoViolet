@@ -15,8 +15,6 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/power"
 )
 
-const warnDetailRows = 14
-
 // renderAnimWarning draws the photosensitivity gate in place of the animation.
 //
 // The gate is this program's own rather than the library's. The library's would
@@ -27,10 +25,15 @@ const warnDetailRows = 14
 func renderAnimWarning(m *Model, plan layoutPlan) string {
 	readings := m.Anim.Warning()
 	palette := newAnimWarningPalette(m.Accent)
-	if plan.ContentInnerH >= warnDetailRows {
-		return layoutWarnLines(warnDetail(readings, palette), plan.ContentInnerW, plan.ContentInnerH)
+	lines := warnDetail(readings, palette)
+	width := warningBlockWidth(plan.ContentInnerW)
+	if len(wrapWarnLines(lines, width)) > plan.ContentInnerH {
+		lines = warnSummary(readings, palette)
 	}
-	return layoutWarnLines(warnCompact(readings, palette), plan.ContentInnerW, plan.ContentInnerH)
+	if len(wrapWarnLines(lines, width)) > plan.ContentInnerH {
+		lines = warnCompact(readings, palette)
+	}
+	return layoutWarnLines(lines, plan.ContentInnerW, plan.ContentInnerH)
 }
 
 // renderAnimPowerWarning draws the battery gate. Like the photosensitivity gate
@@ -39,10 +42,11 @@ func renderAnimWarning(m *Model, plan layoutPlan) string {
 func renderAnimPowerWarning(m *Model, plan layoutPlan) string {
 	reading := m.Anim.Reading()
 	palette := newAnimWarningPalette(m.Accent)
-	if plan.ContentInnerH >= warnDetailRows {
-		return layoutWarnLines(powerWarnDetail(reading, m.warnBelow(), palette), plan.ContentInnerW, plan.ContentInnerH)
+	lines := powerWarnDetail(reading, m.warnBelow(), palette)
+	if len(wrapWarnLines(lines, warningBlockWidth(plan.ContentInnerW))) > plan.ContentInnerH {
+		lines = powerWarnCompact(reading, m.warnBelow(), palette)
 	}
-	return layoutWarnLines(powerWarnCompact(reading, m.warnBelow(), palette), plan.ContentInnerW, plan.ContentInnerH)
+	return layoutWarnLines(lines, plan.ContentInnerW, plan.ContentInnerH)
 }
 
 // powerWarnDetail is the battery gate when there is room to say what it costs.
@@ -52,23 +56,24 @@ func renderAnimPowerWarning(m *Model, plan layoutPlan) string {
 // the way out.
 func powerWarnDetail(reading power.Status, warnBelow int, palette animWarningPalette) []warnLine {
 	return []warnLine{
-		{Text: "LOW BATTERY WARNING", Style: palette.title},
+		{Text: "Low battery", Style: palette.caution},
 		{},
 		{Text: palette.battery(reading.Percent, warnBelow, false)},
 		{},
 		{Text: "Playing the animation may drain the battery faster.", Style: palette.body},
+		{Text: "Only the animation is waiting. Music is unaffected.", Style: palette.muted},
 		{},
 		{Text: palette.keys(false)},
 	}
 }
 
-// powerWarnCompact is the battery gate for the smallest usable box: the charge,
-// what it costs, and the way out, in three rows.
+// powerWarnCompact keeps the charge, cost and actions when the explanation and
+// its spacing would not fit after wrapping.
 func powerWarnCompact(reading power.Status, warnBelow int, palette animWarningPalette) []warnLine {
 	return []warnLine{
-		{Text: "LOW BATTERY WARNING", Style: palette.title},
+		{Text: "Low battery", Style: palette.caution},
 		{Text: palette.battery(reading.Percent, warnBelow, true)},
-		{Text: palette.keys(true)},
+		{Text: palette.keys(false)},
 	}
 }
 
@@ -85,8 +90,9 @@ type warnLine struct {
 // not something a viewer can weigh.
 func warnDetail(p anim.Photosensitivity, palette animWarningPalette) []warnLine {
 	lines := []warnLine{
-		{Text: "PHOTOSENSITIVITY WARNING", Style: palette.title},
+		{Text: "Photosensitivity warning", Style: palette.title},
 		{},
+		{Text: "Flashing may trigger seizures.", Style: palette.body},
 	}
 	for _, reason := range strings.Split(warnReason(p), "\n") {
 		lines = append(lines, warnLine{Text: reason, Style: palette.body})
@@ -100,7 +106,7 @@ func warnDetail(p anim.Photosensitivity, palette animWarningPalette) []warnLine 
 	for _, row := range warnTable(p) {
 		style := palette.body
 		switch {
-		case strings.HasPrefix(row, "  limit"):
+		case strings.HasPrefix(row, "  limit"), strings.Contains(row, "gen/s"):
 			style = palette.muted
 		case strings.HasPrefix(row, "  the file says"):
 			row = palette.measurements(row, [3]bool{
@@ -121,7 +127,6 @@ func warnDetail(p anim.Photosensitivity, palette animWarningPalette) []warnLine 
 	lines = append(lines,
 		warnLine{},
 		warnLine{Text: "The animation is not playing yet.", Style: palette.body},
-		warnLine{},
 		warnLine{
 			Text:  palette.keys(false),
 			Style: palette.body,
@@ -131,12 +136,40 @@ func warnDetail(p anim.Photosensitivity, palette animWarningPalette) []warnLine 
 	return lines
 }
 
-// warnCompact is the gate for a box with no room for the table. Below the detail
-// threshold the smallest usable terminal leaves four rows, and the reason, the
-// worst number and the way out all have to fit in them.
+// warnSummary keeps the source of the verdict visible when the table will not
+// fit. Narrow forced lyric panels may wrap both the source and the actions.
+func warnSummary(p anim.Photosensitivity, palette animWarningPalette) []warnLine {
+	reason := "File and analysis both failed."
+	rate := warnCompactReason(p, palette)
+	switch {
+	case !p.Analysed():
+		reason = "File check failed; our analysis could not run."
+	case p.Declared.Verdict == player.VerdictPass:
+		reason = "File declares a pass; our analysis failed."
+	case p.Declared.Verdict == player.VerdictUnknown:
+		reason = "File declares no check; our analysis failed."
+	case p.Assessment.Verdict == photosensitivity.VerdictPass:
+		reason = "File check failed; our analysis passed."
+		rate = palette.body.Render(fmt.Sprintf("Our analysis: %d/s (limit %d/s).",
+			p.Assessment.GeneralFlashesPerSecond, photosensitivity.FlashLimitPerSecond))
+	}
+	return []warnLine{
+		{Text: "Photosensitivity warning", Style: palette.title},
+		{},
+		{Text: "Flashing may trigger seizures.", Style: palette.body},
+		{Text: rate},
+		{Text: reason, Style: palette.muted},
+		{},
+		{Text: "The animation is not playing yet.", Style: palette.body},
+		{Text: palette.keys(false)},
+	}
+}
+
+// warnCompact is the four-line fallback for a box too short for the summary's
+// source explanation and spacing. It keeps the risk, waiting state and actions.
 func warnCompact(p anim.Photosensitivity, palette animWarningPalette) []warnLine {
 	return []warnLine{
-		{Text: "PHOTOSENSITIVITY WARNING", Style: palette.title},
+		{Text: "Photosensitivity warning", Style: palette.title},
 		{Text: warnCompactReason(p, palette)},
 		{Text: "The animation is not playing yet.", Style: palette.body},
 		{Text: palette.keys(true)},
@@ -150,6 +183,8 @@ func warnReason(p anim.Photosensitivity) string {
 	switch {
 	case !p.Analysed():
 		return "This file failed its own photosensitivity check.\nOur analysis could not run on it."
+	case p.Declared.Verdict == player.VerdictFail && p.Assessment.Verdict == photosensitivity.VerdictPass:
+		return "This file failed its own photosensitivity check,\nbut our analysis passed."
 	case p.Declared.Verdict == player.VerdictFail:
 		return "This file failed its own photosensitivity check,\nand our analysis agrees."
 	case p.Declared.Verdict == player.VerdictPass:
@@ -234,18 +269,9 @@ func warnProvenance(p anim.Photosensitivity) string {
 		photosensitivity.Standard, p.Assessment.Columns, p.Assessment.Lines, p.Assessment.FramesAnalyzed)
 }
 
-// layoutWarnLines wraps lines into a box and fills it exactly.
-//
-// Both limits are hard. The content box is sized by the layout contract, so a
-// line wider than the box or a block taller than it would push the border out
-// and break the frame around it. Wrapping is done in plain text and the style is
-// applied afterwards, which keeps a wrapped line's style on every row it
-// occupies.
-func layoutWarnLines(lines []warnLine, width, height int) string {
-	if width <= 0 || height <= 0 {
-		return ""
-	}
-
+// wrapWarnLines measures the same ANSI-aware wrapping used to draw the warning,
+// so a narrow content area cannot turn a fitting layout into clipped actions.
+func wrapWarnLines(lines []warnLine, width int) []warnLine {
 	var wrapped []warnLine
 	for _, line := range lines {
 		if line.Text == "" {
@@ -256,6 +282,22 @@ func layoutWarnLines(lines []warnLine, width, height int) string {
 			wrapped = append(wrapped, warnLine{Text: part, Style: line.Style})
 		}
 	}
+	return wrapped
+}
+
+func warningBlockWidth(width int) int {
+	return min(58, max(1, width-4))
+}
+
+// layoutWarnLines centers a left-aligned reading block and fills the content
+// height exactly. Styles are applied after wrapping so they survive line breaks.
+func layoutWarnLines(lines []warnLine, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return ""
+	}
+	blockWidth := warningBlockWidth(width)
+	wrapped := wrapWarnLines(lines, blockWidth)
+	left := strings.Repeat(" ", (width-blockWidth)/2)
 
 	// Anything that did not fit is dropped from the bottom, which is why the
 	// least important line is written last.
@@ -268,7 +310,7 @@ func layoutWarnLines(lines []warnLine, width, height int) string {
 		out = append(out, "")
 	}
 	for _, line := range wrapped {
-		out = append(out, ansi.Truncate(line.Style.Render(line.Text), width, ""))
+		out = append(out, left+ansi.Truncate(line.Style.Render(line.Text), blockWidth, ""))
 	}
 	for len(out) < height {
 		out = append(out, "")
