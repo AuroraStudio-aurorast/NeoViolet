@@ -62,7 +62,7 @@ func TestWindowsPackageSystemDLLs(t *testing.T) {
 	for _, name := range strings.Fields(`kernel32 ntdll user32 gdi32 advapi32 shell32 ole32 msvcrt
 		vcruntime api-ms-win-core-synch-l1-2-0 ext-ms-win-ntuser-window-l1-1-0 ucrtbase ws2_32
 		iphlpapi setupapi crypt32 bcrypt bcryptprimitives psapi winmm version combase rpcrt4 shlwapi
-		oleaut32 imm32 msctf comctl32 uxtheme d3d11 dcomp dwmapi dwrite dxgi icu icuuc icuin kernel.appcore
+		oleaut32 imm32 msctf comctl32 uxtheme opengl32 d3d11 dcomp dwmapi dwrite dxgi icu icuuc icuin kernel.appcore
 		windows.storage`) {
 		imports.WriteString("\tDLL Name: " + strings.ToUpper(name) + ".DLL\r\n")
 	}
@@ -88,6 +88,28 @@ func TestWindowsPackageImportLabelCase(t *testing.T) {
 				t.Fatalf("incorrect packaged dependency: %q", got)
 			}
 		})
+	}
+}
+
+func TestWindowsPackageReportsAllMissingDLLs(t *testing.T) {
+	t.Parallel()
+	f := windowsFixture(t)
+	f.write(t, "packages/windows/old-marker", "previous distribution")
+	f.write(t, "input/neoviolet.exe", "DLL Name: missing-first.dll\nDLL Name: present.dll\n")
+	f.write(t, "input/neoviolet-gui.exe", "DLL Name: missing-second.dll\n")
+	f.write(t, "input/libopenmpt.dll", "DLL Name: missing-runtime.dll\n")
+	f.write(t, "runtime/present.dll", "DLL Name: missing-transitive.dll\n")
+	output, err := packageWindows(t, f)
+	if err == nil {
+		t.Fatalf("missing dependencies must fail packaging:\n%s", output)
+	}
+	for _, name := range []string{"missing-first.dll", "missing-second.dll", "missing-runtime.dll", "missing-transitive.dll"} {
+		if !strings.Contains(output, "missing non-system DLL: "+name+" (imported by ") {
+			t.Errorf("missing dependency %s was not reported:\n%s", name, output)
+		}
+	}
+	if got := f.read(t, "packages/windows/old-marker"); got != "previous distribution" {
+		t.Fatalf("incomplete package replaced existing distribution: %q", got)
 	}
 }
 

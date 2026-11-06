@@ -112,7 +112,7 @@ pending+=("$STAGE/libopenmpt.dll")
 SYSTEM_DLLS='^(kernel32|ntdll|user32|gdi32|advapi32|shell32|ole32|msvcrt|vcruntime|'
 SYSTEM_DLLS+='(api|ext)-ms-win-[a-z0-9-]*|ucrtbase|ws2_32|iphlpapi|setupapi|crypt32|bcrypt|'
 SYSTEM_DLLS+='bcryptprimitives|psapi|winmm|version|combase|rpcrt4|shlwapi|oleaut32|imm32|msctf|'
-SYSTEM_DLLS+='comctl32|uxtheme|d3d11|dcomp|dwmapi|dwrite|dxgi|icu(uc|in)?|kernel\.appcore|windows\.storage)\.dll$'
+SYSTEM_DLLS+='comctl32|uxtheme|opengl32|d3d11|dcomp|dwmapi|dwrite|dxgi|icu(uc|in)?|kernel\.appcore|windows\.storage)\.dll$'
 
 find_dll() {
     local dir candidate
@@ -128,6 +128,7 @@ find_dll() {
 }
 
 seen='|libopenmpt.dll|'
+missing=0
 index=0
 while [[ "$index" -lt "${#pending[@]}" ]]; do
     current="${pending[$index]}"
@@ -144,13 +145,19 @@ while [[ "$index" -lt "${#pending[@]}" ]]; do
         if [[ "$dll" =~ $SYSTEM_DLLS || "$seen" == *"|$dll|"* ]]; then
             continue
         fi
-        source="$(find_dll "$dll")" || fail "missing non-system DLL: $dll (imported by $current)"
+        seen+="$dll|"
+        if ! source="$(find_dll "$dll")"; then
+            echo "error: missing non-system DLL: $dll (imported by $current)" >&2
+            missing=1
+            continue
+        fi
         check_source "$(canonical_file "$source")"
         cp "$source" "$STAGE/$dll"
-        seen+="$dll|"
         pending+=("$STAGE/$dll")
     done <<< "$imports"
 done
+
+[[ "$missing" -eq 0 ]] || fail "DLL dependency check failed; distribution was not replaced"
 
 if [[ -e "$OUTPUT_DIR" ]]; then
     mv "$OUTPUT_DIR" "$tmp/old"
