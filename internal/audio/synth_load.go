@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/soundfont"
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/speaker"
-	"github.com/jpodeszfa/go-meltysynth/meltysynth"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
@@ -130,7 +130,7 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 		return fmt.Errorf("soundfont_path not configured for MIDI playback")
 	}
 
-	var cachedSF *meltysynth.SoundFont
+	var cachedSF *soundfont.SoundFont
 	if p.cachedSF != nil && p.cachedSFPath == p.sfPath {
 		cachedSF = p.cachedSF
 	}
