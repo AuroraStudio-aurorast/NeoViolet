@@ -1,6 +1,8 @@
 BINARY  ?= neoviolet
 GO      ?= go
 WINDOWS_HOST := $(filter Windows_NT,$(OS))$(filter MSYS% MINGW% CYGWIN%,$(shell uname -s))
+HOST_OS := $(if $(WINDOWS_HOST),windows,$(shell uname -s | tr '[:upper:]' '[:lower:]'))
+export HOST_OS
 GOOS    ?= $(if $(WINDOWS_HOST)$(findstring -windows-,$(CARGO_BUILD_TARGET)),windows,$(shell $(GO) env GOOS))
 GOARCH  ?= $(shell $(GO) env GOARCH)
 export GOOS GOARCH
@@ -12,6 +14,7 @@ ifeq ($(GOOS),windows)
 endif
 
 VERSION  ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+export VERSION := $(VERSION)
 VERSION_LDFLAGS = -X github.com/AuroraStudio-aurorast/neoviolet/internal/version.Version=$(VERSION)
 LDFLAGS   = -s -w $(VERSION_LDFLAGS)
 BUILD_FLAGS ?= -ldflags="$(LDFLAGS)"
@@ -22,9 +25,24 @@ TEST_FLAGS  ?= -count=1
 # record a legacy minimum) and reused by the app bundle for its plist and icon
 # asset. The Go slices carry the toolchain's own default instead, so this must
 # not be set below it.
-MACOS_MIN ?= 13.0
+MACOS_MIN ?= $(shell sed -n 's/^MACOS_MIN=//p' deps/libopenmpt.lock)
+BUILD ?= $(shell git rev-list --count HEAD 2>/dev/null || echo 1)
+export BUILD := $(BUILD)
+SIGN_IDENTITY ?= -
+PACKAGE_INPUT_DIR ?= $(CURDIR)
+PACKAGE_OUTPUT_DIR ?= $(CURDIR)/dist
+WINDOWS_DLL_DIR ?= $(MINGW_PREFIX)/bin
+LIBOPENMPT_DLL ?= $(PACKAGE_INPUT_DIR)/libopenmpt.dll
+LIBOPENMPT_FETCH_DEP := $(if $(filter undefined,$(origin LIBOPENMPT_DYLIB)),deps/openmpt/macos)
+LIBOPENMPT_MACOS_ASSET = libopenmpt-$(shell sed -n 's/^LIBOPENMPT_VERSION=//p' deps/libopenmpt.lock)-macos$(shell sed -n 's/^MACOS_MIN=//p' deps/libopenmpt.lock)-universal.dylib
+LIBOPENMPT_DYLIB ?= $(CURDIR)/.build/macos-deps/$(LIBOPENMPT_MACOS_ASSET)
+OBJDUMP ?= objdump
+export MACOS_MIN SIGN_IDENTITY PACKAGE_INPUT_DIR PACKAGE_OUTPUT_DIR
+export WINDOWS_DLL_DIR LIBOPENMPT_DLL OBJDUMP
+export LIBOPENMPT_DYLIB
 
 HAS_CARGO := $(shell command -v cargo >/dev/null 2>&1 && echo 1 || echo 0)
+REQUIRE_RUST ?= 0
 RUST_TARGET = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET),$(shell rustc -vV | sed -n 's/^host: //p'))
 RUST_TARGET_SUBDIR = $(if $(CARGO_BUILD_TARGET),$(CARGO_BUILD_TARGET)/)
 
@@ -53,14 +71,7 @@ ifeq ($(GOOS),windows)
   LLVM_RC ?= llvm-rc
   LLVM_CVTRES ?= llvm-cvtres
   WINDRES ?= windres
-  WINDOWS_MACHINE_386 := X86
-  WINDOWS_MACHINE_amd64 := X64
-  WINDOWS_MACHINE_arm64 := ARM64
-  WINDOWS_FORMAT_386 := pe-i386
-  WINDOWS_FORMAT_amd64 := pe-x86-64
-  WINDOWS_RUST_ARCH_386 := i686
-  WINDOWS_RUST_ARCH_amd64 := x86_64
-  WINDOWS_RUST_ARCH_arm64 := aarch64
+  export LLVM_RC LLVM_CVTRES WINDRES
   GO_RESOURCE_DEPS := windows-resource/tui-release
   GO_DEBUG_RESOURCE_DEPS := windows-resource/tui-debug
   GO_RESOURCE_COPY = @obj=$$(cat .build/windows/tui_$(GOARCH)_$(WINDOWS_PROFILE).path); \
@@ -77,10 +88,11 @@ endif
 GUI_FEATURES :=
 
 .PHONY: all build build/tui build/race build/debug build/macos build/osxappbundle
+.PHONY: package/osxappbundle package/windows deps/openmpt/macos
 .PHONY: run run/gui gui gui/debug gui/deps apetools apetools/debug
-.PHONY: test test/go test/race test/verbose test/short test/cover test/coverage test/rust test/gui-ipc
-.PHONY: lint lint/rust check check/cgo check/linelength vet tidy tidy/check clean clean/all
-.PHONY: install install/desktop install/icons install/all help
+.PHONY: test test/go test/build test/race test/verbose test/short test/cover test/coverage test/rust test/gui-ipc
+.PHONY: lint lint/rust check check/cgo check/rust check/macos check/shell check/linelength vet tidy tidy/check clean clean/all
+.PHONY: install install/desktop install/icons install/all info help
 .PHONY: check/windows-rust windows-resource/tui-release windows-resource/tui-debug
 .PHONY: windows-resource/gui-release windows-resource/gui-debug
 .PHONY: windows-resource/apecli-release windows-resource/apecli-debug
@@ -88,6 +100,13 @@ GUI_FEATURES :=
 all: build
 
 build/debug gui/debug apetools/debug: WINDOWS_PROFILE = debug
+
+# Every compiling prerequisite waits for preflight too, including under make -j.
+ifeq ($(REQUIRE_RUST),1)
+build/tui build/race build/debug gui gui/debug gui/deps apetools apetools/debug install: check/rust
+$(GO_RESOURCE_DEPS) $(GO_DEBUG_RESOURCE_DEPS) windows-resource/gui-release windows-resource/gui-debug \
+windows-resource/apecli-release windows-resource/apecli-debug: check/rust
+endif
 
 # --- Build ---
 
@@ -107,16 +126,8 @@ build/debug: $(GO_DEBUG_RESOURCE_DEPS)
 
 # Universal macOS build: every slice is compiled here and merged with lipo, so a
 # single Apple silicon host produces one artifact that runs on both CPUs.
-build/macos: gui/deps
-	@if [ "$(GOOS)" != darwin ]; then \
-		echo "error: build/macos is macOS only" >&2; exit 1; \
-	fi
-	@if [ $(HAS_CARGO) -eq 0 ]; then \
-		echo "error: build/macos needs cargo for the GUI and apecli" >&2; exit 1; \
-	fi
-	@if [ ! -d "$$(rustc --print target-libdir --target x86_64-apple-darwin 2>/dev/null)" ]; then \
-		echo "error: build/macos needs the Intel target: rustup target add x86_64-apple-darwin" >&2; exit 1; \
-	fi
+build/macos: check/macos
+	@$(MAKE) gui/deps
 	@set -eu; tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
 		CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(BUILD_FLAGS) -o "$$tmp/arm64" ./cmd/$(BINARY); \
 		CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(BUILD_FLAGS) -o "$$tmp/amd64" ./cmd/$(BINARY); \
@@ -172,8 +183,17 @@ apetools/debug: $(APECLI_DEBUG_RESOURCE_DEPS)
 		( cd $(APECLI_DIR) && $(APECLI_CARGO) $(APECLI_LINK_FLAGS) ) || exit 1; \
 	fi
 
-build/osxappbundle:
-	@tools/osx-appbundle-builder/build.sh
+build/osxappbundle: build/macos $(LIBOPENMPT_FETCH_DEP)
+	@$(MAKE) package/osxappbundle PACKAGE_INPUT_DIR="$(CURDIR)"
+
+deps/openmpt/macos:
+	@sh tools/osx-appbundle-builder/fetch-openmpt.sh
+
+package/osxappbundle:
+	@bash tools/osx-appbundle-builder/build.sh
+
+package/windows:
+	@bash tools/windows-package/package.sh
 
 # --- Windows executable resources ---
 
@@ -181,40 +201,16 @@ ifeq ($(GOOS),windows)
 windows-resource/tui-release windows-resource/tui-debug \
 windows-resource/gui-release windows-resource/gui-debug \
 windows-resource/apecli-release windows-resource/apecli-debug:
-	@if [ -z "$(WINDOWS_MACHINE_$(GOARCH))" ]; then \
-		echo "error: unsupported Windows resource architecture: $(GOARCH)" >&2; exit 1; \
-	fi
 	@mkdir -p .build/windows
 	@set -eu; tmp=$$(mktemp -d .build/windows/tmp.XXXXXX); trap 'rm -rf "$$tmp"' EXIT; \
 		component=$(firstword $(subst -, ,$(@F))); profile=$(lastword $(subst -, ,$(@F))); \
 		rc=$$(GOOS= GOARCH= $(GO) run ./tools/windows-resources \
 			-component "$$component" -arch $(GOARCH) -debug=$(if $(filter %-debug,$@),true,false)); \
-		obj=$${rc%.rc}.o; \
-		if [ ! -f "$$obj" ]; then \
-			if command -v "$(LLVM_RC)" >/dev/null 2>&1 && command -v "$(LLVM_CVTRES)" >/dev/null 2>&1; then \
-				"$(LLVM_RC)" -no-preprocess -FO "$$tmp/resource.res" "$$rc"; \
-				"$(LLVM_CVTRES)" -machine:$(WINDOWS_MACHINE_$(GOARCH)) -timestamp:0 "-out:$$tmp/resource.o" "$$tmp/resource.res"; \
-			elif command -v "$(WINDRES)" >/dev/null 2>&1; then \
-				if [ -z "$(WINDOWS_FORMAT_$(GOARCH))" ]; then \
-					echo "error: Windows $(GOARCH) resources need llvm-rc + llvm-cvtres" >&2; exit 1; \
-				fi; \
-				"$(WINDRES)" -F $(WINDOWS_FORMAT_$(GOARCH)) -i "$$rc" -O coff -o "$$tmp/resource.o"; \
-			else \
-				echo "error: Windows resources need llvm-rc + llvm-cvtres, or windres (override LLVM_RC/LLVM_CVTRES/WINDRES)" >&2; \
-				exit 1; \
-			fi; \
-			mv "$$tmp/resource.o" "$$obj"; \
-		fi; \
-		link_path="$(CURDIR)/$$obj"; \
-		if command -v cygpath >/dev/null 2>&1; then link_path=$$(cygpath -m "$$link_path"); fi; \
+		link_path=$$(sh tools/windows-resources/compile.sh "$$rc" "$(GOARCH)"); \
 		printf '%s\n' "$$link_path" > "$$tmp/resource.path"; \
 		mv "$$tmp/resource.path" ".build/windows/$${component}_$(GOARCH)_$${profile}.path"
 
-check/windows-rust:
-	@case "$(RUST_TARGET)" in \
-		$(WINDOWS_RUST_ARCH_$(GOARCH))-pc-windows-*) ;; \
-		*) echo "error: Windows Rust binaries need a target matching GOARCH=$(GOARCH); set CARGO_BUILD_TARGET" >&2; exit 1 ;; \
-	esac
+check/windows-rust: check/rust
 endif
 
 # --- Run ---
@@ -236,6 +232,9 @@ test: test/go test/rust
 
 test/go:
 	$(GO) test $(TEST_FLAGS) ./...
+
+test/build:
+	$(GO) test $(TEST_FLAGS) ./tools/buildtest
 
 test/race: check/cgo
 	$(GO) test -race $(TEST_FLAGS) ./...
@@ -310,7 +309,7 @@ lint:
 	fi
 
 # Local aggregate of the code quality gates CI runs individually.
-check: vet lint lint/rust test/rust test/race test/coverage tidy/check check/linelength
+check: vet lint lint/rust test/rust test/race test/coverage tidy/check check/linelength check/shell
 	@echo "All checks passed."
 
 check/cgo:
@@ -320,6 +319,30 @@ check/cgo:
 	@race_cc="$$($(GO) env CC)" && $$race_cc --version >/dev/null 2>&1 || { \
 		echo "error: race targets need a working CC (see go env CC)" >&2; exit 1; \
 	}
+
+check/rust:
+	@if [ "$(HAS_CARGO)" != 1 ] || ! command -v cargo >/dev/null 2>&1; then \
+		echo "error: cargo is required for this target" >&2; exit 1; \
+	fi
+	@sh tools/build/check-rust.sh "$(GOOS)" "$(GOARCH)" "$(RUST_TARGET)"
+
+check/macos:
+	@if [ "$(HOST_OS)" != darwin ] || [ "$(GOOS)" != darwin ]; then \
+		echo "error: build/macos needs a macOS host and GOOS=darwin" >&2; exit 1; \
+	fi
+	@if [ "$(HAS_CARGO)" != 1 ] || ! command -v cargo >/dev/null 2>&1; then \
+		echo "error: build/macos needs cargo for the GUI and apecli" >&2; exit 1; \
+	fi
+	@command -v lipo >/dev/null
+	@sh tools/build/check-rust.sh darwin arm64 aarch64-apple-darwin
+	@sh tools/build/check-rust.sh darwin amd64 x86_64-apple-darwin
+
+check/shell:
+	bash -n tools/osx-appbundle-builder/build.sh
+	sh -n tools/osx-appbundle-builder/fetch-openmpt.sh
+	bash -n tools/windows-package/package.sh
+	sh -n tools/windows-resources/compile.sh
+	sh -n tools/build/check-rust.sh
 
 check/linelength:
 	@fail=0; \
@@ -381,11 +404,26 @@ install/all: install install/desktop install/icons
 
 # --- Help ---
 
+info: export INFO_RUST_TARGET = $(if $(filter 1,$(HAS_CARGO)),$(RUST_TARGET),unavailable)
+info: export HAS_CARGO := $(HAS_CARGO)
+info: export REQUIRE_RUST := $(REQUIRE_RUST)
+info: export OUTPUT := $(OUTPUT)
+info: export GUI_OUT := $(GUI_OUT)
+info: export BUILD_FLAGS := $(BUILD_FLAGS)
+info: export TEST_FLAGS := $(TEST_FLAGS)
+info:
+	@printf '%s\n' "HOST_OS=$$HOST_OS" "GOOS=$$GOOS" "GOARCH=$$GOARCH" \
+		"RUST_TARGET=$$INFO_RUST_TARGET" "HAS_CARGO=$$HAS_CARGO" "REQUIRE_RUST=$$REQUIRE_RUST" \
+		"VERSION=$$VERSION" "BUILD=$$BUILD" "TUI_OUTPUT=$$OUTPUT" "GUI_OUTPUT=$$GUI_OUT" \
+		"DEFAULT_PROFILE=release" "BUILD_FLAGS=$$BUILD_FLAGS" "TEST_FLAGS=$$TEST_FLAGS" "MACOS_MIN=$$MACOS_MIN" \
+		"PACKAGE_INPUT_DIR=$$PACKAGE_INPUT_DIR" "PACKAGE_OUTPUT_DIR=$$PACKAGE_OUTPUT_DIR"
+
 help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Build:"
 	@echo "  build              Build TUI, apecli and GUI (default; Rust components optional)"
+	@echo "                     REQUIRE_RUST=1 requires matching Rust targets before compilation"
 	@echo "  build/tui          Build TUI and optional apecli, without GUI"
 	@echo "  build/race         Build with race detector"
 	@echo "  build/debug        Build without optimizations (dlv compatible)"
@@ -397,6 +435,9 @@ help:
 	@echo ""
 	@echo "macOS App Bundle:"
 	@echo "  build/osxappbundle    Build macOS .app bundle (macOS only)"
+	@echo "  package/osxappbundle  Package existing universal binaries (no compilation)"
+	@echo "  deps/openmpt/macos    Fetch and verify the locked universal libopenmpt dylib"
+	@echo "  package/windows      Package existing executables and their DLL dependencies"
 	@echo ""
 	@echo "Run:"
 	@echo "  run ARGS=...       Build TUI and optional apecli, then run TUI"
@@ -404,6 +445,7 @@ help:
 	@echo "Test:"
 	@echo "  test               Run Go and Rust tests (Rust skipped without cargo)"
 	@echo "  test/go            Run Go tests only"
+	@echo "  test/build         Run build and packaging contract tests (Unix hosts)"
 	@echo "  test/race          Run Go tests with race detector (requires cgo and CC)"
 	@echo "  test/verbose       Run Go tests verbosely"
 	@echo "  test/short         Run short Go tests (skips integration)"
@@ -417,6 +459,8 @@ help:
 	@echo "  lint/rust          Run cargo fmt --check + clippy -D warnings"
 	@echo "  check              Run lint, vet, Rust tests, race, coverage, tidy and size gates"
 	@echo "  check/cgo          Check cgo and CC prerequisites for race targets"
+	@echo "  check/rust         Check cargo and matching Rust target standard library"
+	@echo "  check/shell        Check build and packaging script syntax"
 	@echo "  check/linelength   Enforce the per-file line limits"
 	@echo "  tidy               Run go mod tidy"
 	@echo "  tidy/check         Read-only go mod tidy -diff (what CI runs)"
@@ -435,4 +479,5 @@ help:
 	@echo "  install/desktop    Install the .desktop entry"
 	@echo "  install/icons      Install Linux SVG and PNG icons"
 	@echo "  install/all        install + install/desktop + install/icons"
+	@echo "  info               Print resolved host, target, version and output settings"
 	@echo "  help               Show this message"

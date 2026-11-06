@@ -32,7 +32,8 @@ How to build NeoViolet from source.
 - **`make`** — the only build entry point
 - **Rust with cargo** — builds `apecli` and `neoviolet-gui`. Optional for TUI development: without it,
   `make run`, `make build/tui` and `make build` skip Rust components with a warning and still build
-  `neoviolet`. `make run/gui`, `make build/macos` and macOS app bundling require cargo.
+  `neoviolet`. `make run/gui`, `make build/macos` and `make build/osxappbundle` require cargo.
+  Packaging already built binaries does not require cargo.
   Install via [rustup](https://rustup.rs/).
 - **C compiler** — for race builds, race tests and `make check` (the race detector requires cgo), and
   for the Rust components' native dependencies. The Go player uses no CGo bindings; CI release builds
@@ -74,6 +75,9 @@ build without launching, or `make build` to build all components, including the 
 | `build/debug`        | Build Go player only with debug symbols (compatible with `dlv`)                           |
 | `build/macos`        | Universal binaries for Apple silicon and Intel (`arm64` + `amd64`, merged with `lipo`)     |
 | `build/osxappbundle` | Build all and pack into an app bundle for macOS                                            |
+| `package/osxappbundle` | Package existing universal binaries into a macOS app bundle                             |
+| `deps/openmpt/macos` | Fetch and verify the locked prebuilt universal libopenmpt dylib                            |
+| `package/windows`    | Package existing Windows executables with their non-system DLL dependencies              |
 | `apetools`           | Build `apecli` Rust helper (release mode)                                                  |
 | `apetools/debug`     | Build `apecli` in debug mode                                                               |
 | `gui`                | Build `neoviolet-gui` GUI wrapper (release mode)                                           |
@@ -82,6 +86,7 @@ build without launching, or `make build` to build all components, including the 
 | `run ARGS=...`       | Build TUI and optional `apecli`, then launch TUI                                          |
 | `test`               | Run Go and Rust tests (Rust skipped without cargo)                                        |
 | `test/go`            | Run Go tests only                                                                         |
+| `test/build`         | Run build and packaging contract tests on Linux/macOS                                     |
 | `test/race`          | Run Go tests with race detector (requires cgo and a C compiler)                            |
 | `test/verbose`       | Run Go tests verbosely (`-v`)                                                              |
 | `test/short`         | Run short Go tests (skips integration)                                                     |
@@ -93,6 +98,8 @@ build without launching, or `make build` to build all components, including the 
 | `lint/rust`          | Run `cargo fmt --check` and clippy with `-D warnings`                                      |
 | `check`              | Aggregate lint, vet, Rust tests, race, coverage, tidy and file-size gates                 |
 | `check/cgo`          | Check cgo and C compiler prerequisites for race targets                                   |
+| `check/rust`         | Require cargo and a Rust standard library matching the Go target                          |
+| `check/shell`        | Check build and packaging script syntax                                                   |
 | `check/linelength`   | Enforce the per-file line limits (500 lines / 800 for tests)                               |
 | `tidy`               | Run `go mod tidy`                                                                          |
 | `tidy/check`         | Read-only `go mod tidy -diff` (what CI runs)                                               |
@@ -103,6 +110,7 @@ build without launching, or `make build` to build all components, including the 
 | `install/icons`      | Install Linux SVG and PNG icons                                                            |
 | `install/all`        | `install` + `install/desktop` + `install/icons`                                            |
 | `help`               | List the available targets                                                                 |
+| `info`               | Print resolved host, target, version, flags and output settings                            |
 
 ---
 
@@ -157,12 +165,52 @@ release binary in the repository root.
 
 ```bash
 make build/osxappbundle
+make deps/openmpt/macos                         # Prepare or verify the cached runtime library
+make package/osxappbundle VERSION=v1.2.3 BUILD=42  # Existing universal binaries only
 ```
 
-Packages `neoviolet`, `neoviolet-gui` and `apecli` into `dist/NeoViolet.app/`. The bundle script
-(`tools/osx-appbundle-builder/build.sh`) writes `Info.plist`, picks the icon (compiling it with
-`actool` only when Xcode 26+ is installed, otherwise using the assets committed to the repo) and signs
-the bundle ad hoc.
+`build/osxappbundle` builds universal binaries and fetches the locked prebuilt libopenmpt before
+packaging. The fetch step uses `gh` to download the macOS asset and its `.sha256` from this repo's
+`deps` release, checks SHA-256, and caches them under `.build/macos-deps/`. A valid cache is reused
+offline; downloads do not run inside the packaging script. The dependency version and deployment
+floor come from `deps/libopenmpt.lock`, which also supplies the default application `MACOS_MIN`.
+
+`package/osxappbundle` consumes
+`neoviolet`, `neoviolet-gui` and `apecli` from `PACKAGE_INPUT_DIR` (default: the repository root),
+checks that each contains both architectures, and writes `PACKAGE_OUTPUT_DIR/NeoViolet.app/`
+(default: `dist/NeoViolet.app/`). For example:
+
+```bash
+make package/osxappbundle PACKAGE_INPUT_DIR=/path/to/artifacts \
+  PACKAGE_OUTPUT_DIR=/path/to/packages VERSION=v1.2.3 BUILD=42 MACOS_MIN=13.0
+```
+
+Make supplies `VERSION`, `BUILD`, `MACOS_MIN` and `SIGN_IDENTITY` to the bundle script; it no longer
+reads Makefile text, derives its own version or starts compilation. When packaging saved artifacts,
+set `VERSION` and `BUILD` to their matching metadata. `build/osxappbundle` uses the same resolved
+version for its build and bundle. Use the Make targets in place of calling the script directly.
+The one-step `build/osxappbundle` always packages its newly built root binaries; custom input
+directories apply to the package-only target.
+
+The bundle includes `Contents/Frameworks/libopenmpt.0.dylib`, where the player's existing loader
+looks before system package directories. `LIBOPENMPT_DYLIB` defaults to the locked cached asset;
+set it to use an already prepared universal dylib, including for an offline one-step build:
+
+```bash
+make build/osxappbundle LIBOPENMPT_DYLIB=/path/to/libopenmpt.0.dylib
+```
+
+An explicit library path skips automatic fetching. Packaging requires both arm64 and x86_64 slices
+and accepts only system library dependencies, so a Homebrew-linked dylib cannot silently produce a
+bundle that depends on the builder's machine. The library is copied before signing, signed first
+with the bundle's identity, and then included in the outer bundle signature. The shipped
+`ACKNOWLEDGEMENTS.md` includes libopenmpt's license. macOS CI packages and verifies the signed bundle
+and uploads a ZIP alongside the standalone executables.
+
+The script writes `Info.plist`, picks the icon (compiling it with `actool` only when Xcode 26+ is
+installed, otherwise using the committed assets), copies both licenses and signs the bundle ad hoc.
+Override `SIGN_IDENTITY` for an installed signing identity. It assembles in a temporary directory
+before replacing the final bundle; build, copy or signing failures leave an existing bundle intact.
 
 ---
 
@@ -319,6 +367,10 @@ make build
 **Icon tools:** Use `llvm-rc` and `llvm-cvtres`, or GNU `windres` for x86/x86_64. Arm64 requires
 the LLVM tools. Set `LLVM_RC`, `LLVM_CVTRES` or `WINDRES` for tools outside `PATH`.
 
+The Go resource generator owns version/icon content and content-addressed sources; a separate
+compiler script selects the resource tool and publishes the object only on success. Make owns the
+resource dependencies, Go `.syso` copy and Rust link arguments.
+
 **Cross compilation:** Install the Rust target, linker and Windows libraries for the target
 architecture. Set `GOOS=windows`, `GOARCH` and a matching `CARGO_BUILD_TARGET`:
 
@@ -337,43 +389,42 @@ name in CLANGARM64.
 
 **Collect DLLs for distribution:**
 
-```bash
-mkdir -p dist
-cp neoviolet.exe dist/
-cp neoviolet-gui.exe dist/ 2>/dev/null || true
-# Then copy the non-system DLLs that objdump reports, recursively:
-objdump -p dist/neoviolet-gui.exe | grep "DLL Name"
-```
+`make package/windows` consumes all three `.exe` files from `PACKAGE_INPUT_DIR` (default: the repo
+root), plus `LIBOPENMPT_DLL` (default: `PACKAGE_INPUT_DIR/libopenmpt.dll`). It recursively collects
+non-system DLL imports from the input directory and `WINDOWS_DLL_DIR` (default: `$MINGW_PREFIX/bin`).
+`OBJDUMP` overrides the import inspection tool. The target does not compile or download files.
 
-`libopenmpt` is opened at run time, so `objdump -p` never lists it. Copy it into `dist/` yourself,
-otherwise `dist/` ships without tracker support (the app still starts).
-
-Either take the DLL this project builds, or MSYS2's:
+Prepare a matching libopenmpt DLL outside the final output directory. For the project's prebuilt DLL:
 
 ```bash
-# Prebuilt: the asset the release build uses, matching your architecture
+mkdir -p .build/windows-deps
+version=$(sed -n 's/^LIBOPENMPT_VERSION=//p' deps/libopenmpt.lock)
 case "$(uname -m)" in
   x86_64)        arch=x86_64 ;;
   aarch64|arm64) arch=aarch64 ;;
 esac
+asset="libopenmpt-${version}-win-${arch}.dll"
 gh release download deps --repo AuroraStudio-aurorast/neoviolet \
-  -p "libopenmpt-*-win-${arch}.dll" -D dist
-mv dist/libopenmpt-*-win-${arch}.dll dist/libopenmpt.dll
+  -p "$asset" -p "${asset}.sha256" -D .build/windows-deps
+(cd .build/windows-deps && sha256sum -c "${asset}.sha256")
+make package/windows LIBOPENMPT_DLL="$PWD/.build/windows-deps/$asset"
 
-# MSYS2's copy, whose own imports still have to be collected
-cp "$MINGW_PREFIX"/bin/libopenmpt-0.dll dist/
-objdump -p dist/libopenmpt-0.dll | grep "DLL Name"
+# Or use MSYS2's copy; its imports are collected by the same target:
+make package/windows LIBOPENMPT_DLL="$MINGW_PREFIX/bin/libopenmpt-0.dll"
 ```
 
-The prebuilt DLL compiles its decoders in and needs nothing else; `gh release download deps` also
-carries a matching `.sha256`. MSYS2's `libopenmpt-0.dll` instead pulls in its whole runtime closure
-(`libogg`, `libvorbis`, `libvorbisfile`, `libmpg123`, `zlib1`, `libc++`, `libunwind`), so walk it the
-same recursive way as the executables.
+The complete distribution goes to `PACKAGE_OUTPUT_DIR` (default: `dist/`), with libopenmpt named
+`libopenmpt.dll` because it is loaded at run time. Its own imports are inspected too, including the
+decoder and toolchain dependencies of MSYS2's library. Missing executables, libopenmpt, required DLLs
+or a failed import inspection stop packaging before replacing an existing distribution. DLL lookup
+and cycle detection are case-insensitive. The output must be a dedicated directory, not a symlink,
+an input directory or an ancestor of any source file.
 
 The `deps` release is a pre-release holding the dependency builds for every platform, with the
 libopenmpt version and the architecture in each asset name.
 
-The full recursive collection is in `.github/workflows/build.yml`.
+CI downloads and verifies dependencies separately, then calls this same Make target to assemble
+the distribution.
 
 ---
 
@@ -389,6 +440,24 @@ make build
 - Strips Go debug info (`-s -w`)
 - Stamps the version from `git describe --tags --always --dirty` (override with `make build VERSION=...`)
 - Output: `./neoviolet`, plus `./neoviolet-gui` and `./apecli` when cargo is available (`.exe` on Windows)
+
+For a complete distribution, enable the same strict preflight that CI uses:
+
+```bash
+make build REQUIRE_RUST=1
+make info
+```
+
+`REQUIRE_RUST=1` requires cargo and a Rust standard library matching `GOOS`/`GOARCH` before build
+steps run, including resource generation under `make -j`. The resolved Rust target comes from
+`CARGO_BUILD_TARGET`, or the selected rustc host when unset. Preflight does not install or choose a
+toolchain; set an appropriate target explicitly for cross compilation. Windows Rust builds also
+perform this target check in ordinary mode. `build/macos` always requires both Apple targets and
+a macOS host, regardless of `REQUIRE_RUST`.
+
+`make info` prints the host separately from the target, resolved version, default release profile,
+flags and output paths without compiling. The Go release, debug and race targets still share the
+same root output name; build them separately when retaining multiple variants.
 
 ### TUI Build (`make build/tui`)
 
@@ -452,6 +521,7 @@ packaging. These variables do not affect `make install`, which uses Go's binary 
 ```bash
 make test           # Go + Rust tests; Rust skipped with a warning without cargo
 make test/go        # Go tests only
+make test/build     # build/packaging contracts with temporary fixtures, on Linux/macOS
 make test/rust      # Rust tests only
 make test/race      # Go tests with race detector; requires cgo and CC
 make test/verbose   # Go tests with -v
@@ -469,10 +539,16 @@ CGO_ENABLED=1 CC=clang make test/race
 ```
 
 `make check` runs vet, Go and Rust lint, Rust tests, Go race tests, the Go coverage gate, the read-only
-module tidy check and the file-size gate. The race and coverage runs cover Go tests without an extra
+module tidy check, file-size gate and build-script syntax checks. The race and coverage runs cover Go tests without an extra
 ordinary full Go test run. CI runs these checks individually; its tool versions are pinned in
 `.github/workflows/build.yml`. Rust tests and lint warn and skip without cargo, so such a local run
 does not validate the Rust components.
+
+Build contract tests are included in the Go test targets on Linux/macOS and can be run alone with
+`make test/build`. They invoke real Make targets and scripts in temporary directories, substituting
+external compilers and platform tools to check error propagation and artifact preservation. They
+do not validate real PE resources, universal slices or signing; use the corresponding platform
+builds for those. `make check/shell` checks the platform scripts' shell syntax without executing them.
 
 If `golangci-lint` is unavailable, `make lint` falls back to the repository's `make vet` rules and
 checks Go formatting. This fallback covers fewer checks than the full linter. Formatting and
