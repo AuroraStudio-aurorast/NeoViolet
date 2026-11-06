@@ -62,7 +62,7 @@ func TestWindowsPackageSystemDLLs(t *testing.T) {
 	for _, name := range strings.Fields(`kernel32 ntdll user32 gdi32 advapi32 shell32 ole32 msvcrt
 		vcruntime api-ms-win-core-synch-l1-2-0 ext-ms-win-ntuser-window-l1-1-0 ucrtbase ws2_32
 		iphlpapi setupapi crypt32 bcrypt bcryptprimitives psapi winmm version combase rpcrt4 shlwapi
-		oleaut32 imm32 msctf comctl32 d3d11 dcomp dwmapi dwrite dxgi icu icuuc icuin kernel.appcore
+		oleaut32 imm32 msctf comctl32 uxtheme d3d11 dcomp dwmapi dwrite dxgi icu icuuc icuin kernel.appcore
 		windows.storage`) {
 		imports.WriteString("\tDLL Name: " + strings.ToUpper(name) + ".DLL\r\n")
 	}

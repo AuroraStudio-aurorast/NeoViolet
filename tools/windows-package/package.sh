@@ -112,7 +112,7 @@ pending+=("$STAGE/libopenmpt.dll")
 SYSTEM_DLLS='^(kernel32|ntdll|user32|gdi32|advapi32|shell32|ole32|msvcrt|vcruntime|'
 SYSTEM_DLLS+='(api|ext)-ms-win-[a-z0-9-]*|ucrtbase|ws2_32|iphlpapi|setupapi|crypt32|bcrypt|'
 SYSTEM_DLLS+='bcryptprimitives|psapi|winmm|version|combase|rpcrt4|shlwapi|oleaut32|imm32|msctf|'
-SYSTEM_DLLS+='comctl32|d3d11|dcomp|dwmapi|dwrite|dxgi|icu(uc|in)?|kernel\.appcore|windows\.storage)\.dll$'
+SYSTEM_DLLS+='comctl32|uxtheme|d3d11|dcomp|dwmapi|dwrite|dxgi|icu(uc|in)?|kernel\.appcore|windows\.storage)\.dll$'
 
 find_dll() {
     local dir candidate
