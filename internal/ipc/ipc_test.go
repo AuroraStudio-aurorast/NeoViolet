@@ -1,6 +1,8 @@
 package ipc
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"net"
 	"os"
@@ -9,6 +11,32 @@ import (
 	"testing"
 	"time"
 )
+
+func TestAuthenticationAcknowledged(t *testing.T) {
+	s, err := NewServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	conn, err := net.Dial("tcp", s.listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if err := conn.SetDeadline(time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fmt.Fprintln(conn, s.secret); err != nil {
+		t.Fatal(err)
+	}
+	var reply Message
+	if err := json.NewDecoder(conn).Decode(&reply); err != nil {
+		t.Fatalf("authentication acknowledgement: %v", err)
+	}
+	if reply.Type != "hello" {
+		t.Fatalf("got %q, want hello", reply.Type)
+	}
+}
 
 func TestServerLifecycle(t *testing.T) {
 	s, err := NewServer()
@@ -19,7 +47,6 @@ func TestServerLifecycle(t *testing.T) {
 
 	// Accept blocks until a client connects; run it in the background and
 	// drive the handshake from a loopback client.
-	go func() { _ = s.Accept() }()
 
 	conn, err := net.Dial("tcp", s.listener.Addr().String())
 	if err != nil {
@@ -39,7 +66,7 @@ func TestServerLifecycle(t *testing.T) {
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		s.mu.Lock()
-		connected := s.conn != nil
+		connected := s.peer != nil
 		s.mu.Unlock()
 		if connected {
 			break
@@ -55,16 +82,15 @@ func TestServerLifecycle(t *testing.T) {
 		t.Fatalf("SendJSON: %v", err)
 	}
 
-	buf := make([]byte, 256)
-	n, err := conn.Read(buf)
-	if err != nil {
-		t.Fatalf("read from client: %v", err)
-	}
-	if n == 0 {
-		t.Fatal("expected non-empty response from server")
-	}
-	if got := string(buf[:n]); !strings.Contains(got, `"type":"ping"`) {
-		t.Fatalf("unexpected server response: %q", got)
+	reader := bufio.NewReader(conn)
+	for _, want := range []string{"hello", "ping"} {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read from client: %v", err)
+		}
+		if !strings.Contains(line, `"type":"`+want+`"`) {
+			t.Fatalf("unexpected server response: %q, want %s", line, want)
+		}
 	}
 }
 

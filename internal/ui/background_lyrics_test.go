@@ -25,36 +25,39 @@ func TestFrameBackground_PanelKeepsNormalizedRamp(t *testing.T) {
 }
 
 func TestFrameBackground_OneLineDarkensOnlyLyricNeighbourhood(t *testing.T) {
-	for _, size := range [][2]int{{120, 30}, {80, 24}, {68, 17}} {
-		m := sized(t, lyricFooterModel(), size[0], size[1])
-		m.panelMode = config.PanelModeOff
-		m.Accent = &accent.Accent{Main: mustColorful(t, "#46536b")}
-		rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height)
-		lyricY := m.UI.Height - 3
-		if testLuminance(rows[lyricY]) >= testLuminance(plain[lyricY]) {
-			t.Fatal("One-line lyric was not darkened")
-		}
-		for y, c := range rows {
-			if math.Abs(float64(y-lyricY)) > 1 && c != plain[y] {
-				t.Errorf("row %d outside lyric neighbourhood changed", y)
+	for _, gui := range []bool{false, true} {
+		for _, size := range [][2]int{{120, 30}, {80, 24}, {68, 17}} {
+			m := sized(t, lyricFooterModel(), size[0], size[1])
+			m.guiHosted = gui
+			m.panelMode = config.PanelModeOff
+			m.Accent = &accent.Accent{Main: mustColorful(t, "#46536b")}
+			rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height)
+			lyricY := m.UI.Height - 2
+			if testLuminance(rows[lyricY]) >= testLuminance(plain[lyricY]) {
+				t.Fatal("One-line lyric was not darkened")
 			}
-		}
-		// Read the actual rendered cells, not just the palette generator.
-		cells := frameBackgrounds(t, m.View().Content)
-		main := color.RGBA{R: 70, G: 83, B: 107, A: 255}
-		original := (testLuminance(main) + .05) / .05
-		for x, c := range cells[lyricY] {
-			if c == nil {
-				t.Fatalf("lyric cell %d has no background", x)
+			for y, c := range rows {
+				if math.Abs(float64(y-lyricY)) > 1 && c != plain[y] {
+					t.Errorf("row %d outside lyric neighbourhood changed", y)
+				}
 			}
-			r, g, b, _ := c.RGBA()
-			bg := color.RGBA{R: uint8((r >> 8) & 255), G: uint8((g >> 8) & 255), B: uint8((b >> 8) & 255), A: 255}
-			contrast := (testLuminance(main) + .05) / (testLuminance(bg) + .05)
-			if contrast < original*.95 {
-				t.Fatalf("lyric cell %d retains only %.3f original contrast", x, contrast/original)
+			// Read the actual rendered cells, not just the palette generator.
+			cells := frameBackgrounds(t, m.View().Content)
+			main := color.RGBA{R: 70, G: 83, B: 107, A: 255}
+			original := (testLuminance(main) + .05) / .05
+			for x, c := range cells[lyricY] {
+				if c == nil {
+					t.Fatalf("lyric cell %d has no background", x)
+				}
+				r, g, b, _ := c.RGBA()
+				bg := color.RGBA{R: uint8((r >> 8) & 255), G: uint8((g >> 8) & 255), B: uint8((b >> 8) & 255), A: 255}
+				contrast := (testLuminance(main) + .05) / (testLuminance(bg) + .05)
+				if contrast < original*.95 {
+					t.Fatalf("lyric cell %d retains only %.3f original contrast", x, contrast/original)
+				}
 			}
+			assertFrameBackgrounds(t, m)
 		}
-		assertFrameBackgrounds(t, m)
 	}
 }
 
@@ -78,7 +81,7 @@ func TestFrameBackground_AutoPanelFallbackAndModeSwitch(t *testing.T) {
 	for _, width := range []int{120, 80, 120} {
 		m = sized(t, m, width, 30)
 		rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height)
-		dimmed := rows[27] != plain[27]
+		dimmed := rows[28] != plain[28]
 		if dimmed == m.layoutPlan().PanelShown {
 			t.Errorf("width %d: Panel=%v darkened=%v", width, m.layoutPlan().PanelShown, dimmed)
 		}
@@ -87,7 +90,7 @@ func TestFrameBackground_AutoPanelFallbackAndModeSwitch(t *testing.T) {
 	m.panelMode = config.PanelModeOff
 	m.LyricsFetching = true
 	m.Audio.ShowLyrics = false
-	if rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height); rows[27] == plain[27] {
+	if rows, plain := frameBackground(m), backgroundGradient(m.Accent, m.UI.Height); rows[28] == plain[28] {
 		t.Error("visible fetching row must get contrast protection")
 	}
 }

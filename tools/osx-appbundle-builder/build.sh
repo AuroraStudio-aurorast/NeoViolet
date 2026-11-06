@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 GUI_ASSETS="$PROJECT_ROOT/tools/neoviolet-gui/assets"
 
-APP_NAME="NeoViolet GUI"
+APP_NAME="NeoViolet"
 BUNDLE_ID="org.aurorast.neovioletgui"
 
 : "${VERSION:?use make package/osxappbundle to supply VERSION}"
@@ -86,7 +86,7 @@ for bin in neoviolet-gui neoviolet apecli; do
 done
 cp "$LIBOPENMPT_DYLIB" "$FRAMEWORKS_DIR/libopenmpt.0.dylib"
 
-cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GPL"
+cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GUI-MIT"
 cp "$PROJECT_ROOT/tools/apecli/LICENSE"       "$RESOURCES_DIR/LICENSE-MIT"
 cp "$PROJECT_ROOT/docs/ACKNOWLEDGEMENTS.md"       "$RESOURCES_DIR/ACKNOWLEDGEMENTS.md"
 

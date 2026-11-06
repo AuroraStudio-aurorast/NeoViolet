@@ -1,0 +1,82 @@
+{
+  "hello": {
+    "type": "hello",
+    "protocol": 1,
+    "version": "dev",
+    "capabilities": [
+      "results",
+      "state",
+      "playback",
+      "request_quit",
+      "startup",
+      "file_picker",
+      "audio_file_picker"
+    ],
+    "libopenmpt_version": "0.8.9"
+  },
+  "state": {
+    "type": "state",
+    "state": {
+      "revision": 7,
+      "track_id": 3,
+      "path": "/music/a \"song\" 雪.flac",
+      "title": "雪",
+      "artist": "",
+      "album": "",
+      "has_track": true,
+      "playing": false,
+      "loading": false,
+      "desktop_lyrics": true,
+      "duration": 120,
+      "position": 0,
+      "volume": 0,
+      "config_dir": "/settings/neoviolet"
+    }
+  },
+  "result": {
+    "type": "result",
+    "request_id": "mute",
+    "status": "succeeded"
+  },
+  "requests": [
+    {
+      "type": "set_volume",
+      "request_id": "mute",
+      "volume": 0
+    },
+    {
+      "type": "seek",
+      "request_id": "rewind",
+      "position": 0
+    },
+    {
+      "type": "open",
+      "request_id": "open",
+      "path": "/music/a \"song\" 雪.flac"
+    }
+  ],
+  "phase": {
+    "type": "phase",
+    "phase": "wizard"
+  },
+  "pick_file": {
+    "type": "pick_file",
+    "purpose": "soundfont",
+    "request_id": "soundfont-7"
+  },
+  "client_hello": {
+    "type": "client_hello",
+    "client": "neoviolet-gui",
+    "protocol": 1,
+    "capabilities": [
+      "file_picker",
+      "audio_file_picker"
+    ]
+  },
+  "file_picked": {
+    "type": "file_picked",
+    "purpose": "soundfont",
+    "request_id": "soundfont-7",
+    "status": "cancelled"
+  }
+}

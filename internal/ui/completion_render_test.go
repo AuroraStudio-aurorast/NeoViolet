@@ -39,8 +39,8 @@ func TestRenderCompletionShape(t *testing.T) {
 	}
 }
 
-// The overlay never grows past five rows, however many candidates there are.
-func TestRenderCompletionCapsRowsAtFive(t *testing.T) {
+// The list is capped by the footer when it has fewer than five rows.
+func TestRenderCompletionCapsRowsAtFooter(t *testing.T) {
 	m := completionModel(t, 80, 24)
 	plan := m.layoutPlan()
 	m.completionCandidates = make([]candidate, 8)
@@ -48,7 +48,7 @@ func TestRenderCompletionCapsRowsAtFive(t *testing.T) {
 		m.completionCandidates[i] = candidate{Value: string(rune('a' + i))}
 	}
 
-	want := 5
+	want := 4
 	if got := completionRows(m, plan); got != want {
 		t.Fatalf("completionRows with 8 candidates = %d, want %d", got, want)
 	}
@@ -87,7 +87,7 @@ func TestCompletionRowThreeTiers(t *testing.T) {
 		{"tier 3 compacts a path", candidate{Value: "/Users/damon233/Music/Albums/VeryLong/name.mp3", Path: true}, 24, "  …/VeryLong/name.mp3"},
 		{"tier 3 truncates a plain value", candidate{Value: "some-very-long-command-name"}, 10, "  some-ve…"},
 	} {
-		got := stripANSI(completionRow(tc.cand, false, tc.avail, newInteractionPalette(nil).completion(0, 1, false)))
+		got := stripANSI(completionRow(tc.cand, false, tc.avail, newInteractionPalette(nil).completion(false)))
 		if strings.TrimRight(got, " ") != tc.want {
 			t.Errorf("%s: row = %q, want %q", tc.name, strings.TrimRight(got, " "), tc.want)
 		}
@@ -102,11 +102,11 @@ func TestCompletionRowThreeTiers(t *testing.T) {
 	}
 
 	// The selected row keeps the same width, with a marker instead of padding.
-	sel := stripANSI(completionRow(candidate{Value: "lrc", Desc: "<sub>  Lyrics control"}, true, 40, newInteractionPalette(nil).completion(0, 1, true)))
+	sel := stripANSI(completionRow(candidate{Value: "lrc", Desc: "<sub>  Lyrics control"}, true, 40, newInteractionPalette(nil).completion(true)))
 	if w := lipgloss.Width(sel); w != 40 {
 		t.Errorf("selected row width = %d, want 40", w)
 	}
-	if !strings.Contains(sel, "▸") {
+	if !strings.Contains(sel, ">") {
 		t.Errorf("selected row = %q, want a selection marker", sel)
 	}
 }
@@ -176,7 +176,7 @@ func TestCompletionRowWidthIsExactlyAvail(t *testing.T) {
 	avail := plan.Width
 	cand := candidate{Value: "/dir/" + strings.Repeat("x", avail-markerWidth-1), Path: true}
 	for _, selected := range []bool{false, true} {
-		if got := lipgloss.Width(completionRow(cand, selected, avail, newInteractionPalette(nil).completion(0, 1, selected))); got != avail {
+		if got := lipgloss.Width(completionRow(cand, selected, avail, newInteractionPalette(nil).completion(selected))); got != avail {
 			t.Errorf("selected=%v: row width = %d, want exactly %d", selected, got, avail)
 		}
 	}
@@ -240,7 +240,7 @@ func TestCompletionRowBudgetsTheGapAndMarker(t *testing.T) {
 	// Exactly at the boundary: marker (2) + value (32) + gap (2) + description
 	// (4) == avail, so the description still fits.
 	const avail = 40
-	row := stripANSI(completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail, newInteractionPalette(nil).completion(0, 1, false)))
+	row := stripANSI(completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail, newInteractionPalette(nil).completion(false)))
 	if w := lipgloss.Width(row); w != avail {
 		t.Errorf("boundary row width = %d, want %d", w, avail)
 	}
@@ -252,15 +252,15 @@ func TestCompletionRowBudgetsTheGapAndMarker(t *testing.T) {
 	// the description style rather than the primary style, so this fails if it is used
 	// for it instead. This render is deliberately left un-stripped of its SGR
 	// sequences, unlike the one above.
-	styled := completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail, newInteractionPalette(nil).completion(0, 1, false))
-	if !strings.Contains(styled, newInteractionPalette(nil).completion(0, 1, false).description.Render("desc")) {
+	styled := completionRow(candidate{Value: strings.Repeat("v", 32), Desc: "desc"}, false, avail, newInteractionPalette(nil).completion(false))
+	if !strings.Contains(styled, newInteractionPalette(nil).completion(false).description.Render("desc")) {
 		t.Errorf("boundary row = %q, want the description in its own style", styled)
 	}
 
 	// Two cells too wide once the marker and the gap count: the description has
 	// to go so that the row stays inside avail.
 	const narrow = 10
-	tight := stripANSI(completionRow(candidate{Value: "lrcde", Desc: "Lyr"}, false, narrow, newInteractionPalette(nil).completion(0, 1, false)))
+	tight := stripANSI(completionRow(candidate{Value: "lrcde", Desc: "Lyr"}, false, narrow, newInteractionPalette(nil).completion(false)))
 	if w := lipgloss.Width(tight); w != narrow {
 		t.Errorf("tight row width = %d, want %d", w, narrow)
 	}
@@ -343,7 +343,7 @@ func TestOverlayKeepsFrameSizeAndOtherRegions(t *testing.T) {
 
 // The list sits in the bottom rows of the footer band, directly above the
 // command line, and covers nothing else: the command line keeps its own row and
-// the content box keeps every row it had, its bottom border included.
+// the content box keeps every row it had, including blank rows.
 func TestOverlaySitsInTheFooterBand(t *testing.T) {
 	m := completionModel(t, 80, 24)
 	plan := m.layoutPlan()
@@ -374,7 +374,7 @@ func TestOverlaySitsInTheFooterBand(t *testing.T) {
 	}
 
 	// Everything the list does not cover is byte for byte what it was: the
-	// content box keeps all of its rows, borders included, and the command line
+	// content keeps all of its rows, and the command line
 	// keeps its own.
 	for row := tabsHeight; row < tabsHeight+plan.ContentHeight; row++ {
 		if afterLines[row] != beforeLines[row] {
@@ -382,10 +382,7 @@ func TestOverlaySitsInTheFooterBand(t *testing.T) {
 				row, afterLines[row], beforeLines[row])
 		}
 	}
-	bottomBorder := strings.TrimRight(stripANSI(beforeLines[tabsHeight+plan.ContentHeight-1]), " ")
-	if !strings.HasPrefix(bottomBorder, "╰") || !strings.HasSuffix(bottomBorder, "╯") {
-		t.Fatalf("the content box bottom border is not where this test looks: %q", bottomBorder)
-	}
+
 	if afterLines[plan.Height-1] != beforeLines[plan.Height-1] {
 		t.Errorf("command row changed with candidates:\n got %q\nwant %q",
 			afterLines[plan.Height-1], beforeLines[plan.Height-1])
@@ -394,12 +391,12 @@ func TestOverlaySitsInTheFooterBand(t *testing.T) {
 
 // The minimum legal terminal still shows the whole candidate list: the frame
 // keeps its size, the content height does not squeeze the list, and the band
-// stays inside the content box (62 of the 68 columns).
+// stays inside the existing footer band.
 func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 	m := completionModel(t, 68, 17)
 	plan := m.layoutPlan()
-	if plan.ContentWidth != 68 || plan.ContentHeight != 8 {
-		t.Fatalf("content block = %dx%d, want 68x8", plan.ContentWidth, plan.ContentHeight)
+	if plan.ContentWidth != 68 || plan.ContentHeight != 10 {
+		t.Fatalf("content block = %dx%d, want 68x10", plan.ContentWidth, plan.ContentHeight)
 	}
 
 	before := renderMainView(m).Content
@@ -422,7 +419,7 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 		t.Errorf("frame width = %d, want 68", got)
 	}
 	rows := completionRows(m, plan)
-	if rows != 5 {
+	if rows != 4 {
 		t.Fatalf("completionRows = %d, want 5: the footer band must not squeeze the list", rows)
 	}
 	if start := completionWindowStart(m, rows); start != 0 {
@@ -438,7 +435,7 @@ func TestOverlayFitsAtMinimumTerminalSize(t *testing.T) {
 	}
 
 	// The overlay consumes no rows and sits on the block's last rows, above the
-	// bottom border: pin both ends of the band.
+	// command row: pin both ends of the band.
 	beforeLines := strings.Split(before, "\n")
 	afterLines := strings.Split(after, "\n")
 	if len(beforeLines) != len(afterLines) {

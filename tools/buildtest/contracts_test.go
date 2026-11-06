@@ -12,7 +12,7 @@ func buildFixture(t *testing.T) fixture {
 	f := newFixture(t, "tools/build/check-rust.sh")
 	f.write(t, "tools/apecli/Cargo.toml", "apecli fixture")
 	f.write(t, "tools/neoviolet-gui/Cargo.toml", "GUI fixture")
-	f.tool(t, "go", "case \"$1\" in\n env) case \"$2\" in GOOS) echo darwin ;; GOARCH) echo arm64 ;; esac ;;\n build) echo \"$*\" >> go-build ;;\n run) echo \"$*\" >> go-build; exit 90 ;;\n *) exit 90 ;;\nesac\n")
+	f.tool(t, "go", "case \"$1\" in\n env) case \"$2\" in GOOS) echo darwin ;; GOARCH) echo arm64 ;; esac ;;\n build) echo \"$*\" >> go-build ;;\n run) if [ \"$2\" = ./tools/gui-deps ]; then echo prepared > gui-prepared; else echo \"$*\" >> go-build; exit 90; fi ;;\n *) exit 90 ;;\nesac\n")
 	f.tool(t, "cargo", "echo compile >> ../../cargo-build\nexit 9\n")
 	f.tool(t, "rustc", "case \"$1\" in\n -vV) echo 'host: aarch64-apple-darwin' ;;\n --print) printf '%s/lib/%s\\n' \"$(pwd)\" \"$4\" ;;\n *) exit 90 ;;\nesac\n")
 	return f
@@ -68,6 +68,7 @@ func TestStrictBuildPreflight(t *testing.T) {
 			}
 			f.absent(t, "go-build")
 			f.absent(t, "cargo-build")
+			f.absent(t, "gui-prepared")
 		})
 	}
 }
@@ -87,6 +88,7 @@ func TestStrictBuildCopiesRustArtifacts(t *testing.T) {
 		}
 	}
 	_ = f.read(t, "go-build")
+	_ = f.read(t, "gui-prepared")
 }
 
 func TestRustPreflightNormalizesWindowsLibraryPath(t *testing.T) {

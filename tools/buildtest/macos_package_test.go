@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const bundle = "packages/NeoViolet GUI.app"
+const bundle = "packages/NeoViolet.app"
 
 func macFixture(t *testing.T) fixture {
 	t.Helper()
@@ -63,7 +63,7 @@ func TestMacPackageExistingArtifacts(t *testing.T) {
 			t.Errorf("incorrect packaged %s: %q", name, got)
 		}
 	}
-	for _, name := range []string{"LICENSE-GPL", "LICENSE-MIT", "ACKNOWLEDGEMENTS.md", "NeoViolet.icns", "Assets.car"} {
+	for _, name := range []string{"LICENSE-GUI-MIT", "LICENSE-MIT", "ACKNOWLEDGEMENTS.md", "NeoViolet.icns", "Assets.car"} {
 		_ = f.read(t, bundle+"/Contents/Resources/"+name)
 	}
 	if got := f.read(t, bundle+"/Contents/Frameworks/libopenmpt.0.dylib"); got != "universal dylib fixture" {
@@ -124,6 +124,7 @@ func macBuildFixture(t *testing.T) fixture {
 	f := macFixture(t)
 	f.tool(t, "go", `case "$1" in
  env) case "$2" in GOOS) echo darwin ;; GOARCH) echo arm64 ;; esac ;;
+ run) test "$2" = ./tools/gui-deps; echo prepared > gui-prepared ;;
  build)
    while [ "$#" -gt 0 ]; do
      if [ "$1" = -o ]; then echo slice > "$2"; exit; fi
@@ -178,6 +179,7 @@ func TestMacBuildThenPackage(t *testing.T) {
 			if got := f.read(t, bundle+"/Contents/MacOS/neoviolet"); got != "universal\n" {
 				t.Fatalf("wrong packaged build: %q", got)
 			}
+			_ = f.read(t, "gui-prepared")
 			if got := f.read(t, bundle+"/Contents/Frameworks/libopenmpt.0.dylib"); got != library {
 				t.Fatalf("wrong packaged library: %q", got)
 			}

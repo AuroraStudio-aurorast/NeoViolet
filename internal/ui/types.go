@@ -155,6 +155,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 
 // AudioState holds the audio playback state and lyric display state.
 type AudioState struct {
+	seekRevision      uint64
 	Player            audio.AudioPlayer
 	CurrentSong       string
 	Artist            string
@@ -208,9 +209,8 @@ type State struct {
 
 	CommandNotice string
 
-	Width    int
-	Height   int
-	tabWidth int
+	Width  int
+	Height int
 }
 
 // ComponentState holds the Bubble Tea component models used by the view.
@@ -222,18 +222,28 @@ type ComponentState struct {
 }
 
 // MessageState shows a transient text message that auto-dismisses.
-// Used for both error (red) and info (green) status updates.
+// Used for error, informational and save-confirmation status updates.
 type MessageState struct {
-	Message string
-	Timer   int
-	Visible bool
+	Message  string
+	Timer    int
+	Visible  bool
+	Success  bool
+	duration int
 }
 
 // Set displays a message with a countdown timer.
 func (e *MessageState) Set(msg string, timer int) {
 	e.Message = msg
 	e.Timer = timer
+	e.duration = timer
 	e.Visible = true
+	e.Success = false
+}
+
+// SetSuccess displays a completed save with the same dismissal timing as info.
+func (e *MessageState) SetSuccess(msg string, timer int) {
+	e.Set(msg, timer)
+	e.Success = true
 }
 
 // Tick decrements the message timer and dismisses the message when it expires.
@@ -296,8 +306,21 @@ type Model struct {
 	heldTrackAnimation   bool
 
 	// ipcServer handles bidirectional communication with the GUI wrapper
-	// via Unix domain socket. nil when running standalone.
-	ipcServer *ipc.Server
+	// via authenticated loopback TCP. nil when unavailable.
+	ipcManaged bool
+	ipcServer  *ipc.Server
+	ipcSession uint64
+	guiHosted  bool
+
+	ipcAudioPicker    bool
+	ipcPickerID       string
+	ipcPickerSequence uint64
+	ipcPendingOpen    *ipcOpenRequest
+	ipcLastState      ipc.PlaybackState
+	ipcLastPush       time.Time
+	ipcRevision       uint64
+
+	ipcLastSeekRevision uint64
 
 	// DesktopLyricsEnabled controls whether the TUI streams lyric data
 	// to the GUI for the desktop lyrics overlay window.

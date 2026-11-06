@@ -11,8 +11,8 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/startup"
 	neoviolet "github.com/AuroraStudio-aurorast/neoviolet/internal/ui"
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/ui/wizard"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 )
 
@@ -71,23 +71,15 @@ func runRoot(_ *cobra.Command, args []string) error {
 	// before MacOSRun may leave the terminal in a state that interferes with the
 	// AppKit event loop, preventing the main UI from rendering.
 	return runWithOSMedia(func() error {
-		// First-run wizard (huh form) runs INSIDE MacOSRun so AppKit is active
-		if !config.Exists() {
-			logger.Info("First run detected, launching setup wizard")
-			wizardCfg, err := wizard.Run()
+		needsWizard := !config.Exists()
+		defaults := config.DefaultConfig()
+		cfg := &defaults
+		if !needsWizard {
+			var err error
+			cfg, err = config.Load()
 			if err != nil {
-				logger.Warn("Wizard error, using defaults", "err", err)
+				logger.Warn("Failed to load config", "err", err)
 			}
-			if wizardCfg != nil {
-				if saveErr := wizardCfg.Save(); saveErr != nil {
-					logger.Warn("Failed to save wizard config", "err", saveErr)
-				}
-			}
-		}
-
-		cfg, err := config.Load()
-		if err != nil {
-			logger.Warn("Failed to load config", "err", err)
 		}
 
 		// Sweep expired online-lyrics cache files at startup (best effort).
@@ -99,17 +91,8 @@ func runRoot(_ *cobra.Command, args []string) error {
 			}
 		}()
 
-		// Apply --vol flag: override config default if explicitly set
-		if flagVolume > 0 {
-			vol := float64(flagVolume) / 100.0
-			if vol > 1.0 {
-				vol = 1.0
-			}
-			cfg.DefaultVolume = vol
-			logger.Info("Volume set via flag", "volume", cfg.DefaultVolume)
-		}
-
-		model := neoviolet.NewModel(filePath, cfg, seekDuration)
+		model := startup.New(filePath, cfg, needsWizard, seekDuration, flagVolume)
+		defer model.Close()
 		p := tea.NewProgram(model)
 
 		// Bridge OS media control commands (MPRIS on Linux, NowPlaying on macOS) into BubbleTea messages.
@@ -136,21 +119,21 @@ func runRoot(_ *cobra.Command, args []string) error {
 		// Start stdin listener for runtime track loading via pipe input
 		go neoviolet.StdinListener(p)
 
-		m, err := p.Run()
+		_, err := p.Run()
 		if err != nil {
 			logger.Error("Program error", "err", err)
 			return err
 		}
-		if model, ok := m.(*neoviolet.Model); ok {
-			if model.ExitCode == 0 {
+		if player := model.Player(); player != nil {
+			if player.ExitCode == 0 {
 				// Normal quit: persist runtime volume to config
-				model.Config.DefaultVolume = model.Audio.Volume
-				if saveErr := model.Config.Save(); saveErr != nil {
+				player.Config.DefaultVolume = player.Audio.Volume
+				if saveErr := player.Config.Save(); saveErr != nil {
 					logger.Warn("Failed to save config on quit", "err", saveErr)
 				}
 			} else {
-				logger.Info("Program exited with code", "code", model.ExitCode)
-				os.Exit(model.ExitCode)
+				logger.Info("Program exited with code", "code", player.ExitCode)
+				os.Exit(player.ExitCode)
 			}
 		}
 		logger.Info("Program exited")

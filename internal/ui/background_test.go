@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"image/color"
 	"strconv"
 	"strings"
 	"testing"
@@ -118,7 +119,7 @@ func TestBackgroundHoles_FindsThemInAFrameNothingHasPainted(t *testing.T) {
 
 // The frames drawn on the shell's own screen come back exactly as renderMainView
 // wrote them: nothing touches the terminal there, neither the cells nor its
-// default colours. The GUI is held to the same thing, below.
+// default colours.
 func TestView_LeavesTheShellsScreenUntouched(t *testing.T) {
 	_, shell, _ := splitScreens(t)
 	for name, m := range shell {
@@ -135,15 +136,22 @@ func TestView_LeavesTheShellsScreenUntouched(t *testing.T) {
 	}
 }
 
-// The GUI draws the frame on a canvas of its own, so the terminal it embeds is
-// left as it is: no cells of ours are painted there, and no defaults pinned.
-func TestView_LeavesTheGuiAlone(t *testing.T) {
+// The GUI receives the same row backgrounds, but owns terminal defaults itself.
+func TestView_GUIPaintsFramesWithoutPinningTerminalDefaults(t *testing.T) {
 	_, _, gui := splitScreens(t)
 	for name, m := range gui {
 		t.Run(name, func(t *testing.T) {
 			view := m.View()
-			if raw := renderMainView(m).Content; view.Content != raw {
-				t.Error("the frame was painted inside the GUI's canvas")
+			if view.AltScreen {
+				assertFrameBackgrounds(t, m)
+				if name == "library in the gui" {
+					cells := frameBackgrounds(t, view.Content)
+					if !sameRGB(cells[0][99], color.RGBA{A: 255}) || !sameRGB(cells[29][99], color.RGBA{R: 28, G: 22, B: 41, A: 255}) {
+						t.Fatal("GUI lost the black-to-purple page gradient")
+					}
+				}
+			} else if raw := renderMainView(m).Content; view.Content != raw {
+				t.Error("the GUI's loading or too-small frame was painted")
 			}
 			if view.BackgroundColor != nil || view.ForegroundColor != nil {
 				t.Errorf("the terminal's colours were pinned to %v/%v inside the GUI",

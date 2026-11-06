@@ -94,13 +94,13 @@ func TestDeriveRanges(t *testing.T) {
 		if mainL < 0.35-eps || mainL > 0.75+eps {
 			t.Errorf("seed %d: Main L* = %v, want [0.35, 0.75]", i, mainL)
 		}
-		// derive: paL = min(mainL*1.25, 0.88).
-		if paL < 0.4375-eps || paL > 0.88+eps {
-			t.Errorf("seed %d: ProgressA L* = %v, want [0.4375, 0.88]", i, paL)
+		// The progress ramp rises by 0.16 in perceptual lightness.
+		if paL < 0.45-eps || paL > 0.65+eps {
+			t.Errorf("seed %d: ProgressA L* = %v, want [0.45, 0.65]", i, paL)
 		}
-		// derive: pbL = max(mainL*0.65, 0.25).
-		if pbL < 0.25-eps || pbL > 0.4875+eps {
-			t.Errorf("seed %d: ProgressB L* = %v, want [0.25, 0.4875]", i, pbL)
+		// Its brighter endpoint remains in the same hue.
+		if pbL < 0.61-eps || pbL > 0.81+eps {
+			t.Errorf("seed %d: ProgressB L* = %v, want [0.61, 0.81]", i, pbL)
 		}
 		// derive: lyL = min(mainL*1.55, 0.93).
 		if lyL < 0.5425-eps || lyL > 0.93+eps {

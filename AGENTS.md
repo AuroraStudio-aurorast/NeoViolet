@@ -1,112 +1,103 @@
 # AGENTS.md
 
-For AI agents. Read [Keeping this file honest](#keeping-this-file-honest) before editing it.
+Rules for AI agents working in this repo. Read [Keeping this file honest](#keeping-this-file-honest)
+before editing it.
 
 ## Working agreement
 
-- **Think before coding** — state your interpretations and simpler alternatives; ask if unsure.
-- **Simplicity first** — minimum code, no extras or abstractions unless requested.
-- **Surgical changes** — edit only what's needed, match existing style, don't refactor working code.
-- **Goal-driven** — task → testable goal → plan → verify checkpoints → iterate until pass.
-- **No unsolicited commits** — leave changes in the working tree.
-- **Keep working documents out of the repo, and never reference them from it.** Specs, plans
-  and other engineering docs you produce are committed only if explicitly asked. Nothing
-  tracked may refer to an untracked document in any form — not code comments, tracked docs,
-  commit messages or PR descriptions.
+- **Think first** — state your reading of the task and any simpler alternative; ask when unsure.
+- **Minimal, surgical changes** — no extras, no abstractions, no refactors of working code.
+- **Prove it** — turn the task into a checkable goal, verify each step, iterate until it passes.
+- **No unsolicited commits** — leave the work in the tree.
+- **Docs are output, not a scratchpad** — touch `README.md` or `docs/` only on request or to fix
+  a stale statement, never to log what you did.
+- **`docs/BUILD.md` covers building only** — prereqs, commands, platforms, troubleshooting. A
+  section that would still make sense to someone who never compiles anything does not belong there.
+- **Local-only material lives in `.dev/`** — specs, plans, verification output and other scratch
+  assets are gitignored there and committed only when asked. Nothing tracked may reference an
+  untracked document.
 
 ## Hard constraints
 
 - **`make` only** — never run `go build`/`go test`/`cargo build`/`cargo test` directly; you lose
-  the `-ldflags` and test flags the Makefile adds.
-- **No CGo in this project** — load system libraries at runtime instead of adding cgo bindings:
-  purego/dlopen is the pattern (`internal/power`, `internal/mediactl`, `internal/audio/synth`).
-- **A `CC` is still required while `CGO_ENABLED=1`** — the Go runtime's cgo shim gets compiled, so
-  check `CGO_ENABLED` and a working `CC` before blaming a link error on source.
-- **Tests do not refresh Rust release binaries** — `make test` runs Go and Rust tests; the release
-  binaries the app spawns need `make apetools` / `make gui`.
-- **TUI development does not build the GUI** — use `make run` or `make build/tui` for the TUI and
-  optional apecli. `make build` prepares all components; `make run/gui` builds them before launch.
-- **Rust is optional for the TUI** — without cargo, TUI/full builds warn and skip Rust components;
-  explicit GUI execution and universal macOS builds require cargo. Missing apecli can fall back to
-  ffmpeg or the Monkey's Audio `mac` CLI when installed. Rust compilation or copy failures are errors.
-- **Complete distribution builds require Rust** — CI uses `REQUIRE_RUST=1` to validate the Rust
-  target against Go before compilation. Ordinary local builds retain the optional Rust behavior.
-- **Packaging consumes existing artifacts** — `package/osxappbundle` and `package/windows` never
-  compile or download inputs. Make supplies their configuration; scripts must not parse Makefile
-  text. `build/osxappbundle` builds universal binaries before packaging them.
-- **Never commit build artifacts or local state** — root binaries, `coverage.*`, `config.json`,
+  the flags the Makefile sets.
+- **No CGo** — load native libraries at runtime with purego/dlopen (`internal/power`,
+  `internal/mediactl`, `internal/audio/synth`).
+- **`CGO_ENABLED=1` still needs a working `CC`** — the race tests compile the cgo shim, so check
+  the toolchain before blaming the source for a link error.
+- **`make test` does not rebuild the Rust binaries the app spawns** — `make gui` and
+  `make apetools` do.
+- **TUI work does not build the GUI** — use `make run` or `make build/tui`. `make build` prepares
+  every component; `make run/gui` builds before launching.
+- **Rust is optional for the TUI, required for the GUI** — without cargo, TUI builds warn and skip
+  the Rust parts while `run/gui` and `build/macos` fail. A missing apecli falls back to ffmpeg or
+  the Monkey's Audio `mac` CLI. Rust compile or copy failures are always errors.
+- **libopenmpt is loaded at runtime** — its version lives in `deps/libopenmpt.lock`, not `go.mod`;
+  `deps/` plus `.github/workflows/deps-libopenmpt.yml` build it, `internal/audio/synth` finds it.
+- **Never commit build output or local state** — binaries, `coverage.*`, `dist/`, `config.json`,
   `history.txt`, `caches/`.
 
-## License boundary — GPL must not reach the MIT side
+## Licenses
 
 | Path | License |
-|---|---|
+| --- | --- |
 | root, `cmd/`, `internal/` (TUI) | MIT |
 | `tools/apecli/` | MIT |
-| `tools/neoviolet-gui/` (GUI) | GPL-3.0-or-later |
+| `tools/neoviolet-gui/` (GUI, excluding third-party sources) | MIT |
+| `assets/icons/`, `tools/neoviolet-gui/assets` | (c) AuroraStudio, all rights reserved |
 
-Copyleft must never flow into the MIT side: don't copy code, types, strings or comments out of the
-GUI; don't link, embed, vendor or share sources across them; don't add copyleft dependencies to the
-MIT side. MIT → GUI is compatible. Keep them **separate programs** — the PTY + IPC split is the
-license boundary, so never merge them into one binary. Leave the license fields and the
-per-component `LICENSE` files alone; the app bundle ships both.
+Third-party code keeps its license and upstream origin: no copyleft dependencies, and every
+release ships the notices in `docs/ACKNOWLEDGEMENTS.md`. The icons sit outside the MIT grant — free
+to use for any legitimate purpose without asking, but do not relicense them.
 
 ## Quality gates
 
-`make check` aggregates code quality gates locally; CI runs those checks individually
-(`.github/workflows/build.yml`, which also pins Go/Rust/linter versions). Thresholds live with
-their gate, not here: `make lint` (`.golangci.yml`), `make lint/rust` (clippy `-D warnings`),
-Go test targets (`TEST_FLAGS`), `make test/rust`, `make test/coverage` (`COVERAGE_MIN`),
-`make check/linelength`, `make tidy/check`, `make vet`, `make check/shell`.
-The aggregate includes race tests and needs `CGO_ENABLED=1` and a working C compiler. Without cargo,
-Rust checks warn and skip; passing the remaining checks does not validate Rust components.
+`make check` runs the gates locally; CI runs them separately (`.github/workflows/build.yml`, which
+pins the tool versions). Thresholds live in their gate (`.golangci.yml`, `Makefile`), not here.
+Without cargo the Rust gates warn and skip, so a passing `make check` says nothing about Rust. CI
+also runs `govulncheck`, which has no local target.
 
-## Architecture invariants
+## Architecture
 
-```
-neoviolet (Go)        TUI — Bubble Tea, Elm-style model/view/update
-neoviolet-gui (Rust)  optional native wrapper (gpui-ce + yororen-ui)
-apecli (Rust)         optional APE decoder subprocess, stdin → PCM stdout
-```
+    neoviolet (Go)        TUI — Bubble Tea, Elm-style model/view/update
+    neoviolet-gui (Rust)  optional wrapper (Iced + iced_term)
+    apecli (Rust)         optional APE decoder subprocess, stdin → PCM stdout
 
-- The GUI holds no playback state: it spawns `neoviolet` in a PTY and drives it over TCP IPC
-  (loopback, random port + token in a temp file). **The TUI must run standalone** — anything that
-  works only with the GUI attached is a bug.
-- IPC message types live in the `internal/ipc` package comment, the contract both sides are
-  written against. Add the variant there first.
-- OS integration sits behind per-OS build tags or platform modules; don't branch on
-  `runtime.GOOS` in shared code.
+- **Two separate programs** joined by PTY + TCP IPC (loopback, random port, token in a temp file).
+  The GUI owns no playback decisions; IPC snapshots are display-only.
+  The TUI must run standalone: anything that needs the GUI attached is a bug.
+- IPC message types are defined in the `internal/ipc` package comment — that is the contract; add
+  a variant there first.
+- OS APIs live behind per-OS build tags or files (`internal/mediactl/controller_stub.go` covers the
+  rest). `runtime.GOOS` is for capability detection (font lookup in `internal/ui/wizard`), not for
+  OS APIs.
+- GUI: English controls, dark gray, no light mode.
 
 ### Extension points
 
-Register in `init()` beside the existing entries:
-
-| Concern | Mechanism | Check the current set |
-|---|---|---|
-| Audio format | `registerFormat` + `register*Probe`, `internal/audio/format` | `grep -rn 'registerFormat(' internal/audio` |
-| Lyrics format | `LyricParser` + `RegisterParser`, `internal/lyrics` | `grep -rn 'RegisterParser(' internal/lyrics` |
-| Lyric source | `internal/lyrics/fetch` (client, matching, cache, rate limit) | package comment |
-| Keybinding | `KeyMap` + a handler beside the others, `internal/ui` | `grep -rn 'KeyMap' internal/ui` |
-| TUI styling | Lipgloss styles beside the views, `internal/ui` | `grep -rn 'lipgloss.Style' internal/ui` |
-| GUI menu action | action in `menus.rs` → `setup()` → handled in `neo_violet_app.rs` | read `menus.rs` |
-| GUI dialog / theme | `AppState` flag + dialogs module; theme module + `GuiConfig` | module docs |
+| Concern | Add it via | Current set |
+| --- | --- | --- |
+| Audio format | `registerFormat` + `register*Probe` in `internal/audio/format` | `grep -rn 'registerFormat(' internal/audio` |
+| Lyrics format | `LyricParser` + `RegisterParser` in `internal/lyrics` | `grep -rn 'RegisterParser(' internal/lyrics` |
+| Lyric source | one provider in `internal/lyrics/fetch`, no registry | `ls internal/lyrics/fetch` |
+| Keybinding | `KeyMap` entry plus a handler in `internal/ui` | `grep -rn 'KeyMap' internal/ui` |
+| TUI styling | Lipgloss style beside its peers in `internal/ui` | `grep -rn 'lipgloss.Style' internal/ui` |
+| GUI action or dialog | Iced message → update → view | `tools/neoviolet-gui` |
+| GUI terminal | patched `iced_term` | `tools/neoviolet-gui/deps` |
 
 ## Working in this repo
 
-- **Discovery beats memory**: `make help` (targets), `go list ./...` (packages), `docs/BUILD.md`
-  (prereqs, platforms, troubleshooting), `docs/ACKNOWLEDGEMENTS.md` (third-party code, assets,
-  dependency licenses), `go doc ./internal/<pkg>` (subsystem intent).
-- **Loop**: register beside the existing entries, keep the logic in its own file next to its
-  peers, test in the same package, iterate with `make test/short`, finish with `make check`. If
-  your change falsifies anything here — including the license table — fix it in the same change.
-- **Keep compilation caches during development**: `make clean` removes root binaries and coverage
-  reports; use `make clean/all` only when Rust compilation caches also need clearing.
+- **Discover, don't recall**: `make help`, `go list ./...`, `go doc ./internal/<pkg>`,
+  `docs/BUILD.md`, `docs/ACKNOWLEDGEMENTS.md` (licenses: one row each, texts in the appendix).
+- **Loop**: put new logic in its own file beside its peers, test in the same package, iterate with
+  `make test/short`, finish with `make check`. If your change falsifies this file, fix it here too.
+- **Keep caches**: `make clean` drops root binaries and coverage; only `make clean/all` clears the
+  Rust cache.
 
 ## Keeping this file honest
 
-- Write invariants, contracts and workflows — things that hold as files move.
-- Don't add directory trees, per-file inventories, version or threshold numbers, or the full
-  `make` target list; each has a live home (`go list`, `.github/workflows/build.yml`, `Makefile`,
-  `make help`). Copying them here is how this file rots.
-- Don't restate what the code documents; point at the package. When a statement stops being true,
-  fix or delete it — never append a correction.
+- Write invariants, contracts and workflows — what stays true as files move.
+- No directory trees, file inventories, version or threshold numbers, or full `make` target lists;
+  each has a live home (`go list`, `.github/workflows/build.yml`, `Makefile`, `make help`).
+- Don't restate what the code documents — point at the package. When something stops being true,
+  fix or delete it; never append a correction.
