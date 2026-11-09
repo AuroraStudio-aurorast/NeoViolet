@@ -80,5 +80,5 @@ func (p *pageState) renderHome(c *pageCanvas, focused bool) {
 		c.dim(4, x, "No matching sample tracks")
 		c.label(6, x, "f Clear filter")
 	}
-	c.dim(h-1, 1, fmt.Sprintf("Sample data · %d tracks · f Filter · a Queue · o Open", len(items)))
+	c.dim(h-1, 1, fmt.Sprintf("Sample data · %d tracks · f Filter · a Queue · o Browse · O Path", len(items)))
 }

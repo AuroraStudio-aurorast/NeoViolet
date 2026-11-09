@@ -393,6 +393,9 @@ func renderHelp(m *Model) string {
 
 	if m.pageOwnsInput() {
 		text := " enter confirm · esc cancel"
+		if m.pages.browser != nil && m.pages.editor == nil {
+			text = " enter choose · backspace parent · ctrl+l path · esc cancel"
+		}
 		if m.pages.quitSettings {
 			text = " s save and quit · d discard · esc cancel"
 		}

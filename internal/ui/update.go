@@ -14,6 +14,8 @@ import (
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case fileBrowserMsg:
+		return m, m.applyFileBrowser(msg)
 	case configSavedMsg:
 		return m, m.finishSettingsSave(msg)
 	case settingsLyricsMsg:

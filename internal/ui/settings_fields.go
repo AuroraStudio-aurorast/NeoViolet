@@ -108,6 +108,13 @@ func (p *pageState) setDraftField(index int, text string) error {
 	if err != nil {
 		return fmt.Errorf("%s: %w", field.label, err)
 	}
+	return p.applyDraftValue(index, value)
+}
+
+// applyDraftValue accepts a value already validated in Update or a filesystem
+// worker. Saving SoundFont settings independently revalidates the file.
+func (p *pageState) applyDraftValue(index int, value any) error {
+	field := p.settings[index]
 	values := configValues(p.draft)
 	setSettingValue(values, field.key, value)
 	data, err := json.Marshal(values)
@@ -166,6 +173,7 @@ func parseSetting(f pageSetting, text string) (any, error) {
 		if text == "" {
 			return "", nil
 		}
+		text = expandTilde(text)
 		if !strings.EqualFold(filepath.Ext(text), ".sf2") {
 			return nil, fmt.Errorf("choose a .sf2 file")
 		}
@@ -182,7 +190,7 @@ func parseSetting(f pageSetting, text string) (any, error) {
 		if !info.Mode().IsRegular() {
 			return nil, fmt.Errorf("choose a regular file")
 		}
-		return filepath.Clean(text), nil
+		return filepath.Abs(expandTilde(text))
 	case "progress_bar.fill", "volume_bar.fill":
 		chars := strings.Fields(text)
 		if len(chars) != 2 {

@@ -18,6 +18,7 @@ type pageEditor struct {
 // pageState keeps page interaction and an isolated configuration draft.
 // Playback, library, queue and effects remain samples until their wiring batches.
 type pageState struct {
+	browser                  *fileBrowser
 	cursors                  [4]int
 	scope                    int
 	filter                   string
@@ -70,7 +71,7 @@ func (p *pageState) openEditor(title, purpose, value string, field int) tea.Cmd 
 
 func (m *Model) pageOwnsInput() bool {
 	return m.pages != nil && !m.animVisible() && m.UI.Mode == ModeNormal && m.UI.Focus == FocusContent &&
-		(m.pages.editor != nil || m.pages.picker != "" || m.pages.quitSettings)
+		(m.pages.editor != nil || m.pages.picker != "" || m.pages.quitSettings || m.pages.browser != nil)
 }
 
 func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
@@ -82,12 +83,19 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 		m.Info.Set("Saving configuration…", 90)
 		return nil
 	}
+	if p.editor == nil && p.browser != nil {
+		return m.updateFileBrowser(msg)
+	}
 	if p.editor == nil {
 		p.updatePicker(msg.String())
 		return nil
 	}
 	switch msg.String() {
 	case "esc", "ctrl+g":
+		if p.browser != nil {
+			p.browser.generation++
+			p.browser.loading = false
+		}
 		p.editor = nil
 		return nil
 	case "enter":
@@ -96,7 +104,18 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 		case "filter":
 			p.filter = editor.input.Value()
 			p.cursors[0] = 0
+		case "browser_location":
+			if p.browser != nil && p.browser.loading {
+				return nil
+			}
+			return m.fileBrowserLocation(editor.input.Value())
+		case "open":
+			value := editor.input.Value()
+			return m.openFileBrowser("audio", -1, value)
 		case "setting":
+			if p.settings[editor.field].kind == "file" && editor.input.Value() != "" {
+				return m.openFileBrowser("soundfont", editor.field, editor.input.Value())
+			}
 			if err := p.setDraftField(editor.field, editor.input.Value()); err != nil {
 				m.Info.Visible = false
 				m.Error.Set(err.Error(), max(90, m.Config.Error.Duration))
@@ -158,7 +177,9 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "f":
 			return true, p.openEditor("Filter tracks", "filter", p.filter, 0)
 		case "o":
-			return true, p.openEditor("Open audio", "open", "/Music/song.flac", 0)
+			return true, m.openFileBrowser("audio", -1, "")
+		case "O":
+			return true, p.openEditor("Open audio path or URL", "open", "", -1)
 		case "a", "r":
 			m.pageNotice()
 		default:
@@ -208,6 +229,10 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			return true, nil
 		}
 		switch {
+		case k == "e" && p.settings[p.cursors[3]].kind == "file":
+			return true, p.openEditor("MIDI SoundFont path", "setting", p.settings[p.cursors[3]].value, p.cursors[3])
+		case k == "x" && p.settings[p.cursors[3]].kind == "file":
+			_ = p.setDraftField(p.cursors[3], "")
 		case k == "s":
 			return true, m.saveSettings(false)
 		case k == "r":
@@ -270,6 +295,9 @@ func (m *Model) activatePage() tea.Cmd {
 			m.Info.Set("Music folders will be connected with the library", 90)
 			return nil
 		}
+		if p.settings[p.cursors[3]].kind == "file" {
+			return m.openFileBrowser("soundfont", p.cursors[3], "")
+		}
 		return p.editSetting()
 	}
 	m.pageNotice()
@@ -313,14 +341,20 @@ func (p *pageState) reorder(k string) {
 func (p *pageState) renderEditor(c *pageCanvas) {
 	e := p.editor
 	c.label(0, 1, e.title)
-	if e.purpose == "setting" {
+	switch e.purpose {
+	case "open", "browser_location":
+		c.dim(1, 1, "Enter a local path or HTTP(S) audio URL; spaces are preserved")
+	case "setting":
 		c.dim(1, 1, "Enter validates the draft; s saves after closing this editor")
-	} else {
+	default:
 		c.dim(1, 1, "Sample input / not connected")
 	}
 	c.rule(2, 1, c.width-2)
 	e.input.SetWidth(max(1, c.width-6))
 	c.text(4, 2, e.input.View())
+	if p.browser != nil && p.browser.err != "" {
+		c.label(len(c.rows)-2, 1, browserDisplayText(p.browser.err))
+	}
 	c.dim(len(c.rows)-1, 1, "Enter Confirm · Esc Cancel")
 }
 

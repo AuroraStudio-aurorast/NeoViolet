@@ -102,6 +102,10 @@ func renderTabPage(m *Model, plan layoutPlan) string {
 		p.renderEditor(c)
 		return c.String()
 	}
+	if p.browser != nil {
+		p.browser.render(c)
+		return c.String()
+	}
 	if p.picker != "" {
 		p.renderPicker(c)
 		return c.String()

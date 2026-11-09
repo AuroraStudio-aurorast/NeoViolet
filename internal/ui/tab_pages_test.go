@@ -104,7 +104,7 @@ func TestTabPagesSavedCollectionAndSettingsSubview(t *testing.T) {
 	m.UI.ActiveTab = 3
 	pageKey(m, '2', "2")
 	pageKey(m, tea.KeyEnter, "")
-	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "MIDI SoundFont") {
+	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "Choose SoundFont") {
 		t.Fatalf("missing file selector: %q", got)
 	}
 	pageKey(m, tea.KeyEscape, "")

@@ -118,20 +118,19 @@ func runLrc(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 }
 
 // runOpen implements ":open [path]" / ":load" / ":e".
-// Without a path, a capable attached GUI hosts the native audio picker.
+// Without a path, a capable GUI hosts the picker; standalone uses the TUI browser.
 func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	if inv.Rest == "" {
 		if m.ipcAudioPicker && m.ipcSession != 0 {
 			return m, m.requestAudioPicker()
 		}
-		m.Error.Set("Usage: open <path>", m.Config.Error.Duration)
-		return m, nil
+		return m, m.openFileBrowser("audio", -1, "")
 	}
 	// Rest (not strings.Join(Parts[1:], " ")) so a file name with two adjacent
 	// spaces survives; trailing whitespace is dropped because a dragged file
 	// arrives as "path "; expandTilde so a completed "~/x.mp3" also opens.
 	path := expandTilde(strings.TrimRightFunc(inv.Rest, unicode.IsSpace))
-	if !isValidAudioPath(path) {
+	if !validOpenLocation(path) {
 		m.Error.Set("Invalid or unsupported audio file: "+inv.Rest, m.Config.Error.Duration)
 		return m, nil
 	}

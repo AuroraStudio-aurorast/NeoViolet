@@ -76,7 +76,13 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 	m.configSave = job
 	m.Info.Set("Saving configuration…", max(90, m.Config.Error.Duration))
 	return func() tea.Msg {
-		err := job.snapshot.Save()
+		var err error
+		if job.changed["soundfont_path"] {
+			_, err = parseSetting(pageSetting{key: "soundfont_path"}, job.snapshot.SoundfontPath)
+		}
+		if err == nil {
+			err = job.snapshot.Save()
+		}
 		job.done <- err
 		return configSavedMsg{job: job, err: err}
 	}
@@ -185,6 +191,7 @@ func (m *Model) confirmSettingsQuit() bool {
 		m.configSave.quit = true
 		return true
 	}
+	m.pages.browser = nil
 	m.pages.quitSettings = true
 	m.UI.Mode = ModeNormal
 	m.UI.Focus = FocusContent
