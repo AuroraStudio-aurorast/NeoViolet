@@ -18,6 +18,7 @@ func wiredSettingsModel(t *testing.T) *Model {
 	config.SetXDGConfig(true)
 	t.Cleanup(func() { config.SetXDGConfig(false) })
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
 	cfg := config.DefaultConfig()
 	cfg.IconTheme = "fallback"
 	cfg.SeekStep = 13

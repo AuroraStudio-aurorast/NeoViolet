@@ -136,7 +136,7 @@ func TestEffectsHintsNeverEraseGainValuesOrSelectedBypass(t *testing.T) {
 	m.pages.effect = 9
 	c = newPageCanvas(64, 16, m)
 	m.pages.renderEffects(c, true, m.effectsStatus())
-	if !strings.Contains(stripANSI(c.rows[13]), "Bypass") {
+	if !strings.Contains(stripANSI(strings.Split(c.String(), "\n")[13]), "Bypass") {
 		t.Fatal("hint erased selected bypass label")
 	}
 }
@@ -152,8 +152,8 @@ func TestEffectsSelectedBypassSurvivesAllSupportedCompactSizes(t *testing.T) {
 				t.Fatalf("%dx%d bypass selection missing", width, height)
 			}
 			row := c.selections[0].row
-			if !strings.Contains(stripANSI(c.rows[row]), "Bypass") {
-				t.Fatalf("%dx%d hint overwrote bypass at row%d: %s", width, height, row, stripANSI(c.rows[row]))
+			if !strings.Contains(stripANSI(strings.Split(c.String(), "\n")[row]), "Bypass") {
+				t.Fatalf("%dx%d hint overwrote bypass at row%d: %s", width, height, row, stripANSI(strings.Split(c.String(), "\n")[row]))
 			}
 		}
 	}

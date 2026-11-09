@@ -72,3 +72,47 @@ func TestPageEffectsShortLayoutKeepsBypassSelectionVisible(t *testing.T) {
 		t.Fatal("short effects layout hides the selected bypass")
 	}
 }
+
+// Repeated in-place draws must not retain styles from discarded text.
+func TestPageCanvasOverwritesHaveBoundedANSIOutput(t *testing.T) {
+	c := newPageCanvas(80, 1, setupModel())
+	for i := range 20 {
+		c.dim(0, 2+i*3, "│")
+	}
+	got := c.String()
+	if lipgloss.Width(got) != 80 || strings.Count(stripANSI(got), "│") != 20 {
+		t.Fatal("overwrites lost visible cells")
+	}
+	if len(got) > 2048 {
+		t.Fatalf("80-cell row grew to %d bytes", len(got))
+	}
+	if c.String() != got {
+		t.Fatal("render mutated canvas")
+	}
+}
+func TestEffectsFrameHasBoundedOutput(t *testing.T) {
+	m := setupModel()
+	m.UI.Width = 120
+	m.UI.Height = 30
+	m.UI.ActiveTab = 2
+	m.UI.Focus = FocusContent
+	for selected := range 10 {
+		m.pages.effect = selected
+		if frame := m.View().Content; len(frame) > 64*1024 {
+			t.Fatalf("selection %d generated %d bytes", selected, len(frame))
+		}
+	}
+}
+func TestPageCanvasPreservesEmbeddedInputStylesAndWideCells(t *testing.T) {
+	c := newPageCanvas(12, 1, setupModel())
+	c.text(0, 0, "界e\u0301\x1b[1;31mA\x1b[0mB")
+	c.text(0, 1, "x")
+	c.highlight(0, 0, 5)
+	got := c.String()
+	if plain := stripANSI(got); plain != " xe\u0301AB       " {
+		t.Fatalf("bad grapheme overwrite: %q", plain)
+	}
+	if !strings.Contains(got, "31") || !strings.Contains(got, "\x1b[") {
+		t.Fatal("embedded style was lost")
+	}
+}

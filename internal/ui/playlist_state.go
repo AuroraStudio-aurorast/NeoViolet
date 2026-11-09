@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/playlist"
 )
 
@@ -95,15 +97,56 @@ func playlistAvailability(lists []playlist.List) map[string]string {
 				continue
 			}
 			checked[path] = true
-			info, err := os.Stat(path)
-			if err != nil {
-				unavailable[path] = "Missing or unreadable"
-			} else if !info.Mode().IsRegular() {
-				unavailable[path] = "Not a regular file"
+			if issue := playlistPathIssue(path); issue != "" {
+				unavailable[path] = issue
 			}
 		}
 	}
 	return unavailable
+}
+func playlistPathIssue(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "Missing or unreadable"
+	}
+	if !info.Mode().IsRegular() {
+		return "Not a regular file"
+	}
+	return ""
+}
+
+// Existing availability is immutable until an explicit reload. Only added paths
+// absent from the published snapshot need a filesystem check after a save.
+func playlistAddedAvailability(previous []playlist.List, added []library.Track, unavailable map[string]string) map[string]string {
+	if len(added) == 0 {
+		return unavailable
+	}
+	paths := make(map[string]bool, len(added))
+	for _, track := range added {
+		if !strings.HasPrefix(track.Path, "http://") && !strings.HasPrefix(track.Path, "https://") {
+			paths[track.Path] = true
+		}
+	}
+	for _, list := range previous {
+		for _, track := range list.Tracks {
+			delete(paths, track.Path)
+		}
+	}
+	if len(paths) == 0 {
+		return unavailable
+	}
+	result := maps.Clone(unavailable)
+	if result == nil {
+		result = make(map[string]string)
+	}
+	for path := range paths {
+		if issue := playlistPathIssue(path); issue != "" {
+			result[path] = issue
+		} else {
+			delete(result, path)
+		}
+	}
+	return result
 }
 func (m *Model) playlistsReady() bool {
 	state := &m.playlists
@@ -141,23 +184,27 @@ func (m *Model) selectPlaylist(id string) {
 	}
 	p.savedTrack = max(0, min(p.savedTrack, count-1))
 }
-func (m *Model) persistPlaylists(snapshot []playlist.List, selected string) tea.Cmd {
+
+// persistPlaylists takes ownership of snapshot. Unchanged track slices may be
+// shared with the published state; all mutation paths copy before writing.
+func (m *Model) persistPlaylists(snapshot []playlist.List, selected string, added []library.Track) tea.Cmd {
 	if !m.playlistsReady() {
 		return nil
 	}
-	job := &playlistSaveJob{snapshot: playlist.Clone(snapshot), selectID: selected, editor: m.pages.editor, cursor: m.pages.savedTrack}
+	job := &playlistSaveJob{snapshot: snapshot, selectID: selected, editor: m.pages.editor, cursor: m.pages.savedTrack}
 	if list := m.selectedPlaylist(); list != nil {
 		job.originalID = list.ID
 	}
 	job.originalCursor = m.pages.savedTrack
 	m.playlists.save = job
 	path := m.playlists.path
+	previous, unavailable := m.playlists.lists, m.playlists.unavailable
 	m.Info.Set("Saving playlist…", 90)
 	job.run = sync.OnceValue(func() playlistSavedMsg {
 		err := playlist.Save(path, job.snapshot)
 		msg := playlistSavedMsg{job: job, err: err}
 		if err == nil {
-			msg.unavailable = playlistAvailability(job.snapshot)
+			msg.unavailable = playlistAddedAvailability(previous, added, unavailable)
 		}
 		return msg
 	})

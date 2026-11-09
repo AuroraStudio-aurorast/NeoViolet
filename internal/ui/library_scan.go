@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 )
 
@@ -21,6 +22,7 @@ type libraryScanEvent struct {
 	generation  uint64
 	done, total int
 	final       *libraryScannedMsg
+	tracks      []library.Track
 }
 
 func (m *Model) rescanLibrary() tea.Cmd {
@@ -38,14 +40,48 @@ func (m *Model) rescanLibrary() tea.Cmd {
 	m.scanCancel = cancel
 	roots := slices.Clone(m.Config.Library.Roots)
 	generation := m.scanGeneration
-	events := make(chan libraryScanEvent, 8)
+	events := make(chan libraryScanEvent, 2)
 	m.scanning = true
 	m.scanDone, m.scanTotal = 0, 0
+	empty := len(m.libraryTracks) == 0
 	return func() tea.Msg {
 		go func() {
 			defer close(events)
+			cachePath := ""
+			var cached *library.Cache
+			if dir, err := config.CacheDir(); err == nil {
+				cachePath = filepath.Join(filepath.Dir(dir), "library.json")
+				cached, _ = library.LoadCache(cachePath)
+			}
+			publish := func(tracks []library.Track) {
+				select {
+				case events <- libraryScanEvent{generation: generation, tracks: tracks}:
+				case <-ctx.Done():
+				default:
+				}
+			}
+			restored := empty && cached.MatchesRoots(roots) && len(cached.Entries) > 0
+			if restored {
+				publish(cached.Tracks())
+			}
+			var partial func([]library.Track)
+			// Existing results remain selectable under artist/album filters.
+			// Only a first scan without a snapshot needs placeholder updates.
+			if empty && !restored {
+				partial = publish
+			}
 			decoder := format.NewDecoder()
-			result, err := library.Scan(ctx, roots, func(path string) bool { return playableExt(filepath.Ext(path)) },
+			extensions := map[string]bool{}
+			include := func(path string) bool {
+				ext := strings.ToLower(filepath.Ext(path))
+				allowed, ok := extensions[ext]
+				if !ok {
+					allowed = playableExt(ext)
+					extensions[ext] = allowed
+				}
+				return allowed
+			}
+			result, err := library.Scan(ctx, roots, include,
 				func(ctx context.Context, path string) (library.Track, error) {
 					info, err := decoder.Probe(ctx, path)
 					return library.Track{Title: info.Title, Artist: info.Artist, Album: info.Album, Duration: info.Duration, Format: info.Format}, err
@@ -55,7 +91,10 @@ func (m *Model) rescanLibrary() tea.Cmd {
 					case <-ctx.Done():
 					default:
 					}
-				})
+				}, library.ScanOptions{Cache: cached, Publish: partial})
+			if err == nil && cachePath != "" {
+				_ = library.SaveCache(ctx, cachePath, result.Cache)
+			}
 			select {
 			case events <- libraryScanEvent{generation: generation, final: &libraryScannedMsg{generation: generation, result: result, err: err}}:
 			case <-ctx.Done():
@@ -89,7 +128,11 @@ func (m *Model) applyLibraryProgress(msg libraryProgressMsg) tea.Cmd {
 	if m.exiting || msg.event.generation != m.scanGeneration {
 		return nil
 	}
-	m.scanDone, m.scanTotal = msg.event.done, msg.event.total
+	if msg.event.tracks != nil {
+		m.installLibrary(msg.event.tracks)
+	} else {
+		m.scanDone, m.scanTotal = msg.event.done, msg.event.total
+	}
 	return func() tea.Msg { return readLibraryEvent(msg.ctx, msg.events) }
 }
 func (m *Model) applyLibraryScan(msg libraryScannedMsg) tea.Cmd {
@@ -111,6 +154,10 @@ func (m *Model) applyLibraryScan(msg libraryScannedMsg) tea.Cmd {
 	return nil
 }
 func (m *Model) installLibrary(tracks []library.Track) {
+	selectedScope := "All tracks"
+	if m.pages.scope >= 0 && m.pages.scope < len(m.pages.scopes) {
+		selectedScope = m.pages.scopes[m.pages.scope]
+	}
 	m.libraryTracks = slices.Clone(tracks)
 	scopes := []string{"All tracks"}
 	artists, albums := map[string]bool{}, map[string]bool{}
@@ -128,7 +175,7 @@ func (m *Model) installLibrary(tracks []library.Track) {
 	slices.Sort(scopes[1:])
 	m.pages.scopes = scopes
 	m.pages.artists, m.pages.albums = len(artists), len(albums)
-	m.pages.scope = max(0, min(m.pages.scope, len(scopes)-1))
+	m.pages.scope = max(0, slices.Index(scopes, selectedScope))
 	m.refreshLibraryView()
 }
 func (m *Model) refreshLibraryView() {
@@ -137,7 +184,7 @@ func (m *Model) refreshLibraryView() {
 	if p.cursors[0] >= 0 && p.cursors[0] < len(p.visible) {
 		selected = p.visible[p.cursors[0]].Path
 	}
-	p.visible = []library.Track{}
+	p.visible = p.visible[:0]
 	if len(p.scopes) == 0 {
 		p.scopes = []string{"All tracks"}
 	}
@@ -146,7 +193,7 @@ func (m *Model) refreshLibraryView() {
 		if p.scope > 0 && t.Format != p.scopes[p.scope] {
 			continue
 		}
-		if !strings.Contains(strings.ToLower(t.Title+" "+t.Artist+" "+t.Album), query) {
+		if query != "" && !strings.Contains(strings.ToLower(t.Title+" "+t.Artist+" "+t.Album), query) {
 			continue
 		}
 		p.visible = append(p.visible, t)

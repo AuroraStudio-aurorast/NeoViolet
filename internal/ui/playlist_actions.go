@@ -43,25 +43,28 @@ func (m *Model) editPlaylist(purpose string) tea.Cmd {
 	return cmd
 }
 func (m *Model) submitPlaylistName() tea.Cmd {
+	if !m.playlistsReady() {
+		return nil
+	}
 	editor := m.pages.editor
 	list, err := playlist.New(editor.input.Value(), editor.tracks)
 	if err != nil {
 		m.Error.Set(err.Error(), 120)
 		return nil
 	}
-	snapshot := playlist.Clone(m.playlists.lists)
+	snapshot := slices.Clone(m.playlists.lists)
 	if editor.purpose == "playlist_rename" {
 		for i := range snapshot {
 			if snapshot[i].ID == editor.playlistID {
 				snapshot[i].Name = list.Name
-				return m.persistPlaylists(snapshot, editor.playlistID)
+				return m.persistPlaylists(snapshot, editor.playlistID, nil)
 			}
 		}
 		m.Error.Set("Playlist no longer exists; cancel and refresh", 120)
 		return nil
 	}
 	snapshot = append(snapshot, list)
-	return m.persistPlaylists(snapshot, list.ID)
+	return m.persistPlaylists(snapshot, list.ID, list.Tracks)
 }
 func (m *Model) playSavedPlaylist(index int) tea.Cmd {
 	if !m.playlistsReady() {
@@ -104,9 +107,10 @@ func (m *Model) changePlaylist(action string, delta int) tea.Cmd {
 	if selected == nil {
 		return nil
 	}
-	snapshot := playlist.Clone(m.playlists.lists)
+	snapshot := slices.Clone(m.playlists.lists)
 	list := &snapshot[m.pages.collection]
 	index := m.pages.savedTrack
+	var added []library.Track
 	switch action {
 	case "append":
 		tracks := m.queueTracks()
@@ -120,22 +124,25 @@ func (m *Model) changePlaylist(action string, delta int) tea.Cmd {
 			m.Info.Set("Session queue is empty", 90)
 			return nil
 		}
-		list.Tracks = append(list.Tracks, captured.Tracks...)
+		added = captured.Tracks
+		// Force a new backing array even when the published list has spare capacity.
+		list.Tracks = append(list.Tracks[:len(list.Tracks):len(list.Tracks)], added...)
 	case "remove":
 		if len(list.Tracks) == 0 {
 			return nil
 		}
-		list.Tracks = slices.Delete(list.Tracks, index, index+1)
+		list.Tracks = slices.Delete(slices.Clone(list.Tracks), index, index+1)
 	case "reorder":
 		next := index + delta
 		if next < 0 || next >= len(list.Tracks) {
 			return nil
 		}
+		list.Tracks = slices.Clone(list.Tracks)
 		list.Tracks[index], list.Tracks[next] = list.Tracks[next], list.Tracks[index]
 	case "delete":
 		snapshot = slices.Delete(snapshot, m.pages.collection, m.pages.collection+1)
 	}
-	cmd := m.persistPlaylists(snapshot, selected.ID)
+	cmd := m.persistPlaylists(snapshot, selected.ID, added)
 	if action == "reorder" && m.playlists.save != nil {
 		m.playlists.save.cursor = index + delta
 	}

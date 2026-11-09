@@ -5,59 +5,112 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
 
 type pageSelection struct{ row, x, width int }
+type pageCell struct {
+	text  string
+	ink   uint16
+	width uint8
+}
+type pageInk struct {
+	style uv.Style
+	link  uv.Link
+}
 
-// pageCanvas writes into the content interior only. All coordinates are cells;
-// ANSI-aware cuts keep long names and double-width characters inside the box.
+// pageCanvas stores cells, never prior ANSI output. Overwrites retain only the
+// visible glyph/style; each row is serialized once after all drawing is done.
 type pageCanvas struct {
 	width                 int
-	rows                  []string
-	normal, muted, accent lipgloss.Style
+	rows                  [][]pageCell
+	inks                  []pageInk
+	normal, muted, accent uint16
 	selected              color.RGBA
 	selections            []pageSelection
 }
 
 func newPageCanvas(width, height int, m *Model) *pageCanvas {
+	width, height = max(0, width), max(0, height)
 	palette := newInteractionPalette(m.Accent)
-	c := &pageCanvas{
-		width: max(0, width), rows: make([]string, max(0, height)),
-		normal: lipgloss.NewStyle().Foreground(lipgloss.Color("#d9d9d9")),
-		muted:  lipgloss.NewStyle().Foreground(lipgloss.Color("#999099")),
-		accent: lipgloss.NewStyle().Foreground(palette.prompt), selected: palette.selected,
-		selections: []pageSelection{},
+	c := &pageCanvas{width: width, rows: make([][]pageCell, height), selected: palette.selected}
+	c.inks = []pageInk{{style: uv.Style{Fg: color.RGBA{R: 217, G: 217, B: 217, A: 255}}}, {style: uv.Style{Fg: color.RGBA{R: 153, G: 144, B: 153, A: 255}}}, {style: uv.Style{Fg: palette.prompt}}}
+	c.normal, c.muted, c.accent = 0, 1, 2
+	cells := make([]pageCell, width*height)
+	for i := range cells {
+		cells[i].width = 1
 	}
-	for i := range c.rows {
-		c.rows[i] = strings.Repeat(" ", c.width)
+	for y := range c.rows {
+		c.rows[y] = cells[y*width : (y+1)*width]
 	}
 	return c
 }
-
-func (c *pageCanvas) write(y, x int, text string, style lipgloss.Style) {
+func (c *pageCanvas) write(y, x int, text string, ink uint16) {
 	if y < 0 || y >= len(c.rows) || x < 0 || x >= c.width {
 		return
 	}
 	text = ansi.Truncate(strings.ReplaceAll(text, "\n", " "), c.width-x, "…")
-	c.rows[y] = pageCellSlice(c.rows[y], 0, x) + style.Render(text) + pageCellSlice(c.rows[y], x+lipgloss.Width(text), c.width)
+	if strings.ContainsRune(text, '\x1b') {
+		lines := uv.NewStyledString(text).Lines(ansi.GraphemeWidth)
+		if len(lines) == 0 {
+			return
+		}
+		for _, cell := range lines[0] {
+			if cell.Style.Fg == nil {
+				cell.Style.Fg = c.inks[ink].style.Fg
+			}
+			candidate := pageInk{style: cell.Style, link: cell.Link}
+			index := 0
+			for ; index < len(c.inks); index++ {
+				if c.inks[index].style.Equal(&candidate.style) && c.inks[index].link == candidate.link {
+					break
+				}
+			}
+			if index == len(c.inks) {
+				c.inks = append(c.inks, candidate)
+			}
+			c.setCell(y, x, cell.Content, cell.Width, uint16(index))
+			x += cell.Width
+		}
+		return
+	}
+	for len(text) > 0 && x < c.width {
+		cluster, width := ansi.FirstGraphemeCluster(text, ansi.GraphemeWidth)
+		if len(cluster) == 0 {
+			break
+		}
+		c.setCell(y, x, cluster, width, ink)
+		x += width
+		text = text[len(cluster):]
+	}
 }
-
-// A cut through half of a wide glyph is blank space, still occupying its cell.
-func pageCellSlice(row string, start, end int) string {
-	segment := ansi.Truncate(ansi.Cut(row, start, end), max(0, end-start), "")
-	return segment + strings.Repeat(" ", max(0, end-start-lipgloss.Width(segment)))
+func (c *pageCanvas) setCell(y, x int, text string, width int, ink uint16) {
+	if x < 0 || x >= c.width || width <= 0 || width > 255 {
+		return
+	}
+	row := c.rows[y]
+	for position := x; position < min(c.width, x+width); position++ {
+		start := position
+		for start > 0 && row[start].width == 0 {
+			start--
+		}
+		oldWidth := max(1, int(row[start].width))
+		for i := start; i < min(c.width, start+oldWidth); i++ {
+			row[i] = pageCell{width: 1, ink: row[start].ink}
+		}
+	}
+	if x+width > c.width {
+		return
+	}
+	row[x] = pageCell{text: text, ink: ink, width: uint8(width)}
+	for i := 1; i < width; i++ {
+		row[x+i] = pageCell{}
+	}
 }
-
-func (c *pageCanvas) text(y, x int, s string) {
-	c.write(y, x, s, c.normal)
-}
-func (c *pageCanvas) dim(y, x int, s string) {
-	c.write(y, x, s, c.muted)
-}
-func (c *pageCanvas) label(y, x int, s string) {
-	c.write(y, x, s, c.accent)
-}
+func (c *pageCanvas) text(y, x int, s string)  { c.write(y, x, s, c.normal) }
+func (c *pageCanvas) dim(y, x int, s string)   { c.write(y, x, s, c.muted) }
+func (c *pageCanvas) label(y, x int, s string) { c.write(y, x, s, c.accent) }
 func (c *pageCanvas) rule(y, x, width int) {
 	c.dim(y, x, strings.Repeat("─", max(0, min(width, c.width-x))))
 }
@@ -75,15 +128,32 @@ func (c *pageCanvas) highlight(y, x, width int) {
 	c.selections = append(c.selections, pageSelection{row: y, x: x, width: width})
 }
 func (c *pageCanvas) String() string {
-	for _, s := range c.selections {
-		if s.row < 0 || s.row >= len(c.rows) || s.x < 0 || s.x >= c.width {
-			continue
+	lines := make([]string, len(c.rows))
+	line := uv.NewLine(c.width)
+	for y, row := range c.rows {
+		for x, cell := range row {
+			if cell.width == 0 {
+				line[x] = uv.Cell{}
+				continue
+			}
+			ink := c.inks[cell.ink]
+			text := cell.text
+			if text == "" {
+				text = " "
+			}
+			line[x] = uv.Cell{Content: text, Width: int(cell.width), Style: ink.style, Link: ink.link}
 		}
-		end := min(c.width, s.x+s.width)
-		row := c.rows[s.row]
-		c.rows[s.row] = pageCellSlice(row, 0, s.x) + paintBackground(pageCellSlice(row, s.x, end), []color.RGBA{c.selected}) + pageCellSlice(row, end, c.width)
+		for _, selection := range c.selections {
+			if selection.row != y {
+				continue
+			}
+			for x := max(0, selection.x); x < min(c.width, selection.x+selection.width); x++ {
+				line[x].Style.Bg = c.selected
+			}
+		}
+		lines[y] = line.Render()
 	}
-	return strings.Join(c.rows, "\n")
+	return strings.Join(lines, "\n")
 }
 
 func renderTabPage(m *Model, plan layoutPlan) string {
