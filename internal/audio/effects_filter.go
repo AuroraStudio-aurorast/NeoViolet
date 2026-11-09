@@ -13,9 +13,9 @@ type biquadCoefficients struct {
 	active             bool
 }
 type effectsPreset struct {
-	settings       EffectsSettings
-	coefficients   [5]biquadCoefficients
-	gain, panScale float64
+	settings     EffectsSettings
+	coefficients [5]biquadCoefficients
+	gain         float64
 }
 type effectsBank struct {
 	preset effectsPreset
@@ -33,7 +33,7 @@ func newEffectsProcessor(source beep.Streamer, rate beep.SampleRate, settings Ef
 	return &effectsProcessor{source: source, current: effectsBank{preset: preset}, desired: preset, fadeLength: max(1, int(rate)/100)}
 }
 func prepareEffects(settings EffectsSettings, rate beep.SampleRate) effectsPreset {
-	result := effectsPreset{settings: settings, gain: math.Pow(10, settings.PreampDB/20), panScale: 1 / (1 + math.Abs(settings.Pan))}
+	result := effectsPreset{settings: settings, gain: math.Pow(10, settings.PreampDB/20)}
 	for i, frequency := range effectFrequencies {
 		gain := settings.Gains[i]
 		if gain == 0 || frequency >= float64(rate)/2 {
@@ -76,18 +76,12 @@ func (b *effectsBank) sample(input [2]float64) [2]float64 {
 		average := (sample[0] + sample[1]) / 2
 		sample = [2]float64{average, average}
 	}
+	// Stereo balance attenuates the opposite channel without summing phases.
+	// Folding L into R (or R into L) can cancel anti-phase stereo at an endpoint.
 	if cfg.Pan < 0 {
-		right := sample[1]
-		sample[0] += -cfg.Pan * right
 		sample[1] *= 1 + cfg.Pan
 	} else if cfg.Pan > 0 {
-		left := sample[0]
 		sample[0] *= 1 - cfg.Pan
-		sample[1] += cfg.Pan * left
-	}
-	if cfg.Pan != 0 {
-		sample[0] *= b.preset.panScale
-		sample[1] *= b.preset.panScale
 	}
 	if cfg.Swap {
 		sample[0], sample[1] = sample[1], sample[0]

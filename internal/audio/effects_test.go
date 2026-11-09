@@ -59,8 +59,8 @@ func TestEffectsNeutralBypassAndChannels(t *testing.T) {
 		{name: "preamp", cfg: EffectsSettings{PreampDB: -6.020599913279624}, want: [2]float64{.125, -.25}},
 		{name: "mono", cfg: EffectsSettings{Mono: true}, want: [2]float64{-.125, -.125}},
 		{name: "swap", cfg: EffectsSettings{Swap: true}, want: [2]float64{-.5, .25}},
-		{name: "pan-left", cfg: EffectsSettings{Pan: -1}, want: [2]float64{-.125, 0}},
-		{name: "pan-right", cfg: EffectsSettings{Pan: 1}, want: [2]float64{0, -.125}},
+		{name: "pan-left", cfg: EffectsSettings{Pan: -1}, want: [2]float64{.25, 0}},
+		{name: "pan-right", cfg: EffectsSettings{Pan: 1}, want: [2]float64{0, -.5}},
 		{name: "mono-before-pan", cfg: EffectsSettings{Mono: true, Pan: 1}, want: [2]float64{0, -.125}},
 		{name: "bypass", cfg: EffectsSettings{PreampDB: -12, Gains: [5]float64{12, 12, 12, 12, 12}, Mono: true, Swap: true, Pan: 1, Bypass: true}, want: [2]float64{.25, -.5}},
 	} {

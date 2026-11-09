@@ -186,3 +186,41 @@ func TestEffectsRealTrackerUsesSamePCMChainAndSingleMasterGain(t *testing.T) {
 		t.Fatal("tracker fixture produced no audio")
 	}
 }
+
+// R 100% must preserve the original right channel even for anti-phase stereo.
+func TestEffectsPlayerPanEndpointKeepsAudibleRightChannelAndTransport(t *testing.T) {
+	mixer := outputMixer(t)
+	p := NewPlayer()
+	source := &panStereoStream{fakeStream: fakeStream{total: 44100 * 20}}
+	p.setupStreamer(source, beep.Format{SampleRate: 44100, NumChannels: 2, Precision: 2}, nopCloser{}, "anti-phase.wav")
+	t.Cleanup(func() { _ = p.Close() })
+	if err := p.Play(); err != nil {
+		t.Fatal(err)
+	}
+	var out [512][2]float64
+	for step := 1; step <= 10; step++ {
+		if err := p.SetEffects(EffectsSettings{Pan: float64(step) / 10}); err != nil {
+			t.Fatal(err)
+		}
+		mixer.Stream(out[:])
+	}
+	if !p.IsPlaying() || p.Position() <= 0 {
+		t.Fatal("pan adjustment stopped playback progression")
+	}
+	if ended, err := p.PlaybackEnd(); ended || err != nil {
+		t.Fatal("pan endpoint was treated as EOF")
+	}
+	if got := out[len(out)-1]; got != [2]float64{0, -.25} {
+		t.Fatalf("R 100%% lost original right-channel audio: %v", got)
+	}
+}
+
+type panStereoStream struct{ fakeStream }
+
+func (s *panStereoStream) Stream(out [][2]float64) (int, bool) {
+	for i := range out {
+		out[i] = [2]float64{.25, -.25}
+		s.pos++
+	}
+	return len(out), true
+}

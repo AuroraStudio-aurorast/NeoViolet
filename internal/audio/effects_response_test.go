@@ -160,3 +160,40 @@ func TestEffectsActiveTransitionDoesNotAllocateInCallback(t *testing.T) {
 		t.Fatalf("active filter/transition allocated %v", allocations)
 	}
 }
+
+func TestEffectsPanEndpointsPreserveOppositePhaseStereo(t *testing.T) {
+	input := [2]float64{.25, -.25}
+	for _, tc := range []struct {
+		pan  float64
+		want [2]float64
+	}{
+		{-1, [2]float64{.25, 0}},
+		{-.5, [2]float64{.25, -.125}},
+		{0, input},
+		{.5, [2]float64{.125, -.25}},
+		{1, [2]float64{0, -.25}},
+	} {
+		got := effectSamples(t, EffectsSettings{Pan: tc.pan}, input)
+		if got != tc.want {
+			t.Fatalf("pan=%v cancelled or mixed source channels: got %v want %v", tc.pan, got, tc.want)
+		}
+	}
+}
+func TestEffectsLivePanToRightKeepsAudioAndSourceProgress(t *testing.T) {
+	source := &effectSource{frame: [2]float64{.25, -.25}, remaining: 44100}
+	processor := newEffectsProcessor(source, 44100, EffectsSettings{})
+	var out [512][2]float64
+	for step := 0; step <= 10; step++ {
+		processor.desired = prepareEffects(EffectsSettings{Pan: float64(step) / 10}, 44100)
+		n, ok := processor.Stream(out[:])
+		if n != 512 || !ok || processor.Err() != nil {
+			t.Fatal("pan edit stopped the stream")
+		}
+		if out[n-1][1] != -.25 {
+			t.Fatalf("R %d%% changed right-channel signal to %v", step*10, out[n-1])
+		}
+	}
+	if source.remaining != 44100-11*512 {
+		t.Fatal("pan edit stopped advancing the source")
+	}
+}
