@@ -136,7 +136,7 @@ func TestEffectsHintsNeverEraseGainValuesOrSelectedBypass(t *testing.T) {
 	m.pages.effect = 9
 	c = newPageCanvas(64, 16, m)
 	m.pages.renderEffects(c, true, m.effectsStatus())
-	if !strings.Contains(stripANSI(strings.Split(c.String(), "\n")[13]), "Bypass") {
+	if !strings.Contains(stripANSI(strings.Split(c.String(), "\n")[c.selections[0].row]), "Bypass") {
 		t.Fatal("hint erased selected bypass label")
 	}
 }
@@ -156,5 +156,26 @@ func TestEffectsSelectedBypassSurvivesAllSupportedCompactSizes(t *testing.T) {
 				t.Fatalf("%dx%d hint overwrote bypass at row%d: %s", width, height, row, stripANSI(strings.Split(c.String(), "\n")[row]))
 			}
 		}
+	}
+}
+
+func TestEffectsPanLimitAndCenterResetDoNotPausePlayback(t *testing.T) {
+	m, player := effectsFixture(t)
+	m.pages.effect = 5
+	for range 12 {
+		pageKey(m, '+', "+")
+	}
+	if m.pages.effects.Pan != 1 || player.settings.Pan != 1 || !m.Audio.IsPlaying || !player.playing {
+		t.Fatal("pan endpoint changed playback state")
+	}
+	if player.pauseCalled || player.closeCalled || player.seekCalled || player.volume != .4 {
+		t.Fatal("pan edit changed transport or master volume")
+	}
+	if frame := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(frame, "R 100%") {
+		t.Fatal("right endpoint value missing")
+	}
+	pageKey(m, 'r', "r")
+	if player.settings.Pan != 0 || !player.playing {
+		t.Fatal("reset to center stopped playback")
 	}
 }
