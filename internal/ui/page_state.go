@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
 type pageEditor struct {
@@ -14,8 +15,8 @@ type pageEditor struct {
 	field          int
 }
 
-// pageState owns sample presentation data only. It deliberately has no player,
-// library, config or filesystem handle; wiring waits for design approval.
+// pageState keeps page interaction and an isolated configuration draft.
+// Playback, library, queue and effects remain samples until their wiring batches.
 type pageState struct {
 	cursors                  [4]int
 	scope                    int
@@ -30,12 +31,17 @@ type pageState struct {
 	preamp, pan              float64
 	mono, swap, bypass       bool
 	settings                 []pageSetting
+	draft                    config.Config
+	changed                  map[string]bool
 	dirty                    bool
+	quitSettings             bool
 	editor                   *pageEditor
 	picker                   string
 	pickerIndex, pickerField int
 	formats                  []string
 	enabled                  []bool
+	baseFormats              []string
+	pickerError              string
 	pickerFormats            []string
 	pickerEnabled            []bool
 }
@@ -64,11 +70,18 @@ func (p *pageState) openEditor(title, purpose, value string, field int) tea.Cmd 
 
 func (m *Model) pageOwnsInput() bool {
 	return m.pages != nil && !m.animVisible() && m.UI.Mode == ModeNormal && m.UI.Focus == FocusContent &&
-		(m.pages.editor != nil || m.pages.picker != "")
+		(m.pages.editor != nil || m.pages.picker != "" || m.pages.quitSettings)
 }
 
 func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 	p := m.pages
+	if p.quitSettings {
+		return m.updateSettingsQuit(msg)
+	}
+	if m.configSave != nil {
+		m.Info.Set("Saving configuration…", 90)
+		return nil
+	}
 	if p.editor == nil {
 		p.updatePicker(msg.String())
 		return nil
@@ -84,8 +97,11 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 			p.filter = editor.input.Value()
 			p.cursors[0] = 0
 		case "setting":
-			p.settings[editor.field].value = editor.input.Value()
-			p.dirty = true
+			if err := p.setDraftField(editor.field, editor.input.Value()); err != nil {
+				m.Info.Visible = false
+				m.Error.Set(err.Error(), max(90, m.Config.Error.Duration))
+				return nil
+			}
 		default:
 			m.pageNotice()
 		}
@@ -187,12 +203,17 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			return false, nil
 		}
 	case 3:
+		if m.configSave != nil {
+			m.Info.Set("Saving configuration…", 90)
+			return true, nil
+		}
 		switch {
 		case k == "s":
-			m.pageNotice()
+			return true, m.saveSettings(false)
 		case k == "r":
-			p.settings[p.cursors[3]].value = p.settings[p.cursors[3]].initial
-			p.dirty = true
+			if err := p.resetSetting(p.cursors[3]); err != nil {
+				m.Error.Set(err.Error(), 90)
+			}
 		case len(k) == 1 && k >= "1" && k <= "6":
 			p.jumpGroup(int(k[0] - '1'))
 		default:
@@ -242,6 +263,13 @@ func (m *Model) activatePage() tea.Cmd {
 			p.adjustEffect(1)
 		}
 	case 3:
+		if m.configSave != nil {
+			return nil
+		}
+		if p.settings[p.cursors[3]].key == "" {
+			m.Info.Set("Music folders will be connected with the library", 90)
+			return nil
+		}
 		return p.editSetting()
 	}
 	m.pageNotice()
@@ -285,7 +313,11 @@ func (p *pageState) reorder(k string) {
 func (p *pageState) renderEditor(c *pageCanvas) {
 	e := p.editor
 	c.label(0, 1, e.title)
-	c.dim(1, 1, "Sample input / not connected")
+	if e.purpose == "setting" {
+		c.dim(1, 1, "Enter validates the draft; s saves after closing this editor")
+	} else {
+		c.dim(1, 1, "Sample input / not connected")
+	}
 	c.rule(2, 1, c.width-2)
 	e.input.SetWidth(max(1, c.width-6))
 	c.text(4, 2, e.input.View())

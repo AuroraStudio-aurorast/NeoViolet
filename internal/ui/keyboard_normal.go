@@ -57,6 +57,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		if m.isGUI() {
 			return m, nil
 		}
+		if m.confirmSettingsQuit() {
+			return m, nil
+		}
 		m.cleanup()
 		return m, tea.Quit
 
@@ -142,6 +145,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	// ─── Tier 3: Fallback quit confirmation ───
 	if !m.isGUI() && (keyStr == "q" || keyStr == "Q") {
 		if m.QuitConfirm {
+			if m.confirmSettingsQuit() {
+				return m, nil
+			}
 			m.cleanup()
 			return m, tea.Quit
 		}

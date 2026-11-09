@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 )
 
 func TestPageNavigationRetainsSelectionAndDoesNotEscapeFocus(t *testing.T) {
@@ -81,7 +82,8 @@ func TestSampleEffectsAreBoundedAndResetLocally(t *testing.T) {
 }
 
 func TestSampleFormatPickerOrdersAndCancelsWithoutSaving(t *testing.T) {
-	m := setupModel()
+	cfg := config.DefaultConfig()
+	m := NewModel("", &cfg)
 	m.UI.Focus = FocusContent
 	m.UI.ActiveTab = 3
 	pageKey(m, '3', "3")
@@ -98,13 +100,14 @@ func TestSampleFormatPickerOrdersAndCancelsWithoutSaving(t *testing.T) {
 	if !strings.Contains(m.pages.settings[m.pages.cursors[3]].value, "8 formats") {
 		t.Fatal("confirmation lost the enabled count")
 	}
-	if len(m.Config.Lyrics.FormatPriority) != 0 {
+	if len(m.Config.Lyrics.FormatPriority) != 9 || m.Config.Lyrics.FormatPriority[0] != "embedded" {
 		t.Fatal("sample picker changed real format preferences")
 	}
 }
 
 func TestSampleFormatPickerCancelDiscardsChanges(t *testing.T) {
-	m := setupModel()
+	cfg := config.DefaultConfig()
+	m := NewModel("", &cfg)
 	m.UI.Focus = FocusContent
 	m.UI.ActiveTab = 3
 	pageKey(m, '3', "3")

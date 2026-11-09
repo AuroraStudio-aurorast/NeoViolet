@@ -71,7 +71,7 @@ func TestTabPageActionsRemainPresentationOnly(t *testing.T) {
 	m := setupModel()
 	m.UI.Focus = FocusContent
 	before, _ := json.Marshal(m.Config)
-	for tab, keys := range map[int]string{0: "a", 1: "ds", 2: "+=", 3: "s"} {
+	for tab, keys := range map[int]string{0: "a", 1: "ds", 2: "+="} {
 		m.UI.ActiveTab = tab
 		pageKey(m, tea.KeyEnter, "")
 		for _, r := range keys {
@@ -104,7 +104,7 @@ func TestTabPagesSavedCollectionAndSettingsSubview(t *testing.T) {
 	m.UI.ActiveTab = 3
 	pageKey(m, '2', "2")
 	pageKey(m, tea.KeyEnter, "")
-	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "Choose SoundFont") {
+	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "MIDI SoundFont") {
 		t.Fatalf("missing file selector: %q", got)
 	}
 	pageKey(m, tea.KeyEscape, "")

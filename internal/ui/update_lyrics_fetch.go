@@ -54,6 +54,7 @@ func (m *Model) maybeFetchLyrics(path string) tea.Cmd {
 // via FetchLyricsResultMsg. Shared by auto-fetch and :lrc switch online.
 func (m *Model) buildFetchCmd(meta fetch.TrackMeta, sig, baseURL string) tea.Cmd {
 	fetchCfg := m.Config.Lyrics.Fetch
+	revision := m.settingsLyricsRevision
 	opts := fetch.Opts{
 		BaseURL:     baseURL,
 		Timeout:     time.Duration(fetchCfg.Timeout) * time.Second,
@@ -64,13 +65,16 @@ func (m *Model) buildFetchCmd(meta fetch.TrackMeta, sig, baseURL string) tea.Cmd
 	}
 	return func() tea.Msg {
 		data, err := fetch.Lyrics(context.Background(), meta, opts)
-		return FetchLyricsResultMsg{Data: data, Err: err, Sig: sig}
+		return FetchLyricsResultMsg{Data: data, Err: err, Sig: sig, Revision: revision}
 	}
 }
 
 // handleFetchLyricsResult mounts fetched lyrics, guarding against stale
 // results from a superseded track switch.
 func handleFetchLyricsResult(m *Model, msg FetchLyricsResultMsg) (tea.Model, tea.Cmd) {
+	if msg.Revision != m.settingsLyricsRevision {
+		return m, nil
+	}
 	if msg.Err != nil {
 		// Transient failures must not poison the cache or the pending marker;
 		// negative results were already cached inside fetch.Lyrics.

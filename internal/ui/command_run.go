@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"math"
 	"strconv"
 	"strings"
@@ -9,39 +8,25 @@ import (
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
-
-	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 )
 
 // runSave implements ":w" / ":save".
 func runSave(m *Model, _ invocation) (tea.Model, tea.Cmd) {
-	m.Config.DefaultVolume = m.Audio.Volume
-	if err := m.Config.Save(); err != nil {
-		m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
-	} else {
-		m.Info.SetSuccess("Configuration saved", m.Config.Error.Duration)
-	}
-	return m, nil
+	return m, m.saveSettings(false)
 }
 
 // runSaveQuit implements ":wq". In GUI mode the wrapper is told to quit
 // immediately, without its confirmation dialog.
 func runSaveQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
-	m.Config.DefaultVolume = m.Audio.Volume
-	if err := m.Config.Save(); err != nil {
-		m.Error.Set(fmt.Sprintf("Save failed: %v", err), m.Config.Error.Duration)
-	}
-	if m.ipcServer != nil {
-		f := false
-		_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
-	}
-	m.cleanup()
-	return m, tea.Quit
+	return m, m.saveSettings(true)
 }
 
 // runQuit implements ":quit" / ":q". In GUI mode it asks the wrapper for
 // confirmation for a loaded track or pending load. An idle session closes directly.
 func runQuit(m *Model, _ invocation) (tea.Model, tea.Cmd) {
+	if m.confirmSettingsQuit() {
+		return m, nil
+	}
 	if m.ipcServer != nil {
 		if err := m.requestGUIQuit(); err == nil {
 			return m, nil

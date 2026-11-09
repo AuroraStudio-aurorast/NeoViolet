@@ -90,9 +90,10 @@ type (
 
 	// FetchLyricsResultMsg carries the outcome of an async online lyric fetch.
 	FetchLyricsResultMsg struct {
-		Data *lyrics.Data
-		Err  error
-		Sig  string // normalized track signature; stale results are dropped
+		Revision uint64
+		Data     *lyrics.Data
+		Err      error
+		Sig      string // normalized track signature; stale results are dropped
 	}
 
 	// MediaCtlMsg carries an OS media-control command.
@@ -259,23 +260,27 @@ func (e *MessageState) Tick() {
 
 // Model represents the main application state
 type Model struct {
-	pages          *pageState
-	Audio          *AudioState
-	UI             *State
-	Components     *ComponentState
-	Error          *MessageState
-	Info           *MessageState
-	Config         *config.Config
-	Icons          IconSet
-	Accent         *accent.Accent
-	QuitConfirm    bool
-	ExitCode       int
-	Loading        bool
-	loadingTick    int
-	pendingPath    string
-	pendingSeek    time.Duration
-	CommandHistory []string
-	historyIndex   int
+	configSave             *configSaveJob
+	volumeRevision         uint64
+	settingsLyricsRevision uint64
+	volumeSavePending      bool
+	pages                  *pageState
+	Audio                  *AudioState
+	UI                     *State
+	Components             *ComponentState
+	Error                  *MessageState
+	Info                   *MessageState
+	Config                 *config.Config
+	Icons                  IconSet
+	Accent                 *accent.Accent
+	QuitConfirm            bool
+	ExitCode               int
+	Loading                bool
+	loadingTick            int
+	pendingPath            string
+	pendingSeek            time.Duration
+	CommandHistory         []string
+	historyIndex           int
 
 	// Completion state for the command line. completionIndex is -1 while
 	// nothing is selected: the candidate list is shown passively, so <enter>

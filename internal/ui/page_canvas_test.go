@@ -32,7 +32,7 @@ func TestPageSamplesLeaveTransportUntouched(t *testing.T) {
 	m.Audio.Player = player
 	m.Audio.Volume = .4
 	m.Audio.IsPlaying = true
-	for tab := range 4 {
+	for tab := range 3 {
 		m.UI.ActiveTab = tab
 		pageKey(m, tea.KeyEnter, "")
 		for _, r := range "as+=r" {

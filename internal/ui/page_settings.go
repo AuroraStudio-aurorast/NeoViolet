@@ -3,7 +3,6 @@ package ui
 import (
 	"fmt"
 	"slices"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -32,9 +31,9 @@ func (p *pageState) settingRows() ([]pageSettingRow, int) {
 
 func (p *pageState) renderSettings(c *pageCanvas, focused bool) {
 	w, h := c.width, len(c.rows)
-	status := "Sample values"
+	status := "Saved configuration"
 	if p.dirty {
-		status = "Unsaved sample edits"
+		status = "Unsaved changes"
 	}
 	c.pair(0, 1, w-2, "Settings", status)
 	current := p.settings[p.cursors[3]]
@@ -60,7 +59,7 @@ func (p *pageState) renderSettings(c *pageCanvas, focused bool) {
 			c.highlight(y, 1, w-2)
 		}
 	}
-	c.dim(h-1, 1, "Preview only · Enter Edit · s Save · 1-6 Group · r Reset")
+	c.dim(h-1, 1, "Enter Edit · s Save · 1-6 Group · r Default")
 }
 
 func (p *pageState) jumpGroup(group int) {
@@ -75,8 +74,15 @@ func (p *pageState) jumpGroup(group int) {
 func (p *pageState) editSetting() tea.Cmd {
 	index := p.cursors[3]
 	f := &p.settings[index]
+	if f.kind == "folders" {
+		return nil
+	}
+	if f.kind == "file" {
+		return p.openEditor(f.label, "setting", f.value, index)
+	}
 	if f.kind != "" {
 		p.picker, p.pickerField, p.pickerIndex = f.kind, index, 0
+		p.pickerError = ""
 		if f.kind == "formats" {
 			p.pickerFormats = slices.Clone(p.formats)
 			p.pickerEnabled = slices.Clone(p.enabled)
@@ -84,34 +90,18 @@ func (p *pageState) editSetting() tea.Cmd {
 		return nil
 	}
 	if len(f.options) > 0 {
-		f.value = f.options[(slices.Index(f.options, f.value)+1)%len(f.options)]
-		p.dirty = true
+		_ = p.setDraftField(index, f.options[(slices.Index(f.options, f.value)+1)%len(f.options)])
 		return nil
 	}
 	return p.openEditor(f.label, "setting", f.value, index)
 }
 
-func (p *pageState) pickerItems() []string {
-	switch p.picker {
-	case "formats":
-		return p.formats
-	case "file":
-		return []string{"..", "GeneralUser GS.sf2", "Piano.sf2", "Strings.sf2"}
-	default:
-		return []string{"/Music/Albums", "/Music/Singles", "[ Add sample folder ]"}
-	}
-}
+func (p *pageState) pickerItems() []string { return p.formats }
 
 func (p *pageState) renderPicker(c *pageCanvas) {
-	title := "Music folders"
-	switch p.picker {
-	case "file":
-		title = "Choose SoundFont"
-	case "formats":
-		title = "Lyric format priority"
-	}
+	title := "Lyric format priority"
 	c.label(0, 1, "Settings / "+title)
-	c.dim(1, 1, "Sample selection / no filesystem access")
+	c.dim(1, 1, "Select enabled formats in priority order")
 	c.rule(2, 1, c.width-2)
 	items := p.pickerItems()
 	available := max(1, len(c.rows)-5)
@@ -138,6 +128,9 @@ func (p *pageState) renderPicker(c *pageCanvas) {
 	if p.picker == "formats" {
 		hint = "Space Enable · J/K Order · Enter Confirm · Esc Cancel"
 	}
+	if p.pickerError != "" {
+		hint = p.pickerError
+	}
 	c.dim(len(c.rows)-1, 1, hint)
 }
 
@@ -161,27 +154,17 @@ func (p *pageState) updatePicker(k string) {
 	case "J", "K":
 		p.reorderFormat(k)
 	case "enter":
-		field := &p.settings[p.pickerField]
-		switch p.picker {
-		case "formats":
-			count := 0
-			for _, enabled := range p.enabled {
-				if enabled {
-					count++
-				}
-			}
-			field.value = fmt.Sprintf("%d formats · reorder…", count)
-		case "file":
-			if p.pickerIndex == 0 {
-				return
-			}
-			field.value = "/Music/SoundFonts/" + items[p.pickerIndex]
-		case "folders":
-			if strings.HasPrefix(items[p.pickerIndex], "[") {
-				field.value = "3 sample folders"
+		order := []string{}
+		for i, name := range p.formats {
+			if p.enabled[i] {
+				order = append(order, name)
 			}
 		}
-		p.dirty = true
+		if len(order) == 0 {
+			p.pickerError = "Enable at least one format · Esc Cancel"
+			return
+		}
+		p.setFormatDraft(order)
 		p.pickerFormats, p.pickerEnabled = nil, nil
 		p.picker = ""
 	}

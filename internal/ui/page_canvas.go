@@ -92,6 +92,12 @@ func renderTabPage(m *Model, plan layoutPlan) string {
 		return c.String()
 	}
 	p := m.pages
+	if p.quitSettings {
+		c.label(0, 1, "Unsaved settings")
+		c.text(2, 1, "Save your changes before quitting?")
+		c.dim(4, 1, "s Save and quit · d Discard and quit · Esc Cancel")
+		return c.String()
+	}
 	if p.editor != nil {
 		p.renderEditor(c)
 		return c.String()

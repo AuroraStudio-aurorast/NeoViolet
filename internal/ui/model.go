@@ -167,6 +167,8 @@ func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed b
 		pendingPath: filePath,
 	}
 
+	m.pages.initSettings(*cfg)
+
 	if len(seekTo) > 0 && seekTo[0] > 0 {
 		m.pendingSeek = seekTo[0]
 	}
@@ -274,6 +276,7 @@ func (m *Model) cleanup() {
 	if m.exiting {
 		return
 	}
+	m.flushSettingsSave()
 	m.exiting = true
 	m.pendingLoad.cancel()
 	m.pendingLoad = nil
@@ -326,6 +329,10 @@ func (m *Model) saveVolumeConfig() {
 		return
 	}
 	m.Config.DefaultVolume = m.Audio.Volume
+	if m.configSave != nil {
+		m.volumeSavePending = true
+		return
+	}
 	if err := m.Config.Save(); err != nil {
 		logger.Warn("Failed to save volume config", "err", err)
 	}

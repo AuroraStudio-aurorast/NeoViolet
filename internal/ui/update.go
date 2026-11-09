@@ -14,6 +14,10 @@ import (
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case configSavedMsg:
+		return m, m.finishSettingsSave(msg)
+	case settingsLyricsMsg:
+		return m, m.applySettingsLyrics(msg)
 	case ipc.Event:
 		return handleIPCEvent(m, msg)
 	case TickMsg:
@@ -180,7 +184,7 @@ func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {
-	if m.exiting || msg.Generation != m.activeGeneration {
+	if m.exiting || msg.Generation != m.activeGeneration || !m.Config.Accent.IsEnabled() {
 		return m, nil
 	}
 	m.Accent = msg.Accent

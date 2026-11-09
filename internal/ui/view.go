@@ -392,7 +392,10 @@ func renderHelp(m *Model) string {
 	}
 
 	if m.pageOwnsInput() {
-		text := " enter confirm · esc cancel · preview only"
+		text := " enter confirm · esc cancel"
+		if m.pages.quitSettings {
+			text = " s save and quit · d discard · esc cancel"
+		}
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#b4b4b4")).Render(clampRowWidth(text, m.UI.Width))
 	}
 	h := m.Components.Help
