@@ -47,6 +47,14 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.finishAudioLoad()
 
+	if err := m.applyEffectsTo(msg.Player); err != nil {
+		_ = msg.Player.Close()
+		m.failQueueLoad()
+		message := fmt.Sprintf("Failed to apply effects: %v", err)
+		m.Error.Set(message, 180)
+		m.finishIPCOpen("failed", message)
+		return m, nil
+	}
 	current := m.Audio.Player
 	wasPlaying := current != nil && current.IsPlaying()
 	if wasPlaying {

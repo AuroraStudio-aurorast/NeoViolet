@@ -5,6 +5,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 )
@@ -18,7 +19,7 @@ type pageEditor struct {
 }
 
 // pageState keeps page interaction and an isolated configuration draft.
-// Library, queue and saved playlist snapshots belong to Model; DSP remains a sample.
+// Library, queue and saved playlist snapshots belong to Model. Effects are session values.
 type pageState struct {
 	visible                  []library.Track
 	scopes                   []string
@@ -34,9 +35,7 @@ type pageState struct {
 	savedTrack               int
 	deletePlaylist           string
 	effect                   int
-	gains                    [5]float64
-	preamp, pan              float64
-	mono, swap, bypass       bool
+	effects                  audio.EffectsSettings
 	settings                 []pageSetting
 	draft                    config.Config
 	baseline                 config.Config
@@ -57,15 +56,11 @@ type pageState struct {
 func newPageState() *pageState {
 	return &pageState{
 		scopes: []string{"All tracks"}, visible: []library.Track{},
-		effect: 0, preamp: -3,
+		effect:   0,
 		settings: samplePageSettings(),
 		formats:  []string{"embedded", "lrc", "spl", "ttml", "qrc", "yrc", "eslrc", "lys", "online"},
 		enabled:  []bool{true, true, true, true, true, true, true, true, true},
 	}
-}
-
-func (m *Model) pageNotice() {
-	m.Info.Set("Preview only: sample content, not connected", max(90, m.Config.Error.Duration))
 }
 
 func (p *pageState) openEditor(title, purpose, value string, field int) tea.Cmd {
@@ -143,7 +138,6 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 				return nil
 			}
 		default:
-			m.pageNotice()
 		}
 		p.editor = nil
 		return nil
@@ -220,13 +214,11 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "right":
 			m.movePageCursor(2, 1)
 		case "+", "=":
-			p.adjustEffect(1)
-			m.pageNotice()
+			m.adjustEffect(1)
 		case "-":
-			p.adjustEffect(-1)
-			m.pageNotice()
+			m.adjustEffect(-1)
 		case "r":
-			p.resetEffect()
+			m.resetEffect()
 		default:
 			return false, nil
 		}
@@ -303,7 +295,7 @@ func (m *Model) activatePage() tea.Cmd {
 		}
 	case 2:
 		if p.effect >= 6 && p.effect <= 7 || p.effect == 9 {
-			p.adjustEffect(1)
+			m.adjustEffect(1)
 		}
 	case 3:
 		if m.configSave != nil {
@@ -319,7 +311,6 @@ func (m *Model) activatePage() tea.Cmd {
 		}
 		return p.editSetting()
 	}
-	m.pageNotice()
 	return nil
 }
 

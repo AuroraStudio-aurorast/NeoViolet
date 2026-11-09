@@ -58,14 +58,14 @@ func TestSessionQueueOrderRemoveAndUndo(t *testing.T) {
 	}
 }
 
-func TestSampleEffectsAreBoundedAndResetLocally(t *testing.T) {
+func TestSessionEffectsAreBoundedAndResetLocally(t *testing.T) {
 	m := setupModel()
 	m.UI.Focus = FocusContent
 	m.UI.ActiveTab = 2
 	for range 30 {
 		pageKey(m, '+', "+")
 	}
-	if m.pages.gains[0] != 12 {
+	if m.pages.effects.Gains[0] != 12 {
 		t.Fatal("sample EQ exceeded its displayed maximum")
 	}
 	for range 5 {
@@ -74,11 +74,11 @@ func TestSampleEffectsAreBoundedAndResetLocally(t *testing.T) {
 	for range 30 {
 		pageKey(m, '-', "-")
 	}
-	if m.pages.pan != -1 {
+	if m.pages.effects.Pan != -1 {
 		t.Fatal("sample pan exceeded its channel range")
 	}
 	pageKey(m, 'r', "r")
-	if m.pages.pan != 0 || m.Audio.Player != nil {
+	if m.pages.effects.Pan != 0 || m.Audio.Player != nil {
 		t.Fatal("reset did not remain a presentation operation")
 	}
 }

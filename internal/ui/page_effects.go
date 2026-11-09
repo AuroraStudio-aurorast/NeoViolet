@@ -8,10 +8,10 @@ import (
 
 var pageBands = [...]string{"80 Hz", "250 Hz", "1 kHz", "4 kHz", "12 kHz"}
 
-func (p *pageState) renderEffects(c *pageCanvas, focused bool) {
+func (p *pageState) renderEffects(c *pageCanvas, focused bool, status string) {
 	w, h := c.width, len(c.rows)
 	bypass := "Off"
-	if p.bypass {
+	if p.effects.Bypass {
 		bypass = "On"
 	}
 	c.pair(0, 1, w-2, "Sound desk", "Bypass "+bypass)
@@ -23,7 +23,7 @@ func (p *pageState) renderEffects(c *pageCanvas, focused bool) {
 		c.divider(left+1, 1, h-2)
 	}
 	if !split && p.effect >= 5 {
-		c.dim(1, 1, "Channel controls / sample values")
+		c.dim(1, 1, "Channel controls / session")
 		p.renderChannelControls(c, 1, w-2, focused)
 	} else {
 		heading := "5-band equalizer / dB"
@@ -37,9 +37,17 @@ func (p *pageState) renderEffects(c *pageCanvas, focused bool) {
 		}
 	}
 	if h >= 20 {
-		c.dim(h-2, 1, "PCM → Preamp → EQ → Pan / Mono / Swap → Output")
+		c.dim(h-2, 1, "PCM → Preamp → EQ → Mono → Pan → Swap → Volume")
 	}
-	c.dim(h-1, 1, "Preview only · ←/→ Select · +/- Adjust · r Reset")
+	if status == "" {
+		status = "Session · ready for next track"
+	}
+	c.dim(h-1, 1, status)
+	if h >= 20 {
+		c.dim(h-3, 1, "←/→ Select · +/- Adjust · Enter Toggle · r Reset")
+	} else {
+		c.dim(h-2, 1, "←/→ Select · +/- Edit · r Reset")
+	}
 }
 
 func (p *pageState) renderFaders(c *pageCanvas, left int, focused bool) {
@@ -63,10 +71,10 @@ func (p *pageState) renderFaders(c *pageCanvas, left int, focused bool) {
 		x := 6 + i*(left-10)/4
 		selected := p.effect == i
 		c.divider(x, top, bottom-top+1)
-		knob := top + int(math.Round((12-p.gains[i])/24*float64(height)))
+		knob := top + int(math.Round((12-p.effects.Gains[i])/24*float64(height)))
 		c.label(knob, x-1, "━━━")
 		c.text(bottom+1, x-3, band)
-		c.dim(bottom+2, x-2, fmt.Sprintf("%.1f", p.gains[i]))
+		c.dim(bottom+2, x-2, fmt.Sprintf("%.1f", p.effects.Gains[i]))
 		if selected && focused {
 			for y := top; y <= bottom+2; y++ {
 				c.highlight(y, x-2, 5)
@@ -80,24 +88,24 @@ func (p *pageState) renderChannelControls(c *pageCanvas, x, width int, focused b
 	c.dim(1, x, "Channels")
 	y := 4
 	offsets := []int{0, 4, 6, 10, 14}
-	if h <= 14 {
+	if h <= 15 {
 		y = 2
 		offsets = []int{0, 1, 2, 3, 4}
-	} else if h < 20 {
+	} else if h < 22 {
 		y = 3
 		offsets = []int{0, 3, 5, 8, 10}
 	}
-	states := []string{fmt.Sprintf("%.1f", p.pan), "Off", "Off", fmt.Sprintf("%.1f dB", p.preamp), "Off"}
-	if p.pan == 0 {
+	states := []string{fmt.Sprintf("%.1f", p.effects.Pan), "Off", "Off", fmt.Sprintf("%.1f dB", p.effects.PreampDB), "Off"}
+	if p.effects.Pan == 0 {
 		states[0] = "Center"
 	}
-	if p.mono {
+	if p.effects.Mono {
 		states[1] = "On"
 	}
-	if p.swap {
+	if p.effects.Swap {
 		states[2] = "On"
 	}
-	if p.bypass {
+	if p.effects.Bypass {
 		states[4] = "On"
 	}
 	labels := []string{"Pan", "Mono", "Swap L/R", "Preamp", "Bypass"}
@@ -111,44 +119,11 @@ func (p *pageState) renderChannelControls(c *pageCanvas, x, width int, focused b
 			c.highlight(row, x, width)
 		}
 	}
-	if h > 14 {
+	if h > 15 {
 		c.dim(y+1, x, "L"+strings.Repeat("─", max(1, width-2))+"R")
-		c.label(y+1, x+1+int(math.Round((p.pan+1)/2*float64(max(0, width-3)))), "●")
+		c.label(y+1, x+1+int(math.Round((p.effects.Pan+1)/2*float64(max(0, width-3)))), "●")
 		gy := y + offsets[3] + 1
 		c.dim(gy, x, strings.Repeat("─", max(0, width)))
-		c.label(gy, x+int(math.Round((p.preamp+12)/12*float64(max(0, width-1)))), "●")
-	}
-}
-
-func (p *pageState) adjustEffect(delta float64) {
-	switch p.effect {
-	case 0, 1, 2, 3, 4:
-		p.gains[p.effect] = max(-12, min(12, p.gains[p.effect]+delta*.5))
-	case 5:
-		p.pan = math.Round(max(-1, min(1, p.pan+delta*.1))*10) / 10
-	case 6:
-		p.mono = !p.mono
-	case 7:
-		p.swap = !p.swap
-	case 8:
-		p.preamp = max(-12, min(0, p.preamp+delta*.5))
-	case 9:
-		p.bypass = !p.bypass
-	}
-}
-func (p *pageState) resetEffect() {
-	switch p.effect {
-	case 0, 1, 2, 3, 4:
-		p.gains[p.effect] = 0
-	case 5:
-		p.pan = 0
-	case 6:
-		p.mono = false
-	case 7:
-		p.swap = false
-	case 8:
-		p.preamp = -3
-	case 9:
-		p.bypass = false
+		c.label(gy, x+int(math.Round((p.effects.PreampDB+12)/12*float64(max(0, width-1)))), "●")
 	}
 }

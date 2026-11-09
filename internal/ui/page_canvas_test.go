@@ -67,7 +67,7 @@ func TestPageEffectsShortLayoutKeepsBypassSelectionVisible(t *testing.T) {
 	p.effect = 9
 	plan := m.layoutPlan()
 	c := newPageCanvas(plan.ContentInnerW, plan.ContentInnerH, m)
-	p.renderEffects(c, true)
+	p.renderEffects(c, true, m.effectsStatus())
 	if len(c.selections) == 0 {
 		t.Fatal("short effects layout hides the selected bypass")
 	}

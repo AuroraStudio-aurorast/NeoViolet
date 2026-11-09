@@ -27,7 +27,7 @@ func pageHelpBindings(m *Model) []key.Binding {
 		}
 		bindings = append(bindings, binding("v", "queue/saved"))
 	case 2:
-		bindings = []key.Binding{binding("←/→", "select"), binding("+/−", "sample")}
+		bindings = []key.Binding{binding("←/→", "select"), binding("+/−", "adjust"), binding("r", "reset")}
 	case 3:
 		bindings = append(bindings, binding("enter", "edit"), binding("1-6", "group"))
 	}

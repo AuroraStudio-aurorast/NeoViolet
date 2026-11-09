@@ -132,7 +132,7 @@ func renderTabPage(m *Model, plan layoutPlan) string {
 	case 1:
 		m.renderPlaylists(c, m.UI.Focus == FocusContent)
 	case 2:
-		p.renderEffects(c, m.UI.Focus == FocusContent)
+		p.renderEffects(c, m.UI.Focus == FocusContent, m.effectsStatus())
 	case 3:
 		p.renderSettings(c, m.UI.Focus == FocusContent)
 	}

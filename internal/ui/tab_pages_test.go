@@ -67,8 +67,8 @@ func TestTabPageEditorOwnsTextAndPaste(t *testing.T) {
 	}
 }
 
-// Sample page controls must not become accidental playback/configuration wiring.
-func TestTabPageActionsRemainPresentationOnly(t *testing.T) {
+// Idle page controls must not open audio or persist configuration.
+func TestIdleTabPageActionsDoNotStartPlaybackOrPersistConfig(t *testing.T) {
 	m := setupModel()
 	m.UI.Focus = FocusContent
 	before, _ := json.Marshal(m.Config)
@@ -83,9 +83,6 @@ func TestTabPageActionsRemainPresentationOnly(t *testing.T) {
 	after, _ := json.Marshal(m.Config)
 	if string(before) != string(after) || m.Audio.Player != nil || m.pendingLoad != nil {
 		t.Fatal("sample action touched real configuration or playback")
-	}
-	if !m.Info.Visible {
-		t.Fatal("unconnected action did not explain its placeholder status")
 	}
 }
 

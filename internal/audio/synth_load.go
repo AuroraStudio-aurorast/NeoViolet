@@ -144,7 +144,7 @@ func (p *Player) openMIDISynth(path string, sr beep.SampleRate) error {
 
 	mp.SetTitle(filepath.Base(path))
 	mp.SetArtist("MIDI")
-	mp.SetVolume(p.linearVolume)
+	mp.SetVolume(1)
 
 	p.synthCtrl = mp
 	p.synthActive = true
@@ -186,7 +186,7 @@ func (p *Player) openTrackerSynth(path, ext string, sr beep.SampleRate) error {
 		return err
 	}
 
-	ctrl.SetVolume(p.linearVolume)
+	ctrl.SetVolume(1)
 
 	p.synthCtrl = ctrl
 	p.synthActive = true
@@ -209,7 +209,7 @@ func (p *Player) playSynthetic() error {
 		return err
 	}
 
-	p.attachOutput(p.synthCtrl.Streamer())
+	p.attachOutput(p.synthCtrl.Streamer(), false)
 	p.isPlaying = true
 	p.isPaused = false
 	return nil
