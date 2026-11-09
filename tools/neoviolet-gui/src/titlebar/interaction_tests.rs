@@ -213,3 +213,49 @@ fn startup_menu_keyboard_skips_unavailable_player_commands() {
         Some(Action::About)
     ));
 }
+
+#[test]
+fn macos_title_input_starts_after_the_measured_native_button_reservation() {
+    use iced::advanced::mouse;
+    let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+        iced::Font::DEFAULT,
+        14.0.into(),
+    ));
+    for (inset, x, title_input) in [
+        (None, 80.0, true),
+        (Some(86.0), 82.0, false),
+        (Some(86.0), 90.0, true),
+    ] {
+        let mut state = State::new(Size::new(480.0, 320.0));
+        state.mac_title_inset = inset;
+        let content = iced::widget::container(iced::widget::Space::new())
+            .width(Length::Fill)
+            .height(Length::Fill);
+        let view = state.wrap_for(content.into(), "NeoViolet", false, Platform::MacOs);
+        let mut ui = iced_runtime::UserInterface::build(
+            view,
+            state.size,
+            iced_runtime::user_interface::Cache::new(),
+            &mut renderer,
+        );
+        let position = Point::new(x, 17.0);
+        let mut messages = Vec::new();
+        let _ = ui.update(
+            &[iced::Event::Mouse(mouse::Event::ButtonPressed(
+                mouse::Button::Left,
+            ))],
+            mouse::Cursor::Available(position),
+            &mut renderer,
+            &mut iced::advanced::clipboard::Null,
+            &mut messages,
+        );
+        assert_eq!(
+            messages.iter().any(|message| matches!(
+                message,
+                crate::app::Message::Titlebar(Message::PressTitle)
+            )),
+            title_input,
+            "the button reservation must remain outside the draggable title at x={x}"
+        );
+    }
+}

@@ -59,6 +59,7 @@ pub struct State {
     pub maximized: bool,
     pub caption_hover: Option<CaptionControl>,
     pub fullscreen: bool,
+    pub mac_title_inset: Option<f32>,
     press: Option<Point>,
     pub size: Size,
     pub cursor: Point,

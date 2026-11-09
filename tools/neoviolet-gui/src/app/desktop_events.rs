@@ -31,6 +31,12 @@ fn lyrics_lifecycle_event(event: &lyrics_window::Event) -> bool {
 impl App {
     pub(super) fn desktop_event(&mut self, event: desktop::Event) -> Task<Message> {
         match event {
+            #[cfg(any(target_os = "macos", test))]
+            desktop::Event::TitleInset(id, inset) => {
+                if id == self.main_window {
+                    self.titlebar.mac_title_inset = Some(inset);
+                }
+            }
             #[cfg(any(target_os = "windows", test))]
             desktop::Event::CaptionAction(id, action) => {
                 if id == self.main_window
