@@ -21,6 +21,7 @@ type pageEditor struct {
 // pageState keeps page interaction and an isolated configuration draft.
 // Library, queue and saved playlist snapshots belong to Model. Effects are session values.
 type pageState struct {
+	viewports                pageViewports
 	visible                  []library.Track
 	scopes                   []string
 	artists, albums          int

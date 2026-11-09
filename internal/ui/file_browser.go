@@ -20,6 +20,7 @@ type browserEntry struct {
 // The browser belongs to one page and every read carries its navigation
 // generation. Workers read immutable inputs and never mutate the model.
 type fileBrowser struct {
+	viewport               listViewport
 	purpose                string
 	field, cursor          int
 	generation             uint64

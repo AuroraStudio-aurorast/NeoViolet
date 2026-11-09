@@ -35,13 +35,10 @@ func (m *Model) renderPlaylists(c *pageCanvas, focused bool) {
 			c.dim(18, x, "Files stay intact")
 		}
 	}
-	stride := 3
-	if h < 14 {
-		stride = 1
-	}
-	slots := max(1, (h-5)/stride)
+	stride := playlistStride(h)
+	slots := listCapacity(h, 4, 1, stride)
 	cursor := min(p.cursors[1], len(entries)-1)
-	start := max(0, cursor-slots+1)
+	start := p.viewports.queue.start(cursor, len(entries), slots)
 	for n, entry := range entries[start:min(len(entries), start+slots)] {
 		i, y := start+n, 4+n*stride
 		track := entry.track

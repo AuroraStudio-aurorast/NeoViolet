@@ -44,12 +44,9 @@ func (m *Model) renderCollections(c *pageCanvas, focused bool) {
 		if wide {
 			listW = 23
 		}
-		stride := 3
-		if h < 14 {
-			stride = 1
-		}
-		slots := max(1, (h-5)/stride)
-		start := max(0, p.collection-slots+1)
+		stride := playlistStride(h)
+		slots := listCapacity(h, 4, 1, stride)
+		start := p.viewports.collections.start(p.collection, len(state.lists), slots)
 		for n, list := range state.lists[start:min(len(state.lists), start+slots)] {
 			i, y := start+n, 4+n*stride
 			c.text(y, 2, truncateLine(browserDisplayText(list.Name), listW-1))
@@ -73,16 +70,13 @@ func (m *Model) renderCollections(c *pageCanvas, focused bool) {
 	cw := w - x - 1
 	c.label(3, x, truncateLine(browserDisplayText(current.Name), cw))
 	c.dim(4, x, fmt.Sprintf("%d tracks / %s", len(current.Tracks), savedClock(current.Tracks)))
-	top := 6
-	if h < 14 {
-		top = 5
-	}
+	top := savedTrackTop(h)
 	if len(current.Tracks) == 0 {
 		c.text(top, x, "Empty playlist")
 		c.dim(top+2, x, "A Add session queue")
 	}
-	slots := max(1, h-top-3)
-	start := max(0, p.savedTrack-slots+1)
+	slots := listCapacity(h, top, 3, 1)
+	start := p.viewports.tracks.start(p.savedTrack, len(current.Tracks), slots)
 	for n, track := range current.Tracks[start:min(len(current.Tracks), start+slots)] {
 		i, y := start+n, top+n
 		title := browserDisplayText(track.Title)

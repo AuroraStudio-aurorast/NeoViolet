@@ -26,8 +26,8 @@ func (m *Model) renderHome(c *pageCanvas, focused bool) {
 	}
 	if wide {
 		c.dim(3, 1, "Formats")
-		scopeRows := min(10, h-8)
-		scopeStart := max(0, p.scope-scopeRows+1)
+		scopeRows := max(1, min(10, h-8))
+		scopeStart := p.viewports.scopes.start(p.scope, len(p.scopes), scopeRows)
 		for n, scope := range p.scopes[scopeStart:min(len(p.scopes), scopeStart+scopeRows)] {
 			i := n + scopeStart
 			text := "  " + scope
@@ -48,9 +48,9 @@ func (m *Model) renderHome(c *pageCanvas, focused bool) {
 	} else {
 		c.label(2, 1, "←/→ Format: "+p.scopes[p.scope])
 	}
-	slots := max(1, (h-5)/2)
+	slots := listCapacity(h, 4, 1, 2)
 	cursor := max(0, min(p.cursors[0], len(items)-1))
-	start := max(0, cursor-slots+1)
+	start := p.viewports.home.start(cursor, len(items), slots)
 	for n, track := range items[start:min(len(items), start+slots)] {
 		y := 4 + n*2
 		marker := "  "

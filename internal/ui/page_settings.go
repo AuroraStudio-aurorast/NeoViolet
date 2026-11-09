@@ -40,8 +40,8 @@ func (p *pageState) renderSettings(c *pageCanvas, focused bool) {
 	c.dim(1, 1, fmt.Sprintf("%d / 6  %s", current.group+1, pageSettingGroups[current.group]))
 	c.rule(2, 1, w-2)
 	rows, selected := p.settingRows()
-	available := max(1, h-4)
-	start := max(0, selected-available+2)
+	available := listCapacity(h, 3, 1, 1)
+	start := p.viewports.settings.start(selected, len(rows), available)
 	for i, row := range rows[start:min(len(rows), start+available)] {
 		y := 3 + i
 		if row.field < 0 {
@@ -104,8 +104,8 @@ func (p *pageState) renderPicker(c *pageCanvas) {
 	c.dim(1, 1, "Select enabled formats in priority order")
 	c.rule(2, 1, c.width-2)
 	items := p.pickerItems()
-	available := max(1, len(c.rows)-5)
-	start := max(0, p.pickerIndex-available+1)
+	available := listCapacity(len(c.rows), 4, 1, 1)
+	start := p.viewports.formats.start(p.pickerIndex, len(items), available)
 	for i, item := range items[start:min(len(items), start+available)] {
 		index := start + i
 		marker := "  "

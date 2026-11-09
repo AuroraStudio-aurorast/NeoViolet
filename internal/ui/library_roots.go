@@ -13,8 +13,8 @@ func (p *pageState) renderLibraryRoots(c *pageCanvas) {
 	c.dim(1, 1, "Folder changes stay in the draft until s Save")
 	c.rule(2, 1, c.width-2)
 	roots := p.draft.Library.Roots
-	available := max(1, len(c.rows)-5)
-	start := max(0, p.rootCursor-available+1)
+	available := listCapacity(len(c.rows), 4, 1, 1)
+	start := p.viewports.roots.start(p.rootCursor, len(roots), available)
 	for n, root := range roots[start:min(len(roots), start+available)] {
 		marker := "  "
 		if start+n == p.rootCursor {

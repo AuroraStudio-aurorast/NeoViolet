@@ -13,6 +13,7 @@ import (
 )
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
+	defer m.syncListViewports()
 	switch msg := msg.(type) {
 	case playlistsLoadedMsg:
 		m.applyPlaylists(msg)

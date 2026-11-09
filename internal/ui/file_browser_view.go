@@ -30,9 +30,9 @@ func (b *fileBrowser) render(c *pageCanvas) {
 	c.rule(2, 1, w-2)
 	c.dim(3, 1, "Name")
 	c.dim(3, max(1, w-12), "Type")
-	available := max(1, h-6)
+	available := listCapacity(h, 4, 2, 1)
 	cursor := max(0, min(b.cursor, len(b.entries)-1))
-	start := max(0, cursor-available+1)
+	start := b.viewport.start(cursor, len(b.entries), available)
 	for n, entry := range b.entries[start:min(len(b.entries), start+available)] {
 		y := 4 + n
 		marker := "  "
