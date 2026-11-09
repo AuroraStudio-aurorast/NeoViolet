@@ -26,6 +26,7 @@ type configSavedMsg struct {
 
 func (p *pageState) initSettings(cfg config.Config) {
 	p.draft = cfg.Clone()
+	p.baseline = cfg.Clone()
 	p.settings = settingsFromConfig(cfg)
 	p.changed = map[string]bool{}
 	p.dirty = false
@@ -80,6 +81,9 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 		if job.changed["soundfont_path"] {
 			_, err = parseSetting(pageSetting{key: "soundfont_path"}, job.snapshot.SoundfontPath)
 		}
+		if err == nil && job.changed["library.roots"] {
+			err = validateLibraryRoots(job.snapshot.Library.Roots)
+		}
 		if err == nil {
 			err = job.snapshot.Save()
 		}
@@ -118,6 +122,9 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 		return tea.Quit
 	}
 	cmds := []tea.Cmd{}
+	if msg.job.changed["library.roots"] {
+		cmds = append(cmds, m.rescanLibrary())
+	}
 	if msg.job.changed["accent.auto_accent"] && cfg.Accent.IsEnabled() && m.Audio.Player != nil {
 		cmds = append(cmds, loadAccentCmd(m.Audio.Player, m.activeGeneration))
 	}

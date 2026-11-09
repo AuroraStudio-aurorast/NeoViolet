@@ -110,11 +110,15 @@ func renderTabPage(m *Model, plan layoutPlan) string {
 		p.renderPicker(c)
 		return c.String()
 	}
+	if p.rootEditor {
+		p.renderLibraryRoots(c)
+		return c.String()
+	}
 	switch m.UI.ActiveTab {
 	case 0:
-		p.renderHome(c, m.UI.Focus == FocusContent)
+		m.renderHome(c, m.UI.Focus == FocusContent)
 	case 1:
-		p.renderPlaylists(c, m.UI.Focus == FocusContent)
+		m.renderPlaylists(c, m.UI.Focus == FocusContent)
 	case 2:
 		p.renderEffects(c, m.UI.Focus == FocusContent)
 	case 3:

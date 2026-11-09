@@ -94,10 +94,10 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		return m, nil
 
 	case normMatch(msg, keys.Next):
-		return m, nil
+		return m, m.stepQueue(1)
 
 	case normMatch(msg, keys.Prev):
-		return m, nil
+		return m, m.stepQueue(-1)
 
 	case normMatch(msg, seekFwdChordKey):
 		m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)

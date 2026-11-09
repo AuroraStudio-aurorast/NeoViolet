@@ -41,7 +41,7 @@ func samplePageSettings() []pageSetting {
 		{group: 4, key: "volume_bar.width", label: "Volume width", value: "16 columns"},
 		{group: 4, key: "volume_bar.show_percentage", label: "Volume percentage", value: "On", options: []string{"Off", "On"}},
 		{group: 4, key: "tick_rate", label: "UI tick rate", value: "30 / s"},
-		{group: 5, key: "", label: "Music folders", value: "2 folders…", kind: "folders"},
+		{group: 5, key: "library.roots", label: "Music folders", value: "2 folders…", kind: "folders"},
 		{group: 5, key: "command_history.max", label: "History limit", value: "50 commands"},
 		{group: 5, key: "error.duration", label: "Message duration", value: "90 ticks"},
 	}

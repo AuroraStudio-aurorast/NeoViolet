@@ -11,6 +11,9 @@ import (
 func (b *fileBrowser) render(c *pageCanvas) {
 	w, h := c.width, len(c.rows)
 	title := "Open audio"
+	if b.purpose == "directory" {
+		title = "Choose music folder"
+	}
 	if b.purpose == "soundfont" {
 		title = "Choose SoundFont"
 	}
@@ -60,7 +63,11 @@ func (b *fileBrowser) render(c *pageCanvas) {
 	default:
 		c.dim(h-2, 1, "Enter opens the file; Esc keeps the current track")
 	}
-	c.dim(h-1, 1, "Enter Choose · Backspace Up · Ctrl+L Path/URL · Esc Back")
+	hint := "Enter Choose · Backspace Up · Ctrl+L Path/URL · Esc Back"
+	if b.purpose == "directory" {
+		hint = "Enter Browse · s Select folder · Backspace Up · Esc Back"
+	}
+	c.dim(h-1, 1, hint)
 }
 
 func browserDisplayText(text string) string {

@@ -152,6 +152,7 @@ func (a AccentConfig) IsEnabled() bool {
 
 // Config is the root user configuration, persisted as JSON.
 type Config struct {
+	Library         LibraryConfig        `json:"library"`
 	IconTheme       string               `json:"icon_theme"`
 	DefaultVolume   float64              `json:"default_volume"`
 	VolumeStep      float64              `json:"volume_step"`

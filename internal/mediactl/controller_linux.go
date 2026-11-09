@@ -234,8 +234,7 @@ type mprisPlayerObj struct {
 	ctrl *linuxController
 }
 
-// Next skips forward 10s: there is no tracklist support, so the TUI maps
-// CmdNext/CmdPrev to SeekRelative(±10s) as a fallback.
+// Next and Previous ask the TUI to navigate its session queue.
 func (o *mprisPlayerObj) Next() *dbus.Error     { o.ctrl.cmdChan <- Command{Type: CmdNext}; return nil }
 func (o *mprisPlayerObj) Previous() *dbus.Error { o.ctrl.cmdChan <- Command{Type: CmdPrev}; return nil }
 func (o *mprisPlayerObj) Pause() *dbus.Error    { o.ctrl.cmdChan <- Command{Type: CmdPause}; return nil }

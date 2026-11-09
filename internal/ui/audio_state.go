@@ -31,6 +31,7 @@ func (a *AudioState) SetPlaying(playing bool) error {
 			a.IsPlaying = a.Player.IsPlaying()
 			return fmt.Errorf("playback failed: %w", err)
 		}
+		a.playbackRevision++
 	} else if !playing && a.Player.IsPlaying() {
 		a.Player.Pause()
 	}

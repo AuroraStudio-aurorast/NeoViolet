@@ -6,53 +6,55 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 )
 
 func TestPageNavigationRetainsSelectionAndDoesNotEscapeFocus(t *testing.T) {
-	m := setupModel()
+	m := queueFixture(t)
 	m.UI.Focus = FocusTabBar
 	pageKey(m, tea.KeyDown, "")
 	if m.pages.cursors[0] != 0 {
-		t.Fatal("unfocused page consumed navigation")
+		t.Fatal("unfocused page moved")
 	}
 	m.UI.Focus = FocusContent
 	pageKey(m, tea.KeyDown, "")
 	pageKey(m, tea.KeyDown, "")
 	pageKey(m, ']', "]")
-	pageKey(m, tea.KeyDown, "")
 	pageKey(m, '[', "[")
-	if m.pages.cursors[0] != 2 || m.pages.cursors[1] != 1 {
-		t.Fatal("switching tabs reset page selection")
+	if m.pages.cursors[0] != 2 {
+		t.Fatal("tab switching lost library cursor")
 	}
 	pageKey(m, tea.KeyRight, "")
-	if m.pages.scope != 1 || len(m.pages.tracks()) != 4 {
-		t.Fatal("format scope did not filter sample tracks")
+	if m.pages.scope != 1 || len(m.pages.visible) != 3 {
+		t.Fatal("format filtering lost real tracks")
 	}
 }
-
-func TestSampleQueueOrderRemoveAndUndo(t *testing.T) {
-	m := setupModel()
-	m.UI.Focus = FocusContent
+func TestSessionQueueOrderRemoveAndUndo(t *testing.T) {
+	m := queueFixture(t)
+	pageKey(m, tea.KeyEnter, "")
+	acceptQueueLoad(t, m)
 	m.UI.ActiveTab = 1
+	m.appendQueue(library.Track{Path: "duplicate.wav", Title: "D"})
 	pageKey(m, tea.KeyDown, "")
+	id := m.session.entries[1].id
 	pageKey(m, 'J', "J")
-	if m.pages.queue[2] != 1 {
-		t.Fatal("reordering did not move the selected entry")
+	if m.session.entries[2].id != id {
+		t.Fatal("reordering lost identity")
 	}
 	pageKey(m, 'd', "d")
 	pageKey(m, 'u', "u")
-	if len(m.pages.queue) != 6 || m.pages.queue[2] != 1 {
-		t.Fatal("undo restored a different queue position")
+	if len(m.session.entries) != 4 || m.session.entries[2].id != id {
+		t.Fatal("undo lost position")
 	}
-	for range 8 {
+	for range 6 {
 		pageKey(m, 'd', "d")
 	}
 	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "queue is empty") {
-		t.Fatal("empty queue has no recovery state")
+		t.Fatal("empty state missing")
 	}
 	pageKey(m, 'u', "u")
-	if len(m.pages.queue) != 1 {
-		t.Fatal("empty queue could not restore its last entry")
+	if len(m.session.entries) != 1 {
+		t.Fatal("undo from empty failed")
 	}
 }
 

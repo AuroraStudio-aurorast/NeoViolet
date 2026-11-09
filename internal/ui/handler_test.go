@@ -245,8 +245,8 @@ func TestDispatcherMediaCtlCmd(t *testing.T) {
 		m.Audio.Duration = 200 * time.Second
 
 		dispatcherModel(t, m, MediaCtlMsg{Command: mediactl.Command{Type: mediactl.CmdNext}})
-		if mp.lastSeekPos != 70*time.Second {
-			t.Errorf("Seek called with %v, want 70s", mp.lastSeekPos)
+		if mp.seekCalled {
+			t.Error("media Next must not seek when queue is empty")
 		}
 	})
 
@@ -257,8 +257,8 @@ func TestDispatcherMediaCtlCmd(t *testing.T) {
 		m.Audio.Duration = 200 * time.Second
 
 		dispatcherModel(t, m, MediaCtlMsg{Command: mediactl.Command{Type: mediactl.CmdPrev}})
-		if mp.lastSeekPos != 50*time.Second {
-			t.Errorf("Seek called with %v, want 50s", mp.lastSeekPos)
+		if mp.seekCalled {
+			t.Error("media Previous must not seek when queue is empty")
 		}
 	})
 

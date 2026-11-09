@@ -96,6 +96,10 @@ func (m *Model) fileBrowserLocation(target string) tea.Cmd {
 			return result
 		}
 		if !info.IsDir() {
+			if purpose == "directory" {
+				result.err = fmt.Errorf("choose a directory")
+				return result
+			}
 			if !info.Mode().IsRegular() {
 				result.err = fmt.Errorf("choose a regular file or directory")
 				return result
@@ -133,6 +137,9 @@ func readBrowserDirectory(path, purpose string) ([]browserEntry, error) {
 			directory, regular = info.IsDir(), info.Mode().IsRegular()
 		}
 		allowed := playableExt(filepath.Ext(entry.Name()))
+		if purpose == "directory" {
+			allowed = false
+		}
 		if purpose == "soundfont" {
 			allowed = strings.EqualFold(filepath.Ext(entry.Name()), ".sf2")
 		}
@@ -173,6 +180,15 @@ func (m *Model) applyFileBrowser(msg fileBrowserMsg) tea.Cmd {
 		if m.pages.editor != nil && m.pages.editor.purpose == "browser_location" {
 			m.pages.editor = nil
 		}
+		return nil
+	}
+	if b.purpose == "directory" && !msg.directory {
+		if err := m.pages.addLibraryRoot(b.field, msg.target); err != nil {
+			b.err = err.Error()
+			return nil
+		}
+		m.pages.browser = nil
+		m.pages.editor = nil
 		return nil
 	}
 	if b.purpose == "soundfont" {
@@ -225,6 +241,10 @@ func (m *Model) updateFileBrowser(msg tea.KeyPressMsg) tea.Cmd {
 			value = b.target
 		}
 		return m.fileBrowserLocation(value)
+	case "s":
+		if b.purpose == "directory" && b.directory != "" {
+			return m.selectLibraryDirectory()
+		}
 	case "enter", "right":
 		if b.loading || len(b.entries) == 0 {
 			return nil

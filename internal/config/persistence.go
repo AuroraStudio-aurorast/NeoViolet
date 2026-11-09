@@ -13,6 +13,7 @@ var saveMu sync.Mutex
 
 // Clone returns a draft that shares no mutable preferences with its source.
 func (c Config) Clone() Config {
+	c.Library.Roots = slices.Clone(c.Library.Roots)
 	c.Lyrics.FormatPriority = slices.Clone(c.Lyrics.FormatPriority)
 	c.ProgressBar.Fill = slices.Clone(c.ProgressBar.Fill)
 	c.VolumeBar.Fill = slices.Clone(c.VolumeBar.Fill)

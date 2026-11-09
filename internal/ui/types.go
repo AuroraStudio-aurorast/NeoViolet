@@ -2,6 +2,7 @@
 package ui
 
 import (
+	"context"
 	"time"
 
 	"charm.land/bubbles/v2/help"
@@ -15,6 +16,7 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/mediactl"
@@ -157,6 +159,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 // AudioState holds the audio playback state and lyric display state.
 type AudioState struct {
 	seekRevision      uint64
+	playbackRevision  uint64
 	Player            audio.AudioPlayer
 	CurrentSong       string
 	Artist            string
@@ -260,27 +263,39 @@ func (e *MessageState) Tick() {
 
 // Model represents the main application state
 type Model struct {
-	configSave             *configSaveJob
-	volumeRevision         uint64
-	settingsLyricsRevision uint64
-	volumeSavePending      bool
-	pages                  *pageState
-	Audio                  *AudioState
-	UI                     *State
-	Components             *ComponentState
-	Error                  *MessageState
-	Info                   *MessageState
-	Config                 *config.Config
-	Icons                  IconSet
-	Accent                 *accent.Accent
-	QuitConfirm            bool
-	ExitCode               int
-	Loading                bool
-	loadingTick            int
-	pendingPath            string
-	pendingSeek            time.Duration
-	CommandHistory         []string
-	historyIndex           int
+	session                  sessionQueue
+	queueSequence            uint64
+	queueIntent              *queueLoadIntent
+	queueEnded               bool
+	queueEndSeekRevision     uint64
+	queueEndPlaybackRevision uint64
+	libraryTracks            []library.Track
+	scanGeneration           uint64
+	scanCancel               context.CancelFunc
+	scanDone, scanTotal      int
+	scanning                 bool
+	scanIssues               []string
+	configSave               *configSaveJob
+	volumeRevision           uint64
+	settingsLyricsRevision   uint64
+	volumeSavePending        bool
+	pages                    *pageState
+	Audio                    *AudioState
+	UI                       *State
+	Components               *ComponentState
+	Error                    *MessageState
+	Info                     *MessageState
+	Config                   *config.Config
+	Icons                    IconSet
+	Accent                   *accent.Accent
+	QuitConfirm              bool
+	ExitCode                 int
+	Loading                  bool
+	loadingTick              int
+	pendingPath              string
+	pendingSeek              time.Duration
+	CommandHistory           []string
+	historyIndex             int
 
 	// Completion state for the command line. completionIndex is -1 while
 	// nothing is selected: the candidate list is shown passively, so <enter>

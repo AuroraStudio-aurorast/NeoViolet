@@ -37,6 +37,7 @@ func ensureSpeakerInit(sampleRate beep.SampleRate) error {
 // optional synthetic (MIDI/tracker) controller behind a single mutex-guarded
 // API used by the UI.
 type Player struct {
+	completion     *outputCompletion
 	mu             sync.Mutex
 	streamer       beep.StreamSeekCloser
 	ctrl           *beep.Ctrl
@@ -394,7 +395,7 @@ func (p *Player) Seek(position time.Duration) error {
 func (p *Player) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.isPlaying && !p.isPaused
+	return p.isPlaying && !p.isPaused && (p.completion == nil || !p.completion.ended.Load())
 }
 
 // Duration returns the total length of the current track.

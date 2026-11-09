@@ -12,7 +12,8 @@ var playToSpeaker = speaker.Play
 // Caller must hold p.mu.
 func (p *Player) attachOutput(streamer beep.Streamer) {
 	p.detachOutput()
-	p.output = &beep.Ctrl{Streamer: streamer}
+	p.completion = &outputCompletion{source: streamer}
+	p.output = &beep.Ctrl{Streamer: p.completion}
 	playToSpeaker(p.output)
 }
 
@@ -26,5 +27,6 @@ func (p *Player) detachOutput() {
 		p.output = nil
 	}
 	speaker.Unlock()
+	p.completion = nil
 	p.isPlaying = false
 }

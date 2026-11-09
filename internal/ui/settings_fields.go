@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -60,6 +61,9 @@ func settingsFromConfig(cfg config.Config) []pageSetting {
 			continue
 		}
 		fields[i].value = formatSettingValue(fields[i].key, settingValue(values, fields[i].key))
+		if fields[i].key == "library.roots" && cfg.Library.Roots == nil {
+			fields[i].value = "0 folders"
+		}
 		fields[i].savedValue = fields[i].value
 		fields[i].initial = formatSettingValue(fields[i].key, settingValue(defaults, fields[i].key))
 	}
@@ -84,6 +88,9 @@ func formatSettingValue(key string, value any) string {
 		}
 		return v
 	case []any:
+		if key == "library.roots" {
+			return fmt.Sprintf("%d folders", len(v))
+		}
 		if key == "lyrics.format_priority" {
 			return fmt.Sprintf("%d formats · reorder…", len(v))
 		}
@@ -126,8 +133,16 @@ func (p *pageState) applyDraftValue(index int, value any) error {
 		return err
 	}
 	p.draft = candidate
-	p.settings[index].value = formatSettingValue(field.key, value)
-	if p.settings[index].value == field.savedValue {
+	canonical := configValues(candidate)
+	p.settings[index].value = formatSettingValue(field.key, settingValue(canonical, field.key))
+	equal := reflect.DeepEqual(settingValue(canonical, field.key), settingValue(configValues(p.baseline), field.key))
+	if field.key == "library.roots" {
+		equal = slices.Equal(candidate.Library.Roots, p.baseline.Library.Roots)
+	}
+	if field.key == "accent.auto_accent" {
+		equal = candidate.Accent.IsEnabled() == p.baseline.Accent.IsEnabled()
+	}
+	if equal {
 		delete(p.changed, field.key)
 	} else {
 		p.changed[field.key] = true
@@ -252,6 +267,9 @@ func (p *pageState) setFormatDraft(order []string) {
 	p.dirty = len(p.changed) > 0
 }
 func (p *pageState) resetSetting(index int) error {
+	if p.settings[index].key == "library.roots" {
+		return p.applyDraftValue(index, []string{})
+	}
 	if p.settings[index].key == "lyrics.format_priority" {
 		p.setFormatDraft(config.DefaultConfig().Lyrics.FormatPriority)
 		for i, name := range p.formats {

@@ -2,11 +2,11 @@ package ui
 
 import (
 	"fmt"
-	"strings"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 )
 
 type pageEditor struct {
@@ -16,23 +16,26 @@ type pageEditor struct {
 }
 
 // pageState keeps page interaction and an isolated configuration draft.
-// Playback, library, queue and effects remain samples until their wiring batches.
+// Library/queue snapshots belong to Model; saved collections and DSP are still samples.
 type pageState struct {
+	visible                  []library.Track
+	scopes                   []string
+	artists, albums          int
+	rootEditor               bool
+	rootCursor               int
 	browser                  *fileBrowser
 	cursors                  [4]int
 	scope                    int
 	filter                   string
 	saved, detail            bool
 	collection               int
-	queue                    []int
-	removed, removedAt       int
-	playing                  int
 	effect                   int
 	gains                    [5]float64
 	preamp, pan              float64
 	mono, swap, bypass       bool
 	settings                 []pageSetting
 	draft                    config.Config
+	baseline                 config.Config
 	changed                  map[string]bool
 	dirty                    bool
 	quitSettings             bool
@@ -49,7 +52,8 @@ type pageState struct {
 
 func newPageState() *pageState {
 	return &pageState{
-		queue: []int{0, 1, 2, 3, 4, 5}, removed: -1, playing: 0, effect: 0, preamp: -3,
+		scopes: []string{"All tracks"}, visible: []library.Track{},
+		effect: 0, preamp: -3,
 		settings: samplePageSettings(),
 		formats:  []string{"embedded", "lrc", "spl", "ttml", "qrc", "yrc", "eslrc", "lys", "online"},
 		enabled:  []bool{true, true, true, true, true, true, true, true, true},
@@ -71,7 +75,7 @@ func (p *pageState) openEditor(title, purpose, value string, field int) tea.Cmd 
 
 func (m *Model) pageOwnsInput() bool {
 	return m.pages != nil && !m.animVisible() && m.UI.Mode == ModeNormal && m.UI.Focus == FocusContent &&
-		(m.pages.editor != nil || m.pages.picker != "" || m.pages.quitSettings || m.pages.browser != nil)
+		(m.pages.editor != nil || m.pages.picker != "" || m.pages.quitSettings || m.pages.browser != nil || m.pages.rootEditor)
 }
 
 func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
@@ -85,6 +89,9 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 	}
 	if p.editor == nil && p.browser != nil {
 		return m.updateFileBrowser(msg)
+	}
+	if p.editor == nil && p.rootEditor {
+		return m.updateLibraryRoots(msg)
 	}
 	if p.editor == nil {
 		p.updatePicker(msg.String())
@@ -104,6 +111,7 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 		case "filter":
 			p.filter = editor.input.Value()
 			p.cursors[0] = 0
+			m.refreshLibraryView()
 		case "browser_location":
 			if p.browser != nil && p.browser.loading {
 				return nil
@@ -141,22 +149,22 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	k := msg.String()
 	switch k {
 	case "up", "k":
-		p.move(m.UI.ActiveTab, -1)
+		m.movePageCursor(m.UI.ActiveTab, -1)
 		return true, nil
 	case "down", "j":
-		p.move(m.UI.ActiveTab, 1)
+		m.movePageCursor(m.UI.ActiveTab, 1)
 		return true, nil
 	case "home", "g":
-		p.move(m.UI.ActiveTab, -1000)
+		m.movePageCursor(m.UI.ActiveTab, -1000)
 		return true, nil
 	case "end", "G":
-		p.move(m.UI.ActiveTab, 1000)
+		m.movePageCursor(m.UI.ActiveTab, 1000)
 		return true, nil
 	case "pgup":
-		p.move(m.UI.ActiveTab, -5)
+		m.movePageCursor(m.UI.ActiveTab, -5)
 		return true, nil
 	case "pgdown":
-		p.move(m.UI.ActiveTab, 5)
+		m.movePageCursor(m.UI.ActiveTab, 5)
 		return true, nil
 	case "enter":
 		return true, m.activatePage()
@@ -172,16 +180,21 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			if k == "left" {
 				delta = -1
 			}
-			p.scope = (p.scope + len(pageScopes) + delta) % len(pageScopes)
+			p.scope = (p.scope + len(p.scopes) + delta) % len(p.scopes)
 			p.cursors[0] = 0
+			m.refreshLibraryView()
 		case "f":
 			return true, p.openEditor("Filter tracks", "filter", p.filter, 0)
 		case "o":
 			return true, m.openFileBrowser("audio", -1, "")
 		case "O":
 			return true, p.openEditor("Open audio path or URL", "open", "", -1)
-		case "a", "r":
-			m.pageNotice()
+		case "r":
+			return true, m.rescanLibrary()
+		case "a":
+			if len(p.visible) > 0 {
+				m.appendQueue(p.visible[p.cursors[0]])
+			}
 		default:
 			return false, nil
 		}
@@ -192,13 +205,21 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			p.detail = false
 			p.collection = 0
 		case "d":
-			p.removeEntry()
-			m.pageNotice()
+			if !p.saved {
+				m.removeQueueEntry()
+			}
 		case "u":
-			p.restoreEntry()
-			m.pageNotice()
+			if !p.saved {
+				m.undoQueueRemoval()
+			}
 		case "J", "K":
-			p.reorder(k)
+			if !p.saved {
+				delta := 1
+				if k == "K" {
+					delta = -1
+				}
+				m.reorderQueue(delta)
+			}
 		case "s":
 			return true, p.openEditor("Save as playlist", "playlist", "Evening queue", 0)
 		case "a":
@@ -209,9 +230,9 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	case 2:
 		switch k {
 		case "left":
-			p.move(2, -1)
+			m.movePageCursor(2, -1)
 		case "right":
-			p.move(2, 1)
+			m.movePageCursor(2, 1)
 		case "+", "=":
 			p.adjustEffect(1)
 			m.pageNotice()
@@ -250,16 +271,17 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 	return true, nil
 }
 
-func (p *pageState) move(tab, delta int) {
+func (m *Model) movePageCursor(tab, delta int) {
+	p := m.pages
 	switch tab {
 	case 0:
-		p.cursors[0] = max(0, min(len(p.tracks())-1, p.cursors[0]+delta))
+		p.cursors[0] = max(0, min(len(p.visible)-1, p.cursors[0]+delta))
 	case 1:
 		if p.saved {
 			p.collection = max(0, min(len(pageCollections)-1, p.collection+delta))
 			return
 		}
-		p.cursors[1] = max(0, min(len(p.queue)-1, p.cursors[1]+delta))
+		p.cursors[1] = max(0, min(len(m.session.entries)-1, p.cursors[1]+delta))
 	case 2:
 		p.effect = max(0, min(9, p.effect+delta))
 	case 3:
@@ -271,17 +293,14 @@ func (m *Model) activatePage() tea.Cmd {
 	p := m.pages
 	switch m.UI.ActiveTab {
 	case 0:
-		items := p.tracks()
-		if len(items) > 0 {
-			p.playing = items[min(p.cursors[0], len(items)-1)]
-		}
+		return m.playLibrarySelection()
 	case 1:
 		if p.saved {
 			p.detail = true
 			return nil
 		}
-		if len(p.queue) > 0 {
-			p.playing = p.queue[min(p.cursors[1], len(p.queue)-1)]
+		if len(m.session.entries) > 0 {
+			return m.requestQueueLoad(m.session.entries[min(p.cursors[1], len(m.session.entries)-1)], nil, false)
 		}
 	case 2:
 		if p.effect >= 6 && p.effect <= 7 || p.effect == 9 {
@@ -291,8 +310,9 @@ func (m *Model) activatePage() tea.Cmd {
 		if m.configSave != nil {
 			return nil
 		}
-		if p.settings[p.cursors[3]].key == "" {
-			m.Info.Set("Music folders will be connected with the library", 90)
+		if p.settings[p.cursors[3]].kind == "folders" {
+			p.rootEditor = true
+			p.rootCursor = 0
 			return nil
 		}
 		if p.settings[p.cursors[3]].kind == "file" {
@@ -302,40 +322,6 @@ func (m *Model) activatePage() tea.Cmd {
 	}
 	m.pageNotice()
 	return nil
-}
-
-func (p *pageState) removeEntry() {
-	if p.saved || len(p.queue) == 0 {
-		return
-	}
-	i := min(p.cursors[1], len(p.queue)-1)
-	p.removed, p.removedAt = p.queue[i], i
-	p.queue = append(p.queue[:i], p.queue[i+1:]...)
-	p.cursors[1] = max(0, min(i, len(p.queue)-1))
-}
-func (p *pageState) restoreEntry() {
-	if p.saved || p.removed < 0 {
-		return
-	}
-	i := min(p.removedAt, len(p.queue))
-	p.queue = append(p.queue, 0)
-	copy(p.queue[i+1:], p.queue[i:])
-	p.queue[i] = p.removed
-	p.removed = -1
-}
-func (p *pageState) reorder(k string) {
-	if p.saved || len(p.queue) == 0 {
-		return
-	}
-	i := p.cursors[1]
-	j := i + 1
-	if k == "K" {
-		j = i - 1
-	}
-	if j >= 0 && j < len(p.queue) {
-		p.queue[i], p.queue[j] = p.queue[j], p.queue[i]
-		p.cursors[1] = j
-	}
 }
 
 func (p *pageState) renderEditor(c *pageCanvas) {
@@ -356,18 +342,6 @@ func (p *pageState) renderEditor(c *pageCanvas) {
 		c.label(len(c.rows)-2, 1, browserDisplayText(p.browser.err))
 	}
 	c.dim(len(c.rows)-1, 1, "Enter Confirm · Esc Cancel")
-}
-
-func (p *pageState) tracks() []int {
-	out := make([]int, 0, len(pageTracks))
-	query := strings.ToLower(p.filter)
-	for i, t := range pageTracks {
-		matches := strings.Contains(strings.ToLower(t.title+" "+t.artist+" "+t.album), query)
-		if matches && (p.scope == 0 || t.format == pageScopes[p.scope]) {
-			out = append(out, i)
-		}
-	}
-	return out
 }
 
 func pageCount(n int, unit string) string { return fmt.Sprintf("%d %s", n, unit) }
