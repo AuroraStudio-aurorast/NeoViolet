@@ -23,6 +23,9 @@ var (
 
 func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
+	if m.pageOwnsInput() && !normMatch(msg, keys.Quit) {
+		return m, m.updatePageInput(msg)
+	}
 
 	// ─── Tier 0: keys that navigate away close the animation ───
 	//
@@ -59,6 +62,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 
 	case normMatch(msg, keys.NormalMode):
 		m.QuitConfirm = false
+		if m.UI.Focus == FocusContent && m.pages != nil {
+			m.pages.detail = false
+		}
 		return m, nil
 
 	case normMatch(msg, keys.Play), normMatch(msg, keys.Pause):
@@ -112,7 +118,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		}
 
 	case FocusContent:
-		// No focus-specific keys yet
+		if handled, cmd := m.updatePageKey(msg); handled {
+			return m, cmd
+		}
 
 	case FocusFooter:
 		switch {

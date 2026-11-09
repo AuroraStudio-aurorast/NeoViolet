@@ -259,6 +259,7 @@ func (e *MessageState) Tick() {
 
 // Model represents the main application state
 type Model struct {
+	pages          *pageState
 	Audio          *AudioState
 	UI             *State
 	Components     *ComponentState

@@ -49,6 +49,11 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	case anim.LoadedMsg:
 		return handleAnimLoaded(m, msg)
 	default:
+		if m.pageOwnsInput() && m.pages.editor != nil {
+			var cmd tea.Cmd
+			m.pages.editor.input, cmd = m.pages.editor.input.Update(msg)
+			return m, cmd
+		}
 		// The animation wakes itself with a tick whose type is unexported, so the
 		// host cannot name it and cannot tell it apart from anything else it does
 		// not recognise. Everything the host does not claim is offered to the

@@ -77,8 +77,10 @@ func TestUIStyle_FocusChangesColorWithoutMovingContent(t *testing.T) {
 	if tabs[0] == tabs[1] || content[0] == content[1] || footer[1] == footer[2] {
 		t.Fatal("focused region has no visible style change")
 	}
-	if strings.ContainsAny(stripANSI(content[1]), "│╭╰") {
-		t.Fatal("content still has a surrounding box")
+	for _, row := range strings.Split(stripANSI(content[1]), "\n") {
+		if strings.HasPrefix(row, "│") || strings.ContainsAny(row, "╭╰") {
+			t.Fatal("content still has a surrounding box")
+		}
 	}
 }
 

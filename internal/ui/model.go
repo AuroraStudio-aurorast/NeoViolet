@@ -138,6 +138,7 @@ func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed b
 	}
 
 	m := &Model{
+		pages: newPageState(),
 		Audio: &AudioState{
 			Volume:     cfg.DefaultVolume,
 			ShowLyrics: true,
