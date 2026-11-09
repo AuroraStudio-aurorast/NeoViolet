@@ -35,6 +35,10 @@ func (m *Model) newQueueEntry(track library.Track) queueEntry {
 	return queueEntry{id: m.queueSequence, track: track}
 }
 func (m *Model) appendQueue(track library.Track) {
+	if m.queueIntent != nil && m.queueIntent.replace && m.queueIntent.generation == m.loadGeneration {
+		m.Info.Set("Wait for the new session queue to finish loading, then append", 120)
+		return
+	}
 	m.session.entries = append(m.session.entries, m.newQueueEntry(track))
 	m.Info.Set("Added to session queue", 90)
 }

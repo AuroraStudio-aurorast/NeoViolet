@@ -213,7 +213,7 @@ func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed b
 
 // Init returns the initial commands for the Bubble Tea program.
 func (m *Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{m.rescanLibrary()}
+	cmds := []tea.Cmd{m.rescanLibrary(), m.loadPlaylists()}
 
 	if blinkCmd, ok := textinput.Blink().(tea.Cmd); ok {
 		cmds = append(cmds, blinkCmd)
@@ -279,6 +279,7 @@ func (m *Model) cleanup() {
 	if m.scanCancel != nil {
 		m.scanCancel()
 	}
+	m.flushPlaylistSave()
 	m.flushSettingsSave()
 	m.exiting = true
 	m.pendingLoad.cancel()

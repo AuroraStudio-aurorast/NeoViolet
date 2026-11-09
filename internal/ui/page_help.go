@@ -20,7 +20,12 @@ func pageHelpBindings(m *Model) []key.Binding {
 	case 0:
 		bindings = append(bindings, binding("f", "filter"), binding("←/→", "format"))
 	case 1:
-		bindings = append(bindings, binding("v", "queue/saved"), binding("enter", "open"))
+		if m.pages.saved {
+			bindings = append(bindings, binding("P/a", "play/append"), binding("c/e", "create/rename"), binding("r", "refresh"))
+		} else {
+			bindings = append(bindings, binding("s", "save queue"))
+		}
+		bindings = append(bindings, binding("v", "queue/saved"))
 	case 2:
 		bindings = []key.Binding{binding("←/→", "select"), binding("+/−", "sample")}
 	case 3:

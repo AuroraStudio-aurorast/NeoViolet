@@ -263,6 +263,7 @@ func (e *MessageState) Tick() {
 
 // Model represents the main application state
 type Model struct {
+	playlists                playlistState
 	session                  sessionQueue
 	queueSequence            uint64
 	queueIntent              *queueLoadIntent

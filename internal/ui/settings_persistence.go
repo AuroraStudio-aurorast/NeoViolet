@@ -114,12 +114,12 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 	m.Info.SetSuccess("Configuration saved", max(90, m.Config.Error.Duration))
 	m.flushDeferredVolume()
 	if msg.job.quit {
-		if m.ipcServer != nil {
-			f := false
-			_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
+		if m.playlists.save != nil {
+			m.playlists.save.quit = true
+			m.playlists.save.settingsQuit = true
+			return nil
 		}
-		m.cleanup()
-		return tea.Quit
+		return m.quitAfterSavedSettings()
 	}
 	cmds := []tea.Cmd{}
 	if msg.job.changed["library.roots"] {
@@ -191,6 +191,10 @@ func (m *Model) applySavedSettings(cfg config.Config, changed map[string]bool) {
 }
 
 func (m *Model) confirmSettingsQuit() bool {
+	if m.playlists.save != nil {
+		m.playlists.save.quit = true
+		return true
+	}
 	if m.pages == nil || !m.pages.dirty {
 		return false
 	}
@@ -228,4 +232,17 @@ func (m *Model) updateSettingsQuit(msg tea.KeyPressMsg) tea.Cmd {
 		return tea.Quit
 	}
 	return nil
+}
+
+// A successful :wq keeps its direct GUI exit semantics after other writers finish.
+func (m *Model) quitAfterSavedSettings() tea.Cmd {
+	if m.confirmSettingsQuit() {
+		return nil
+	}
+	if m.ipcServer != nil {
+		f := false
+		_ = m.ipcServer.SendJSON(ipc.Message{Type: "quit", Dialog: &f})
+	}
+	m.cleanup()
+	return tea.Quit
 }

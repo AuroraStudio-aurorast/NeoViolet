@@ -13,10 +13,12 @@ type pageEditor struct {
 	input          textinput.Model
 	title, purpose string
 	field          int
+	playlistID     string
+	tracks         []library.Track
 }
 
 // pageState keeps page interaction and an isolated configuration draft.
-// Library/queue snapshots belong to Model; saved collections and DSP are still samples.
+// Library, queue and saved playlist snapshots belong to Model; DSP remains a sample.
 type pageState struct {
 	visible                  []library.Track
 	scopes                   []string
@@ -29,6 +31,8 @@ type pageState struct {
 	filter                   string
 	saved, detail            bool
 	collection               int
+	savedTrack               int
+	deletePlaylist           string
 	effect                   int
 	gains                    [5]float64
 	preamp, pan              float64
@@ -75,13 +79,20 @@ func (p *pageState) openEditor(title, purpose, value string, field int) tea.Cmd 
 
 func (m *Model) pageOwnsInput() bool {
 	return m.pages != nil && !m.animVisible() && m.UI.Mode == ModeNormal && m.UI.Focus == FocusContent &&
-		(m.pages.editor != nil || m.pages.picker != "" || m.pages.quitSettings || m.pages.browser != nil || m.pages.rootEditor)
+		(m.pages.editor != nil || m.pages.picker != "" || m.pages.quitSettings || m.pages.browser != nil || m.pages.rootEditor || m.pages.deletePlaylist != "")
 }
 
 func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 	p := m.pages
 	if p.quitSettings {
 		return m.updateSettingsQuit(msg)
+	}
+	if p.deletePlaylist != "" {
+		return m.updatePlaylistDelete(msg)
+	}
+	if m.playlists.save != nil {
+		m.Info.Set("Saving playlist…", 90)
+		return nil
 	}
 	if m.configSave != nil {
 		m.Info.Set("Saving configuration…", 90)
@@ -108,6 +119,8 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 	case "enter":
 		editor := p.editor
 		switch editor.purpose {
+		case "playlist_create", "playlist_queue", "playlist_rename":
+			return m.submitPlaylistName()
 		case "filter":
 			p.filter = editor.input.Value()
 			p.cursors[0] = 0
@@ -199,34 +212,7 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			return false, nil
 		}
 	case 1:
-		switch k {
-		case "v":
-			p.saved = !p.saved
-			p.detail = false
-			p.collection = 0
-		case "d":
-			if !p.saved {
-				m.removeQueueEntry()
-			}
-		case "u":
-			if !p.saved {
-				m.undoQueueRemoval()
-			}
-		case "J", "K":
-			if !p.saved {
-				delta := 1
-				if k == "K" {
-					delta = -1
-				}
-				m.reorderQueue(delta)
-			}
-		case "s":
-			return true, p.openEditor("Save as playlist", "playlist", "Evening queue", 0)
-		case "a":
-			m.pageNotice()
-		default:
-			return false, nil
-		}
+		return m.updatePlaylistKey(k)
 	case 2:
 		switch k {
 		case "left":
@@ -278,7 +264,14 @@ func (m *Model) movePageCursor(tab, delta int) {
 		p.cursors[0] = max(0, min(len(p.visible)-1, p.cursors[0]+delta))
 	case 1:
 		if p.saved {
-			p.collection = max(0, min(len(pageCollections)-1, p.collection+delta))
+			if p.detail {
+				if list := m.selectedPlaylist(); list != nil {
+					p.savedTrack = max(0, min(len(list.Tracks)-1, p.savedTrack+delta))
+				}
+			} else {
+				p.collection = max(0, min(len(m.playlists.lists)-1, p.collection+delta))
+				p.savedTrack = 0
+			}
 			return
 		}
 		p.cursors[1] = max(0, min(len(m.session.entries)-1, p.cursors[1]+delta))
@@ -296,6 +289,12 @@ func (m *Model) activatePage() tea.Cmd {
 		return m.playLibrarySelection()
 	case 1:
 		if p.saved {
+			if !m.playlistsReady() {
+				return nil
+			}
+			if p.detail {
+				return m.playSavedPlaylist(p.savedTrack)
+			}
 			p.detail = true
 			return nil
 		}
@@ -330,6 +329,10 @@ func (p *pageState) renderEditor(c *pageCanvas) {
 	switch e.purpose {
 	case "open", "browser_location":
 		c.dim(1, 1, "Enter a local path or HTTP(S) audio URL; spaces are preserved")
+	case "playlist_create", "playlist_queue", "playlist_rename":
+		c.dim(1, 1, "Enter saves this name to disk; Esc cancels")
+	case "filter":
+		c.dim(1, 1, "Match title, artist, album or path")
 	case "setting":
 		c.dim(1, 1, "Enter validates the draft; s saves after closing this editor")
 	default:

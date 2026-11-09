@@ -98,8 +98,20 @@ func renderTabPage(m *Model, plan layoutPlan) string {
 		c.dim(4, 1, "s Save and quit · d Discard and quit · Esc Cancel")
 		return c.String()
 	}
+	if p.deletePlaylist != "" {
+		c.label(0, 1, "Delete saved playlist?")
+		if list := m.selectedPlaylist(); list != nil {
+			c.text(2, 1, browserDisplayText(list.Name))
+		}
+		c.dim(4, 1, "Audio files and the session queue stay intact")
+		c.dim(len(c.rows)-1, 1, "y Delete playlist · Esc Cancel")
+		return c.String()
+	}
 	if p.editor != nil {
 		p.renderEditor(c)
+		if m.playlists.save != nil {
+			c.label(len(c.rows)-2, 1, "Saving playlist…")
+		}
 		return c.String()
 	}
 	if p.browser != nil {

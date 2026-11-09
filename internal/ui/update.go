@@ -14,6 +14,11 @@ import (
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case playlistsLoadedMsg:
+		m.applyPlaylists(msg)
+		return m, nil
+	case playlistSavedMsg:
+		return m, m.finishPlaylistSave(msg)
 	case libraryScannedMsg:
 		return m, m.applyLibraryScan(msg)
 	case libraryProgressMsg:

@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/playlist"
 )
 
 func pageKey(m *Model, code rune, text string) tea.Cmd {
@@ -89,16 +90,18 @@ func TestTabPageActionsRemainPresentationOnly(t *testing.T) {
 }
 
 func TestTabPagesSavedCollectionAndSettingsSubview(t *testing.T) {
-	m := setupModel()
+	m := savedFixture(t)
+	list, _ := playlist.New("My collection", m.pages.visible)
+	m.playlists.lists = []playlist.List{list}
 	m.UI.Focus = FocusContent
 	m.UI.ActiveTab = 1
 	pageKey(m, 'v', "v")
 	pageKey(m, tea.KeyEnter, "")
-	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "After the Rain") || !strings.Contains(got, "Evening Sketch") {
+	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "My collection") || !strings.Contains(got, "A.wav") {
 		t.Fatalf("missing playlist detail: %q", got)
 	}
 	pageKey(m, tea.KeyEscape, "")
-	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "Quiet mornings") {
+	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "My collection") {
 		t.Fatal("escape did not return to collections")
 	}
 	m.UI.ActiveTab = 3
