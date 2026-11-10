@@ -138,6 +138,7 @@ func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed b
 	}
 
 	m := &Model{
+		pages: newPageState(),
 		Audio: &AudioState{
 			Volume:     cfg.DefaultVolume,
 			ShowLyrics: true,
@@ -165,6 +166,8 @@ func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed b
 		Loading:     filePath != "",
 		pendingPath: filePath,
 	}
+
+	m.pages.initSettings(*cfg)
 
 	if len(seekTo) > 0 && seekTo[0] > 0 {
 		m.pendingSeek = seekTo[0]
@@ -210,7 +213,7 @@ func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed b
 
 // Init returns the initial commands for the Bubble Tea program.
 func (m *Model) Init() tea.Cmd {
-	cmds := []tea.Cmd{}
+	cmds := []tea.Cmd{m.rescanLibrary(), m.loadPlaylists()}
 
 	if blinkCmd, ok := textinput.Blink().(tea.Cmd); ok {
 		cmds = append(cmds, blinkCmd)
@@ -273,6 +276,13 @@ func (m *Model) cleanup() {
 	if m.exiting {
 		return
 	}
+	if m.scanCancel != nil {
+		m.scanCancel()
+	}
+	m.flushPlaylistSave()
+	m.flushSettingsSave()
+	m.flushVolumeSave()
+	m.flushDeferredVolume()
 	m.exiting = true
 	m.pendingLoad.cancel()
 	m.pendingLoad = nil
@@ -319,17 +329,6 @@ func (m *Model) adjustVolume(delta float64) {
 	m.setVolume(m.Audio.Volume + delta)
 }
 
-// saveVolumeConfig persists the current volume to config if it changed.
-func (m *Model) saveVolumeConfig() {
-	if m.Config.DefaultVolume == m.Audio.Volume {
-		return
-	}
-	m.Config.DefaultVolume = m.Audio.Volume
-	if err := m.Config.Save(); err != nil {
-		logger.Warn("Failed to save volume config", "err", err)
-	}
-}
-
 func (m *Model) updatePlaybackState() tea.Cmd {
 	m.Audio.UpdatePosition()
 	m.Audio.UpdateLyricIndex()
@@ -338,7 +337,7 @@ func (m *Model) updatePlaybackState() tea.Cmd {
 	if plan := m.layoutPlan(); plan.LyricMode == lyricModeOneLine {
 		m.Audio.AdvanceLyricScroll(m.Config.Lyrics.ScrollSpeed, plan.OneLineLyricWidth)
 	}
-	return m.Components.ProgressBar.SetPercent(m.Audio.Progress)
+	return tea.Batch(m.Components.ProgressBar.SetPercent(m.Audio.Progress), m.advanceQueueAtEnd())
 }
 
 func loadAccentCmd(player audio.AudioPlayer, generation int) tea.Cmd {

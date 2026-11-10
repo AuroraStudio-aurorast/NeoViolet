@@ -97,12 +97,12 @@ func TestRunOpenDropsTrailingSpace(t *testing.T) {
 	}
 }
 
-func TestRunOpenWithoutArgumentPrintsUsage(t *testing.T) {
+func TestRunOpenWithoutArgumentOpensTerminalBrowser(t *testing.T) {
 	m := setupModel()
 	setCommand(m, "open")
 	executeCommand(m)
-	if got := m.Error.Message; got != "Usage: open <path>" {
-		t.Errorf("Error = %q, want %q", got, "Usage: open <path>")
+	if m.Error.Message != "" || m.pages.browser == nil || !m.pageOwnsInput() {
+		t.Fatal("open without a path did not open keyboard-accessible browser")
 	}
 }
 

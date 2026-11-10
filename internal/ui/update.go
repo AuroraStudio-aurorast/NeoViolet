@@ -13,7 +13,26 @@ import (
 )
 
 func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
+	defer m.syncListViewports()
 	switch msg := msg.(type) {
+	case playlistsLoadedMsg:
+		m.applyPlaylists(msg)
+		return m, nil
+	case playlistSavedMsg:
+		return m, m.finishPlaylistSave(msg)
+	case libraryScannedMsg:
+		return m, m.applyLibraryScan(msg)
+	case libraryProgressMsg:
+		return m, m.applyLibraryProgress(msg)
+	case fileBrowserMsg:
+		return m, m.applyFileBrowser(msg)
+	case configSavedMsg:
+		return m, m.finishSettingsSave(msg)
+	case volumeSavedMsg:
+		m.finishVolumeSave(msg)
+		return m, nil
+	case settingsLyricsMsg:
+		return m, m.applySettingsLyrics(msg)
 	case ipc.Event:
 		return handleIPCEvent(m, msg)
 	case TickMsg:
@@ -49,6 +68,11 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 	case anim.LoadedMsg:
 		return handleAnimLoaded(m, msg)
 	default:
+		if m.pageOwnsInput() && m.pages.editor != nil {
+			var cmd tea.Cmd
+			m.pages.editor.input, cmd = m.pages.editor.input.Update(msg)
+			return m, cmd
+		}
 		// The animation wakes itself with a tick whose type is unexported, so the
 		// host cannot name it and cannot tell it apart from anything else it does
 		// not recognise. Everything the host does not claim is offered to the
@@ -69,7 +93,7 @@ const lyricPushInterval = 33 * time.Millisecond
 
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
-	cmd = tea.Batch(cmd, m.syncAnim())
+	cmd = tea.Batch(cmd, m.syncAnim(), m.startVolumeSave(time.Now()))
 	m.Error.Tick()
 	m.Info.Tick()
 
@@ -175,7 +199,7 @@ func handleError(m *Model, msg ErrorMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleAccentApply(m *Model, msg AccentApplyMsg) (tea.Model, tea.Cmd) {
-	if m.exiting || msg.Generation != m.activeGeneration {
+	if m.exiting || msg.Generation != m.activeGeneration || !m.Config.Accent.IsEnabled() {
 		return m, nil
 	}
 	m.Accent = msg.Accent

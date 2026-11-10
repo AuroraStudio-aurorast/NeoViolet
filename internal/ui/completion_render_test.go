@@ -310,7 +310,7 @@ func TestOverlayKeepsFrameSizeAndOtherRegions(t *testing.T) {
 	}
 	// The content block is never covered at all now, so its own text has to be
 	// there byte for byte — the loop below is what checks that.
-	if !strings.Contains(after, "[ Home ]") {
+	if !strings.Contains(after, "Music library") {
 		t.Errorf("the content block's own text is gone from the overlaid frame: %q", after)
 	}
 	if before == after {

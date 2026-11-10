@@ -55,7 +55,7 @@ func TestHelpBar_FollowsFocus(t *testing.T) {
 		absent []string
 	}{
 		{FocusTabBar, []string{"←/→ tabs", "tab focus", ": command"}, []string{"seek", "volume", "next track"}},
-		{FocusContent, []string{"[/] tabs", "tab focus", ": command"}, []string{"select", "seek", "volume"}},
+		{FocusContent, []string{"[/] tabs", "tab focus", ": command", "f filter"}, []string{"seek", "volume"}},
 		{FocusFooter, []string{"←/→ seek", "+/− volume", "tab focus", ": command"}, []string{"select", "next track"}},
 	} {
 		m.UI.Focus = tt.focus

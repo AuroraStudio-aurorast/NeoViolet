@@ -36,10 +36,9 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 		m.Audio.IsPlaying = false
 		_ = m.Audio.Player.Seek(0)
 	case mediactl.CmdNext:
-		// No tracklist — skip forward 10s as fallback
-		m.Audio.SeekRelative(10 * time.Second)
+		return m, m.stepQueue(1)
 	case mediactl.CmdPrev:
-		m.Audio.SeekRelative(-10 * time.Second)
+		return m, m.stepQueue(-1)
 	case mediactl.CmdSeek:
 		// MPRIS Seek offset is in microseconds
 		offset := time.Duration(msg.Command.Value) * time.Microsecond

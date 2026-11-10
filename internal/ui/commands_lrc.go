@@ -64,6 +64,7 @@ func executeLrcCommand(m *Model, parts []string) (tea.Model, tea.Cmd) {
 
 // runLrcOn implements ":lrc on".
 func runLrcOn(m *Model, _ invocation) (tea.Model, tea.Cmd) {
+	m.invalidateLyricRequests()
 	if m.Audio.Lyrics != nil {
 		m.Audio.ShowLyrics = true
 		return m, nil
@@ -89,6 +90,7 @@ func runLrcOn(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 
 // runLrcOff implements ":lrc off".
 func runLrcOff(m *Model, _ invocation) (tea.Model, tea.Cmd) {
+	m.invalidateLyricRequests()
 	m.Audio.ShowLyrics = false
 	return m, nil
 }
@@ -96,6 +98,7 @@ func runLrcOff(m *Model, _ invocation) (tea.Model, tea.Cmd) {
 // runLrcSwitch implements ":lrc switch <format>"; "online" fetches instead of
 // reading a sidecar.
 func runLrcSwitch(m *Model, inv invocation) (tea.Model, tea.Cmd) {
+	m.invalidateLyricRequests()
 	if len(inv.Parts) < 3 {
 		m.Error.Set(fmt.Sprintf("Usage: lrc switch <format> (available: %s)", strings.Join(lyrics.AvailableParsers(), ", ")), m.Config.Error.Duration)
 		return m, nil
@@ -127,6 +130,7 @@ func runLrcSwitch(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 // negative "no lyrics" records) and refetch. The session cache is cleared
 // inside fetchLyricsManual.
 func runLrcRefresh(m *Model, _ invocation) (tea.Model, tea.Cmd) {
+	m.invalidateLyricRequests()
 	if m.Audio.Player == nil {
 		m.Error.Set("No audio loaded", m.Config.Error.Duration)
 		return m, nil

@@ -18,8 +18,7 @@ var (
 	tabStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	tabBaselineStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("238"))
 
-	contentHeadingStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	contentStyle        = lipgloss.NewStyle().Padding(0, 1)
+	contentStyle = lipgloss.NewStyle().Padding(0, 1)
 
 	footerStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder(), true, false, false, false).

@@ -150,6 +150,9 @@ func (m *Model) finishIPCOpen(status, message string) {
 
 // requestGUIQuit decides from live Go state; a paused track still needs confirmation.
 func (m *Model) requestGUIQuit() error {
+	if m.confirmSettingsQuit() {
+		return nil
+	}
 	if m.ipcSession == 0 {
 		return fmt.Errorf("GUI session is unavailable")
 	}

@@ -3,6 +3,8 @@ package audio
 import (
 	"math"
 
+	"github.com/gopxl/beep/v2/speaker"
+
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
@@ -34,11 +36,10 @@ func (p *Player) SetVolume(vol float64) {
 	}
 	p.linearVolume = vol
 
-	if p.isSynthActive() {
-		p.synthCtrl.SetVolume(vol)
-	}
 	logger.Debug("Volume set", "volume", vol)
+	speaker.Lock()
 	p.applyLinearVolumeLocked()
+	speaker.Unlock()
 }
 
 // Volume returns the current linear playback volume in the range [0, 1].

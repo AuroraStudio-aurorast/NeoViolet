@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/soundfont"
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/speaker"
-	"github.com/jpodeszfa/go-meltysynth/meltysynth"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
@@ -37,6 +37,9 @@ func ensureSpeakerInit(sampleRate beep.SampleRate) error {
 // optional synthetic (MIDI/tracker) controller behind a single mutex-guarded
 // API used by the UI.
 type Player struct {
+	effectSettings EffectsSettings
+	processor      *effectsProcessor
+	completion     *outputCompletion
 	mu             sync.Mutex
 	streamer       beep.StreamSeekCloser
 	ctrl           *beep.Ctrl
@@ -57,7 +60,7 @@ type Player struct {
 	synthCtrl      synth.Controller
 	synthActive    bool
 	sfPath         string
-	cachedSF       *meltysynth.SoundFont
+	cachedSF       *soundfont.SoundFont
 	cachedSFPath   string
 	trackerBackend string
 	tempFiles      []string // temp files to clean up in Close()
@@ -214,6 +217,7 @@ func (p *Player) closeStreamer() error {
 	}
 	p.ctrl = nil
 	p.volume = nil
+	p.processor = nil
 	return err
 }
 
@@ -236,7 +240,7 @@ func (p *Player) Play() error {
 	speaker.Unlock()
 
 	logger.Debug("Audio play/resume")
-	p.attachOutput(p.volume)
+	p.attachOutput(p.ctrl, false)
 	p.isPlaying = true
 	p.isPaused = false
 	return nil
@@ -270,7 +274,12 @@ func (p *Player) Pause() {
 
 	if p.isSynthActive() {
 		logger.Debug("Synth pause")
+		speaker.Lock()
 		p.synthCtrl.Pause()
+		if p.output != nil {
+			p.output.Paused = true
+		}
+		speaker.Unlock()
 		p.isPaused = true
 		return
 	}
@@ -281,6 +290,9 @@ func (p *Player) Pause() {
 	logger.Debug("Audio pause")
 	speaker.Lock()
 	p.ctrl.Paused = true
+	if p.output != nil {
+		p.output.Paused = true
+	}
 	speaker.Unlock()
 	p.isPaused = true
 }
@@ -302,6 +314,9 @@ func (p *Player) Resume() {
 	logger.Debug("Audio resume")
 	speaker.Lock()
 	p.ctrl.Paused = false
+	if p.output != nil {
+		p.output.Paused = false
+	}
 	speaker.Unlock()
 	p.isPaused = false
 }
@@ -349,7 +364,15 @@ func (p *Player) Seek(position time.Duration) error {
 
 	if p.isSynthActive() {
 		logger.Debug("Synth seek", "position", position)
-		return p.synthCtrl.Seek(position)
+		wasAttached := p.output != nil
+		wasPlaying := p.detachOutput()
+		err := p.synthCtrl.Seek(position)
+		if wasAttached {
+			p.attachOutput(p.synthCtrl.Streamer(), !wasPlaying)
+			p.isPlaying = true
+			p.isPaused = !wasPlaying
+		}
+		return err
 	}
 
 	if p.streamer == nil || p.path == "" {
@@ -365,14 +388,14 @@ func (p *Player) Seek(position time.Duration) error {
 		targetSamples = totalSamples
 	}
 
-	wasPlaying := p.isPlaying && !p.isPaused
 	wasAttached := p.output != nil
-	p.detachOutput()
+	wasPlaying := p.detachOutput()
 
 	if err := p.streamer.Seek(targetSamples); err != nil {
 		if wasAttached {
-			p.attachOutput(p.volume)
+			p.attachOutput(p.ctrl, !wasPlaying)
 			p.isPlaying = true
+			p.isPaused = !wasPlaying
 		}
 		return fmt.Errorf("seek to %v: %w", position, err)
 	}
@@ -382,7 +405,7 @@ func (p *Player) Seek(position time.Duration) error {
 	p.buildChain(!wasPlaying)
 
 	if wasAttached {
-		p.attachOutput(p.volume)
+		p.attachOutput(p.ctrl, !wasPlaying)
 	}
 	p.isPlaying = wasAttached
 	p.isPaused = !wasPlaying
@@ -394,7 +417,12 @@ func (p *Player) Seek(position time.Duration) error {
 func (p *Player) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return p.isPlaying && !p.isPaused
+	if p.isSynthActive() {
+		if state, ok := p.synthCtrl.(interface{ IsPlaying() bool }); ok {
+			return state.IsPlaying()
+		}
+	}
+	return p.isPlaying && !p.isPaused && (p.completion == nil || !p.completion.ended.Load())
 }
 
 // Duration returns the total length of the current track.
@@ -431,6 +459,7 @@ func (p *Player) Close() error {
 	logger.Debug("Player.Close")
 	err := p.closeStreamer()
 	p.isPaused = true
+	p.path = ""
 
 	// Clean up any temp files created by OpenReader
 	for _, tmpPath := range p.tempFiles {

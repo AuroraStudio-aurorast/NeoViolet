@@ -67,15 +67,6 @@ func renderMainView(m *Model) tea.View {
 	return view
 }
 
-// contentDescriptions says what each tab is for. It is written once because it
-// is the same for every frame.
-var contentDescriptions = map[int]string{
-	0: "Browse your music library and manage the queue",
-	1: "View and manage your playlists",
-	2: "Adjust audio effects and enhancements",
-	3: "Configure application settings",
-}
-
 func renderContent(m *Model, plan layoutPlan) string {
 	s := contentStyle
 	// The animation borrows this box while it shows. An .nvaa file is a sidecar
@@ -86,20 +77,13 @@ func renderContent(m *Model, plan layoutPlan) string {
 		return contentBox(s, frame, plan)
 	}
 
-	heading := contentHeadingStyle
-	if m.UI.Focus == FocusContent {
-		heading = heading.Foreground(lipgloss.Color("15")).Bold(true)
-	}
-	content := heading.Render(fmt.Sprintf("[ %s ]", m.UI.Tabs[m.UI.ActiveTab])) +
-		"\n\n" + contentDescriptions[m.UI.ActiveTab]
 	if body, ok := animBody(m, plan); ok {
-		content = body
+		return s.Width(plan.ContentWidth).Height(plan.ContentHeight).Render(body)
 	}
 
-	return s.
-		Width(plan.ContentWidth).
-		Height(plan.ContentHeight).
-		Render(content)
+	// Pages already fill the exact interior, just like a fitted animation frame.
+	// Reuse its box wrapper to avoid measuring every styled cell a second time.
+	return contentBox(s, renderTabPage(m, plan), plan)
 }
 
 func renderFooter(m *Model, plan layoutPlan) string {
@@ -405,6 +389,16 @@ func renderHelp(m *Model) string {
 		return renderInteractionError(m)
 	}
 
+	if m.pageOwnsInput() {
+		text := " enter confirm · esc cancel"
+		if m.pages.browser != nil && m.pages.editor == nil {
+			text = " enter choose · backspace parent · ctrl+l path · esc cancel"
+		}
+		if m.pages.quitSettings {
+			text = " s save and quit · d discard · esc cancel"
+		}
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#b4b4b4")).Render(clampRowWidth(text, m.UI.Width))
+	}
 	h := m.Components.Help
 	h.SetWidth(m.UI.Width)
 	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.Color("#d9d9d9")).Bold(true)

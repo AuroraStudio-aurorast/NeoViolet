@@ -117,7 +117,8 @@ func TestSaveFeedbackDoesNotClassifyLaterInfoAsSuccess(t *testing.T) {
 	m := sized(t, setupModel(), 80, 24)
 	cfg := config.DefaultConfig()
 	m.Config = &cfg
-	runSave(m, invocation{})
+	_, cmd := runSave(m, invocation{})
+	completeSettingsCmd(t, m, cmd)
 	if got := stripANSI(renderHelp(m)); !strings.HasPrefix(got, " Saved  ") {
 		t.Fatalf("save feedback = %q", got)
 	}

@@ -1,293 +1,174 @@
 package synth
 
 import (
+	"errors"
 	"fmt"
-	"image"
+	"io"
 	"os"
-	"time"
 
 	"github.com/gopxl/beep/v2"
-	"github.com/jpodeszfa/go-meltysynth/meltysynth"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/midi"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/soundfont"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
 const midiBlockSize = 512
 
-// MidiPlayer renders MIDI files through a SoundFont synthesizer.
+type midiRenderer interface {
+	Render([]float32, []float32) (int, error)
+	PositionFrames() int64
+}
+type rendererFactory func() (midiRenderer, error)
+
+// MidiPlayer serializes live DSP access; background seek has its own renderer.
 type MidiPlayer struct {
 	baseSynth
-
-	synthesizer *meltysynth.Synthesizer
-	sequencer   *meltysynth.MidiFileSequencer
-	midiFile    *meltysynth.MidiFile
-
-	renderBufL []float32
-	renderBufR []float32
-	renderPos  int
-	renderLen  int
-
-	seekTarget int
-	seeking    bool
+	factory                rendererFactory
+	renderer               midiRenderer
+	position, total        int64
+	renderBufL, renderBufR [midiBlockSize]float32
+	renderErr              error
+	clippedSamples         uint64
+	pending                bool
+	seekGeneration         uint64
+	seekTarget             int64
+	seekCancel             chan struct{}
+	seekReady              chan struct{}
+	seekWake               chan struct{}
+	workerStop             chan struct{}
+	workerDone             chan struct{}
+	checkpoints            *midi.Checkpoints
+	indexing               bool
+	seekReplayFrames       int64
 }
 
-// NewMidiPlayer creates a MIDI player from a MIDI file and SoundFont.
-func NewMidiPlayer(midiPath, sfPath string, soundFont *meltysynth.SoundFont, sampleRate beep.SampleRate) (*MidiPlayer, *meltysynth.SoundFont, error) {
-	logger.Info("Creating MIDI player", "sampleRate", sampleRate)
-	var sf *meltysynth.SoundFont
-	if soundFont != nil {
-		sf = soundFont
-	} else {
-		// #nosec G304 -- sfPath is the configured SoundFont file being loaded.
-		sfFile, err := os.Open(sfPath)
+func newMIDIPlayer(factory rendererFactory, total int64, rate beep.SampleRate) (*MidiPlayer, error) {
+	r, err := factory()
+	if err != nil {
+		return nil, err
+	}
+	p := &MidiPlayer{factory: factory, renderer: r, total: total}
+	p.sampleRate = rate
+	p.isPaused = true
+	p.volumeScale = 1
+	// #nosec G115 -- sample rate is validated to 16000..192000 before constructing the player.
+	p.duration = midi.FramesDuration(total, int32(rate))
+	if renderer, ok := r.(*midi.Renderer); ok {
+		initial := renderer.Clone()
+		p.factory = func() (midiRenderer, error) { return initial.Clone(), nil }
+		// #nosec G115 -- sample rate validated by the MIDI constructor.
+		p.checkpoints = midi.NewCheckpoints(int32(rate), 64<<20)
+	}
+	return p, nil
+}
+
+// NewMidiPlayer creates a MIDI player using an immutable shared SoundFont.
+func NewMidiPlayer(midiPath, sfPath string, sf *soundfont.SoundFont, rate beep.SampleRate) (*MidiPlayer, *soundfont.SoundFont, error) {
+	if rate < 16000 || rate > 192000 {
+		return nil, nil, errors.New("unsupported MIDI sample rate")
+	}
+	if sf == nil {
+		// #nosec G304,G703 -- opening the local SoundFont explicitly selected by the user is intentional.
+		f, err := os.Open(sfPath)
 		if err != nil {
 			return nil, nil, fmt.Errorf("open soundfont: %w", err)
 		}
-		sf, err = meltysynth.NewSoundFont(sfFile)
-		_ = sfFile.Close()
+		var diags []soundfont.Diagnostic
+		sf, diags, err = soundfont.Load(f)
+		_ = f.Close()
 		if err != nil {
 			return nil, nil, fmt.Errorf("load soundfont: %w", err)
 		}
+		if len(diags) > 0 {
+			logger.Info("SoundFont compatibility diagnostics", "items", diags)
+		}
 	}
-
-	// #nosec G115 -- sample rate is a small, bounded value (e.g. 44100).
-	settings := meltysynth.NewSynthesizerSettings(int32(sampleRate))
-	synthesizer, err := meltysynth.NewSynthesizer([]*meltysynth.SoundFont{sf}, settings)
+	// #nosec G304,G703 -- opening the local MIDI file explicitly selected by the user is intentional.
+	f, err := os.Open(midiPath)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create synthesizer: %w", err)
+		return nil, nil, err
 	}
-	synthesizer.MasterVolume = 1.0
-
-	// #nosec G304 -- midiPath is the user's own MIDI file being loaded.
-	midFile, err := os.Open(midiPath)
+	song, diags, err := midi.Parse(f)
+	_ = f.Close()
 	if err != nil {
-		return nil, nil, fmt.Errorf("open midi file: %w", err)
+		return nil, nil, fmt.Errorf("parse midi: %w", err)
 	}
-	midiFile, err := meltysynth.NewMidiFile(midFile)
-	_ = midFile.Close()
+	if len(diags) > 0 {
+		logger.Info("MIDI compatibility diagnostics", "items", diags)
+	}
+	tl, err := song.Compile(int32(rate))
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse midi file: %w", err)
+		return nil, nil, err
 	}
-
-	sequencer := meltysynth.NewMidiFileSequencer(synthesizer)
-	sequencer.Play(midiFile, false)
-
-	p := &MidiPlayer{
-		synthesizer: synthesizer,
-		sequencer:   sequencer,
-		midiFile:    midiFile,
-		renderBufL:  make([]float32, midiBlockSize),
-		renderBufR:  make([]float32, midiBlockSize),
+	p, err := newMIDIPlayer(func() (midiRenderer, error) { return midi.NewRenderer(tl, sf) }, tl.TotalFrames, rate)
+	if err == nil {
+		if renderer, ok := p.renderer.(*midi.Renderer); ok {
+			stats := renderer.Stats()
+			if len(stats.Diagnostics) > 0 {
+				logger.Info("MIDI render compatibility diagnostics", "items", stats.Diagnostics)
+			}
+		}
 	}
-	p.sampleRate = sampleRate
-	p.duration = midiFile.GetLength()
-	p.isPaused = true
-	p.volumeScale = 1.0
-
-	return p, sf, nil
+	return p, sf, err
 }
 
-// Stream implements beep.Streamer by rendering the MIDI sequence.
-func (p *MidiPlayer) Stream(samples [][2]float64) (n int, ok bool) {
-	p.mu.Lock()
-
-	if p.closed || p.finished {
-		p.mu.Unlock()
-		return 0, false
-	}
-	if p.isPaused && !p.seeking {
-		p.mu.Unlock()
-		for i := range samples {
-			samples[i] = [2]float64{}
+// Stream holds the state mutex for at most 512 output frames. It never replays
+// a seek prefix, waits for a worker or reads files on the audio callback.
+func (p *MidiPlayer) Stream(samples [][2]float64) (int, bool) {
+	for offset := 0; offset < len(samples); {
+		p.mu.Lock()
+		if p.closed || p.renderErr != nil {
+			p.mu.Unlock()
+			return offset, false
 		}
-		return len(samples), true
+		count := min(len(samples)-offset, midiBlockSize)
+		out := samples[offset : offset+count]
+		clear(out)
+		if !p.pending && !p.isPaused && p.isPlaying && p.renderer != nil {
+			n, err := p.renderer.Render(p.renderBufL[:count], p.renderBufR[:count])
+			for i := 0; i < n; i++ {
+				l, r := float64(p.renderBufL[i])*p.volumeScale, float64(p.renderBufR[i])*p.volumeScale
+				if l < -1 || l > 1 {
+					p.clippedSamples++
+				}
+				if r < -1 || r > 1 {
+					p.clippedSamples++
+				}
+				out[i][0] = clamp(l, -1, 1)
+				out[i][1] = clamp(r, -1, 1)
+			}
+			p.position = p.renderer.PositionFrames()
+			if err != nil && err != io.EOF {
+				p.renderErr = err
+				p.isPlaying = false
+			}
+			if err == io.EOF || p.position >= p.total {
+				p.position = p.total
+				p.finished = true
+				p.isPlaying = false
+			}
+		}
+		p.mu.Unlock()
+		offset += count
 	}
-
-	vs := p.volumeScale
-	elapsed := p.elapsed
-	duration := p.duration
-
-	if p.seeking {
-		p.handleSeek(samples, vs, &elapsed, duration)
-		return len(samples), true
-	}
-
-	p.mu.Unlock()
-
-	p.fillSamples(samples, vs, &elapsed, duration)
-
-	p.mu.Lock()
-	p.elapsed = elapsed
-	p.mu.Unlock()
-
 	return len(samples), true
 }
 
-func (p *MidiPlayer) handleSeek(samples [][2]float64, vs float64, elapsed *time.Duration, duration time.Duration) {
-	target := p.seekTarget
-	p.seeking = false
-	p.mu.Unlock()
+// Err reports the last asynchronous rendering error.
+func (p *MidiPlayer) Err() error { p.mu.Lock(); defer p.mu.Unlock(); return p.renderErr }
 
-	p.sequencer.Stop()
-	p.synthesizer.Reset()
-	newSeq := meltysynth.NewMidiFileSequencer(p.synthesizer)
-	newSeq.Play(p.midiFile, false)
-
-	seekBlock := int(p.sampleRate)
-	bufL := make([]float32, seekBlock)
-	bufR := make([]float32, seekBlock)
-	for rendered := 0; rendered < target; {
-		p.mu.Lock()
-		if p.closed {
-			p.mu.Unlock()
-			return
-		}
-		if p.seeking {
-			target = p.seekTarget
-			p.seeking = false
-			p.mu.Unlock()
-			p.sequencer.Stop()
-			p.synthesizer.Reset()
-			newSeq = meltysynth.NewMidiFileSequencer(p.synthesizer)
-			newSeq.Play(p.midiFile, false)
-			rendered = 0
-			continue
-		}
-		p.mu.Unlock()
-
-		blk := seekBlock
-		if remain := target - rendered; remain < blk {
-			blk = remain
-		}
-		newSeq.Render(bufL[:blk], bufR[:blk])
-		rendered += blk
-	}
-
-	p.mu.Lock()
-	p.sequencer = newSeq
-	p.renderPos = 0
-	p.renderLen = 0
-	if p.seeking || p.isPaused {
-		p.mu.Unlock()
-		for i := range samples {
-			samples[i] = [2]float64{}
-		}
-		return
-	}
-	p.mu.Unlock()
-
-	p.fillSamples(samples, vs, elapsed, duration)
-
-	p.mu.Lock()
-	p.elapsed = *elapsed
-	p.mu.Unlock()
-}
-
-func (p *MidiPlayer) fillSamples(samples [][2]float64, vs float64, elapsed *time.Duration, duration time.Duration) {
-	for i := range samples {
-		if *elapsed >= duration {
-			p.mu.Lock()
-			p.finished = true
-			p.isPlaying = false
-			p.mu.Unlock()
-			for j := i; j < len(samples); j++ {
-				samples[j] = [2]float64{}
-			}
-			return
-		}
-
-		if p.renderPos >= p.renderLen {
-			for j := range p.renderBufL {
-				p.renderBufL[j] = 0
-				p.renderBufR[j] = 0
-			}
-			p.sequencer.Render(p.renderBufL, p.renderBufR)
-			p.renderPos = 0
-			p.renderLen = midiBlockSize
-		}
-		l := float64(p.renderBufL[p.renderPos]) * vs
-		r := float64(p.renderBufR[p.renderPos]) * vs
-		p.renderPos++
-
-		samples[i][0] = softClip(l)
-		samples[i][1] = softClip(r)
-		*elapsed += time.Second / time.Duration(p.sampleRate)
-	}
-}
-
-// Err returns nil; MIDI playback errors are handled during rendering.
-func (p *MidiPlayer) Err() error { return nil }
-
-// Stop halts MIDI playback.
-func (p *MidiPlayer) Stop() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	logger.Debug("MIDI player stop")
-	p.baseStop()
-	p.seeking = false
-}
-
-// Close releases the synthesizer and sequencer.
-func (p *MidiPlayer) Close() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	logger.Debug("MIDI player close")
-	p.baseClose()
-	p.seeking = false
-	p.sequencer.Stop()
-	return nil
-}
-
-// IsPlaying reports whether the MIDI player is actively rendering.
-func (p *MidiPlayer) IsPlaying() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.isPlaying && !p.isPaused
-}
-
-// Streamer returns the player itself.
+// Streamer returns the reusable MIDI output stream.
 func (p *MidiPlayer) Streamer() Streamer { return p }
 
-// Path returns the MIDI file path (empty, since NewMidiPlayer takes it directly).
+// Path is empty because the enclosing Player owns the file identity.
 func (p *MidiPlayer) Path() string { return "" }
 
+// Open is unsupported; construct a MIDI player with NewMidiPlayer.
+func (p *MidiPlayer) Open(string) error { return errors.New("use NewMidiPlayer") }
+
 // SetTitle sets the display title.
-func (p *MidiPlayer) SetTitle(title string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.title = title
-}
+func (p *MidiPlayer) SetTitle(s string) { p.mu.Lock(); defer p.mu.Unlock(); p.title = s }
 
 // SetArtist sets the display artist.
-func (p *MidiPlayer) SetArtist(artist string) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.artist = artist
-}
-
-// CoverImage returns nil; MIDI files have no embedded art.
-func (p *MidiPlayer) CoverImage() image.Image { return nil }
-
-// Seek schedules a jump to the given position.
-func (p *MidiPlayer) Seek(pos time.Duration) error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	targetSample := int(pos.Seconds() * float64(p.sampleRate))
-	if targetSample < 0 {
-		targetSample = 0
-	}
-
-	logger.Debug("MIDI seek", "position", pos, "targetSample", targetSample)
-
-	p.seekTarget = targetSample
-	p.seeking = true
-	p.elapsed = pos
-	p.finished = false
-	return nil
-}
-
-// Open is unsupported; use NewMidiPlayer instead.
-func (p *MidiPlayer) Open(_ string) error {
-	return fmt.Errorf("midi player does not support Open, use NewMidiPlayer")
-}
+func (p *MidiPlayer) SetArtist(s string) { p.mu.Lock(); defer p.mu.Unlock(); p.artist = s }
