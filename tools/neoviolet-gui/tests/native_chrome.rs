@@ -6,6 +6,9 @@ mod chrome;
 #[path = "../src/desktop_lyrics_macos.rs"]
 mod lyrics_pair;
 #[cfg(target_os = "macos")]
+#[path = "native_chrome/recovery.rs"]
+mod recovery;
+#[cfg(target_os = "macos")]
 #[path = "../src/desktop_menu_macos.rs"]
 mod startup_menu;
 
@@ -133,10 +136,26 @@ fn check_native_layout() {
         button.setPostsFrameChangedNotifications(false);
         button.setPostsBoundsChangedNotifications(false);
     }
+    let native_x = buttons.each_ref().map(|button| button.frame().origin.x);
     chrome::install(id, &view, &window, 34.0);
     chrome::refresh(id, &view, &window, 34.0);
     settle();
     let expected = buttons.each_ref().map(|button| button.frame().origin);
+    if objc2_foundation::NSProcessInfo::processInfo()
+        .operatingSystemVersion()
+        .majorVersion
+        >= 26
+    {
+        for index in 1..3 {
+            assert!(
+                ((expected[index].x - expected[index - 1].x)
+                    - (native_x[index] - native_x[index - 1]))
+                    .abs()
+                    < 0.1,
+                "modern macOS must preserve native button spacing: native {native_x:?}, actual {expected:?}"
+            );
+        }
+    }
     let expected_layers = buttons
         .each_ref()
         .map(|button| button.layer().unwrap().frame());
@@ -181,8 +200,48 @@ fn check_native_layout() {
     );
     parent.setBoundsOrigin(bounds.origin);
     settle();
+    recovery::check(id, &window, &view, &buttons, expected);
+    let original_frame = window.frame();
+    for (step, (width, height, display)) in [
+        (811.0, 607.0, false),
+        (750.0, 550.0, false),
+        (750.0, 600.0, true),
+        (820.0, 600.0, true),
+        (800.5, 600.5, false),
+        (480.0, 320.0, true),
+        (1000.0, 700.0, true),
+        (800.0, 600.0, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut frame = original_frame;
+        frame.size = NSSize::new(width, height);
+        window.setFrame_display(frame, display);
+        let actual = buttons.each_ref().map(|button| button.frame().origin);
+        assert_eq!(
+            actual, expected,
+            "resize must restore buttons before the next display, without a run-loop correction (step {step})"
+        );
+        assert_eq!(
+            buttons
+                .each_ref()
+                .map(|button| button.layer().unwrap().frame()),
+            expected_layers,
+            "native layers must be aligned in the same resize pass"
+        );
+        // Deliberately no run-loop drain between sizes: even a burst must never expose resets.
+    }
+    window.setFrame_display(original_frame, false);
+    settle();
     // Reinstallation must remove the previous observer set, preserving original flags.
     chrome::install(id, &view, &window, 34.0);
+    settle();
+    assert_eq!(
+        buttons.each_ref().map(|button| button.frame().origin),
+        expected,
+        "reinstallation must not recapture our adjusted layout as the native baseline"
+    );
     window.close();
     settle();
     for (index, button) in buttons.iter().enumerate() {

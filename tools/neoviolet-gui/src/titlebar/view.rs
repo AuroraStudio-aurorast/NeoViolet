@@ -32,7 +32,7 @@ impl State {
     ) -> Element<'a, crate::app::Message> {
         let mut bar = row![].align_y(iced::Center).height(HEIGHT);
         if platform == Platform::MacOs {
-            bar = bar.push(iced::widget::Space::new().width(78));
+            bar = bar.push(iced::widget::Space::new().width(self.mac_title_inset.unwrap_or(78.0)));
         } else if !self.menu_bar {
             bar = bar.push(hint(menu_trigger(), "Application menu"));
         }

@@ -63,7 +63,7 @@ impl Hash for Events {
 
 #[derive(Clone)]
 pub struct Desktop {
-    sender: mpsc::UnboundedSender<Event>,
+    pub(super) sender: mpsc::UnboundedSender<Event>,
     _menu: Menu,
     _delegate: Retained<FileDelegate>,
     events: Events,
@@ -292,7 +292,10 @@ impl Desktop {
     }
 }
 
-pub fn configure_main(id: iced::window::Id) -> iced::Task<()> {
+pub fn configure_main(
+    id: iced::window::Id,
+    sender: mpsc::UnboundedSender<Event>,
+) -> iced::Task<()> {
     iced::window::run(id, move |handle| {
         use iced::window::raw_window_handle::RawWindowHandle;
         use objc2_app_kit::{
@@ -315,6 +318,9 @@ pub fn configure_main(id: iced::window::Id) -> iced::Task<()> {
             window.setAppearance(appearance.as_deref());
             NSApplication::sharedApplication(marker).setAppearance(appearance.as_deref());
             super::chrome::install(id, view, &window, f64::from(crate::titlebar::HEIGHT));
+            super::chrome::on_title_inset(id, move |inset| {
+                let _ = sender.send(Event::TitleInset(id, inset));
+            });
         }
     })
 }
