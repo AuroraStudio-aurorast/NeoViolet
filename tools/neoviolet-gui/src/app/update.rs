@@ -35,6 +35,15 @@ impl App {
             } => {
                 if session == self.session
                     && epoch == self.connection_epoch
+                    && self
+                        .picker
+                        .as_ref()
+                        .is_some_and(|picker| picker.waiting_reply(&id))
+                {
+                    return self.picker_reply_timeout();
+                }
+                if session == self.session
+                    && epoch == self.connection_epoch
                     && self.requests.get(&id) == Some(&accepted)
                 {
                     self.requests.remove(&id);

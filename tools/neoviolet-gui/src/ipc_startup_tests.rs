@@ -42,7 +42,7 @@ async fn startup_handshake_announces_gui_capability_before_any_command() {
             if supports_startup {
                 assert_eq!(
                     first,
-                    serde_json::json!({"type":"client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences"]})
+                    serde_json::json!({"type":"client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences","settings_file_picker"]})
                 );
                 line.clear();
                 peer.read_line(&mut line).await.unwrap();
@@ -68,7 +68,7 @@ async fn startup_handshake_announces_gui_capability_before_any_command() {
 
 #[tokio::test]
 async fn picker_replies_keep_status_request_and_optional_fields_on_the_wire() {
-    for purpose in ["soundfont", "audio"] {
+    for purpose in ["soundfont", "audio", "library_directory", "player_binary"] {
         for (status, path, error) in [
             ("selected", Some(PathBuf::from("/tmp/a bank 雪.sf2")), None),
             ("cancelled", None, None),

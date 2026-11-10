@@ -12,7 +12,8 @@
       "file_picker",
       "audio_file_picker",
       "settings_navigation",
-      "settings_preferences"
+      "settings_preferences",
+      "settings_file_picker"
     ],
     "libopenmpt_version": "0.8.9"
   },
@@ -70,6 +71,11 @@
       "request_id": "font",
       "key": "gui.font_size",
       "value": 20
+    },
+    {
+      "type": "open_picker",
+      "purpose": "audio",
+      "request_id": "chooser"
     }
   ],
   "phase": {
@@ -88,7 +94,8 @@
     "capabilities": [
       "file_picker",
       "audio_file_picker",
-      "settings_preferences"
+      "settings_preferences",
+      "settings_file_picker"
     ]
   },
   "file_picked": {
@@ -121,5 +128,17 @@
         "locked": false
       }
     }
+  },
+  "settings_pick_file": {
+    "type": "pick_file",
+    "purpose": "library_directory",
+    "request_id": "library-1"
+  },
+  "settings_file_picked": {
+    "type": "file_picked",
+    "purpose": "player_binary",
+    "request_id": "binary-1",
+    "status": "selected",
+    "path": "/Applications/Neo Violet 雪/neoviolet"
   }
 }

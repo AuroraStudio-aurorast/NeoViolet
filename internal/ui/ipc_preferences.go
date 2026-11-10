@@ -20,7 +20,7 @@ func (m *Model) pushGUIPreferences() {
 
 // Only runtime controls may write here; the full form remains a TUI draft.
 func (m *Model) saveGUIPreference(message ipc.Message) (tea.Cmd, error) {
-	if m.configSave != nil || m.pages == nil || m.pages.editor != nil || m.pages.picker != "" || m.pages.browser != nil || m.pages.rootEditor || m.pages.quitSettings || m.pages.changed[message.Key] {
+	if m.ipcPickerID != "" || m.configSave != nil || m.pages == nil || m.pages.editor != nil || m.pages.picker != "" || m.pages.browser != nil || m.pages.rootEditor || m.pages.quitSettings || m.pages.changed[message.Key] {
 		return nil, fmt.Errorf("finish or cancel the current edit or save before changing this preference")
 	}
 	var value any

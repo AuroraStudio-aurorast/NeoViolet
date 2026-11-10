@@ -10,13 +10,14 @@
 // GUI → TUI message types:
 //
 //	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences"]}
-//	{"type": "file_picked", "purpose":"soundfont|audio", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
+//	{"type": "file_picked", "purpose":"soundfont|audio|library_directory|player_binary", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
 //	{"type": "open", "path": "/path/to/file"}
 //	{"type": "desktop_lyrics", "enable": true|false}
 //	{"type": "play"} | {"type": "pause"} — idempotent playback control
 //	{"type": "seek", "position": 12.3} — absolute seconds, clamped to duration
 //	{"type": "set_volume", "volume": 0.5} — 0..1, including zero
 //	{"type": "get_state"} — request a full snapshot
+//	{"type": "open_picker", "purpose":"audio"} — ask Go to request the native audio chooser
 //	{"type": "open_settings"} — focus the TUI Settings page, retaining drafts
 //	{"type": "play_pause"}                  — toggle play/pause
 //	{"type": "request_quit"}                — ask Go whether confirmation is needed
@@ -25,7 +26,7 @@
 // TUI → GUI message types:
 //
 //	{"type": "phase", "phase":"starting|wizard|initial_loading|ready"}
-//	{"type": "pick_file", "purpose":"soundfont|audio", "request_id":"..."}
+//	{"type": "pick_file", "purpose":"soundfont|audio|library_directory|player_binary", "request_id":"..."}
 //	{"type": "hello"}                       — authentication succeeded
 //	{"type": "desktop_lyrics", "enable": true|false} — synchronize overlay visibility
 //	{"type": "quit", "dialog": true}     — loaded track or load in progress; show confirmation
@@ -39,7 +40,7 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the raw TUI build version), and capabilities
-// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences"].
+// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker"].
 // Product versions never gate
 // protocol compatibility. Optional libopenmpt_version identifies the runtime-loaded
 // library and is omitted when the library is unavailable; it is not the build lock version.
@@ -49,8 +50,9 @@
 // phase on connection and on transitions; only ready enables application actions.
 // Initial load failure also reaches ready, allowing recovery; runtime replacements
 // do not re-enter initial_loading. A pick_file request and its file_picked reply
-// are scoped to one connection and request_id. Purpose soundfont is wizard-only,
-// with .sf2 validation in Go. Purpose audio is ready-only, requires the GUI
+// are scoped to one connection and request_id. Startup soundfont selection is
+// wizard-only, with .sf2 validation in Go; settings_file_picker adds its runtime
+// counterpart below. Purpose audio is ready-only, requires the GUI
 // audio_file_picker capability, and uses Go audio-path validation and loading.
 // Cancellation retains the current SoundFont or track.
 // state messages carry a state object: track_id (accepted load generation),
@@ -74,6 +76,20 @@
 // a terminal result only after saving; errors leave live preferences unchanged.
 // An active save/editor or conflicting dirty field rejects the request.
 // Window chrome and player path apply on the next GUI/player launch.
+// settings_file_picker extends pick_file/file_picked with ready-only purposes
+// soundfont, library_directory and player_binary. The startup wizard retains
+// its own SoundFont flow; replies are routed to the owner of their request ID.
+// Selected settings paths are validated by Go and update only the current draft.
+// Every runtime picker reply receives a terminal result. Audio success acknowledges load
+// dispatch; settings success acknowledges the validated draft update, not saving.
+// Cancellation receives result(cancelled). A capable GUI keeps terminal input
+// suspended until this acknowledgment, since PTY and TCP delivery are independent.
+// Cancellation preserves it; a failed native chooser falls back to the TUI browser.
+// GUI open_picker {purpose:"audio"} asks Go to initiate the same ready-only audio
+// chooser used by Home and :open. Its result acknowledges dispatch, not playback.
+// GUI advertises settings_file_picker only when it can host these chooser kinds.
+// A dialog and asynchronous selection validation belong to one authenticated
+// connection; disconnection, supersession and shutdown invalidate late replies.
 //
 // The lyrics payload describes each line as Prefix followed by its display
 // sub-lines (Parts when it has any, otherwise Text). Words carries the timings
@@ -178,5 +194,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker"}}
 }

@@ -17,6 +17,9 @@ func (b *fileBrowser) render(c *pageCanvas) {
 	if b.purpose == "soundfont" {
 		title = "Choose SoundFont"
 	}
+	if b.purpose == "player_binary" {
+		title = "Choose player executable"
+	}
 	status := fmt.Sprintf("%d items", len(b.entries))
 	if b.loading {
 		status = "Reading…"
@@ -41,10 +44,13 @@ func (b *fileBrowser) render(c *pageCanvas) {
 		}
 		name := entry.name
 		kind := "audio"
-		if entry.directory {
+		switch {
+		case entry.directory:
 			name += "/"
 			kind = "folder"
-		} else if b.purpose == "soundfont" {
+		case b.purpose == "player_binary":
+			kind = "program"
+		case b.purpose == "soundfont":
 			kind = ".sf2"
 		}
 		c.pair(y, 1, w-2, marker+browserDisplayText(name), kind)
@@ -58,7 +64,7 @@ func (b *fileBrowser) render(c *pageCanvas) {
 	switch {
 	case b.err != "":
 		c.label(h-2, 1, browserDisplayText(b.err))
-	case b.purpose == "soundfont":
+	case b.purpose == "soundfont" || b.purpose == "player_binary":
 		c.dim(h-2, 1, "Selection edits the draft; s saves after returning")
 	default:
 		c.dim(h-2, 1, "Enter opens the file; Esc keeps the current track")

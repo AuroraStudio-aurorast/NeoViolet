@@ -18,9 +18,12 @@ impl App {
         };
         let closing = self.closing;
         let available = self.actions_available();
+        let finishing_preferences = self.finishing_preferences();
         let requests = requests.into_iter().filter(|request| {
             (!closing || matches!(request, ipc::Request::Quit))
                 && (available
+                    || (finishing_preferences
+                        && matches!(request, ipc::Request::SetPreference { .. }))
                     || matches!(
                         request,
                         ipc::Request::Quit

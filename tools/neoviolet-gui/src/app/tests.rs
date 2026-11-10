@@ -619,3 +619,6 @@ fn measured_title_insets_only_apply_to_the_main_window() {
 
 #[path = "preferences_tests.rs"]
 mod preferences_tests;
+
+#[path = "picker_integration_tests.rs"]
+mod picker_integration_tests;

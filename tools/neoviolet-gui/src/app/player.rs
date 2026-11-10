@@ -129,7 +129,12 @@ impl App {
                 request_id,
                 status,
                 error,
-            }) => return self.command_result(request_id, status, error),
+            }) => {
+                if let Some(task) = self.finish_picker_reply(&request_id, &status, &error) {
+                    return task;
+                }
+                return self.command_result(request_id, status, error);
+            }
             ipc::Event::Received(ipc::Incoming::Lyrics(frame)) => {
                 if self.actions_available() && self.config.desktop_lyrics.enabled {
                     let changed = self.lyrics.frame.display_lines() != frame.display_lines()
@@ -173,6 +178,13 @@ impl App {
                 }
             }
             ipc::Event::Disconnected(error) => {
+                if self
+                    .picker
+                    .as_ref()
+                    .is_some_and(|picker| picker.reply_pending())
+                {
+                    self.picker = None;
+                }
                 self.connection = None;
                 self.preference_writes = Default::default();
                 self.ipc_connected = false;

@@ -110,8 +110,28 @@ impl App {
         })
     }
 
+    pub(super) fn has_pending_preferences(&self) -> bool {
+        self.preference_writes.active.is_some() || !self.preference_writes.pending.is_empty()
+    }
+
+    // A cancelled native dialog may stay physically open while Quit drains
+    // previously accepted user intents. It still owns ordinary input.
+    pub(super) fn finishing_preferences(&self) -> bool {
+        self.preference_writes.quit
+            && !self.closing
+            && self.ipc_connected
+            && self.startup == super::startup::Stage::Phase(ipc::StartupPhase::Ready)
+            && self
+                .picker
+                .as_ref()
+                .is_some_and(|picker| picker.cancelled())
+    }
+
     pub(super) fn flush_preference(&mut self) -> Task<Message> {
-        if !self.actions_available() || !self.ipc_connected || self.connection.is_none() {
+        if (!self.actions_available() && !self.finishing_preferences())
+            || !self.ipc_connected
+            || self.connection.is_none()
+        {
             return Task::none();
         }
         if self.preference_writes.active.is_some() {

@@ -24,6 +24,8 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.applyLibraryScan(msg)
 	case libraryProgressMsg:
 		return m, m.applyLibraryProgress(msg)
+	case nativeSelectionMsg:
+		return m, m.applyNativeSelection(msg)
 	case fileBrowserMsg:
 		return m, m.applyFileBrowser(msg)
 	case configSavedMsg:

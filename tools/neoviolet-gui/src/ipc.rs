@@ -33,6 +33,7 @@ pub enum Request {
     SetVolume(f64),
     GetState,
     OpenSettings,
+    OpenPicker,
     OpenSettingsSection(&'static str),
     SetPreference {
         key: &'static str,
@@ -245,7 +246,7 @@ async fn authenticate(
         Some(Incoming::Hello(hello)) if hello.protocol <= 1 => {
             if hello.supports("startup") {
                 peer.get_mut().write_all(
-                    b"{\"type\":\"client_hello\",\"client\":\"neoviolet-gui\",\"protocol\":1,\"capabilities\":[\"file_picker\",\"audio_file_picker\",\"settings_preferences\"]}\n"
+                    b"{\"type\":\"client_hello\",\"client\":\"neoviolet-gui\",\"protocol\":1,\"capabilities\":[\"file_picker\",\"audio_file_picker\",\"settings_preferences\",\"settings_file_picker\"]}\n"
                 ).await.map_err(|error| error.to_string())?;
             }
             Ok((peer, hello))
@@ -311,6 +312,7 @@ async fn write_request<W: AsyncWrite + Unpin>(
         Request::SetVolume(volume) => serde_json::json!({"type": "set_volume", "volume":volume}),
         Request::GetState => serde_json::json!({"type": "get_state"}),
         Request::OpenSettings => serde_json::json!({"type": "open_settings"}),
+        Request::OpenPicker => serde_json::json!({"type":"open_picker","purpose":"audio"}),
         Request::OpenSettingsSection(section) => {
             serde_json::json!({"type":"open_settings","section":section})
         }

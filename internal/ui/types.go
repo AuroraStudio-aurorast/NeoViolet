@@ -340,6 +340,8 @@ type Model struct {
 	ipcPreferences         bool
 	ipcPreferencesRevision uint64
 	ipcAudioPicker         bool
+	ipcSettingsPicker      bool
+	ipcPicker              *nativePicker
 	ipcPickerID            string
 	ipcPickerSequence      uint64
 	ipcPendingOpen         *ipcOpenRequest

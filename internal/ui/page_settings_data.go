@@ -37,7 +37,7 @@ func samplePageSettings() []pageSetting {
 		{group: 5, key: "gui.menu_bar", label: "Window menu bar", options: []string{"Off", "On"}},
 		{group: 5, key: "gui.minimize_button", label: "Minimize button", options: []string{"Off", "On"}},
 		{group: 5, key: "gui.system_decorations", label: "System chrome (reopen GUI)", options: []string{"Off", "On"}},
-		{group: 5, key: "gui.neoviolet_path", label: "Player path (next launch)"},
+		{group: 5, key: "gui.neoviolet_path", label: "Player path (next launch)", kind: "file"},
 		{group: 6, key: "desktop_lyrics.enabled", label: "Desktop lyrics", options: []string{"On", "Off"}},
 		{group: 6, key: "desktop_lyrics.font_size", label: "Desktop font size"},
 		{group: 6, key: "desktop_lyrics.opacity", label: "Desktop opacity"},

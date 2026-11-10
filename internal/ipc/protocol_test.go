@@ -23,14 +23,16 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	fixtureHello := Hello()
 	fixtureHello.LibopenmptVersion = "0.8.9" // Fixed transport sample, independent of the host library.
 	messages := map[string]Message{
-		"hello":        fixtureHello,
-		"preferences":  {Type: "preferences", Revision: 2, Preferences: &Preferences{GUI: config.GUIConfig{MonospaceFont: "Test Mono", FontSize: 20, Opacity: .8, MinimizeButton: true}, DesktopLyrics: config.DesktopLyricsConfig{FontSize: 28, Opacity: .6, Highlight: "white", AdditionalLines: true}}},
-		"phase":        {Type: "phase", Phase: "wizard"},
-		"pick_file":    {Type: "pick_file", Purpose: "soundfont", RequestID: "soundfont-7"},
-		"client_hello": {Type: "client_hello", Client: "neoviolet-gui", Protocol: 1, Capabilities: []string{"file_picker", "audio_file_picker", "settings_preferences"}},
-		"file_picked":  {Type: "file_picked", Purpose: "soundfont", RequestID: "soundfont-7", Status: "cancelled"},
-		"result":       {Type: "result", RequestID: "mute", Status: "succeeded"},
-		"state":        {Type: "state", State: &PlaybackState{Revision: 7, TrackID: 3, Path: "/music/a \"song\" 雪.flac", Title: "雪", HasTrack: true, DesktopLyrics: true, Duration: 120, ConfigDir: "/settings/neoviolet"}},
+		"hello":                fixtureHello,
+		"settings_pick_file":   {Type: "pick_file", Purpose: "library_directory", RequestID: "library-1"},
+		"settings_file_picked": {Type: "file_picked", Purpose: "player_binary", RequestID: "binary-1", Status: "selected", Path: "/Applications/Neo Violet 雪/neoviolet"},
+		"preferences":          {Type: "preferences", Revision: 2, Preferences: &Preferences{GUI: config.GUIConfig{MonospaceFont: "Test Mono", FontSize: 20, Opacity: .8, MinimizeButton: true}, DesktopLyrics: config.DesktopLyricsConfig{FontSize: 28, Opacity: .6, Highlight: "white", AdditionalLines: true}}},
+		"phase":                {Type: "phase", Phase: "wizard"},
+		"pick_file":            {Type: "pick_file", Purpose: "soundfont", RequestID: "soundfont-7"},
+		"client_hello":         {Type: "client_hello", Client: "neoviolet-gui", Protocol: 1, Capabilities: []string{"file_picker", "audio_file_picker", "settings_preferences", "settings_file_picker"}},
+		"file_picked":          {Type: "file_picked", Purpose: "soundfont", RequestID: "soundfont-7", Status: "cancelled"},
+		"result":               {Type: "result", RequestID: "mute", Status: "succeeded"},
+		"state":                {Type: "state", State: &PlaybackState{Revision: 7, TrackID: 3, Path: "/music/a \"song\" 雪.flac", Title: "雪", HasTrack: true, DesktopLyrics: true, Duration: 120, ConfigDir: "/settings/neoviolet"}},
 	}
 	for name, message := range messages {
 		got, err := json.Marshal(message)

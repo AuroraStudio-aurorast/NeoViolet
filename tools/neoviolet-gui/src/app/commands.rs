@@ -8,6 +8,9 @@ use std::path::PathBuf;
 
 impl App {
     pub(super) fn action(&mut self, action: Action) -> Task<Message> {
+        if matches!(action, Action::Quit) {
+            return self.dispatch_action(action);
+        }
         if !self.basic_actions_available()
             || (action.requires_player() && !self.actions_available())
         {
@@ -41,6 +44,16 @@ impl App {
                 return self.update(Message::Lyrics(lyrics_window::Event::Locked(false)));
             }
             Action::Open => {
+                if self.ipc_connected && self.handshake.supports("settings_file_picker") {
+                    if self.dialog.is_some() {
+                        return Task::none();
+                    }
+                    return Task::batch([
+                        self.send_all(vec![ipc::Request::OpenPicker]),
+                        self.reveal_main()
+                            .chain(Task::done(Message::RestoreTerminalFocus)),
+                    ]);
+                }
                 return self.reveal_main().chain(
                     window::run(self.main_window, |parent| {
                         rfd::AsyncFileDialog::new()
@@ -103,18 +116,19 @@ impl App {
                 if self.closing {
                     return Task::none();
                 }
-                if self.preference_writes.active.is_some() {
+                let cancel = self.cancel_native_picker();
+                if self.has_pending_preferences() {
                     self.preference_writes.quit = true;
-                    return Task::none();
+                    return Task::batch([cancel, self.flush_preference()]);
                 }
                 if !self.running {
                     return self.finish_quit();
                 }
                 if self.ipc_connected && self.handshake.supports("request_quit") {
-                    return self.send_all(vec![ipc::Request::CheckQuit]);
+                    return Task::batch([cancel, self.send_all(vec![ipc::Request::CheckQuit])]);
                 }
                 self.dialog = Some(Dialog::Quit);
-                return self.reveal_main();
+                return Task::batch([cancel, self.reveal_main()]);
             }
             Action::Copy => {
                 if self.dialog.is_none()

@@ -36,6 +36,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		if m.ipcServer != nil && event.Session == m.ipcServer.Session() {
 			m.ipcSession = event.Session
 			m.ipcAudioPicker = false
+			m.ipcSettingsPicker = false
+			m.clearNativePicker()
 			m.ipcPreferences = false
 			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
@@ -47,6 +49,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		if event.Session == m.ipcSession {
 			m.ipcSession = 0
 			m.ipcAudioPicker = false
+			m.ipcSettingsPicker = false
+			m.clearNativePicker()
 			m.ipcPreferences = false
 			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
@@ -80,10 +84,11 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 			return nil, fmt.Errorf("unsupported GUI client")
 		}
 		m.ipcAudioPicker = slices.Contains(message.Capabilities, "audio_file_picker")
+		m.ipcSettingsPicker = slices.Contains(message.Capabilities, "settings_file_picker")
 		m.ipcPreferences = slices.Contains(message.Capabilities, "settings_preferences")
 		m.pushGUIPreferences()
 	case "file_picked":
-		return m.audioPicked(message), nil
+		return m.filePicked(message), nil
 	case "request_quit":
 		return nil, m.requestGUIQuit()
 	case "quit":
@@ -91,6 +96,11 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 	case "get_state":
 		m.pushIPCState(true)
 		m.pushGUIPreferences()
+	case "open_picker":
+		if message.Purpose != "audio" || !m.ipcAudioPicker || m.pages == nil || m.pages.editor != nil || m.pages.picker != "" || m.pages.browser != nil || m.pages.rootEditor || m.pages.quitSettings || m.pages.deletePlaylist != "" || m.UI.Mode == ModeCommand {
+			return nil, fmt.Errorf("finish the current input before opening a file chooser")
+		}
+		return m.openFilePicker("audio", -1, ""), nil
 	case "open_settings":
 		return nil, m.openSettingsSection(message.Section)
 	case "set_preference":
@@ -161,6 +171,7 @@ func (m *Model) finishIPCOpen(status, message string) {
 
 // requestGUIQuit decides from live Go state; a paused track still needs confirmation.
 func (m *Model) requestGUIQuit() error {
+	m.clearNativePicker()
 	if m.confirmSettingsQuit() {
 		return nil
 	}

@@ -131,7 +131,7 @@ func (m *Model) updatePageInput(msg tea.KeyPressMsg) tea.Cmd {
 			return m.openFileBrowser("audio", -1, value)
 		case "setting":
 			if p.settings[editor.field].kind == "file" && editor.input.Value() != "" {
-				return m.openFileBrowser("soundfont", editor.field, editor.input.Value())
+				return m.openFileBrowser(settingFilePurpose(p.settings[editor.field].key), editor.field, editor.input.Value())
 			}
 			if err := p.setDraftField(editor.field, editor.input.Value()); err != nil {
 				m.Info.Visible = false
@@ -194,7 +194,7 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "f":
 			return true, p.openEditor("Filter tracks", "filter", p.filter, 0)
 		case "o":
-			return true, m.openFileBrowser("audio", -1, "")
+			return true, m.openFilePicker("audio", -1, "")
 		case "O":
 			return true, p.openEditor("Open audio path or URL", "open", "", -1)
 		case "r":
@@ -230,7 +230,7 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 		switch {
 		case k == "e" && p.settings[p.cursors[3]].kind == "file":
-			return true, p.openEditor("MIDI SoundFont path", "setting", p.settings[p.cursors[3]].value, p.cursors[3])
+			return true, p.openEditor(p.settings[p.cursors[3]].label+" path", "setting", p.settings[p.cursors[3]].value, p.cursors[3])
 		case k == "x" && p.settings[p.cursors[3]].kind == "file":
 			_ = p.setDraftField(p.cursors[3], "")
 		case k == "s":
@@ -331,7 +331,7 @@ func (m *Model) activatePage() tea.Cmd {
 			return nil
 		}
 		if p.settings[p.cursors[3]].kind == "file" {
-			return m.openFileBrowser("soundfont", p.cursors[3], "")
+			return m.openFilePicker(settingFilePurpose(p.settings[p.cursors[3]].key), p.cursors[3], "")
 		}
 		return p.editSetting()
 	}

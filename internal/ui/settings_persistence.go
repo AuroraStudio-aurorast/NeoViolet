@@ -49,6 +49,10 @@ func (p *pageState) initSettings(cfg config.Config) {
 }
 
 func (m *Model) saveSettings(quit bool) tea.Cmd {
+	if m.ipcPickerID != "" {
+		m.Info.Set("Finish or cancel the file chooser before saving", 90)
+		return nil
+	}
 	if m.configSave != nil {
 		if m.configSave.preserveDraft {
 			m.configSave.saveDraft = true
@@ -99,6 +103,9 @@ func (m *Model) startConfigSave(candidate config.Config, changed map[string]bool
 		var err error
 		if job.changed["soundfont_path"] {
 			_, err = parseSetting(pageSetting{key: "soundfont_path"}, job.snapshot.SoundfontPath)
+		}
+		if err == nil && job.changed["gui.neoviolet_path"] && job.snapshot.GUI.NeovioletPath != "" {
+			_, err = validateNativePath("player_binary", job.snapshot.GUI.NeovioletPath)
 		}
 		if err == nil && job.changed["library.roots"] {
 			err = validateLibraryRoots(job.snapshot.Library.Roots)
