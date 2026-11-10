@@ -1,8 +1,12 @@
 package ui
 
 import (
+	tea "charm.land/bubbletea/v2"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenAliasesRaiseCommandLimitForLongURLs(t *testing.T) {
@@ -73,4 +77,45 @@ func TestIPCOpenAcceptsRemoteAudioURL(t *testing.T) {
 			m.pendingLoad.cancel()
 		}
 	})
+}
+
+func TestRemoteLoadCancellationInterruptsStalledBody(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		close(started)
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	}))
+	defer server.Close()
+	defer close(release)
+	m := setupModel()
+	cmd := m.startAudioLoad(server.URL + "/audio.mp3")
+	finished := make(chan tea.Msg, 1)
+	go func() { finished <- cmd() }()
+	<-started
+	m.pendingLoad.cancel()
+	select {
+	case result := <-finished:
+		if result != nil {
+			t.Fatalf("cancelled load delivered %T", result)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancelled remote load remained blocked on the response body")
+	}
+}
+
+func TestOpenLongURLHistoryRecallPreservesWholeCommand(t *testing.T) {
+	m := commandModeModel(t, "")
+	command := "open https://audio.example.test/track.mp3?token=" + strings.Repeat("x", 350)
+	m.CommandHistory = []string{command}
+	m.historyIndex = 1
+	handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyUp})
+	if got := m.Components.CommandInput.Value(); got != command {
+		t.Fatalf("recalled %d characters, want %d", len(got), len(command))
+	}
 }

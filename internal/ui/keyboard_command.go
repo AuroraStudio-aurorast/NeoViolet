@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/lyrics/fetch"
 )
@@ -58,6 +59,8 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 			if m.historyIndex > 0 {
 				m.historyIndex--
 			}
+			// Restore under a sufficient limit before completion derives the new one.
+			m.Components.CommandInput.CharLimit = max(m.Components.CommandInput.CharLimit, len([]rune(m.CommandHistory[m.historyIndex])))
 			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
 			m.Components.CommandInput.CursorEnd()
 			syncCompletion(m)
@@ -70,6 +73,8 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 				return m, nil
 			}
 			m.historyIndex++
+			// Restore under a sufficient limit before completion derives the new one.
+			m.Components.CommandInput.CharLimit = max(m.Components.CommandInput.CharLimit, len([]rune(m.CommandHistory[m.historyIndex])))
 			m.Components.CommandInput.SetValue(m.CommandHistory[m.historyIndex])
 			m.Components.CommandInput.CursorEnd()
 			syncCompletion(m)
@@ -91,7 +96,13 @@ func executeCommand(m *Model) (tea.Model, tea.Cmd) {
 	m.UI.Focus = m.UI.SavedFocus
 	syncCompletion(m)
 
-	logger.Info("Command executed", "cmd", cmdText)
+	logCommand := cmdText
+	if inv, ok := parseInvocation(cmdText); ok {
+		if spec, known := commandLookup(inv.Name); known && spec.Name == "open" {
+			logCommand = inv.Name + " " + audio.RedactSource(inv.Rest)
+		}
+	}
+	logger.Info("Command executed", "cmd", logCommand)
 
 	// Save command to history: move to top if exists, cap at 50
 	if cmdText != "" {

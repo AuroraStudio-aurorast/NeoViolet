@@ -5,7 +5,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 
 	tea "charm.land/bubbletea/v2"
@@ -93,7 +92,7 @@ func playlistAvailability(lists []playlist.List) map[string]string {
 	for _, list := range lists {
 		for _, track := range list.Tracks {
 			path := track.Path
-			if checked[path] || strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
+			if checked[path] || remoteAudioLocation(path) {
 				continue
 			}
 			checked[path] = true
@@ -123,7 +122,7 @@ func playlistAddedAvailability(previous []playlist.List, added []library.Track, 
 	}
 	paths := make(map[string]bool, len(added))
 	for _, track := range added {
-		if !strings.HasPrefix(track.Path, "http://") && !strings.HasPrefix(track.Path, "https://") {
+		if !remoteAudioLocation(track.Path) {
 			paths[track.Path] = true
 		}
 	}

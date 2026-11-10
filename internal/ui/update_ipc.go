@@ -85,7 +85,7 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 	case "get_state":
 		m.pushIPCState(true)
 	case "open":
-		if !isValidAudioSource(message.Path) {
+		if !validOpenLocation(message.Path) {
 			return nil, fmt.Errorf("invalid or unsupported audio source: %s", message.Path)
 		}
 		_, cmd := handleLoadTrack(m, LoadTrackMsg{Path: message.Path})

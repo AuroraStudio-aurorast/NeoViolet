@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
 )
@@ -260,11 +261,12 @@ func (m *Model) updateFileBrowser(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func remoteAudioLocation(path string) bool {
-	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
+	scheme, _, ok := strings.Cut(path, "://")
+	return ok && (strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https"))
 }
 func validRemoteAudioLocation(path string) bool {
 	u, err := url.Parse(path)
-	return err == nil && u.Hostname() != "" && (u.Scheme == "http" || u.Scheme == "https")
+	return err == nil && u.Hostname() != "" && strings.IndexFunc(path, unicode.IsSpace) < 0 && (u.Scheme == "http" || u.Scheme == "https")
 }
 func validOpenLocation(path string) bool {
 	if remoteAudioLocation(path) {

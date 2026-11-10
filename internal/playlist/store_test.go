@@ -103,3 +103,22 @@ func TestStoreValidationAndReplaceFailureKeepPreviousData(t *testing.T) {
 		}
 	}
 }
+
+func TestStorePreservesSignedURLWithUppercaseScheme(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "playlists.json")
+	url := "HTTPS://audio.example.test/music.mp3?token=secret"
+	list, err := New("Online", []library.Track{{Path: url}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Save(path, []List{list}); err != nil {
+		t.Fatal(err)
+	}
+	lists, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lists[0].Tracks[0].Path; got != url {
+		t.Fatalf("stored source = %q, want exact original URL", got)
+	}
+}
