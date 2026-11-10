@@ -11,7 +11,8 @@
       "startup",
       "file_picker",
       "audio_file_picker",
-      "settings_navigation"
+      "settings_navigation",
+      "settings_preferences"
     ],
     "libopenmpt_version": "0.8.9"
   },
@@ -58,6 +59,17 @@
     {
       "type": "open_settings",
       "request_id": "settings"
+    },
+    {
+      "type": "open_settings",
+      "request_id": "lyrics-settings",
+      "section": "desktop_lyrics"
+    },
+    {
+      "type": "set_preference",
+      "request_id": "font",
+      "key": "gui.font_size",
+      "value": 20
     }
   ],
   "phase": {
@@ -75,7 +87,8 @@
     "protocol": 1,
     "capabilities": [
       "file_picker",
-      "audio_file_picker"
+      "audio_file_picker",
+      "settings_preferences"
     ]
   },
   "file_picked": {
@@ -83,5 +96,30 @@
     "purpose": "soundfont",
     "request_id": "soundfont-7",
     "status": "cancelled"
+  },
+  "preferences": {
+    "type": "preferences",
+    "revision": 2,
+    "preferences": {
+      "gui": {
+        "monospace_font": "Test Mono",
+        "font_size": 20,
+        "opacity": 0.8,
+        "neoviolet_path": "",
+        "zoom_via_scroll": false,
+        "menu_bar": false,
+        "system_decorations": false,
+        "minimize_button": true
+      },
+      "desktop_lyrics": {
+        "enabled": false,
+        "font_size": 28,
+        "opacity": 0.6,
+        "highlight": "white",
+        "additional_lines": true,
+        "next_line": false,
+        "locked": false
+      }
+    }
   }
 }

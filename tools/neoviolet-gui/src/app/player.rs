@@ -28,6 +28,7 @@ impl App {
                         actions::Action::Shutdown => {
                             self.running = false;
                             self.connection = None;
+                            self.preference_writes = Default::default();
                             self.ipc_connected = false;
                             self.lyrics.clear();
                             self.lyrics.playback = None;
@@ -74,6 +75,8 @@ impl App {
         match event {
             ipc::Event::Connected(sender) => {
                 self.connection_epoch += 1;
+                self.preferences_revision = 0;
+                self.preference_writes = Default::default();
                 self.connection_error = None;
                 self.playback = None;
                 self.lyrics.playback = (self.handshake.protocol == 0).then_some(false);
@@ -115,6 +118,10 @@ impl App {
                 purpose,
                 request_id,
             }) => return self.setup_picker(purpose, request_id),
+            ipc::Event::Received(ipc::Incoming::Preferences {
+                revision,
+                preferences,
+            }) => return self.apply_preferences(revision, preferences),
             ipc::Event::Received(ipc::Incoming::State { state }) => {
                 return self.apply_snapshot(state);
             }
@@ -167,6 +174,7 @@ impl App {
             }
             ipc::Event::Disconnected(error) => {
                 self.connection = None;
+                self.preference_writes = Default::default();
                 self.ipc_connected = false;
                 if self.handshake.supports("startup") {
                     self.startup = super::startup::Stage::AwaitingPhase;

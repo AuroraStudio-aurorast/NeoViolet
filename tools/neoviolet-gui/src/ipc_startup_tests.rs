@@ -42,7 +42,7 @@ async fn startup_handshake_announces_gui_capability_before_any_command() {
             if supports_startup {
                 assert_eq!(
                     first,
-                    serde_json::json!({"type":"client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker"]})
+                    serde_json::json!({"type":"client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences"]})
                 );
                 line.clear();
                 peer.read_line(&mut line).await.unwrap();

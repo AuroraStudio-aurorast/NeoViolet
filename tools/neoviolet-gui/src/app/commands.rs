@@ -28,7 +28,10 @@ impl App {
         match action {
             Action::DesktopLyrics => {
                 return self.update(Message::Lyrics(lyrics_window::Event::Visible(
-                    !self.config.desktop_lyrics.enabled,
+                    !self
+                        .intended_preference("desktop_lyrics.enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(self.config.desktop_lyrics.enabled),
                 )));
             }
             Action::LyricsSettings => {
@@ -63,7 +66,11 @@ impl App {
                         return self.reveal_main().chain(self.focus());
                     }
                     return Task::batch([
-                        self.send_all(vec![ipc::Request::OpenSettings]),
+                        self.send_all(vec![if self.handshake.supports("settings_preferences") {
+                            ipc::Request::OpenSettingsSection("gui")
+                        } else {
+                            ipc::Request::OpenSettings
+                        }]),
                         self.reveal_main()
                             .chain(Task::done(Message::RestoreTerminalFocus)),
                     ]);
@@ -96,6 +103,10 @@ impl App {
                 if self.closing {
                     return Task::none();
                 }
+                if self.preference_writes.active.is_some() {
+                    self.preference_writes.quit = true;
+                    return Task::none();
+                }
                 if !self.running {
                     return self.finish_quit();
                 }
@@ -114,11 +125,19 @@ impl App {
             }
             Action::Paste => return iced::clipboard::read().map(Message::Pasted),
             Action::ZoomIn | Action::ZoomOut | Action::ZoomReset => {
-                self.config.font_size = match action {
-                    Action::ZoomIn => (self.config.font_size + 2).min(48),
-                    Action::ZoomOut => self.config.font_size.saturating_sub(2).max(8),
+                let current = self
+                    .intended_preference("gui.font_size")
+                    .and_then(serde_json::Value::as_u64)
+                    .map_or(self.config.font_size, |size| size as u32);
+                let size = match action {
+                    Action::ZoomIn => (current + 2).min(48),
+                    Action::ZoomOut => current.saturating_sub(2).max(8),
                     _ => 14,
                 };
+                if self.handshake.supports("settings_preferences") {
+                    return self.send_preference("gui.font_size", size.into());
+                }
+                self.config.font_size = size;
                 let font = self.font();
                 if let Some(terminal) = &mut self.terminal {
                     terminal.handle(iced_term::Command::ChangeFont(font));
@@ -164,10 +183,10 @@ impl App {
     }
 
     pub(super) fn finish_quit(&mut self) -> Task<Message> {
-        if self.save_settings
+        if self.save_state
             && let Err(error) = self.config.save()
         {
-            eprintln!("NeoViolet GUI: settings were not saved: {error}");
+            eprintln!("NeoViolet GUI: window state was not saved: {error}");
         }
         self.terminal = None;
         iced::exit()

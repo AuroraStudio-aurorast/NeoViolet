@@ -38,6 +38,7 @@ impl App {
                     && self.requests.get(&id) == Some(&accepted)
                 {
                     self.requests.remove(&id);
+                    self.cancel_preference(&id);
                     self.notice = Some("The player did not confirm the action in time. Check playback before trying again.".into());
                 }
             }
@@ -143,6 +144,7 @@ impl App {
                     return Task::none();
                 }
                 self.closing = true;
+                self.preference_writes = Default::default();
                 self.dialog = None;
                 self.pending.clear();
                 self.requests.clear();

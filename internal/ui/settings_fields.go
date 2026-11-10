@@ -77,7 +77,7 @@ func formatSettingValue(key string, value any) string {
 		}
 		return "Off"
 	case float64:
-		if key == "default_volume" || key == "volume_step" {
+		if key == "default_volume" || key == "volume_step" || key == "gui.opacity" || key == "desktop_lyrics.opacity" {
 			return strconv.FormatFloat(v*100, 'f', -1, 64) + "%"
 		}
 		return strconv.FormatFloat(v, 'f', -1, 64)
@@ -161,6 +161,33 @@ func parseSetting(f pageSetting, text string) (any, error) {
 		return text, nil
 	}
 	switch f.key {
+	case "gui.monospace_font":
+		if text == "" || len(text) > 128 || strings.ContainsAny(text, "\n\r\t\x1b") {
+			return nil, fmt.Errorf("enter a font name (1–128 characters)")
+		}
+		return text, nil
+	case "gui.neoviolet_path":
+		if text == "" {
+			return "", nil
+		}
+		text = expandTilde(text)
+		if !filepath.IsAbs(text) || strings.ContainsAny(text, "\n\r\x00") {
+			return nil, fmt.Errorf("enter an absolute executable path or leave empty")
+		}
+		return filepath.Clean(text), nil
+	case "gui.opacity", "desktop_lyrics.opacity":
+		n, err := strconv.ParseFloat(strings.TrimSuffix(text, "%"), 64)
+		if strings.HasSuffix(text, "%") {
+			n /= 100
+		}
+		low := .1
+		if f.key == "desktop_lyrics.opacity" {
+			low = .4
+		}
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) || n < low || n > 1 {
+			return nil, fmt.Errorf("use %.0f–100%%", low*100)
+		}
+		return n, nil
 	case "default_volume", "volume_step":
 		percent := strings.HasSuffix(text, "%")
 		n, err := strconv.ParseFloat(strings.TrimSuffix(text, "%"), 64)
@@ -223,6 +250,10 @@ func parseSetting(f pageSetting, text string) (any, error) {
 	}
 	low, high := 0, 10000
 	switch f.key {
+	case "gui.font_size":
+		low, high = 8, 48
+	case "desktop_lyrics.font_size":
+		low, high = 22, 48
 	case "tick_rate":
 		low, high = 1, 120
 	case "seek_step":

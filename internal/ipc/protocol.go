@@ -9,7 +9,7 @@
 //
 // GUI → TUI message types:
 //
-//	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker"]}
+//	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences"]}
 //	{"type": "file_picked", "purpose":"soundfont|audio", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
 //	{"type": "open", "path": "/path/to/file"}
 //	{"type": "desktop_lyrics", "enable": true|false}
@@ -39,7 +39,7 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the raw TUI build version), and capabilities
-// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation"].
+// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences"].
 // Product versions never gate
 // protocol compatibility. Optional libopenmpt_version identifies the runtime-loaded
 // library and is omitted when the library is unavailable; it is not the build lock version.
@@ -63,6 +63,17 @@
 // settings_navigation advertises open_settings. Navigation fails explicitly
 // while an editor, picker, confirmation or save owns the input; it never
 // discards that interaction. It does not change playback or save the draft.
+// settings_preferences adds optional open_settings section (gui|desktop_lyrics),
+// and preferences snapshots: {type:"preferences",revision:1,preferences:{gui:{...},desktop_lyrics:{...}}}.
+// Revisions increase within a connection. A client advertising settings_preferences
+// receives a full snapshot on negotiation/get_state and after successful saves,
+// never on playback ticks. GUI bootstrap reads these same sections from config.json;
+// only Go writes preferences. GUI writes geometry separately in gui-state.json.
+// set_preference accepts key gui.font_size, desktop_lyrics.enabled or
+// desktop_lyrics.locked plus a JSON value. It persists asynchronously and sends
+// a terminal result only after saving; errors leave live preferences unchanged.
+// An active save/editor or conflicting dirty field rejects the request.
+// Window chrome and player path apply on the next GUI/player launch.
 //
 // The lyrics payload describes each line as Prefix followed by its display
 // sub-lines (Parts when it has any, otherwise Text). Words carries the timings
@@ -73,28 +84,36 @@
 package ipc
 
 import (
+	"encoding/json"
+
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 )
 
 // Message is a JSON message exchanged between TUI and GUI over IPC.
 type Message struct {
-	Type              string         `json:"type"`
-	Client            string         `json:"client,omitempty"`
-	Phase             string         `json:"phase,omitempty"`
-	Purpose           string         `json:"purpose,omitempty"`
-	RequestID         string         `json:"request_id,omitempty"`
-	Version           string         `json:"version,omitempty"`
-	LibopenmptVersion string         `json:"libopenmpt_version,omitempty"`
-	Protocol          int            `json:"protocol,omitempty"`
-	Capabilities      []string       `json:"capabilities,omitempty"`
-	Status            string         `json:"status,omitempty"`
-	Error             string         `json:"error,omitempty"`
-	Position          *float64       `json:"position,omitempty"`
-	Volume            *float64       `json:"volume,omitempty"`
-	State             *PlaybackState `json:"state,omitempty"`
-	Path              string         `json:"path,omitempty"`
-	Dialog            *bool          `json:"dialog,omitempty"` // quit: true=show dialog, false=quit now
+	Section           string          `json:"section,omitempty"`
+	Key               string          `json:"key,omitempty"`
+	Value             json.RawMessage `json:"value,omitempty"`
+	Revision          uint64          `json:"revision,omitempty"`
+	Preferences       *Preferences    `json:"preferences,omitempty"`
+	Type              string          `json:"type"`
+	Client            string          `json:"client,omitempty"`
+	Phase             string          `json:"phase,omitempty"`
+	Purpose           string          `json:"purpose,omitempty"`
+	RequestID         string          `json:"request_id,omitempty"`
+	Version           string          `json:"version,omitempty"`
+	LibopenmptVersion string          `json:"libopenmpt_version,omitempty"`
+	Protocol          int             `json:"protocol,omitempty"`
+	Capabilities      []string        `json:"capabilities,omitempty"`
+	Status            string          `json:"status,omitempty"`
+	Error             string          `json:"error,omitempty"`
+	Position          *float64        `json:"position,omitempty"`
+	Volume            *float64        `json:"volume,omitempty"`
+	State             *PlaybackState  `json:"state,omitempty"`
+	Path              string          `json:"path,omitempty"`
+	Dialog            *bool           `json:"dialog,omitempty"` // quit: true=show dialog, false=quit now
 
 	// desktop_lyrics: enable/disable streaming
 	Enable *bool `json:"enable,omitempty"`
@@ -104,6 +123,12 @@ type Message struct {
 	Elapsed float64         `json:"elapsed,omitempty"` // seconds
 	Title   string          `json:"title,omitempty"`
 	Artist  string          `json:"artist,omitempty"`
+}
+
+// Preferences is the complete Go-owned GUI projection; it excludes geometry.
+type Preferences struct {
+	GUI           config.GUIConfig           `json:"gui"`
+	DesktopLyrics config.DesktopLyricsConfig `json:"desktop_lyrics"`
 }
 
 // LyricLineJSON is a single lyric line serialized for IPC.
@@ -153,5 +178,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences"}}
 }

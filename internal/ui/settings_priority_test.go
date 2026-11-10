@@ -31,7 +31,7 @@ func TestSettingsFirstScreenPrioritizesLibraryPlaybackAndLyrics(t *testing.T) {
 }
 func TestSettingsPriorityKeepsAllFieldsAndGroupShortcutsReachable(t *testing.T) {
 	m := wiredSettingsModel(t)
-	expected := []string{"library.roots", "default_volume", "volume_step", "seek_step", "track_switch_mode", "lyrics.enabled", "lyrics.fetch.enabled", "lyrics.panel.mode", "lyrics.format_priority", "icon_theme", "accent.auto_accent", "progress_bar.show_percentage", "volume_bar.show_percentage", "soundfont_path", "tracker_backend", "anim.auto", "anim.photosensitivity.mode", "anim.power.warn_below", "lyrics.panel.width", "lyrics.panel.context_lines", "lyrics.scroll_speed", "lyrics.fetch.base_url", "lyrics.fetch.timeout", "lyrics.fetch.security", "lyrics.fetch.insecure_tls", "progress_bar.fill", "progress_bar.scaled", "volume_bar.fill", "volume_bar.width", "tick_rate", "command_history.max", "error.duration"}
+	expected := []string{"library.roots", "default_volume", "volume_step", "seek_step", "track_switch_mode", "lyrics.enabled", "lyrics.fetch.enabled", "lyrics.panel.mode", "lyrics.format_priority", "icon_theme", "accent.auto_accent", "progress_bar.show_percentage", "volume_bar.show_percentage", "soundfont_path", "tracker_backend", "anim.auto", "anim.photosensitivity.mode", "anim.power.warn_below", "gui.monospace_font", "gui.font_size", "gui.opacity", "gui.zoom_via_scroll", "gui.menu_bar", "gui.minimize_button", "gui.system_decorations", "gui.neoviolet_path", "desktop_lyrics.enabled", "desktop_lyrics.font_size", "desktop_lyrics.opacity", "desktop_lyrics.highlight", "desktop_lyrics.additional_lines", "desktop_lyrics.next_line", "desktop_lyrics.locked", "lyrics.panel.width", "lyrics.panel.context_lines", "lyrics.scroll_speed", "lyrics.fetch.base_url", "lyrics.fetch.timeout", "lyrics.fetch.security", "lyrics.fetch.insecure_tls", "progress_bar.fill", "progress_bar.scaled", "volume_bar.fill", "volume_bar.width", "tick_rate", "command_history.max", "error.duration"}
 	keys := []string{}
 	previous := -1
 	for _, field := range m.pages.settings {
@@ -44,7 +44,7 @@ func TestSettingsPriorityKeepsAllFieldsAndGroupShortcutsReachable(t *testing.T) 
 	if !slices.Equal(keys, expected) {
 		t.Fatalf("priority order lost/duplicated setting keys: %v", keys)
 	}
-	for group, want := range []string{"library.roots", "lyrics.enabled", "icon_theme", "soundfont_path", "anim.auto", "lyrics.panel.width"} {
+	for group, want := range []string{"library.roots", "lyrics.enabled", "icon_theme", "soundfont_path", "anim.auto", "gui.monospace_font", "desktop_lyrics.enabled", "lyrics.panel.width"} {
 		digit := rune('1' + group)
 		pageKey(m, digit, string(digit))
 		if m.pages.settings[m.pages.cursors[3]].key != want {

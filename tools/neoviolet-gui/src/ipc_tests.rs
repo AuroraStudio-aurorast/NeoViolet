@@ -162,6 +162,14 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     );
     assert!(hello.supports("request_quit"));
     assert!(hello.supports("settings_navigation"));
+    assert!(hello.supports("settings_preferences"));
+    let first = live_message(&mut peer, |frame| {
+        matches!(frame, Incoming::Preferences { .. })
+    })
+    .await;
+    assert!(
+        matches!(first,Incoming::Preferences{revision:1,preferences} if preferences.gui.font_size==14)
+    );
     write_request(peer.get_mut(), &Request::OpenSettings, "settings")
         .await
         .unwrap();
@@ -171,6 +179,28 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     )
     .await;
     assert!(matches!(navigation, Incoming::Result { status, .. } if status == "succeeded"));
+    write_request(
+        peer.get_mut(),
+        &Request::SetPreference {
+            key: "gui.font_size",
+            value: 20.into(),
+        },
+        "font-live",
+    )
+    .await
+    .unwrap();
+    let saved=live_message(&mut peer,|frame| matches!(frame,Incoming::Preferences{preferences,..} if preferences.gui.font_size==20)).await;
+    assert!(matches!(saved,Incoming::Preferences{revision,..} if revision>1));
+    let receipt = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="font-live"),
+    )
+    .await;
+    assert!(matches!(receipt,Incoming::Result{status,..} if status=="succeeded"));
+    let disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert_eq!(disk["gui"]["font_size"], 20);
+
     write_request(peer.get_mut(), &Request::DesktopLyrics(true), "")
         .await
         .unwrap();
@@ -381,6 +411,17 @@ async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values(
         (Request::Seek(0.0), "rewind"),
         (Request::Open("/music/a \"song\" 雪.flac".into()), "open"),
         (Request::OpenSettings, "settings"),
+        (
+            Request::OpenSettingsSection("desktop_lyrics"),
+            "lyrics-settings",
+        ),
+        (
+            Request::SetPreference {
+                key: "gui.font_size",
+                value: 20.into(),
+            },
+            "font",
+        ),
     ];
     for (index, (request, id)) in commands.into_iter().enumerate() {
         let mut data = Vec::new();
@@ -656,4 +697,22 @@ async fn handshake_library_version_is_optional_and_preserves_runtime_value() {
         assert_eq!(hello.version, "dev");
         assert_eq!(hello.libopenmpt_version, expected_library);
     }
+}
+
+#[test]
+fn preference_fixture_keeps_authoritative_sections_and_revision() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../internal/ipc/testdata/protocol.json")).unwrap();
+    let Incoming::Preferences {
+        revision,
+        preferences,
+    } = serde_json::from_value(fixture["preferences"].clone()).unwrap()
+    else {
+        panic!("preferences discarded")
+    };
+    assert_eq!(revision, 2);
+    assert_eq!(preferences.gui.font_size, 20);
+    assert!(!preferences.desktop_lyrics.enabled);
+    assert_eq!(preferences.desktop_lyrics.font_size, 28);
+    assert_eq!(preferences.desktop_lyrics.opacity, 0.6);
 }

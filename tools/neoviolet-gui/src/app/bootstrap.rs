@@ -12,7 +12,7 @@ impl App {
         warning: Option<String>,
         desktop: Result<desktop::Desktop, String>,
     ) -> (Self, Task<Message>) {
-        let save_settings = warning.is_none();
+        let save_state = warning.is_none();
         let warning = warning.or_else(|| desktop.as_ref().err().cloned());
         let family = Box::leak(config.monospace_font.clone().into_boxed_str());
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -22,7 +22,7 @@ impl App {
         let (main_window, open_main) = window::open(window::Settings {
             size: iced::Size::new(config.window_width as f32, config.window_height as f32),
             min_size: Some(iced::Size::new(480.0, 320.0)),
-            transparent: config.opacity < 1.0,
+            transparent: true,
             decorations: window_decorations,
             #[cfg(target_os = "macos")]
             platform_specific: window::settings::PlatformSpecific {
@@ -54,6 +54,8 @@ impl App {
             connection_error: None,
             startup: Default::default(),
             lyrics_restored: false,
+            preferences_revision: 0,
+            preference_writes: Default::default(),
             picker: None,
             handshake: Default::default(),
             connection_epoch: 0,
@@ -68,7 +70,7 @@ impl App {
             modifiers: Modifiers::empty(),
             exit_code: None,
             closing: false,
-            save_settings,
+            save_state,
             environment: launch::environment(),
         };
         app.titlebar.configure(&app.config);
@@ -86,6 +88,8 @@ impl App {
         self.notice = None;
         self.connection_error = None;
         self.handshake = Default::default();
+        self.preferences_revision = 0;
+        self.preference_writes = Default::default();
         self.startup = Default::default();
         self.lyrics_restored = false;
         self.titlebar.commands_disabled = true;
@@ -186,7 +190,7 @@ impl App {
             self.family = Box::leak(config.monospace_font.clone().into_boxed_str());
         }
         self.config = config;
-        self.save_settings = warning.is_none();
+        self.save_state = warning.is_none();
         self.dialog = warning.map(Dialog::Error);
         self.arguments = launch::arguments(std::iter::empty());
         self.pending.clear();

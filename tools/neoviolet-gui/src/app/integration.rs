@@ -169,7 +169,7 @@ impl App {
             }
             _ => {}
         }
-        Task::none()
+        self.preference_result(&id, &status)
     }
 
     pub(super) fn apply_snapshot(&mut self, state: ipc::PlaybackState) -> Task<Message> {
@@ -191,8 +191,6 @@ impl App {
             return Task::none();
         }
         self.lyrics.playback = state.has_track.then_some(state.playing);
-        // The desktop window is GUI-owned; its explicit preference wins at each
-        // connection. Runtime changes in the TUI arrive through desktop_lyrics.
         self.playback = Some(state);
         Task::none()
     }

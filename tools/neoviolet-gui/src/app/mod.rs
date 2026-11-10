@@ -5,6 +5,7 @@ mod desktop_events;
 mod integration;
 mod native;
 mod player;
+mod preferences;
 mod startup;
 #[cfg(test)]
 mod tests;
@@ -38,6 +39,8 @@ pub struct App {
     pub connection_error: Option<String>,
     startup: startup::Stage,
     lyrics_restored: bool,
+    preferences_revision: u64,
+    preference_writes: preferences::Writes,
     picker: Option<startup::Picker>,
     handshake: ipc::Handshake,
     connection_epoch: u64,
@@ -52,7 +55,7 @@ pub struct App {
     modifiers: Modifiers,
     exit_code: Option<i32>,
     closing: bool,
-    save_settings: bool,
+    save_state: bool,
     environment: std::collections::HashMap<String, String>,
 }
 

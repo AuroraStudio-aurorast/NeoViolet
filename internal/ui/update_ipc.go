@@ -36,6 +36,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		if m.ipcServer != nil && event.Session == m.ipcServer.Session() {
 			m.ipcSession = event.Session
 			m.ipcAudioPicker = false
+			m.ipcPreferences = false
+			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
 			m.ipcRevision = 0
 			m.pushIPCState(true)
@@ -45,6 +47,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		if event.Session == m.ipcSession {
 			m.ipcSession = 0
 			m.ipcAudioPicker = false
+			m.ipcPreferences = false
+			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
 		}
 		if m.ipcPendingOpen != nil && m.ipcPendingOpen.session == event.Session {
@@ -57,7 +61,7 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		cmd, err := m.ipcRequest(event.Message)
 		if err != nil {
 			m.ipcResult(event.Session, event.Message.RequestID, "failed", err.Error())
-		} else if event.Message.Type != "open" && event.Message.Type != "file_picked" {
+		} else if event.Message.Type != "open" && event.Message.Type != "file_picked" && event.Message.Type != "set_preference" {
 			m.ipcResult(event.Session, event.Message.RequestID, "succeeded", "")
 		}
 		if event.Message.Type == "quit" {
@@ -76,6 +80,8 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 			return nil, fmt.Errorf("unsupported GUI client")
 		}
 		m.ipcAudioPicker = slices.Contains(message.Capabilities, "audio_file_picker")
+		m.ipcPreferences = slices.Contains(message.Capabilities, "settings_preferences")
+		m.pushGUIPreferences()
 	case "file_picked":
 		return m.audioPicked(message), nil
 	case "request_quit":
@@ -84,8 +90,11 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 		return nil, nil
 	case "get_state":
 		m.pushIPCState(true)
+		m.pushGUIPreferences()
 	case "open_settings":
-		return nil, m.openSettings()
+		return nil, m.openSettingsSection(message.Section)
+	case "set_preference":
+		return m.saveGUIPreference(message)
 	case "open":
 		if !isValidAudioPath(message.Path) {
 			return nil, fmt.Errorf("invalid or unsupported audio file: %s", message.Path)

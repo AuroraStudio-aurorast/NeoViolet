@@ -88,6 +88,8 @@ fn app() -> App {
         connection_error: None,
         startup: super::startup::Stage::Legacy,
         lyrics_restored: false,
+        preferences_revision: 0,
+        preference_writes: Default::default(),
         picker: None,
         handshake: Default::default(),
         connection_epoch: 0,
@@ -102,7 +104,7 @@ fn app() -> App {
         modifiers: Modifiers::empty(),
         exit_code: None,
         closing: false,
-        save_settings: false,
+        save_state: false,
         environment: Default::default(),
     }
 }
@@ -614,3 +616,6 @@ fn measured_title_insets_only_apply_to_the_main_window() {
     )));
     assert_eq!(app.titlebar.mac_title_inset, Some(86.0));
 }
+
+#[path = "preferences_tests.rs"]
+mod preferences_tests;

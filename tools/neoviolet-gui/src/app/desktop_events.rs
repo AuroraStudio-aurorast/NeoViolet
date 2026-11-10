@@ -100,6 +100,18 @@ impl App {
                 _ => Task::none(),
             };
         }
+        if self.handshake.supports("settings_preferences") {
+            match &event {
+                lyrics_window::Event::Settings => return self.open_lyrics_settings(),
+                lyrics_window::Event::Visible(enable) => {
+                    return self.send_preference("desktop_lyrics.enabled", (*enable).into());
+                }
+                lyrics_window::Event::Locked(locked) => {
+                    return self.send_preference("desktop_lyrics.locked", (*locked).into());
+                }
+                _ => {}
+            }
+        }
         if matches!(&event, lyrics_window::Event::PlayPause) {
             return self.toggle_playback();
         }

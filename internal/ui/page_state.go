@@ -239,7 +239,7 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 			if err := p.resetSetting(p.cursors[3]); err != nil {
 				m.Error.Set(err.Error(), 90)
 			}
-		case len(k) == 1 && k >= "1" && k <= "6":
+		case len(k) == 1 && k >= "1" && k <= "8":
 			p.jumpGroup(int(k[0] - '1'))
 		default:
 			return false, nil

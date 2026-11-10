@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 )
 
@@ -23,9 +24,10 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	fixtureHello.LibopenmptVersion = "0.8.9" // Fixed transport sample, independent of the host library.
 	messages := map[string]Message{
 		"hello":        fixtureHello,
+		"preferences":  {Type: "preferences", Revision: 2, Preferences: &Preferences{GUI: config.GUIConfig{MonospaceFont: "Test Mono", FontSize: 20, Opacity: .8, MinimizeButton: true}, DesktopLyrics: config.DesktopLyricsConfig{FontSize: 28, Opacity: .6, Highlight: "white", AdditionalLines: true}}},
 		"phase":        {Type: "phase", Phase: "wizard"},
 		"pick_file":    {Type: "pick_file", Purpose: "soundfont", RequestID: "soundfont-7"},
-		"client_hello": {Type: "client_hello", Client: "neoviolet-gui", Protocol: 1, Capabilities: []string{"file_picker", "audio_file_picker"}},
+		"client_hello": {Type: "client_hello", Client: "neoviolet-gui", Protocol: 1, Capabilities: []string{"file_picker", "audio_file_picker", "settings_preferences"}},
 		"file_picked":  {Type: "file_picked", Purpose: "soundfont", RequestID: "soundfont-7", Status: "cancelled"},
 		"result":       {Type: "result", RequestID: "mute", Status: "succeeded"},
 		"state":        {Type: "state", State: &PlaybackState{Revision: 7, TrackID: 3, Path: "/music/a \"song\" 雪.flac", Title: "雪", HasTrack: true, DesktopLyrics: true, Duration: 120, ConfigDir: "/settings/neoviolet"}},
@@ -55,6 +57,9 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	}
 	if requests[2].Path != "/music/a \"song\" 雪.flac" {
 		t.Fatal("quoted Unicode path changed")
+	}
+	if requests[4].Section != "desktop_lyrics" || requests[5].Key != "gui.font_size" || string(requests[5].Value) != "20" {
+		t.Fatal("preference requests lost")
 	}
 	if requests[3].Type != "open_settings" || requests[3].RequestID != "settings" {
 		t.Fatal("settings navigation request was lost")

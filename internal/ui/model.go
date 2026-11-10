@@ -167,6 +167,7 @@ func newModel(filePath string, cfg *config.Config, server *ipc.Server, managed b
 		pendingPath: filePath,
 	}
 
+	m.DesktopLyricsEnabled = cfg.DesktopLyrics.Enabled
 	m.pages.initSettings(*cfg)
 
 	if len(seekTo) > 0 && seekTo[0] > 0 {

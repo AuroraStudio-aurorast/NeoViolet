@@ -88,21 +88,31 @@ impl App {
     }
 
     pub(super) fn restore_ready(&mut self) -> Task<Message> {
-        if !self.actions_available() || self.lyrics_restored {
-            return Task::none();
+        let preferences = self.flush_preference();
+        if !self.actions_available()
+            || self.lyrics_restored
+            || (self.handshake.supports("settings_preferences") && self.preferences_revision == 0)
+        {
+            return preferences;
         }
         self.lyrics_restored = true;
-        let lyrics = self
-            .lyrics
-            .show(&self.config.desktop_lyrics)
+        let (visibility, _) = self.lyrics.update(
+            lyrics_window::Event::Visible(self.config.desktop_lyrics.enabled),
+            &mut self.config.desktop_lyrics,
+        );
+        let lyrics = Task::batch([visibility, self.lyrics.fit(&self.config.desktop_lyrics)])
             .map(Message::Lyrics);
-        let mut requests = vec![ipc::Request::DesktopLyrics(
-            self.config.desktop_lyrics.enabled,
-        )];
+        let mut requests = if self.handshake.supports("settings_preferences") {
+            Vec::new()
+        } else {
+            vec![ipc::Request::DesktopLyrics(
+                self.config.desktop_lyrics.enabled,
+            )]
+        };
         if self.dialog.is_none() {
             requests.extend(self.pending.drain(..).map(ipc::Request::Open));
         }
-        Task::batch([lyrics, self.send_all(requests)])
+        Task::batch([lyrics, self.send_all(requests), preferences])
     }
 
     pub(super) fn suspend_lyrics(&mut self) -> Task<Message> {
@@ -215,6 +225,7 @@ impl App {
                 path,
                 error,
             }]),
+            self.restore_ready(),
             window::gain_focus(self.main_window),
             self.focus(),
             crate::desktop::align_main_controls(self.main_window).map(|_| Message::Ready),

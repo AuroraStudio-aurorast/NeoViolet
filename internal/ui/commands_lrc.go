@@ -176,20 +176,16 @@ func runLrcAgent(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 // runLrcDesktop implements ":lrc desktop": toggle the desktop lyrics window and
 // sync the change with the GUI if it is connected.
 func runLrcDesktop(m *Model, _ invocation) (tea.Model, tea.Cmd) {
-	m.setDesktopLyricsEnabled(!m.DesktopLyricsEnabled)
-	t := m.DesktopLyricsEnabled
-	if t {
-		m.Info.Set("Desktop lyrics: enabled", m.Config.Error.Duration)
-	} else {
-		m.Info.Set("Desktop lyrics: disabled", m.Config.Error.Duration)
+
+	value := []byte("true")
+	if m.DesktopLyricsEnabled {
+		value = []byte("false")
 	}
-	if m.ipcServer != nil {
-		_ = m.ipcServer.SendJSON(ipc.Message{
-			Type:   "desktop_lyrics",
-			Enable: &t,
-		})
+	cmd, err := m.saveGUIPreference(ipc.Message{Key: "desktop_lyrics.enabled", Value: value})
+	if err != nil {
+		m.Error.Set(err.Error(), m.Config.Error.Duration)
 	}
-	return m, nil
+	return m, cmd
 }
 
 func (m *Model) setDesktopLyricsEnabled(enabled bool) {
