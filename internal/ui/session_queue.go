@@ -16,13 +16,19 @@ type queueEntry struct {
 	track library.Track
 }
 type sessionQueue struct {
-	entries               []queueEntry
-	current, detachedNext uint64
-	removed               *queueEntry
-	removedAt             int
+	entries                         []queueEntry
+	current, detached, detachedNext uint64 // detached identifies playback removed from entries.
+	removed                         *queueRemoval
+}
+type queueRemoval struct {
+	entry       queueEntry
+	index       int
+	successorOf uint64
+	pending     *queueLoadIntent
 }
 type queueLoadIntent struct {
 	detachedNext uint64
+	detached     bool
 	generation   int
 	entry        uint64
 	track        library.Track
@@ -39,7 +45,14 @@ func (m *Model) appendQueue(track library.Track) {
 		m.Info.Set("Wait for the new session queue to finish loading, then append", 120)
 		return
 	}
-	m.session.entries = append(m.session.entries, m.newQueueEntry(track))
+	entry := m.newQueueEntry(track)
+	m.session.entries = append(m.session.entries, entry)
+	if m.session.detached != 0 && m.session.detachedNext == 0 {
+		m.session.detachedNext = entry.id
+	}
+	if intent := m.queueIntent; intent != nil && intent.generation == m.loadGeneration && intent.detached && intent.detachedNext == 0 {
+		intent.detachedNext = entry.id
+	}
 	m.Info.Set("Added to session queue", 90)
 }
 func (m *Model) playLibrarySelection() tea.Cmd {
@@ -103,16 +116,23 @@ func (m *Model) acceptQueueTrack(path string) {
 			m.session.removed = nil
 		}
 		m.session.current = intent.entry
+		m.session.detached = 0
 		m.session.detachedNext = 0
 		if queueIndex(m.session.entries, intent.entry) < 0 {
 			m.session.current = 0
+			m.session.detached = intent.entry
 			m.session.detachedNext = intent.detachedNext
+			if removed := m.session.removed; removed != nil && removed.pending == intent {
+				removed.successorOf = intent.entry
+				removed.pending = nil
+			}
 		}
 	} else {
 		track := library.Track{Path: path, Title: m.Audio.CurrentSong, Artist: m.Audio.Artist, Album: m.Audio.Album, Duration: m.Audio.Duration, Format: strings.ToUpper(strings.TrimPrefix(filepath.Ext(path), "."))}
 		entry := m.newQueueEntry(track)
 		m.session.entries = []queueEntry{entry}
 		m.session.current = entry.id
+		m.session.detached = 0
 		m.session.detachedNext = 0
 		m.session.removed = nil
 	}
@@ -134,6 +154,7 @@ func (m *Model) failQueueLoad() {
 	m.queueIntent = nil
 	if m.Config.TrackSwitchMode == "immediate" {
 		m.session.current = 0
+		m.session.detached = 0
 		m.session.detachedNext = 0
 	}
 }
@@ -144,21 +165,26 @@ func (m *Model) removeQueueEntry() {
 	}
 	index := max(0, min(m.pages.cursors[1], len(q.entries)-1))
 	entry := q.entries[index]
-	q.removed = &entry
-	q.removedAt = index
+	q.removed = &queueRemoval{entry: entry, index: index}
 	next := uint64(0)
 	if index+1 < len(q.entries) {
 		next = q.entries[index+1].id
 	}
 	if q.current == entry.id {
 		q.current = 0
+		q.detached = entry.id
 		q.detachedNext = next
 	}
 	if q.detachedNext == entry.id {
+		q.removed.successorOf = q.detached
 		q.detachedNext = next
 	}
 	if intent := m.queueIntent; intent != nil && !intent.replace {
-		if intent.entry == entry.id || intent.detachedNext == entry.id {
+		if intent.entry == entry.id {
+			intent.detached = true
+			intent.detachedNext = next
+		} else if intent.detachedNext == entry.id {
+			q.removed.pending = intent
 			intent.detachedNext = next
 		}
 	}
@@ -170,8 +196,22 @@ func (m *Model) undoQueueRemoval() {
 	if q.removed == nil {
 		return
 	}
-	index := min(q.removedAt, len(q.entries))
-	q.entries = slices.Insert(q.entries, index, *q.removed)
+	removed := q.removed
+	index := min(removed.index, len(q.entries))
+	q.entries = slices.Insert(q.entries, index, removed.entry)
+	if q.detached == removed.entry.id {
+		q.current = q.detached
+		q.detached, q.detachedNext = 0, 0
+	} else if q.detached != 0 && q.detached == removed.successorOf {
+		q.detachedNext = removed.entry.id
+	}
+	if intent := m.queueIntent; intent != nil {
+		if intent.entry == removed.entry.id {
+			intent.detached, intent.detachedNext = false, 0
+		} else if intent == removed.pending {
+			intent.detachedNext = removed.entry.id
+		}
+	}
 	q.removed = nil
 	m.pages.cursors[1] = index
 }

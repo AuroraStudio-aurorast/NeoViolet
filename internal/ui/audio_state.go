@@ -130,7 +130,9 @@ func (a *AudioState) SeekPlayer(pos time.Duration) error {
 		return nil
 	}
 	logger.Debug("SeekPlayer", "position", pos)
-	if err := a.Player.Seek(pos); err != nil {
+	err := a.Player.Seek(pos)
+	a.IsPlaying = a.Player.IsPlaying()
+	if err != nil {
 		return err
 	}
 	a.seekRevision++

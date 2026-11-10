@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"image"
 	"testing"
 	"time"
@@ -240,5 +241,34 @@ func TestMessageState_Tick_Empty(t *testing.T) {
 	e.Tick() // Timer = 0, no decrement
 	if !e.Visible {
 		t.Error("Visible should remain true when Timer is 0")
+	}
+}
+
+func TestSeekRefreshesPlaybackStateBeforeNextTick(t *testing.T) {
+	for _, playing := range []bool{false, true} {
+		t.Run(map[bool]string{false: "ended-before-tick", true: "playing"}[playing], func(t *testing.T) {
+			// The backend can finish before the next UI tick processes EOF.
+			a := AudioState{Player: &mockPlayer{playing: playing}, IsPlaying: true}
+			if err := a.SeekPlayer(0); err != nil {
+				t.Fatal(err)
+			}
+			if a.IsPlaying != playing {
+				t.Fatalf("seek left UI playing=%v, backend playing=%v", a.IsPlaying, playing)
+			}
+		})
+	}
+}
+
+type failedSeekPlayer struct{ mockPlayer }
+
+func (*failedSeekPlayer) Seek(time.Duration) error { return errors.New("seek failed") }
+
+func TestFailedSeekRefreshesPlaybackStateWithoutAdvancingRevision(t *testing.T) {
+	a := AudioState{Player: &failedSeekPlayer{}, IsPlaying: true}
+	if err := a.SeekPlayer(0); err == nil {
+		t.Fatal("seek failure was lost")
+	}
+	if a.IsPlaying || a.seekRevision != 0 {
+		t.Fatal("failed seek retained stale playback state or advanced the seek revision")
 	}
 }

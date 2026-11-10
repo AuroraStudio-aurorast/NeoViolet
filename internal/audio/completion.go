@@ -17,7 +17,8 @@ type outputCompletion struct {
 
 func (s *outputCompletion) Stream(samples [][2]float64) (int, bool) {
 	n, ok := s.source.Stream(samples)
-	if !ok {
+	// Mixer removes a final short block immediately, without another pull.
+	if n < len(samples) || !ok {
 		s.err = s.source.Err()
 		s.ended.Store(true)
 	}

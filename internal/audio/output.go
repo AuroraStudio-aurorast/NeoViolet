@@ -23,9 +23,11 @@ func (p *Player) attachOutput(streamer beep.Streamer, paused bool) {
 
 // detachOutput waits for the speaker's current Stream call before removing our
 // decoder from its chain. Resources can then be closed without an in-flight read.
-// Caller must hold p.mu.
-func (p *Player) detachOutput() {
+// Returns whether playback was active at detachment, including completion that
+// arrived during the last speaker callback. Caller must hold p.mu.
+func (p *Player) detachOutput() bool {
 	speaker.Lock()
+	playing := p.isPlaying && !p.isPaused && (p.completion == nil || !p.completion.ended.Load())
 	if p.output != nil {
 		p.output.Streamer = nil
 		p.output = nil
@@ -33,4 +35,5 @@ func (p *Player) detachOutput() {
 	speaker.Unlock()
 	p.completion = nil
 	p.isPlaying = false
+	return playing
 }
