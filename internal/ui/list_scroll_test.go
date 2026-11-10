@@ -105,9 +105,14 @@ func TestSettingsWindowCountsGroupHeadingsAndDoesNotPinSelection(t *testing.T) {
 	}
 	c := selectedCanvas(m)
 	before := c.selections[0].row
+	previousGroup := m.pages.settings[m.pages.cursors[3]].group
 	scrollKey(m, tea.KeyUp)
 	c = selectedCanvas(m)
-	if c.selections[0].row != before-1 {
+	delta := 1
+	if m.pages.settings[m.pages.cursors[3]].group != previousGroup {
+		delta++
+	}
+	if c.selections[0].row != before-delta {
 		t.Fatal("settings cursor did not move inside viewport")
 	}
 }

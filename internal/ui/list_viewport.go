@@ -85,6 +85,6 @@ func (m *Model) syncListViewports() {
 		}
 	case 3:
 		rows, cursor := p.settingRows()
-		p.viewports.settings.reveal(cursor, len(rows), listCapacity(h, 3, 1, 1))
+		p.viewports.settings.top = p.settingsWindowStart(rows, cursor, listCapacity(h, 3, 1, 1))
 	}
 }

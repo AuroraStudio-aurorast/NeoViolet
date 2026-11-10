@@ -67,7 +67,6 @@ func settingsFromConfig(cfg config.Config) []pageSetting {
 		fields[i].savedValue = fields[i].value
 		fields[i].initial = formatSettingValue(fields[i].key, settingValue(defaults, fields[i].key))
 	}
-	fields[2].label = "Remembered volume"
 	return fields
 }
 func formatSettingValue(key string, value any) string {

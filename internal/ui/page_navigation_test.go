@@ -88,10 +88,8 @@ func TestSampleFormatPickerOrdersAndCancelsWithoutSaving(t *testing.T) {
 	m := NewModel("", &cfg)
 	m.UI.Focus = FocusContent
 	m.UI.ActiveTab = 3
-	pageKey(m, '3', "3")
-	for range 5 {
-		pageKey(m, tea.KeyDown, "")
-	}
+	pageKey(m, '2', "2")
+	m.pages.cursors[3] = settingIndex(m, "Format priority")
 	pageKey(m, tea.KeyEnter, "")
 	pageKey(m, 'J', "J")
 	pageKey(m, tea.KeySpace, "")
@@ -112,10 +110,8 @@ func TestSampleFormatPickerCancelDiscardsChanges(t *testing.T) {
 	m := NewModel("", &cfg)
 	m.UI.Focus = FocusContent
 	m.UI.ActiveTab = 3
-	pageKey(m, '3', "3")
-	for range 5 {
-		pageKey(m, tea.KeyDown, "")
-	}
+	pageKey(m, '2', "2")
+	m.pages.cursors[3] = settingIndex(m, "Format priority")
 	pageKey(m, tea.KeyEnter, "")
 	pageKey(m, 'J', "J")
 	pageKey(m, tea.KeySpace, "")

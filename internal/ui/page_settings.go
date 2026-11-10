@@ -29,6 +29,16 @@ func (p *pageState) settingRows() ([]pageSettingRow, int) {
 	return rows, selected
 }
 
+// Keep the preceding group title visible when its first field reaches the
+// viewport's upper edge. Headers remain context, never selectable items.
+func (p *pageState) settingsWindowStart(rows []pageSettingRow, selected, capacity int) int {
+	start := p.viewports.settings.start(selected, len(rows), capacity)
+	if capacity > 1 && selected > 0 && selected < len(rows) && rows[selected-1].field < 0 && start == selected {
+		start--
+	}
+	return start
+}
+
 func (p *pageState) renderSettings(c *pageCanvas, focused bool) {
 	w, h := c.width, len(c.rows)
 	status := "Saved configuration"
@@ -41,7 +51,7 @@ func (p *pageState) renderSettings(c *pageCanvas, focused bool) {
 	c.rule(2, 1, w-2)
 	rows, selected := p.settingRows()
 	available := listCapacity(h, 3, 1, 1)
-	start := p.viewports.settings.start(selected, len(rows), available)
+	start := p.settingsWindowStart(rows, selected, available)
 	for i, row := range rows[start:min(len(rows), start+available)] {
 		y := 3 + i
 		if row.field < 0 {

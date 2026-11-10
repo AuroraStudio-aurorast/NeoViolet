@@ -102,13 +102,13 @@ func TestTabPagesSavedCollectionAndSettingsSubview(t *testing.T) {
 		t.Fatal("escape did not return to collections")
 	}
 	m.UI.ActiveTab = 3
-	pageKey(m, '2', "2")
+	pageKey(m, '4', "4")
 	pageKey(m, tea.KeyEnter, "")
 	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "Choose SoundFont") {
 		t.Fatalf("missing file selector: %q", got)
 	}
 	pageKey(m, tea.KeyEscape, "")
-	pageKey(m, '3', "3")
+	pageKey(m, '2', "2")
 	if got := stripANSI(renderContent(m, m.layoutPlan())); !strings.Contains(got, "Lyrics") {
 		t.Fatal("settings group navigation was lost after closing selector")
 	}
