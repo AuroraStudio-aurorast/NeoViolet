@@ -271,13 +271,16 @@ func (p *pageState) resetSetting(index int) error {
 	}
 	if p.settings[index].key == "lyrics.format_priority" {
 		p.setFormatDraft(config.DefaultConfig().Lyrics.FormatPriority)
+		formats := slices.Clone(p.draft.Lyrics.FormatPriority)
+		for _, name := range p.formats {
+			if !slices.Contains(formats, name) {
+				formats = append(formats, name)
+			}
+		}
+		p.formats = formats
+		p.enabled = make([]bool, len(p.formats))
 		for i, name := range p.formats {
 			p.enabled[i] = slices.Contains(p.draft.Lyrics.FormatPriority, name)
-		}
-		p.formats = slices.Clone(p.draft.Lyrics.FormatPriority)
-		p.enabled = make([]bool, len(p.formats))
-		for i := range p.enabled {
-			p.enabled[i] = true
 		}
 		return nil
 	}

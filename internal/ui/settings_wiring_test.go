@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -206,6 +207,26 @@ func TestSettingsResetFormatPriorityUsesDefaults(t *testing.T) {
 	pageKey(m, 'r', "r")
 	if m.pages.draft.Lyrics.FormatPriority[0] != "embedded" || m.pages.dirty {
 		t.Fatal("reset did not restore default priority and clear reverted edits")
+	}
+}
+
+func TestSettingsResetFormatPriorityKeepsSupportedAlternativesSelectable(t *testing.T) {
+	m := wiredSettingsModel(t)
+	editRealSetting(t, m, "Seek step", "21")
+	m.pages.cursors[3] = settingIndex(m, "Format priority")
+	pageKey(m, 'r', "r")
+	pageKey(m, tea.KeyEnter, "")
+	for _, name := range []string{"srt", "smi"} {
+		index := slices.Index(m.pages.formats, name)
+		if index < 0 || m.pages.enabled[index] {
+			t.Fatalf("reset lost disabled alternative %q", name)
+		}
+	}
+	m.pages.pickerIndex = slices.Index(m.pages.formats, "srt")
+	pageKey(m, tea.KeySpace, "")
+	pageKey(m, tea.KeyEnter, "")
+	if !slices.Contains(m.pages.draft.Lyrics.FormatPriority, "srt") || m.pages.draft.SeekStep != 21 || slices.Contains(m.Config.Lyrics.FormatPriority, "srt") {
+		t.Fatal("alternative could not be selected in the reset draft")
 	}
 }
 func TestSettingsCannotSaveAnEmptyExplicitPriority(t *testing.T) {

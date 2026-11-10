@@ -347,7 +347,7 @@ func (p *pageState) renderEditor(c *pageCanvas) {
 	case "playlist_create", "playlist_queue", "playlist_rename":
 		c.dim(1, 1, "Enter saves this name to disk; Esc cancels")
 	case "filter":
-		c.dim(1, 1, "Match title, artist, album or path")
+		c.dim(1, 1, "Match title, artist or album")
 	case "setting":
 		c.dim(1, 1, "Enter validates the draft; s saves after closing this editor")
 	default:
