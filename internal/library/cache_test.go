@@ -116,3 +116,33 @@ func TestLibraryCachePersistenceAndCorruptRecovery(t *testing.T) {
 		}
 	}
 }
+
+func TestLegacyTagPriorityCacheIsReprobed(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "tagged.mp3"), []byte("unchanged audio"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	include := func(string) bool { return true }
+	first, err := Scan(context.Background(), []string{root}, include,
+		func(context.Context, string) (Track, error) { return Track{Title: "Old APE title"}, nil }, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Version 1 stored tags using the old APE-over-ID3 precedence.
+	first.Cache.Version = 1
+	store := filepath.Join(t.TempDir(), "library.json")
+	if err := SaveCache(context.Background(), store, first.Cache); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadCache(store); err == nil || first.Cache.MatchesRoots([]string{root}) {
+		t.Error("legacy metadata could still be restored at startup")
+	}
+	calls := 0
+	result, err := Scan(context.Background(), []string{root}, include, func(context.Context, string) (Track, error) {
+		calls++
+		return Track{Title: "New ID3 title"}, nil
+	}, nil, ScanOptions{Cache: first.Cache})
+	if err != nil || calls != 1 || len(result.Tracks) != 1 || result.Tracks[0].Title != "New ID3 title" {
+		t.Fatalf("legacy priority survived rescan: %+v calls=%d err=%v", result.Tracks, calls, err)
+	}
+}

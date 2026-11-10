@@ -1,13 +1,88 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/playlist"
 )
+
+func TestPageBoundaryKeysReachActualListEnds(t *testing.T) {
+	for _, kind := range []string{"library", "queue", "collections", "tracks", "effects", "settings", "empty-library", "empty-queue", "empty-collections", "empty-tracks"} {
+		t.Run(kind, func(t *testing.T) {
+			m := scrollFixture(t)
+			tracks := make([]library.Track, 5000)
+			for i := range tracks {
+				tracks[i] = library.Track{Path: fmt.Sprintf("/music/%05d.wav", i), Title: fmt.Sprint(i), Format: "WAV"}
+			}
+			m.installLibrary(tracks)
+			want := 4999
+			cursor := &m.pages.cursors[0]
+			switch kind {
+			case "queue", "empty-queue":
+				m.UI.ActiveTab = 1
+				cursor = &m.pages.cursors[1]
+				if kind == "queue" {
+					for _, track := range tracks {
+						m.appendQueue(track)
+					}
+				}
+			case "collections", "empty-collections", "tracks", "empty-tracks":
+				m.UI.ActiveTab = 1
+				m.pages.saved = true
+				m.playlists.loaded = true
+				cursor = &m.pages.collection
+				if kind == "collections" {
+					for i := range 5000 {
+						m.playlists.lists = append(m.playlists.lists, playlist.List{ID: fmt.Sprint(i), Name: "List"})
+					}
+				}
+				if kind == "tracks" || kind == "empty-tracks" {
+					m.pages.detail = true
+					cursor = &m.pages.savedTrack
+					m.playlists.lists = []playlist.List{{ID: "list", Name: "List", Tracks: tracks}}
+					if kind == "empty-tracks" {
+						m.playlists.lists[0].Tracks = nil
+					}
+				}
+			case "effects":
+				m.UI.ActiveTab = 2
+				cursor, want = &m.pages.effect, 9
+			case "settings":
+				m.UI.ActiveTab = 3
+				cursor, want = &m.pages.cursors[3], len(m.pages.settings)-1
+			case "empty-library":
+				m.installLibrary(nil)
+			}
+			if strings.HasPrefix(kind, "empty-") {
+				want = 0
+			}
+			for _, vim := range []bool{false, true} {
+				if vim {
+					pageKey(m, 'G', "G")
+				} else {
+					pageKey(m, tea.KeyEnd, "")
+				}
+				if *cursor != want {
+					t.Errorf("end selected %d, want %d", *cursor, want)
+				}
+				*cursor = want
+				if vim {
+					pageKey(m, 'g', "g")
+				} else {
+					pageKey(m, tea.KeyHome, "")
+				}
+				if *cursor != 0 {
+					t.Errorf("home selected %d, want 0", *cursor)
+				}
+			}
+		})
+	}
+}
 
 func TestPageNavigationRetainsSelectionAndDoesNotEscapeFocus(t *testing.T) {
 	m := queueFixture(t)

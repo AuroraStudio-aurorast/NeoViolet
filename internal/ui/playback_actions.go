@@ -7,13 +7,19 @@ func (m *Model) setVolume(volume float64) {
 	if m.Audio.Volume != before {
 		m.volumeRevision++
 	}
-	if m.pages != nil && !m.pages.changed["default_volume"] {
-		m.pages.draft.DefaultVolume = m.Audio.Volume
-		for i := range m.pages.settings {
-			if m.pages.settings[i].key == "default_volume" {
-				value := formatSettingValue("default_volume", m.Audio.Volume)
-				m.pages.settings[i].value = value
-				m.pages.settings[i].savedValue = value
+	if p := m.pages; p != nil {
+		p.baseline.DefaultVolume = m.Audio.Volume
+		if !p.changed["default_volume"] {
+			p.draft.DefaultVolume = m.Audio.Volume
+		}
+		if p.draft.DefaultVolume == m.Audio.Volume {
+			delete(p.changed, "default_volume")
+		}
+		p.dirty = len(p.changed) > 0
+		for i := range p.settings {
+			if p.settings[i].key == "default_volume" {
+				p.settings[i].value = formatSettingValue("default_volume", p.draft.DefaultVolume)
+				p.settings[i].savedValue = formatSettingValue("default_volume", m.Audio.Volume)
 			}
 		}
 	}

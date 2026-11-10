@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"sync"
 
 	"charm.land/bubbles/v2/progress"
 	tea "charm.land/bubbletea/v2"
@@ -16,7 +17,7 @@ type configSaveJob struct {
 	snapshot       config.Config
 	changed        map[string]bool
 	volumeRevision uint64
-	done           chan error
+	run            func() configSavedMsg
 	quit           bool
 }
 type configSavedMsg struct {
@@ -73,10 +74,10 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 	if !changed["default_volume"] {
 		candidate.DefaultVolume = m.Audio.Volume
 	}
-	job := &configSaveJob{snapshot: candidate, changed: changed, volumeRevision: m.volumeRevision, done: make(chan error, 1), quit: quit}
+	job := &configSaveJob{snapshot: candidate, changed: changed, volumeRevision: m.volumeRevision, quit: quit}
 	m.configSave = job
 	m.Info.Set("Saving configuration…", max(90, m.Config.Error.Duration))
-	return func() tea.Msg {
+	job.run = sync.OnceValue(func() configSavedMsg {
 		var err error
 		if job.changed["soundfont_path"] {
 			_, err = parseSetting(pageSetting{key: "soundfont_path"}, job.snapshot.SoundfontPath)
@@ -87,9 +88,9 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 		if err == nil {
 			err = job.snapshot.Save()
 		}
-		job.done <- err
 		return configSavedMsg{job: job, err: err}
-	}
+	})
+	return func() tea.Msg { return job.run() }
 }
 
 func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
@@ -141,9 +142,9 @@ func (m *Model) flushSettingsSave() {
 		return
 	}
 	job := m.configSave
-	err := <-job.done
+	msg := job.run()
 	job.quit = false
-	_ = m.finishSettingsSave(configSavedMsg{job: job, err: err})
+	_ = m.finishSettingsSave(msg)
 }
 func (m *Model) flushDeferredVolume() {
 	if !m.volumeSavePending {
@@ -202,7 +203,12 @@ func (m *Model) confirmSettingsQuit() bool {
 		m.configSave.quit = true
 		return true
 	}
-	m.pages.browser = nil
+	// Preserve navigation on cancellation, but reject selections still in flight
+	// before the user makes a save/discard decision.
+	if browser := m.pages.browser; browser != nil {
+		browser.generation++
+		browser.loading = false
+	}
 	m.pages.quitSettings = true
 	m.UI.Mode = ModeNormal
 	m.UI.Focus = FocusContent

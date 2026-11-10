@@ -11,7 +11,8 @@ import (
 	"sync"
 )
 
-const cacheVersion = 1
+// Version 2 invalidates metadata stored with the old APE-over-ID3 precedence.
+const cacheVersion = 2
 
 var cacheWriteMu sync.Mutex
 

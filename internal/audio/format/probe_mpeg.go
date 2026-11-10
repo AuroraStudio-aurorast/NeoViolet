@@ -280,7 +280,18 @@ func probeTrailingTags(r *probeReader, m *Metadata) {
 		if flags&6 == 0 && probeTextKey(string(key[:k])) && n <= probeTextLimit && r.reserveText(n) {
 			value := make([]byte, int(n))
 			if r.at(value, offset) {
-				probeSetText(m, string(key[:k]), string(value))
+				var fallback Metadata
+				probeSetText(&fallback, string(key[:k]), string(value))
+				// Match playback's ID3 precedence; APE tags only fill gaps.
+				if m.Title == "" {
+					m.Title = fallback.Title
+				}
+				if m.Artist == "" {
+					m.Artist = fallback.Artist
+				}
+				if m.Album == "" {
+					m.Album = fallback.Album
+				}
 			}
 		}
 		offset += n

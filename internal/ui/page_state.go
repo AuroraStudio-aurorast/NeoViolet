@@ -163,10 +163,10 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		m.movePageCursor(m.UI.ActiveTab, 1)
 		return true, nil
 	case "home", "g":
-		m.movePageCursor(m.UI.ActiveTab, -1000)
+		m.movePageCursor(m.UI.ActiveTab, -m.pageItemCount())
 		return true, nil
 	case "end", "G":
-		m.movePageCursor(m.UI.ActiveTab, 1000)
+		m.movePageCursor(m.UI.ActiveTab, m.pageItemCount())
 		return true, nil
 	case "pgup":
 		m.movePageCursor(m.UI.ActiveTab, -5)
@@ -248,6 +248,29 @@ func (m *Model) updatePageKey(msg tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, nil
 	}
 	return true, nil
+}
+
+func (m *Model) pageItemCount() int {
+	p := m.pages
+	switch m.UI.ActiveTab {
+	case 0:
+		return len(p.visible)
+	case 1:
+		if !p.saved {
+			return len(m.session.entries)
+		}
+		if !p.detail {
+			return len(m.playlists.lists)
+		}
+		if list := m.selectedPlaylist(); list != nil {
+			return len(list.Tracks)
+		}
+	case 2:
+		return len(effectLabels)
+	case 3:
+		return len(p.settings)
+	}
+	return 0
 }
 
 func (m *Model) movePageCursor(tab, delta int) {
