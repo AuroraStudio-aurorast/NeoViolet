@@ -23,6 +23,9 @@ var (
 
 func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	keyStr := msg.String()
+	if m.pageOwnsInput() && !normMatch(msg, keys.Quit) {
+		return m, m.updatePageInput(msg)
+	}
 
 	// ─── Tier 0: keys that navigate away close the animation ───
 	//
@@ -54,11 +57,17 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		if m.isGUI() {
 			return m, nil
 		}
+		if m.confirmSettingsQuit() {
+			return m, nil
+		}
 		m.cleanup()
 		return m, tea.Quit
 
 	case normMatch(msg, keys.NormalMode):
 		m.QuitConfirm = false
+		if m.UI.Focus == FocusContent && m.pages != nil {
+			m.pages.detail = false
+		}
 		return m, nil
 
 	case normMatch(msg, keys.Play), normMatch(msg, keys.Pause):
@@ -85,10 +94,10 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		return m, nil
 
 	case normMatch(msg, keys.Next):
-		return m, nil
+		return m, m.stepQueue(1)
 
 	case normMatch(msg, keys.Prev):
-		return m, nil
+		return m, m.stepQueue(-1)
 
 	case normMatch(msg, seekFwdChordKey):
 		m.Audio.SeekRelative(time.Duration(m.Config.SeekStep) * time.Second)
@@ -112,7 +121,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		}
 
 	case FocusContent:
-		// No focus-specific keys yet
+		if handled, cmd := m.updatePageKey(msg); handled {
+			return m, cmd
+		}
 
 	case FocusFooter:
 		switch {
@@ -134,6 +145,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 	// ─── Tier 3: Fallback quit confirmation ───
 	if !m.isGUI() && (keyStr == "q" || keyStr == "Q") {
 		if m.QuitConfirm {
+			if m.confirmSettingsQuit() {
+				return m, nil
+			}
 			m.cleanup()
 			return m, tea.Quit
 		}

@@ -12,6 +12,8 @@ pub enum Event {
     CaptionHover(iced::window::Id, Option<crate::titlebar::CaptionControl>),
     #[cfg(any(target_os = "windows", test))]
     CaptionAction(iced::window::Id, Action),
+    #[cfg(any(target_os = "macos", test))]
+    TitleInset(iced::window::Id, f32),
     #[cfg(target_os = "macos")]
     LyricsHover(iced::window::Id, bool),
     #[cfg(target_os = "macos")]
@@ -49,7 +51,7 @@ impl Desktop {
     pub fn configure_main(&self, id: iced::window::Id, system_decorations: bool) -> iced::Task<()> {
         let _ = system_decorations;
         #[cfg(target_os = "macos")]
-        return macos::configure_main(id);
+        return macos::configure_main(id, self.sender.clone());
         #[cfg(target_os = "windows")]
         return if system_decorations {
             iced::Task::none()

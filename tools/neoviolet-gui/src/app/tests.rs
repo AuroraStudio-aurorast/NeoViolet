@@ -595,3 +595,18 @@ mod startup_tests;
 #[cfg(unix)]
 #[path = "terminal_background_tests.rs"]
 mod terminal_background_tests;
+
+#[test]
+fn measured_title_insets_only_apply_to_the_main_window() {
+    let mut app = app();
+    let _ = app.update(Message::Desktop(desktop::Event::TitleInset(
+        window::Id::unique(),
+        120.0,
+    )));
+    assert_eq!(app.titlebar.mac_title_inset, None);
+    let _ = app.update(Message::Desktop(desktop::Event::TitleInset(
+        app.main_window,
+        86.0,
+    )));
+    assert_eq!(app.titlebar.mac_title_inset, Some(86.0));
+}

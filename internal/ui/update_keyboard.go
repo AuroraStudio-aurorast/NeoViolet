@@ -72,6 +72,7 @@ func normMatch(msg tea.KeyPressMsg, b ...key.Binding) bool {
 }
 
 func handleKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	defer m.syncListViewports()
 	if m.UI.Mode == ModeCommand {
 		return handleCommandModeKeyPress(m, msg)
 	}

@@ -243,6 +243,7 @@ func TestTrackSwitchKeepsAnimationOnLoadFailure(t *testing.T) {
 
 func TestTrackSwitchAcceptsOnlyCurrentTrackAccent(t *testing.T) {
 	m, _ := currentTrackModel()
+	m.Config.Accent.AutoAccent = boolPtr(true)
 	oldAccent := &accent.Accent{}
 	dispatcherModel(t, m, LoadTrackMsg{Path: "next.flac"})
 	dispatcherModel(t, m, AccentApplyMsg{Accent: oldAccent, Generation: 0})

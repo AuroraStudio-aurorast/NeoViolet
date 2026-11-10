@@ -72,6 +72,13 @@ func (p *MidiPlayer) IsPlaying() bool {
 	return !p.closed && p.renderErr == nil && p.isPlaying && !p.isPaused
 }
 
+// Finished reports that the score reached its end and has not been restarted.
+func (p *MidiPlayer) Finished() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.finished
+}
+
 // Stop cancels pending seeks and drops all playback state.
 func (p *MidiPlayer) Stop() {
 	p.mu.Lock()

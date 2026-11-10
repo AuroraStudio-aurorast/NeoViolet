@@ -115,3 +115,36 @@
              if let Some(target_fullscreen) = self.ivars().target_fullscreen.take() {
                  self.set_fullscreen(target_fullscreen);
              }
+@@ -340,6 +346,32 @@
+             } else {
+                 self.restore_state_from_fullscreen();
+             }
++            // Let the owner resume its windowed chrome after a cancelled transition.
++            unsafe {
++                objc2_foundation::NSNotificationCenter::defaultCenter().postNotificationName_object(
++                    ns_string!("NeoVioletFullscreenTransitionFailed"), Some(&*self.window()));
++            }
++            self.queue_event(WindowEvent::Resized(self.inner_size()));
++            self.request_redraw();
++        }
++
++        #[method(windowDidFailToExitFullScreen:)]
++        fn window_did_fail_to_exit_fullscreen(&self, _: Option<&AnyObject>) {
++            self.ivars().in_fullscreen_transition.set(false);
++            self.ivars().target_fullscreen.replace(None);
++            // Programmatic exit clears Winit's cache before AppKit can reject the transition.
++            if self.window().styleMask().contains(NSWindowStyleMask::FullScreen) {
++                let missing = self.ivars().fullscreen.borrow().is_none();
++                if missing {
++                    self.ivars().fullscreen.replace(Some(Fullscreen::Borderless(self.current_monitor_inner())));
++                }
++            }
++            unsafe {
++                objc2_foundation::NSNotificationCenter::defaultCenter().postNotificationName_object(
++                    ns_string!("NeoVioletFullscreenTransitionFailed"), Some(&*self.window()));
++            }
++            self.queue_event(WindowEvent::Resized(self.inner_size()));
++            self.request_redraw();
+         }
+ 
+         // Invoked when the occlusion state of the window changes

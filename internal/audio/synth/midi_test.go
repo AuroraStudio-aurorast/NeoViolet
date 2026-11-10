@@ -69,10 +69,16 @@ func TestMidiEOFIsReusableSilence(t *testing.T) {
 	if p.IsPlaying() {
 		t.Fatal("EOF still playing")
 	}
+	if !p.Finished() {
+		t.Fatal("EOF did not report completion")
+	}
 	if n, ok := p.Stream(b); n != len(b) || !ok {
 		t.Fatal("EOF detached stream")
 	}
 	p.Stop()
+	if p.Finished() {
+		t.Fatal("Stop retained completion")
+	}
 	if e := p.Play(); e != nil {
 		t.Fatal(e)
 	}

@@ -19,6 +19,9 @@ func shortHelpBindings(m *Model) []key.Binding {
 	case FocusContent:
 		tabs := keys.TabNext
 		tabs.SetHelp("[/]", "tabs")
+		if m.UI.Width >= 110 {
+			bindings = append(bindings, pageHelpBindings(m)...)
+		}
 		bindings = append(bindings, tabs)
 	case FocusFooter:
 		if m.Audio.Player != nil {
