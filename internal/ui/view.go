@@ -77,15 +77,13 @@ func renderContent(m *Model, plan layoutPlan) string {
 		return contentBox(s, frame, plan)
 	}
 
-	content := renderTabPage(m, plan)
 	if body, ok := animBody(m, plan); ok {
-		content = body
+		return s.Width(plan.ContentWidth).Height(plan.ContentHeight).Render(body)
 	}
 
-	return s.
-		Width(plan.ContentWidth).
-		Height(plan.ContentHeight).
-		Render(content)
+	// Pages already fill the exact interior, just like a fitted animation frame.
+	// Reuse its box wrapper to avoid measuring every styled cell a second time.
+	return contentBox(s, renderTabPage(m, plan), plan)
 }
 
 func renderFooter(m *Model, plan layoutPlan) string {

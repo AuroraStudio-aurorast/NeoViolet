@@ -271,6 +271,7 @@ type Model struct {
 	queueEndSeekRevision     uint64
 	queueEndPlaybackRevision uint64
 	libraryTracks            []library.Track
+	librarySearch            []string // Lowercase metadata, rebuilt with each library snapshot.
 	scanGeneration           uint64
 	scanCancel               context.CancelFunc
 	scanDone, scanTotal      int

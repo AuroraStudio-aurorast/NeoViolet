@@ -159,9 +159,12 @@ func (m *Model) installLibrary(tracks []library.Track) {
 		selectedScope = m.pages.scopes[m.pages.scope]
 	}
 	m.libraryTracks = slices.Clone(tracks)
+	m.librarySearch = make([]string, len(tracks))
 	scopes := []string{"All tracks"}
 	artists, albums := map[string]bool{}, map[string]bool{}
-	for _, t := range tracks {
+	for i, t := range tracks {
+		// Normalize once per snapshot, not once per track for every filter edit.
+		m.librarySearch[i] = strings.ToLower(t.Title + " " + t.Artist + " " + t.Album)
 		if t.Format != "" && !slices.Contains(scopes, t.Format) {
 			scopes = append(scopes, t.Format)
 		}
@@ -189,11 +192,11 @@ func (m *Model) refreshLibraryView() {
 		p.scopes = []string{"All tracks"}
 	}
 	query := strings.ToLower(p.filter)
-	for _, t := range m.libraryTracks {
+	for i, t := range m.libraryTracks {
 		if p.scope > 0 && t.Format != p.scopes[p.scope] {
 			continue
 		}
-		if query != "" && !strings.Contains(strings.ToLower(t.Title+" "+t.Artist+" "+t.Album), query) {
+		if query != "" && !strings.Contains(m.librarySearch[i], query) {
 			continue
 		}
 		p.visible = append(p.visible, t)
