@@ -165,6 +165,13 @@ pub(super) fn check(
         }
         let transient = NSPoint::new(2.0, 2.0);
         buttons[0].setFrameOrigin(transient);
+        // Resize notifications during system animations must respect the same suspension.
+        unsafe {
+            center.postNotificationName_object(
+                objc2_app_kit::NSWindowDidResizeNotification,
+                Some(window),
+            );
+        }
         settle();
         assert_eq!(
             buttons[0].frame().origin,

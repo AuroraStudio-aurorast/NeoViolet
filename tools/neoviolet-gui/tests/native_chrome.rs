@@ -201,6 +201,39 @@ fn check_native_layout() {
     parent.setBoundsOrigin(bounds.origin);
     settle();
     recovery::check(id, &window, &view, &buttons, expected);
+    let original_frame = window.frame();
+    for (step, (width, height, display)) in [
+        (811.0, 607.0, false),
+        (750.0, 550.0, false),
+        (750.0, 600.0, true),
+        (820.0, 600.0, true),
+        (800.5, 600.5, false),
+        (480.0, 320.0, true),
+        (1000.0, 700.0, true),
+        (800.0, 600.0, false),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut frame = original_frame;
+        frame.size = NSSize::new(width, height);
+        window.setFrame_display(frame, display);
+        let actual = buttons.each_ref().map(|button| button.frame().origin);
+        assert_eq!(
+            actual, expected,
+            "resize must restore buttons before the next display, without a run-loop correction (step {step})"
+        );
+        assert_eq!(
+            buttons
+                .each_ref()
+                .map(|button| button.layer().unwrap().frame()),
+            expected_layers,
+            "native layers must be aligned in the same resize pass"
+        );
+        // Deliberately no run-loop drain between sizes: even a burst must never expose resets.
+    }
+    window.setFrame_display(original_frame, false);
+    settle();
     // Reinstallation must remove the previous observer set, preserving original flags.
     chrome::install(id, &view, &window, 34.0);
     settle();

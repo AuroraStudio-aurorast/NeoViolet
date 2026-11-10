@@ -10,9 +10,9 @@ use objc2_app_kit::{
     NSWindowButton, NSWindowDidChangeBackingPropertiesNotification,
     NSWindowDidChangeScreenNotification, NSWindowDidEndSheetNotification,
     NSWindowDidEnterFullScreenNotification, NSWindowDidExitFullScreenNotification,
-    NSWindowDidUpdateNotification, NSWindowStyleMask, NSWindowWillBeginSheetNotification,
-    NSWindowWillCloseNotification, NSWindowWillEnterFullScreenNotification,
-    NSWindowWillExitFullScreenNotification,
+    NSWindowDidResizeNotification, NSWindowDidUpdateNotification, NSWindowStyleMask,
+    NSWindowWillBeginSheetNotification, NSWindowWillCloseNotification,
+    NSWindowWillEnterFullScreenNotification, NSWindowWillExitFullScreenNotification,
 };
 use objc2_foundation::{
     NSArray, NSNotification, NSNotificationCenter, NSObjectProtocol, NSPoint, NSRect, NSRunLoop,
@@ -293,6 +293,9 @@ pub fn install(id: iced::window::Id, view: &NSView, window: &NSWindow, titlebar_
     tracker.rebind(view, window);
     // SAFETY: Public AppKit notifications filtered to this main-thread window.
     unsafe {
+        // Resize has finished laying out all native controls. Correct them synchronously
+        // before AppKit displays this size; a run-loop correction exposes the reset each frame.
+        tracker.observe(NSWindowDidResizeNotification, window, |state| state.apply());
         tracker.observe(NSWindowDidUpdateNotification, window, |state| {
             state.check_update()
         });
