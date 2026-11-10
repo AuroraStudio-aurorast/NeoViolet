@@ -28,6 +28,9 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.applyFileBrowser(msg)
 	case configSavedMsg:
 		return m, m.finishSettingsSave(msg)
+	case volumeSavedMsg:
+		m.finishVolumeSave(msg)
+		return m, nil
 	case settingsLyricsMsg:
 		return m, m.applySettingsLyrics(msg)
 	case ipc.Event:
@@ -90,7 +93,7 @@ const lyricPushInterval = 33 * time.Millisecond
 
 func handleTick(m *Model) (tea.Model, tea.Cmd) {
 	cmd := m.updatePlaybackState()
-	cmd = tea.Batch(cmd, m.syncAnim())
+	cmd = tea.Batch(cmd, m.syncAnim(), m.startVolumeSave(time.Now()))
 	m.Error.Tick()
 	m.Info.Tick()
 

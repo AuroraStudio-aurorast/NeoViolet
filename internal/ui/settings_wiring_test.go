@@ -111,6 +111,7 @@ func TestSettingsSaveMergesVolumeChangesDuringWrite(t *testing.T) {
 	cmd := pageKey(m, 's', "s")
 	m.setVolume(.7)
 	completeSettingsCmd(t, m, cmd)
+	m.Close() // Shutdown flushes the volume merged after the settings snapshot.
 	loaded, err := config.Load()
 	if err != nil || loaded.SeekStep != 21 || loaded.DefaultVolume != .7 || m.Config.DefaultVolume != .7 || m.Audio.Volume != .7 {
 		t.Fatalf("volume update lost after save: %+v %v", loaded, err)

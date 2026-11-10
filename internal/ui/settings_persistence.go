@@ -19,6 +19,7 @@ type configSaveJob struct {
 	volumeRevision uint64
 	run            func() configSavedMsg
 	quit           bool
+	pendingVolume  bool
 }
 type configSavedMsg struct {
 	job *configSaveJob
@@ -74,10 +75,17 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 	if !changed["default_volume"] {
 		candidate.DefaultVolume = m.Audio.Volume
 	}
-	job := &configSaveJob{snapshot: candidate, changed: changed, volumeRevision: m.volumeRevision, quit: quit}
+	previousVolume := m.volumeSave
+	job := &configSaveJob{snapshot: candidate, changed: changed, volumeRevision: m.volumeRevision, quit: quit, pendingVolume: m.volumeSavePending || previousVolume != nil}
+	m.volumeSave = nil
+	m.volumeSavePending = false // This snapshot includes the latest remembered volume.
 	m.configSave = job
 	m.Info.Set("Saving configuration…", max(90, m.Config.Error.Duration))
 	job.run = sync.OnceValue(func() configSavedMsg {
+		// Serialize snapshots in the worker, never by waiting in Update.
+		if previousVolume != nil {
+			_ = previousVolume.run()
+		}
 		var err error
 		if job.changed["soundfont_path"] {
 			_, err = parseSetting(pageSetting{key: "soundfont_path"}, job.snapshot.SoundfontPath)
@@ -101,7 +109,7 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 	if msg.err != nil {
 		m.Info.Visible = false
 		m.Error.Set(fmt.Sprintf("Save failed: %v", msg.err), max(90, m.Config.Error.Duration))
-		m.flushDeferredVolume()
+		m.volumeSavePending = m.volumeSavePending || msg.job.pendingVolume
 		return nil
 	}
 	cfg := msg.job.snapshot.Clone()
@@ -113,7 +121,6 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 	m.applySavedSettings(cfg, msg.job.changed)
 	m.pages.initSettings(cfg)
 	m.Info.SetSuccess("Configuration saved", max(90, m.Config.Error.Duration))
-	m.flushDeferredVolume()
 	if msg.job.quit {
 		if m.playlists.save != nil {
 			m.playlists.save.quit = true
@@ -146,18 +153,6 @@ func (m *Model) flushSettingsSave() {
 	job.quit = false
 	_ = m.finishSettingsSave(msg)
 }
-func (m *Model) flushDeferredVolume() {
-	if !m.volumeSavePending {
-		return
-	}
-	m.volumeSavePending = false
-	// Force a write even when the in-memory remembered value is already current.
-	m.Config.DefaultVolume = m.Audio.Volume
-	if err := m.Config.Save(); err != nil {
-		m.Error.Set(fmt.Sprintf("Volume save failed: %v", err), 90)
-	}
-}
-
 func (m *Model) applySavedSettings(cfg config.Config, changed map[string]bool) {
 	*m.Config = cfg
 	switch cfg.IconTheme {

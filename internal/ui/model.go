@@ -281,6 +281,8 @@ func (m *Model) cleanup() {
 	}
 	m.flushPlaylistSave()
 	m.flushSettingsSave()
+	m.flushVolumeSave()
+	m.flushDeferredVolume()
 	m.exiting = true
 	m.pendingLoad.cancel()
 	m.pendingLoad = nil
@@ -325,21 +327,6 @@ func (m *Model) buildPlayState() mediactl.PlayState {
 
 func (m *Model) adjustVolume(delta float64) {
 	m.setVolume(m.Audio.Volume + delta)
-}
-
-// saveVolumeConfig persists the current volume to config if it changed.
-func (m *Model) saveVolumeConfig() {
-	if m.Config.DefaultVolume == m.Audio.Volume {
-		return
-	}
-	m.Config.DefaultVolume = m.Audio.Volume
-	if m.configSave != nil {
-		m.volumeSavePending = true
-		return
-	}
-	if err := m.Config.Save(); err != nil {
-		logger.Warn("Failed to save volume config", "err", err)
-	}
 }
 
 func (m *Model) updatePlaybackState() tea.Cmd {

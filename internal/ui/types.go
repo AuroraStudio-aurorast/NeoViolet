@@ -281,6 +281,8 @@ type Model struct {
 	volumeRevision           uint64
 	settingsLyricsRevision   uint64
 	volumeSavePending        bool
+	volumeSaveDue            time.Time
+	volumeSave               *volumeSaveJob
 	pages                    *pageState
 	Audio                    *AudioState
 	UI                       *State
