@@ -51,6 +51,31 @@ impl App {
                     self.notice = Some("The player did not confirm the action in time. Check playback before trying again.".into());
                 }
             }
+            Message::PreferencesLyrics {
+                session,
+                epoch,
+                event,
+            } => {
+                let task = self.lyrics_event(event);
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && self.preferences_tasks > 0
+                {
+                    return self.track_preferences_task(task);
+                }
+                return task;
+            }
+            Message::PreferencesWorkDone { session, epoch } => {
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && self.preferences_tasks > 0
+                {
+                    self.preferences_tasks -= 1;
+                    if self.preferences_tasks == 0 {
+                        return self.acknowledge_preferences();
+                    }
+                }
+            }
             Message::MainOpened => {
                 return Task::batch([
                     self.desktop.as_ref().map_or_else(Task::none, |desktop| {

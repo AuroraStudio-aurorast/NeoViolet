@@ -89,6 +89,9 @@ fn app() -> App {
         startup: super::startup::Stage::Legacy,
         lyrics_restored: false,
         preferences_revision: 0,
+        preferences_acknowledged: 0,
+        preferences_tasks: 0,
+        running_player_path: None,
         preference_writes: Default::default(),
         picker: None,
         handshake: Default::default(),
@@ -207,7 +210,6 @@ fn secondary_windows_cannot_resize_or_quit_the_main_player() {
     let overlay = window::Id::unique();
     let settings = window::Id::unique();
     app.lyrics.window = Some(overlay);
-    app.lyrics.settings_window = Some(settings);
     let _ = app.update(Message::Native(
         overlay,
         iced::Event::Window(window::Event::Resized(iced::Size::new(880.0, 240.0))),
@@ -220,7 +222,7 @@ fn secondary_windows_cannot_resize_or_quit_the_main_player() {
         settings,
         iced::Event::Window(window::Event::CloseRequested),
     ));
-    assert!(app.lyrics.settings_window.is_none());
+    assert_eq!(app.lyrics.window, Some(overlay));
     assert!(app.config.desktop_lyrics.enabled);
     let _ = app.update(Message::Native(
         overlay,
@@ -517,7 +519,7 @@ async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_f
         app.pending.clear();
         app.terminal = Some(Terminal::new(2, settings::Settings::default()).unwrap());
         let secondary = window::Id::unique();
-        app.lyrics.settings_window = Some(secondary);
+        app.lyrics.toolbar_window = Some(secondary);
         let (sender, mut receiver) = mpsc::channel(4);
         app.connection = Some(sender);
         let task = app.update(Message::Picked(picked.clone()));
@@ -622,3 +624,6 @@ mod preferences_tests;
 
 #[path = "picker_integration_tests.rs"]
 mod picker_integration_tests;
+
+#[path = "settings_integration_tests.rs"]
+mod settings_integration_tests;

@@ -28,9 +28,7 @@ impl App {
         let old = self.config.desktop_lyrics.clone();
         let mut config = preferences.gui;
         config.desktop_lyrics = preferences.desktop_lyrics;
-        config.desktop_lyrics.position = old.position;
-        config.window_width = self.config.window_width;
-        config.window_height = self.config.window_height;
+        config.preserve_window_state(&self.config);
         config.normalize();
         let font_changed = self.config.font_size != config.font_size
             || self.config.monospace_font != config.monospace_font;
@@ -77,12 +75,13 @@ impl App {
         } else {
             Task::none()
         };
-        Task::batch([
+        let overlay = Task::batch([
             task,
             self.lyrics.fit(&self.config.desktop_lyrics),
             self.lyrics.refresh_mask(),
         ])
-        .map(Message::Lyrics)
+        .map(Message::Lyrics);
+        self.track_preferences_task(overlay)
     }
 
     pub(super) fn send_preference(
@@ -202,8 +201,19 @@ impl App {
         if self.dialog.is_some() {
             return Task::none();
         }
+        if !self.handshake.supports("settings_navigation") {
+            self.notice=Some("Settings requires a player with settings navigation support. Update the player and GUI together.".into());
+            return self
+                .reveal_main()
+                .chain(Task::done(Message::RestoreTerminalFocus));
+        }
+        let request = if self.handshake.supports("settings_preferences") {
+            ipc::Request::OpenSettingsSection("desktop_lyrics")
+        } else {
+            ipc::Request::OpenSettings
+        };
         Task::batch([
-            self.send_all(vec![ipc::Request::OpenSettingsSection("desktop_lyrics")]),
+            self.send_all(vec![request]),
             self.reveal_main()
                 .chain(Task::done(Message::RestoreTerminalFocus)),
         ])

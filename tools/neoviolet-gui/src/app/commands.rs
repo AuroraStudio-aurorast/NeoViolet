@@ -40,6 +40,9 @@ impl App {
             Action::LyricsSettings => {
                 return self.update(Message::Lyrics(lyrics_window::Event::Settings));
             }
+            Action::ResetLyricsPosition => {
+                return self.update(Message::Lyrics(lyrics_window::Event::ResetPosition));
+            }
             Action::UnlockLyrics => {
                 return self.update(Message::Lyrics(lyrics_window::Event::Locked(false)));
             }

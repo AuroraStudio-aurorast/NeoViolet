@@ -55,6 +55,9 @@ impl App {
             startup: Default::default(),
             lyrics_restored: false,
             preferences_revision: 0,
+            preferences_acknowledged: 0,
+            preferences_tasks: 0,
+            running_player_path: None,
             preference_writes: Default::default(),
             picker: None,
             handshake: Default::default(),
@@ -89,6 +92,8 @@ impl App {
         self.connection_error = None;
         self.handshake = Default::default();
         self.preferences_revision = 0;
+        self.preferences_acknowledged = 0;
+        self.preferences_tasks = 0;
         self.preference_writes = Default::default();
         self.startup = Default::default();
         self.lyrics_restored = false;
@@ -100,7 +105,8 @@ impl App {
         self.closing = false;
         self.lyrics.clear();
         self.session += 1;
-        let executable = launch::player(self.config.neoviolet_path.as_deref());
+        self.running_player_path = self.config.neoviolet_path.clone();
+        let executable = launch::player(self.running_player_path.as_deref());
         let mut environment = self.environment.clone();
         environment.extend([
             ("TERM".into(), "xterm-256color".into()),
@@ -158,8 +164,6 @@ impl App {
     pub fn title_for_window(&self, id: window::Id) -> String {
         if id == self.main_window {
             self.title()
-        } else if Some(id) == self.lyrics.settings_window {
-            "Desktop Lyrics Settings".into()
         } else {
             "NeoViolet Lyrics".into()
         }
@@ -183,13 +187,18 @@ impl App {
 
     pub(super) fn restart_with_config(
         &mut self,
-        config: config::Config,
+        mut config: config::Config,
         warning: Option<String>,
     ) -> Task<Message> {
+        config.preserve_window_state(&self.config);
+
         if self.config.monospace_font != config.monospace_font {
             self.family = Box::leak(config.monospace_font.clone().into_boxed_str());
         }
         self.config = config;
+        let decorations = self.titlebar.system_decorations;
+        self.titlebar.configure(&self.config);
+        self.titlebar.system_decorations = decorations;
         self.save_state = warning.is_none();
         self.dialog = warning.map(Dialog::Error);
         self.arguments = launch::arguments(std::iter::empty());

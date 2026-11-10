@@ -16,6 +16,7 @@ pub enum Action {
     DesktopLyrics,
     LyricsSettings,
     UnlockLyrics,
+    ResetLyricsPosition,
 }
 
 impl Action {
@@ -23,7 +24,11 @@ impl Action {
     pub fn requires_player(self) -> bool {
         matches!(
             self,
-            Self::Open | Self::DesktopLyrics | Self::LyricsSettings | Self::UnlockLyrics
+            Self::Open
+                | Self::DesktopLyrics
+                | Self::LyricsSettings
+                | Self::UnlockLyrics
+                | Self::ResetLyricsPosition
         )
     }
 

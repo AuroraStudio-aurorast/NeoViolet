@@ -37,7 +37,10 @@ impl App {
         while let Some(request) = requests.next() {
             if matches!(
                 request,
-                ipc::Request::CheckQuit | ipc::Request::Quit | ipc::Request::FilePicked { .. }
+                ipc::Request::CheckQuit
+                    | ipc::Request::Quit
+                    | ipc::Request::FilePicked { .. }
+                    | ipc::Request::PreferencesApplied { .. }
             ) {
                 let command = ipc::Command {
                     request,
@@ -56,10 +59,8 @@ impl App {
                                     sender.send(command),
                                 )
                                 .await
-                                .map_err(|_| "The player is busy. Try closing again.".to_string())?
-                                .map_err(|_| {
-                                    "The player connection closed. Try closing again.".to_string()
-                                })
+                                .map_err(|_| "The player is busy. Try again.".to_string())?
+                                .map_err(|_| "The player connection closed. Try again.".to_string())
                             },
                             move |result| Message::LifecycleSent {
                                 session,
@@ -69,8 +70,7 @@ impl App {
                         ));
                     }
                     Err(_) => {
-                        self.notice =
-                            Some("The player connection closed. Try closing again.".into());
+                        self.notice = Some("The player connection closed. Try again.".into());
                     }
                 }
                 continue;

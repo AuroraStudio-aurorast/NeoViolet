@@ -91,6 +91,12 @@ impl Config {
         }
     }
 
+    pub(crate) fn preserve_window_state(&mut self, current: &Self) {
+        self.window_width = current.window_width;
+        self.window_height = current.window_height;
+        self.desktop_lyrics.position = current.desktop_lyrics.position;
+    }
+
     pub fn save(&self) -> Result<(), String> {
         self.save_to(&directory())
     }

@@ -128,7 +128,7 @@ impl App {
             || self.lyrics_restored
             || (self.handshake.supports("settings_preferences") && self.preferences_revision == 0)
         {
-            return preferences;
+            return Task::batch([preferences, self.acknowledge_preferences()]);
         }
         self.lyrics_restored = true;
         let (visibility, _) = self.lyrics.update(
@@ -147,6 +147,7 @@ impl App {
         if self.dialog.is_none() {
             requests.extend(self.pending.drain(..).map(ipc::Request::Open));
         }
+        let lyrics = self.track_preferences_task(lyrics);
         Task::batch([lyrics, self.send_all(requests), preferences])
     }
 
@@ -156,10 +157,7 @@ impl App {
         let (lyrics, _) = self
             .lyrics
             .update(lyrics_window::Event::Visible(false), &mut preferences);
-        let (settings, _) = self
-            .lyrics
-            .update(lyrics_window::Event::CloseSettings, &mut preferences);
-        Task::batch([lyrics, settings]).map(Message::Lyrics)
+        lyrics.map(Message::Lyrics)
     }
 
     pub(super) fn setup_picker(&mut self, purpose: String, request_id: String) -> Task<Message> {

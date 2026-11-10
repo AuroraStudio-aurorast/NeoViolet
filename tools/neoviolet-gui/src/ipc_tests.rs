@@ -190,7 +190,22 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     .await
     .unwrap();
     let saved=live_message(&mut peer,|frame| matches!(frame,Incoming::Preferences{preferences,..} if preferences.gui.font_size==20)).await;
-    assert!(matches!(saved,Incoming::Preferences{revision,..} if revision>1));
+    let Incoming::Preferences { revision, .. } = saved else {
+        unreachable!()
+    };
+    assert!(revision > 1);
+    write_request(
+        peer.get_mut(),
+        &Request::PreferencesApplied {
+            revision,
+            status: "applied",
+            restart_required: Vec::new(),
+            error: None,
+        },
+        "",
+    )
+    .await
+    .unwrap();
     let receipt = live_message(
         &mut peer,
         |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="font-live"),
@@ -503,6 +518,15 @@ async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values(
             "font",
         ),
         (Request::OpenPicker, "chooser"),
+        (
+            Request::PreferencesApplied {
+                revision: 2,
+                status: "restart_required",
+                restart_required: vec!["gui.neoviolet_path"],
+                error: None,
+            },
+            "",
+        ),
     ];
     for (index, (request, id)) in commands.into_iter().enumerate() {
         let mut data = Vec::new();

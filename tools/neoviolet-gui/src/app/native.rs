@@ -167,20 +167,14 @@ impl App {
                 .moved(id, *point, &mut self.config.desktop_lyrics)
                 .map(Message::Lyrics);
         }
-        if matches!(event, iced::Event::Window(window::Event::CloseRequested)) {
-            if self.lyrics.contains(id) {
-                return self.update(Message::Lyrics(lyrics_window::Event::Visible(false)));
-            }
-            if Some(id) == self.lyrics.settings_window {
-                return self.update(Message::Lyrics(lyrics_window::Event::CloseSettings));
-            }
+        if matches!(event, iced::Event::Window(window::Event::CloseRequested))
+            && self.lyrics.contains(id)
+        {
+            return self.update(Message::Lyrics(lyrics_window::Event::Visible(false)));
         }
         if let iced::Event::Keyboard(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) =
             event
         {
-            if key == Key::Named(Named::Escape) && Some(id) == self.lyrics.settings_window {
-                return self.update(Message::Lyrics(lyrics_window::Event::CloseSettings));
-            }
             if matches!(Action::shortcut(&key, modifiers), Some(Action::Quit)) {
                 return self.action(Action::Quit);
             }

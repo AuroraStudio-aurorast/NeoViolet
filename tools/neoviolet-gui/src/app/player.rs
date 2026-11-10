@@ -76,6 +76,8 @@ impl App {
             ipc::Event::Connected(sender) => {
                 self.connection_epoch += 1;
                 self.preferences_revision = 0;
+                self.preferences_acknowledged = 0;
+                self.preferences_tasks = 0;
                 self.preference_writes = Default::default();
                 self.connection_error = None;
                 self.playback = None;
@@ -178,6 +180,7 @@ impl App {
                 }
             }
             ipc::Event::Disconnected(error) => {
+                self.preferences_tasks = 0;
                 if self
                     .picker
                     .as_ref()

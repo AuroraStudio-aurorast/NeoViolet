@@ -483,8 +483,6 @@ fn terminal_child_exit_before_disconnect_closes_all_lyric_windows() {
         let lyrics = app.lyrics.window.unwrap();
         let toolbar = window::Id::unique();
         app.lyrics.toolbar_window = Some(toolbar);
-        let _ = app.lyrics_event(lyrics_window::Event::Settings);
-        let settings = app.lyrics.settings_window.unwrap();
         app.terminal = Some(Terminal::new(2, iced_term::settings::Settings::default()).unwrap());
         app.closing = closing;
         let event = |event| {
@@ -506,10 +504,6 @@ fn terminal_child_exit_before_disconnect_closes_all_lyric_windows() {
         assert!(
             app.lyrics.toolbar_window.is_none(),
             "toolbar {toolbar:?} remained after child exit"
-        );
-        assert!(
-            app.lyrics.settings_window.is_none(),
-            "settings {settings:?} remained after child exit"
         );
         assert!(
             app.config.desktop_lyrics.enabled,

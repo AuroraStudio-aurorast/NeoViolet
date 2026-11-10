@@ -39,6 +39,8 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 			m.ipcSettingsPicker = false
 			m.clearNativePicker()
 			m.ipcPreferences = false
+			m.ipcPreferencesFeedback = false
+			m.ipcPreferencesPending = 0
 			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
 			m.ipcRevision = 0
@@ -47,11 +49,16 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		}
 	case "disconnected":
 		if event.Session == m.ipcSession {
+			if m.ipcPreferencesPending != 0 && m.configSave == nil {
+				m.Info.SetSuccess("Configuration saved; GUI will update after reconnect", m.Config.Error.Duration)
+			}
 			m.ipcSession = 0
 			m.ipcAudioPicker = false
 			m.ipcSettingsPicker = false
 			m.clearNativePicker()
 			m.ipcPreferences = false
+			m.ipcPreferencesFeedback = false
+			m.ipcPreferencesPending = 0
 			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
 		}
@@ -86,7 +93,10 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 		m.ipcAudioPicker = slices.Contains(message.Capabilities, "audio_file_picker")
 		m.ipcSettingsPicker = slices.Contains(message.Capabilities, "settings_file_picker")
 		m.ipcPreferences = slices.Contains(message.Capabilities, "settings_preferences")
+		m.ipcPreferencesFeedback = slices.Contains(message.Capabilities, "preferences_feedback")
 		m.pushGUIPreferences()
+	case "preferences_applied":
+		return nil, m.preferencesApplied(message)
 	case "file_picked":
 		return m.filePicked(message), nil
 	case "request_quit":

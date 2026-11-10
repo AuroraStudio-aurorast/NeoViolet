@@ -338,6 +338,8 @@ type Model struct {
 	guiHosted  bool
 
 	ipcPreferences         bool
+	ipcPreferencesFeedback bool
+	ipcPreferencesPending  uint64
 	ipcPreferencesRevision uint64
 	ipcAudioPicker         bool
 	ipcSettingsPicker      bool

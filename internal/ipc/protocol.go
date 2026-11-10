@@ -9,7 +9,9 @@
 //
 // GUI → TUI message types:
 //
-//	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences"]}
+//	{"type":"preferences_applied","revision":2,"status":"applied|restart_required|failed","restart_required":["gui.system_decorations"],"error":"..."}
+//
+//	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences","settings_file_picker","preferences_feedback"]}
 //	{"type": "file_picked", "purpose":"soundfont|audio|library_directory|player_binary", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
 //	{"type": "open", "path": "/path/to/file"}
 //	{"type": "desktop_lyrics", "enable": true|false}
@@ -40,7 +42,7 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the raw TUI build version), and capabilities
-// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker"].
+// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker","preferences_feedback"].
 // Product versions never gate
 // protocol compatibility. Optional libopenmpt_version identifies the runtime-loaded
 // library and is omitted when the library is unavailable; it is not the build lock version.
@@ -71,6 +73,13 @@
 // receives a full snapshot on negotiation/get_state and after successful saves,
 // never on playback ticks. GUI bootstrap reads these same sections from config.json;
 // only Go writes preferences. GUI writes geometry separately in gui-state.json.
+// preferences_feedback adds GUI acknowledgment after applying a preference
+// revision. It carries no request_id and receives no receipt of its own. The TUI
+// distinguishes disk save success from applied, restart_required and failed GUI
+// updates. Only the most recent pending saved revision may update its notice;
+// initial, stale and previous-connection feedback never replaces a save result.
+// A failed GUI update does not roll back the saved config. Window chrome and
+// player executable can remain restart_required across unrelated preference saves.
 // set_preference accepts key gui.font_size, desktop_lyrics.enabled or
 // desktop_lyrics.locked plus a JSON value. It persists asynchronously and sends
 // a terminal result only after saving; errors leave live preferences unchanged.
@@ -109,6 +118,7 @@ import (
 
 // Message is a JSON message exchanged between TUI and GUI over IPC.
 type Message struct {
+	RestartRequired   []string        `json:"restart_required,omitempty"`
 	Section           string          `json:"section,omitempty"`
 	Key               string          `json:"key,omitempty"`
 	Value             json.RawMessage `json:"value,omitempty"`
@@ -194,5 +204,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker", "preferences_feedback"}}
 }

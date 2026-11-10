@@ -67,7 +67,6 @@ fn gui_shortcuts_send_preference_intents_without_mutating_live_config() {
         }
     ));
     let _ = app.action(Action::LyricsSettings);
-    assert!(app.lyrics.settings_window.is_none());
     assert!(matches!(
         receiver.try_recv().unwrap().request,
         ipc::Request::OpenSettingsSection("desktop_lyrics")

@@ -6,6 +6,7 @@ mod integration;
 mod native;
 mod player;
 mod preferences;
+mod preferences_feedback;
 mod startup;
 #[cfg(test)]
 mod tests;
@@ -40,6 +41,9 @@ pub struct App {
     startup: startup::Stage,
     lyrics_restored: bool,
     preferences_revision: u64,
+    preferences_acknowledged: u64,
+    preferences_tasks: usize,
+    running_player_path: Option<String>,
     preference_writes: preferences::Writes,
     picker: Option<startup::Picker>,
     handshake: ipc::Handshake,
@@ -74,6 +78,15 @@ pub enum Message {
     Native(window::Id, iced::Event),
     Lyrics(lyrics_window::Event),
     Titlebar(titlebar::Message),
+    PreferencesLyrics {
+        session: u64,
+        epoch: u64,
+        event: lyrics_window::Event,
+    },
+    PreferencesWorkDone {
+        session: u64,
+        epoch: u64,
+    },
     Ready,
     MainOpened,
     MainConfigured,

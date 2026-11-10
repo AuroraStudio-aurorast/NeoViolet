@@ -9,13 +9,19 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/ipc"
 )
 
-func (m *Model) pushGUIPreferences() {
+func (m *Model) pushGUIPreferences() uint64 {
 	if !m.ipcPreferences || m.ipcServer == nil || m.ipcSession == 0 || m.exiting {
-		return
+		return 0
 	}
 	m.ipcPreferencesRevision++
 	frame := ipc.Preferences{GUI: m.Config.GUI, DesktopLyrics: m.Config.DesktopLyrics}
-	_ = m.ipcServer.SendTo(m.ipcSession, ipc.Message{Type: "preferences", Revision: m.ipcPreferencesRevision, Preferences: &frame})
+	if err := m.ipcServer.SendTo(m.ipcSession, ipc.Message{Type: "preferences", Revision: m.ipcPreferencesRevision, Preferences: &frame}); err != nil {
+		return 0
+	}
+	if m.ipcPreferencesPending != 0 {
+		m.ipcPreferencesPending = m.ipcPreferencesRevision
+	}
+	return m.ipcPreferencesRevision
 }
 
 // Only runtime controls may write here; the full form remains a TUI draft.

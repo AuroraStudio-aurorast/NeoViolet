@@ -166,6 +166,12 @@ impl MenuGroup {
                         action: Action::UnlockLyrics,
                         checked: false,
                     },
+                    MenuItem {
+                        label: "Reset Lyrics Position",
+                        shortcut: None,
+                        action: Action::ResetLyricsPosition,
+                        checked: false,
+                    },
                 ],
             },
             Self {

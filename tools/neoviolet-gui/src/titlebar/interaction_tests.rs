@@ -10,6 +10,8 @@ fn keyboard_traversal_dispatches_existing_actions_and_skips_unavailable_unlock()
     assert_eq!(state.selected_group, Some(2));
     state.key(&Key::Named(Named::ArrowRight), false);
     state.key(&Key::Named(Named::End), false);
+    assert_eq!(state.selected_item, 6); // Reset position remains available for hidden lyrics.
+    state.key(&Key::Named(Named::ArrowUp), false); // Skip the unavailable Unlock entry.
     assert_eq!(state.selected_item, 4);
     let action = state.key(&Key::Named(Named::Enter), false);
     assert!(matches!(action, Some(Action::LyricsSettings)));

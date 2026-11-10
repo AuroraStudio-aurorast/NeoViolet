@@ -154,11 +154,11 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 	} else {
 		m.pages.initSettings(cfg)
 	}
-	m.pushGUIPreferences()
+	revision := m.pushGUIPreferences()
 	if r := msg.job.receipt; r != nil {
 		m.ipcResult(r.session, r.id, "succeeded", "")
 	}
-	m.Info.SetSuccess("Configuration saved", max(90, m.Config.Error.Duration))
+	m.Info.SetSuccess(m.settingsSavedNotice(msg.job.changed, revision), max(90, m.Config.Error.Duration))
 	if msg.job.saveDraft {
 		return m.saveSettings(msg.job.quit)
 	}

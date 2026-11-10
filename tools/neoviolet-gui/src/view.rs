@@ -19,12 +19,6 @@ impl App {
                 .view(&self.config.desktop_lyrics)
                 .map(Message::Lyrics);
         }
-        if Some(id) == self.lyrics.settings_window {
-            return self
-                .lyrics
-                .settings_view(&self.config.desktop_lyrics)
-                .map(Message::Lyrics);
-        }
         if id == self.main_window {
             self.main_view()
         } else {

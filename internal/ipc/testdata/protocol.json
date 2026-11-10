@@ -13,7 +13,8 @@
       "audio_file_picker",
       "settings_navigation",
       "settings_preferences",
-      "settings_file_picker"
+      "settings_file_picker",
+      "preferences_feedback"
     ],
     "libopenmpt_version": "0.8.9"
   },
@@ -76,6 +77,14 @@
       "type": "open_picker",
       "purpose": "audio",
       "request_id": "chooser"
+    },
+    {
+      "type": "preferences_applied",
+      "revision": 2,
+      "status": "restart_required",
+      "restart_required": [
+        "gui.neoviolet_path"
+      ]
     }
   ],
   "phase": {
@@ -95,7 +104,8 @@
       "file_picker",
       "audio_file_picker",
       "settings_preferences",
-      "settings_file_picker"
+      "settings_file_picker",
+      "preferences_feedback"
     ]
   },
   "file_picked": {
