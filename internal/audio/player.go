@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"io"
@@ -40,6 +41,8 @@ type Player struct {
 	effectSettings EffectsSettings
 	processor      *effectsProcessor
 	completion     *outputCompletion
+	remoteMu       sync.Mutex
+	remoteCancel   context.CancelFunc
 	mu             sync.Mutex
 	streamer       beep.StreamSeekCloser
 	ctrl           *beep.Ctrl
@@ -138,10 +141,16 @@ func (p *Player) SetTrackerBackend(backend string) {
 
 // Open loads a local audio file (or remote URL) for playback.
 func (p *Player) Open(path string) error {
+	return p.OpenContext(context.Background(), path)
+}
+
+// OpenContext loads a source and lets callers cancel remote requests and decoding.
+func (p *Player) OpenContext(ctx context.Context, path string) error {
+	p.cancelRemote()
 	logger.Debug("Player.Open", "path", RedactSource(path))
 
 	if isURL(path) {
-		return p.openURL(path)
+		return p.openURL(ctx, path)
 	}
 
 	p.mu.Lock()
@@ -453,6 +462,7 @@ func (p *Player) Position() time.Duration {
 
 // Close releases the current track and cleans up resources.
 func (p *Player) Close() error {
+	p.cancelRemote()
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

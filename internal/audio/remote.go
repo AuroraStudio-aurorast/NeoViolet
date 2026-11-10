@@ -2,6 +2,7 @@ package audio
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -46,11 +47,41 @@ func newRemoteHTTPClient() *http.Client {
 	} else {
 		transport = &http.Transport{}
 	}
-	transport.DialContext = (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext
+	dialer := &net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}
+	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		conn, err := dialer.DialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+		return &remoteConn{Conn: conn, idle: 30 * time.Second}, nil
+	}
 	transport.TLSHandshakeTimeout = 15 * time.Second
 	transport.ResponseHeaderTimeout = 30 * time.Second
 	transport.ExpectContinueTimeout = 1 * time.Second
 	return &http.Client{Transport: transport}
+}
+
+// remoteConn bounds a stalled read without imposing a total download deadline.
+type remoteConn struct {
+	net.Conn
+	idle time.Duration
+}
+
+func (c *remoteConn) Read(buf []byte) (int, error) {
+	if err := c.SetReadDeadline(time.Now().Add(c.idle)); err != nil {
+		return 0, err
+	}
+	return c.Conn.Read(buf)
+}
+
+func (p *Player) cancelRemote() {
+	p.remoteMu.Lock()
+	cancel := p.remoteCancel
+	p.remoteCancel = nil
+	p.remoteMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 type remoteReadSeeker struct {
@@ -65,12 +96,17 @@ type remoteReadSeeker struct {
 	err          error
 	downloadDone bool
 	closed       bool
+	done         chan struct{}
 	mu           sync.Mutex
 	cond         *sync.Cond
 }
 
 func newRemoteReadSeeker(resp *http.Response) (*remoteReadSeeker, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+	parent := context.Background()
+	if resp.Request != nil {
+		parent = resp.Request.Context()
+	}
+	ctx, cancel := context.WithCancel(parent)
 	// Use a private temp directory so other local users cannot read cached audio.
 	tempDir, err := os.MkdirTemp("", "neoviolet-*")
 	if err != nil {
@@ -93,13 +129,17 @@ func newRemoteReadSeeker(resp *http.Response) (*remoteReadSeeker, error) {
 		cacheFile: f,
 		tempDir:   tempDir,
 		size:      resp.ContentLength,
+		done:      make(chan struct{}),
 	}
 	r.cond = sync.NewCond(&r.mu)
 	go r.download()
+	go func() { <-ctx.Done(); _ = r.Close() }()
 	return r, nil
 }
 
 func (r *remoteReadSeeker) download() {
+	defer close(r.done)
+	defer func() { _ = r.body.Close() }()
 	buf := make([]byte, 32*1024)
 	for {
 		select {
@@ -111,6 +151,10 @@ func (r *remoteReadSeeker) download() {
 		n, err := r.body.Read(buf)
 		if n > 0 {
 			r.mu.Lock()
+			if r.closed {
+				r.mu.Unlock()
+				return
+			}
 			_, werr := r.cacheFile.WriteAt(buf[:n], r.written)
 			r.written += int64(n)
 			r.cond.Broadcast()
@@ -149,10 +193,16 @@ func (r *remoteReadSeeker) Read(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	for r.pos >= r.written && !r.downloadDone && r.err == nil {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	for r.pos >= r.written && !r.downloadDone && r.err == nil && !r.closed {
 		r.cond.Wait()
 	}
 
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
 	if r.pos >= r.written {
 		if r.err != nil {
 			return 0, r.err
@@ -174,6 +224,9 @@ func (r *remoteReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
 	var abs int64
 	switch whence {
 	case io.SeekStart:
@@ -181,8 +234,11 @@ func (r *remoteReadSeeker) Seek(offset int64, whence int) (int64, error) {
 	case io.SeekCurrent:
 		abs = r.pos + offset
 	case io.SeekEnd:
-		for r.size < 0 && !r.downloadDone && r.err == nil {
+		for r.size < 0 && !r.downloadDone && r.err == nil && !r.closed {
 			r.cond.Wait()
+		}
+		if r.closed {
+			return 0, io.ErrClosedPipe
 		}
 		if r.err != nil {
 			return 0, r.err
@@ -208,10 +264,12 @@ func (r *remoteReadSeeker) Close() error {
 		return nil
 	}
 	r.closed = true
+	r.cond.Broadcast()
 	r.mu.Unlock()
 
 	r.cancel()
 	_ = r.body.Close()
+	<-r.done
 
 	name := r.cacheFile.Name()
 	_ = r.cacheFile.Close()
@@ -224,7 +282,7 @@ func (r *remoteReadSeeker) Close() error {
 	return nil
 }
 
-func (p *Player) openURL(urlStr string) error {
+func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	logger.Info("Opening remote audio", "url", RedactSource(urlStr))
@@ -238,11 +296,33 @@ func (p *Player) openURL(urlStr string) error {
 
 	ext := strings.ToLower(filepath.Ext(u.Path))
 
+	ctx, cancel := context.WithCancel(ctx)
+	p.remoteMu.Lock()
+	p.remoteCancel = cancel
+	p.remoteMu.Unlock()
+	opened := false
+	defer func() {
+		if !opened {
+			cancel()
+		}
+	}()
 	client := newRemoteHTTPClient()
+	defer client.CloseIdleConnections()
+	// #nosec G704 -- the user explicitly chose this HTTP(S) audio URL for playback.
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
+	if err != nil {
+		return fmt.Errorf("create remote request: %w", err)
+	}
 	// #nosec G704 -- fetching a user-supplied remote audio URL is the core
 	// feature of remote playback; the URL comes from the user's own input.
-	resp, err := client.Get(urlStr)
+	resp, err := client.Do(request)
 	if err != nil {
+		var requestError *url.Error
+		if errors.As(err, &requestError) {
+			safeError := *requestError
+			safeError.URL = RedactSource(safeError.URL)
+			err = &safeError
+		}
 		return fmt.Errorf("HTTP GET: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
@@ -293,6 +373,7 @@ func (p *Player) openURL(urlStr string) error {
 	}
 	p.title = display
 	p.artist = ""
+	opened = true
 
 	return nil
 }
