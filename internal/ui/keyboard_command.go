@@ -22,6 +22,9 @@ func handleCommandModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cm
 		if m.isGUI() {
 			return m, nil
 		}
+		if m.confirmSettingsQuit() {
+			return m, nil
+		}
 		m.cleanup()
 		return m, tea.Quit
 
@@ -153,6 +156,7 @@ func parseClockTime(s string) (time.Duration, error) {
 // fetchLyricsManual implements :lrc switch online. Unlike auto-fetch it
 // bypasses the negative cache but never the provider cooldown.
 func (m *Model) fetchLyricsManual() tea.Cmd {
+	m.invalidateLyricRequests()
 	baseURL := effectiveBaseURL(m.Config.Lyrics.Fetch.BaseURL)
 	if m.fetchRateLimit.Blocked(baseURL) {
 		m.Error.Set(fmt.Sprintf("Rate limited, retry in %s", shortDur(m.fetchRateLimit.Remaining(baseURL))), m.Config.Error.Duration)

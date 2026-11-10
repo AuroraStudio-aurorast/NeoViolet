@@ -152,6 +152,7 @@ func (a AccentConfig) IsEnabled() bool {
 
 // Config is the root user configuration, persisted as JSON.
 type Config struct {
+	Library         LibraryConfig        `json:"library"`
 	IconTheme       string               `json:"icon_theme"`
 	DefaultVolume   float64              `json:"default_volume"`
 	VolumeStep      float64              `json:"volume_step"`
@@ -457,24 +458,4 @@ func Load() (*Config, error) {
 	}
 	logger.Info("Config loaded", "path", path, "iconTheme", cfg.IconTheme)
 	return &cfg, nil
-}
-
-// Save writes the configuration to disk (creating parent dirs as needed).
-func (c *Config) Save() error {
-	path, err := configPath()
-	if err != nil {
-		return err
-	}
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal config: %w", err)
-	}
-	// #nosec G301 -- config dir is intentionally world-readable (0755).
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return fmt.Errorf("create config directory: %w", err)
-	}
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("write config: %w", err)
-	}
-	return nil
 }

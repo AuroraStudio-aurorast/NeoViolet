@@ -31,6 +31,7 @@ func handleAudioLoadFailed(m *Model, msg AudioLoadFailedMsg) (tea.Model, tea.Cmd
 		return m, nil
 	}
 	m.finishAudioLoad()
+	m.failQueueLoad()
 	m.Error.Set(msg.Message, msg.Timer)
 	m.finishIPCOpen("failed", msg.Message)
 	return m, nil
@@ -46,6 +47,14 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.finishAudioLoad()
 
+	if err := m.applyEffectsTo(msg.Player); err != nil {
+		_ = msg.Player.Close()
+		m.failQueueLoad()
+		message := fmt.Sprintf("Failed to apply effects: %v", err)
+		m.Error.Set(message, 180)
+		m.finishIPCOpen("failed", message)
+		return m, nil
+	}
 	current := m.Audio.Player
 	wasPlaying := current != nil && current.IsPlaying()
 	if wasPlaying {
@@ -61,6 +70,7 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 			}
 			m.Audio.IsPlaying = current.IsPlaying()
 		}
+		m.failQueueLoad()
 		m.Error.Set(message, 180)
 		m.finishIPCOpen("failed", message)
 		return m, nil
@@ -93,6 +103,7 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		m.Audio.Album = msg.Player.Album()
 	}
 
+	m.acceptQueueTrack(msg.Path)
 	m.Audio.IsPlaying = true
 
 	// Apply --seek flag: seek to initial position after playing starts
@@ -144,6 +155,7 @@ func handleLoadTrack(m *Model, msg LoadTrackMsg) (tea.Model, tea.Cmd) {
 	m.finishIPCOpen("cancelled", "Superseded by another file")
 	logger.Info("Loading new track", "path", msg.Path)
 	m.loadGeneration++
+	m.queueIntent = nil
 	m.pendingSeek = 0
 	if m.Audio.Lyrics != nil {
 		m.preferredLyricFormat = m.Audio.Lyrics.Format

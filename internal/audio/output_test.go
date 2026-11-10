@@ -296,3 +296,32 @@ func TestPlayerOutputSynthCloseCleansResources(t *testing.T) {
 		t.Fatalf("second Close: %v", err)
 	}
 }
+
+func TestPlayerOutputReportsNaturalEndAndErrorsSeparatelyFromPause(t *testing.T) {
+	mixer := outputMixer(t)
+	p := NewPlayer()
+	s := &outputSynth{paused: true}
+	p.synthCtrl = s
+	p.synthActive = true
+	t.Cleanup(func() { _ = p.Close() })
+	if err := p.Play(); err != nil {
+		t.Fatal(err)
+	}
+	p.Pause()
+	assertOutput(t, mixer, 0)
+	if ended, _ := p.PlaybackEnd(); ended {
+		t.Fatal("pause reported stream end")
+	}
+	p.Resume()
+	s.finished = true
+	assertOutput(t, mixer, 0)
+	if ended, err := p.PlaybackEnd(); !ended || err != nil {
+		t.Fatalf("end not reported: %v %v", ended, err)
+	}
+	if err := p.Play(); err != nil {
+		t.Fatal(err)
+	}
+	if ended, _ := p.PlaybackEnd(); ended {
+		t.Fatal("new playback retained old end marker")
+	}
+}

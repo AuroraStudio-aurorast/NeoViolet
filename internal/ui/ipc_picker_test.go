@@ -69,8 +69,8 @@ func TestAudioPickerRequiresCapabilityAndDiscardsDisconnectedRequests(t *testing
 	m, conn, decoder := ipcModel(t)
 	requestIPC(t, m, conn, `{"type":"client_hello","client":"neoviolet-gui","protocol":1,"capabilities":["file_picker"]}`)
 	runOpen(m, invocation{})
-	if m.Error.Message != "Usage: open <path>" {
-		t.Fatal("old GUI must retain path-based command")
+	if m.pages.browser == nil || m.Error.Message != "" {
+		t.Fatal("old GUI must fall back to terminal browser")
 	}
 	requestIPC(t, m, conn, `{"type":"client_hello","client":"neoviolet-gui","protocol":1,"capabilities":["audio_file_picker"]}`)
 	m.Error.Message = ""
@@ -87,7 +87,7 @@ func TestAudioPickerRequiresCapabilityAndDiscardsDisconnectedRequests(t *testing
 		t.Fatal("selection survived disconnect")
 	}
 	runOpen(m, invocation{})
-	if m.Error.Message != "Usage: open <path>" {
-		t.Fatal("connection inherited stale GUI capabilities")
+	if m.pages.browser == nil || m.ipcPickerID != "" {
+		t.Fatal("disconnected native picker did not fall back to terminal browser")
 	}
 }
