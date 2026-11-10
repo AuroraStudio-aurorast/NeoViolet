@@ -10,7 +10,8 @@
       "request_quit",
       "startup",
       "file_picker",
-      "audio_file_picker"
+      "audio_file_picker",
+      "settings_navigation"
     ],
     "libopenmpt_version": "0.8.9"
   },
@@ -53,6 +54,10 @@
       "type": "open",
       "request_id": "open",
       "path": "/music/a \"song\" 雪.flac"
+    },
+    {
+      "type": "open_settings",
+      "request_id": "settings"
     }
   ],
   "phase": {

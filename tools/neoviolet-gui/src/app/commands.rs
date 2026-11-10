@@ -54,6 +54,20 @@ impl App {
                 );
             }
             Action::Preferences => {
+                if self.dialog.is_some() {
+                    return Task::none();
+                }
+                if self.ipc_connected && self.handshake.supports("settings_navigation") {
+                    if !self.actions_available() {
+                        self.notice = Some("Finish setup before opening Settings.".into());
+                        return self.reveal_main().chain(self.focus());
+                    }
+                    return Task::batch([
+                        self.send_all(vec![ipc::Request::OpenSettings]),
+                        self.reveal_main()
+                            .chain(Task::done(Message::RestoreTerminalFocus)),
+                    ]);
+                }
                 let directory = self
                     .playback
                     .as_ref()
@@ -159,9 +173,15 @@ impl App {
         iced::exit()
     }
 
-    pub(super) fn focus(&self) -> Task<Message> {
-        if self.dialog.is_none()
+    pub(crate) fn terminal_input_available(&self) -> bool {
+        self.running
+            && self.basic_actions_available()
+            && self.dialog.is_none()
             && !self.titlebar.visible()
+    }
+
+    pub(super) fn focus(&self) -> Task<Message> {
+        if self.terminal_input_available()
             && let Some(terminal) = &self.terminal
         {
             return TerminalView::focus(terminal.widget_id().clone());

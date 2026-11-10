@@ -161,6 +161,16 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
         "the running player must identify its build"
     );
     assert!(hello.supports("request_quit"));
+    assert!(hello.supports("settings_navigation"));
+    write_request(peer.get_mut(), &Request::OpenSettings, "settings")
+        .await
+        .unwrap();
+    let navigation = live_message(
+        &mut peer,
+        |frame| matches!(frame, Incoming::Result { request_id, .. } if request_id == "settings"),
+    )
+    .await;
+    assert!(matches!(navigation, Incoming::Result { status, .. } if status == "succeeded"));
     write_request(peer.get_mut(), &Request::DesktopLyrics(true), "")
         .await
         .unwrap();
@@ -370,6 +380,7 @@ async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values(
         (Request::SetVolume(0.0), "mute"),
         (Request::Seek(0.0), "rewind"),
         (Request::Open("/music/a \"song\" 雪.flac".into()), "open"),
+        (Request::OpenSettings, "settings"),
     ];
     for (index, (request, id)) in commands.into_iter().enumerate() {
         let mut data = Vec::new();

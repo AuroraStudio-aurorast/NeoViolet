@@ -19,7 +19,9 @@ impl App {
                     self.titlebar.update(titlebar::Message::Hover(false));
                     self.titlebar.caption_hover = None;
                 }
-                window::Event::Focused => return self.refresh_chrome(),
+                window::Event::Focused => {
+                    return Task::batch([self.refresh_chrome(), self.focus()]);
+                }
                 window::Event::Resized(size) => {
                     self.titlebar.size = size;
                     self.config.window_width = size.width.round() as u32;
@@ -102,6 +104,7 @@ impl App {
             }
             iced::Event::Mouse(iced::mouse::Event::ButtonReleased(iced::mouse::Button::Left)) => {
                 self.titlebar.update(titlebar::Message::ReleaseTitle);
+                return self.focus();
             }
             iced::Event::Mouse(iced::mouse::Event::WheelScrolled { delta })
                 if self.config.zoom_via_scroll && self.modifiers.command() =>

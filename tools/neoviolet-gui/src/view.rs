@@ -104,11 +104,8 @@ impl App {
         self.terminal
             .as_ref()
             .map(|terminal| {
-                TerminalView::show_with_input(
-                    terminal,
-                    self.dialog.is_none() && !self.titlebar.visible(),
-                )
-                .map(Message::Terminal)
+                TerminalView::show_with_input(terminal, self.terminal_input_available())
+                    .map(Message::Terminal)
             })
             .unwrap_or_else(|| text("Starting player…").into())
     }

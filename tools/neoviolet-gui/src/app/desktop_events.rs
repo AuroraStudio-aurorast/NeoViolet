@@ -78,7 +78,7 @@ impl App {
                 }
             }
             desktop::Event::Reopen => {
-                return self.reveal_main();
+                return self.reveal_main().chain(self.focus());
             }
         }
         Task::none()

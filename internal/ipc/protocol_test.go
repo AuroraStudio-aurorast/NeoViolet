@@ -56,6 +56,9 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	if requests[2].Path != "/music/a \"song\" 雪.flac" {
 		t.Fatal("quoted Unicode path changed")
 	}
+	if requests[3].Type != "open_settings" || requests[3].RequestID != "settings" {
+		t.Fatal("settings navigation request was lost")
+	}
 }
 
 func TestHandshakeDescribesTheRunningPlayer(t *testing.T) {

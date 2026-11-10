@@ -7,6 +7,7 @@ impl App {
     pub(super) fn update_inner(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Ready => {}
+            Message::RestoreTerminalFocus => return self.focus(),
             Message::FlushPending { session, epoch } => {
                 if self.actions_available()
                     && !self.closing

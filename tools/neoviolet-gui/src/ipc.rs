@@ -32,6 +32,7 @@ pub enum Request {
     Seek(f64),
     SetVolume(f64),
     GetState,
+    OpenSettings,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -300,6 +301,7 @@ async fn write_request<W: AsyncWrite + Unpin>(
         Request::Seek(position) => serde_json::json!({"type": "seek", "position":position}),
         Request::SetVolume(volume) => serde_json::json!({"type": "set_volume", "volume":volume}),
         Request::GetState => serde_json::json!({"type": "get_state"}),
+        Request::OpenSettings => serde_json::json!({"type": "open_settings"}),
     };
     if !id.is_empty() {
         value["request_id"] = id.into();

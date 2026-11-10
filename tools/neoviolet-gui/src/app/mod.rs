@@ -96,6 +96,7 @@ pub enum Message {
     QuitDeadline,
     DismissNotice,
     RefreshState,
+    RestoreTerminalFocus,
     FlushPending {
         session: u64,
         epoch: u64,

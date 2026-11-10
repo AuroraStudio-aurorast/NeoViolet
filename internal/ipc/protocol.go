@@ -17,6 +17,7 @@
 //	{"type": "seek", "position": 12.3} — absolute seconds, clamped to duration
 //	{"type": "set_volume", "volume": 0.5} — 0..1, including zero
 //	{"type": "get_state"} — request a full snapshot
+//	{"type": "open_settings"} — focus the TUI Settings page, retaining drafts
 //	{"type": "play_pause"}                  — toggle play/pause
 //	{"type": "request_quit"}                — ask Go whether confirmation is needed
 //	{"type": "quit"}                        — confirmed GUI close, clean up and exit
@@ -38,7 +39,7 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the raw TUI build version), and capabilities
-// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker"].
+// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation"].
 // Product versions never gate
 // protocol compatibility. Optional libopenmpt_version identifies the runtime-loaded
 // library and is omitted when the library is unavailable; it is not the build lock version.
@@ -59,6 +60,9 @@
 // A snapshot is sent after authentication and on changes regardless of lyrics.
 // Progress is limited to 4 Hz; discrete changes are pushed immediately.
 // Unknown message types fail explicitly when request_id is present.
+// settings_navigation advertises open_settings. Navigation fails explicitly
+// while an editor, picker, confirmation or save owns the input; it never
+// discards that interaction. It does not change playback or save the draft.
 //
 // The lyrics payload describes each line as Prefix followed by its display
 // sub-lines (Parts when it has any, otherwise Text). Words carries the timings
@@ -149,5 +153,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation"}}
 }

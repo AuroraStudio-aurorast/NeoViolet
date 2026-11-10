@@ -84,6 +84,8 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 		return nil, nil
 	case "get_state":
 		m.pushIPCState(true)
+	case "open_settings":
+		return nil, m.openSettings()
 	case "open":
 		if !isValidAudioPath(message.Path) {
 			return nil, fmt.Errorf("invalid or unsupported audio file: %s", message.Path)

@@ -592,6 +592,10 @@ mod integration_tests;
 #[path = "startup_tests.rs"]
 mod startup_tests;
 
+#[cfg(not(target_os = "windows"))]
+#[path = "focus_navigation_tests.rs"]
+mod focus_navigation_tests;
+
 #[cfg(unix)]
 #[path = "terminal_background_tests.rs"]
 mod terminal_background_tests;
