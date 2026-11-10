@@ -123,6 +123,19 @@ func TestLibraryQueueAdvancesOnceAndStopsOnError(t *testing.T) {
 		t.Fatal("decoder error skipped to next track")
 	}
 }
+func TestLibraryQueueAdvancesWhenAudioStateAlreadyStopped(t *testing.T) {
+	m := queueFixture(t)
+	pageKey(m, tea.KeyEnter, "")
+	acceptQueueLoad(t, m)
+	p := &endedPlayer{mockPlayer: mockPlayer{playing: false}, ended: true}
+	m.Audio.Player = p
+	m.Audio.IsPlaying = false
+	cmd := m.advanceQueueAtEnd()
+	if cmd == nil || m.queueIntent.track.Title != "B.wav" {
+		t.Fatal("EOF did not request next after audio state stopped")
+	}
+}
+
 func TestLibraryQueueFailureAndSupersededLoadKeepAcceptedIdentity(t *testing.T) {
 	m := queueFixture(t)
 	pageKey(m, tea.KeyEnter, "")

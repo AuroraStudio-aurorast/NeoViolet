@@ -30,7 +30,6 @@ The macOS bundle ships these as `LICENSE-MIT` and `LICENSE-GUI-MIT`.
 | `charm.land/huh/v2` | v2.0.3 | [MIT](#mit) | Copyright (c) 2023-2026 Charmbracelet, Inc. |
 | `github.com/gopxl/beep/v2` | v2.1.1 | [MIT](#mit) | Copyright (c) 2017 Michal Štrba |
 | `github.com/dhowden/tag` | v0.0.0-20240417053706-3d75831295e8 | [BSD-2-Clause](#bsd-2-clause) | Copyright 2015, David Howden |
-| `github.com/jpodeszfa/go-meltysynth/meltysynth` | v1.0.1 | [MIT](#mit) | MeltySynth: Copyright (C) 2021 Nobuaki Tanaka; Go-MeltySynth: Copyright (C) 2022 Nobuaki Tanaka |
 | `github.com/gotracker/playback` | v1.5.0 | [MIT](#mit) | Copyright (c) 2015 Jason Crawford |
 | `github.com/WhatDamon/go-amll-ttml-parser` | v0.0.0-20260918094540-d8fe6ac26bd6 | [MIT](#mit) | Copyright (c) 2026 Damon Lu |
 | `github.com/WhatDamon/go-nvaa-codec` | v0.0.0-20261009094822-0e5842a563d5 | [MIT](#mit) | Copyright (c) 2026 Damon Lu |
@@ -65,6 +64,7 @@ license still apply to that code.
 | Source | In tree | License | Copyright |
 |---|---|---|---|
 | `github.com/alicebob/alac` | `internal/audio/format/alac/` (modified) | [MIT](#mit) | Copyright (c) 2016 Harmen |
+| `github.com/jpodeszfa/go-meltysynth/meltysynth` | `internal/audio/soundfont/` (adapted) | [MIT](#mit) | MeltySynth: Copyright (C) 2021 Nobuaki Tanaka; Go-MeltySynth: Copyright (C) 2022 Nobuaki Tanaka |
 | `github.com/go-musicfox/go-musicfox` | `internal/mediactl/controller_darwin.go` (reference) | [MIT](#mit)[^musicfox] | Copyright (c) 2015 - present Microsoft Corporation |
 
 [^musicfox]: Reproduced as upstream ships it. Upstream later declared GPL-3.0 in its
@@ -533,4 +533,3 @@ required `.tbd` files, which is why we choose to still use the normal SPDX
 identifiers in the crates (Xcode is required to use the crates, and when using
 Xcode you have already agreed to the Xcode license).
 ~~~
-

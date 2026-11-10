@@ -31,6 +31,11 @@ func (s *outputCompletion) Err() error { return s.source.Err() }
 func (p *Player) PlaybackEnd() (bool, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.isSynthActive() {
+		if state, ok := p.synthCtrl.(interface{ Finished() bool }); ok && state.Finished() {
+			return true, nil
+		}
+	}
 	speaker.Lock()
 	defer speaker.Unlock()
 	if p.completion == nil || !p.completion.ended.Load() {

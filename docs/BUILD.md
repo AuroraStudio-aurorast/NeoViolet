@@ -456,6 +456,7 @@ make test/rust      # Rust tests only
 make test/race      # Go tests with race detector; requires cgo and CC
 make test/verbose   # Go tests with -v
 make test/short     # short Go tests; skips integration/format-heavy tests
+make test/midi      # MIDI, SoundFont and player regressions with generated fixtures
 make test/cover     # Go tests; writes coverage.out and coverage.html
 make test/coverage  # Go tests; enforces COVERAGE_MIN and writes coverage.out
 make check          # complete local code quality gate; requires cgo and CC
@@ -480,6 +481,21 @@ file-size scans exclude Git metadata, `.worktrees` and build `target` directorie
 
 Tests do not refresh the Rust release binaries that the application spawns. Use `make apetools` or
 `make gui` to update those binaries.
+
+`make test/midi` uses generated fixtures, so it needs no user assets, sound device or network.
+Optional local checks can use your own files:
+
+```bash
+make test/midi/bench
+make test/midi/fuzz MIDI_FUZZ_PACKAGE=./internal/audio/midi MIDI_FUZZ=FuzzParseSMF
+make test/midi/fuzz MIDI_FUZZ_PACKAGE=./internal/audio/soundfont MIDI_FUZZ=FuzzLoadSoundFont
+NEOVIOLET_MIDI_TEST_FILE=/path/to/song.mid \
+NEOVIOLET_SF2_TEST_FILE=/path/to/bank.sf2 make test/midi/integration
+```
+
+Set `NEOVIOLET_MIDI_CHECKPOINTS=1` on the integration run to compare checkpoint-restored
+playback with linear rendering, and `NEOVIOLET_SF2_SWEEP=1` to add an all-key/velocity safety
+sweep.
 
 ---
 

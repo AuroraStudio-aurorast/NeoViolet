@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/soundfont"
 	"github.com/gopxl/beep/v2"
 	"github.com/gopxl/beep/v2/effects"
 	"github.com/gopxl/beep/v2/speaker"
-	"github.com/jpodeszfa/go-meltysynth/meltysynth"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
@@ -60,7 +60,7 @@ type Player struct {
 	synthCtrl      synth.Controller
 	synthActive    bool
 	sfPath         string
-	cachedSF       *meltysynth.SoundFont
+	cachedSF       *soundfont.SoundFont
 	cachedSFPath   string
 	trackerBackend string
 	tempFiles      []string // temp files to clean up in Close()
@@ -417,6 +417,11 @@ func (p *Player) Seek(position time.Duration) error {
 func (p *Player) IsPlaying() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.isSynthActive() {
+		if state, ok := p.synthCtrl.(interface{ IsPlaying() bool }); ok {
+			return state.IsPlaying()
+		}
+	}
 	return p.isPlaying && !p.isPaused && (p.completion == nil || !p.completion.ended.Load())
 }
 
@@ -454,6 +459,7 @@ func (p *Player) Close() error {
 	logger.Debug("Player.Close")
 	err := p.closeStreamer()
 	p.isPaused = true
+	p.path = ""
 
 	// Clean up any temp files created by OpenReader
 	for _, tmpPath := range p.tempFiles {

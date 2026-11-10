@@ -240,7 +240,7 @@ func (m *Model) advanceQueueAtEnd() tea.Cmd {
 	if m.queueEndSeekRevision != m.Audio.seekRevision || m.queueEndPlaybackRevision != m.Audio.playbackRevision {
 		m.queueEnded = false
 	}
-	if !m.Audio.IsPlaying || m.queueEnded {
+	if m.queueEnded {
 		return nil
 	}
 	m.queueEndSeekRevision = m.Audio.seekRevision
