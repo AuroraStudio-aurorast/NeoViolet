@@ -28,16 +28,32 @@ impl Navigation {
         shift: bool,
     ) -> Option<Message> {
         use iced::keyboard::{Key, key::Named};
+        if matches!(dialog, Dialog::OpenOnlineAudio { .. }) {
+            return match key {
+                Key::Named(Named::Tab) => {
+                    self.selected = match (self.selected, shift) {
+                        (None, false) => Some(0),
+                        (Some(0), false) => Some(1),
+                        (None, true) => Some(1),
+                        (Some(1), true) => Some(0),
+                        _ => None,
+                    };
+                    None
+                }
+                Key::Named(Named::Enter | Named::Space) => match self.selected {
+                    Some(0) => Some(Message::Dismiss),
+                    Some(1) => Some(Message::SubmitOnlineAudio),
+                    _ => None,
+                },
+                _ => None,
+            };
+        }
         let actions = match dialog {
             Dialog::Quit => vec![Message::Dismiss, Message::ConfirmQuit],
             Dialog::Error(_) if !running => vec![Message::ConfirmQuit, Message::Restart],
-            Dialog::OpenOnlineAudio(_) => vec![Message::Dismiss, Message::SubmitOnlineAudio],
             _ => vec![Message::Dismiss],
         };
-        let default = usize::from(
-            (matches!(dialog, Dialog::Error(_)) && !running)
-                || matches!(dialog, Dialog::OpenOnlineAudio(_)),
-        );
+        let default = usize::from(matches!(dialog, Dialog::Error(_)) && !running);
         let current = self.selected.unwrap_or(default).min(actions.len() - 1);
         match key {
             Key::Named(Named::Tab) => {
@@ -126,17 +142,23 @@ pub fn overlay<'a>(
             },
             432,
         ),
-        Dialog::OpenOnlineAudio(url) => (
+        Dialog::OpenOnlineAudio { url, error } => (
             "Open Online Audio",
             Mark::Music,
             column![
-                paragraph("Enter a direct HTTP or HTTPS link to an audio stream."),
+                paragraph("Enter a direct HTTP or HTTPS link to an audio file."),
                 text_input("https://example.com/audio.mp3", url)
+                    .id("online-audio-url")
                     .on_input(Message::OnlineAudioURLChanged)
                     .on_submit(Message::SubmitOnlineAudio)
                     .padding([9, 10])
                     .size(13),
             ]
+            .push(
+                text(error.as_deref().unwrap_or(""))
+                    .size(12)
+                    .color(Color::from_rgb8(240, 155, 155)),
+            )
             .spacing(10)
             .into(),
             row![
@@ -179,7 +201,11 @@ pub fn overlay<'a>(
                 .height(Length::Shrink)
         )
         .width(Length::Fill)
-        .max_height(104),
+        .max_height(if matches!(dialog, Dialog::OpenOnlineAudio { .. }) {
+            150
+        } else {
+            104
+        }),
     ]
     .spacing(16)
     .padding(24);
@@ -225,7 +251,11 @@ pub fn overlay<'a>(
         .padding(1)
         .width(Length::Fill)
         .max_width(width)
-        .max_height(280)
+        .max_height(if matches!(dialog, Dialog::OpenOnlineAudio { .. }) {
+            330
+        } else {
+            280
+        })
         .style(|_| container::Style {
             background: Some(Color::from_rgb8(43, 43, 46).into()),
             text_color: Some(FOREGROUND),

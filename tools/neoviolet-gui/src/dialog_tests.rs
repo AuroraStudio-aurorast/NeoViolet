@@ -138,3 +138,35 @@ fn long_errors_keep_the_restart_action_clickable_at_the_minimum_window_size() {
             .any(|message| matches!(message, Message::ConfirmQuit))
     );
 }
+
+#[test]
+fn online_dialog_leaves_text_keys_to_input_and_tabs_through_field_and_actions() {
+    use iced::keyboard::{Key, key::Named};
+    let dialog = Dialog::OpenOnlineAudio {
+        url: String::new(),
+        error: None,
+    };
+    let mut navigation = Navigation::default();
+    assert!(
+        navigation
+            .key(&dialog, true, &Key::Named(Named::Space), false)
+            .is_none()
+    );
+    assert!(
+        navigation
+            .key(&dialog, true, &Key::Named(Named::Enter), false)
+            .is_none()
+    );
+    navigation.key(&dialog, true, &Key::Named(Named::Tab), false);
+    assert!(matches!(
+        navigation.key(&dialog, true, &Key::Named(Named::Enter), false),
+        Some(Message::Dismiss)
+    ));
+    navigation.key(&dialog, true, &Key::Named(Named::Tab), false);
+    assert!(matches!(
+        navigation.key(&dialog, true, &Key::Named(Named::Enter), false),
+        Some(Message::SubmitOnlineAudio)
+    ));
+    navigation.key(&dialog, true, &Key::Named(Named::Tab), false);
+    assert!(!navigation.visible());
+}

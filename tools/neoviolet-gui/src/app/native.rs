@@ -1,5 +1,5 @@
 //! Main and auxiliary window input; modal and menu event isolation.
-use super::{App, Message};
+use super::{App, Dialog, Message};
 use crate::actions::Action;
 use crate::{lyrics_window, titlebar};
 use iced::keyboard::{Key, key::Named};
@@ -51,6 +51,17 @@ impl App {
                                 modifiers.shift(),
                             ) {
                                 return self.update(message);
+                            }
+                            if key == Key::Named(Named::Tab)
+                                && matches!(dialog, Dialog::OpenOnlineAudio { .. })
+                            {
+                                return iced::widget::operation::focus(
+                                    if self.dialog_navigation.visible() {
+                                        "online-audio-actions"
+                                    } else {
+                                        "online-audio-url"
+                                    },
+                                );
                             }
                         }
                         return Task::none();
