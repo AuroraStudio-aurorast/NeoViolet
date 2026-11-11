@@ -166,7 +166,11 @@ impl App {
                     } else {
                         Vec::new()
                     };
-                    return Task::batch([self.focus(), self.send_all(requests)]);
+                    return Task::batch([
+                        self.focus(),
+                        self.send_all(requests),
+                        self.save_recovery_path(),
+                    ]);
                 } else if matches!(self.dialog, Some(Dialog::About)) {
                     self.dialog = Some(Dialog::Error(
                         "The player is not running. Restart it or close this window.".into(),
@@ -194,7 +198,14 @@ impl App {
                 return self.finish_quit();
             }
             Message::QuitDeadline => return self.finish_quit(),
+            Message::ChoosePlayer => return self.choose_player(),
+            Message::PlayerChosen { generation, result } => {
+                return self.player_chosen(generation, result);
+            }
             Message::Restart => {
+                if !self.basic_actions_available() {
+                    return Task::none();
+                }
                 let (config, warning) = config::Config::load();
                 return self.restart_with_config(config, warning);
             }

@@ -37,6 +37,7 @@ impl App {
         }
         let chrome_changed = self.config.system_decorations != config.system_decorations;
         self.config = config;
+        self.reconcile_recovery_path();
         let active_decorations = self.titlebar.system_decorations;
         self.titlebar.configure(&self.config);
         self.titlebar.system_decorations = active_decorations;

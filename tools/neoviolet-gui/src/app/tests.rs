@@ -94,6 +94,7 @@ fn app() -> App {
         running_player_path: None,
         preference_writes: Default::default(),
         picker: None,
+        recovery: Default::default(),
         handshake: Default::default(),
         connection_epoch: 0,
         request_sequence: 0,
@@ -627,3 +628,6 @@ mod picker_integration_tests;
 
 #[path = "settings_integration_tests.rs"]
 mod settings_integration_tests;
+
+#[path = "recovery_tests.rs"]
+mod recovery_tests;

@@ -14,7 +14,8 @@
       "settings_navigation",
       "settings_preferences",
       "settings_file_picker",
-      "preferences_feedback"
+      "preferences_feedback",
+      "player_recovery"
     ],
     "libopenmpt_version": "0.8.9"
   },
@@ -85,6 +86,12 @@
       "restart_required": [
         "gui.neoviolet_path"
       ]
+    },
+    {
+      "type": "set_preference",
+      "key": "gui.neoviolet_path",
+      "value": "/Applications/Neo Violet 雪/neoviolet",
+      "request_id": "recovered-player"
     }
   ],
   "phase": {

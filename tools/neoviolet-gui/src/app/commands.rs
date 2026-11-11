@@ -200,6 +200,9 @@ impl App {
     }
 
     pub(super) fn finish_quit(&mut self) -> Task<Message> {
+        self.closing = true;
+        self.recovery.picker = false;
+        self.recovery.generation += 1;
         if self.save_state
             && let Err(error) = self.config.save()
         {

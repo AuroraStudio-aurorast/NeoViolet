@@ -55,7 +55,7 @@ fn picker_allowed(purpose: &str, stage: Stage) -> bool {
     )
 }
 
-fn file_dialog<W: HasWindowHandle + HasDisplayHandle>(
+pub(super) fn file_dialog<W: HasWindowHandle + HasDisplayHandle>(
     parent: &W,
     purpose: &str,
 ) -> Result<rfd::AsyncFileDialog, String> {
@@ -94,12 +94,13 @@ pub(super) fn soundfont_dialog<W: HasWindowHandle + HasDisplayHandle>(
 
 impl App {
     pub(crate) fn basic_actions_available(&self) -> bool {
-        !self.closing && self.picker.is_none()
+        !self.closing && self.picker.is_none() && !self.recovery.picker
     }
 
     pub(crate) fn actions_available(&self) -> bool {
         !self.closing
             && self.picker.is_none()
+            && !self.recovery.picker
             && match self.startup {
                 Stage::Legacy => true,
                 Stage::Phase(ipc::StartupPhase::Ready) => self.ipc_connected,
@@ -123,12 +124,13 @@ impl App {
     }
 
     pub(super) fn restore_ready(&mut self) -> Task<Message> {
+        let recovery = self.save_recovery_path();
         let preferences = self.flush_preference();
         if !self.actions_available()
             || self.lyrics_restored
             || (self.handshake.supports("settings_preferences") && self.preferences_revision == 0)
         {
-            return Task::batch([preferences, self.acknowledge_preferences()]);
+            return Task::batch([preferences, recovery, self.acknowledge_preferences()]);
         }
         self.lyrics_restored = true;
         let (visibility, _) = self.lyrics.update(
@@ -148,7 +150,7 @@ impl App {
             requests.extend(self.pending.drain(..).map(ipc::Request::Open));
         }
         let lyrics = self.track_preferences_task(lyrics);
-        Task::batch([lyrics, self.send_all(requests), preferences])
+        Task::batch([lyrics, self.send_all(requests), preferences, recovery])
     }
 
     pub(super) fn suspend_lyrics(&mut self) -> Task<Message> {

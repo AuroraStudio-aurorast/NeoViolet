@@ -24,13 +24,23 @@ func (m *Model) pushGUIPreferences() uint64 {
 	return m.ipcPreferencesRevision
 }
 
-// Only runtime controls may write here; the full form remains a TUI draft.
+// Runtime controls and explicit player recovery write here; the full form remains a TUI draft.
 func (m *Model) saveGUIPreference(message ipc.Message) (tea.Cmd, error) {
 	if m.ipcPickerID != "" || m.configSave != nil || m.pages == nil || m.pages.editor != nil || m.pages.picker != "" || m.pages.browser != nil || m.pages.rootEditor || m.pages.quitSettings || m.pages.changed[message.Key] {
 		return nil, fmt.Errorf("finish or cancel the current edit or save before changing this preference")
 	}
 	var value any
 	switch message.Key {
+	case "gui.neoviolet_path":
+		var path *string
+		if err := json.Unmarshal(message.Value, &path); err != nil || path == nil {
+			return nil, fmt.Errorf("player path must be a string")
+		}
+		parsed, err := parseSetting(pageSetting{key: message.Key}, *path)
+		if err != nil {
+			return nil, err
+		}
+		value = parsed
 	case "gui.font_size":
 		var size int
 		if err := json.Unmarshal(message.Value, &size); err != nil {

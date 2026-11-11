@@ -129,7 +129,7 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
         700,
         iced_term::settings::Settings {
             backend: iced_term::settings::BackendSettings {
-                program: player,
+                program: player.clone(),
                 args: vec!["--xdg-config".into()],
                 env: std::collections::HashMap::from([
                     ("TERM_PROGRAM".into(), "neoviolet-gui".into()),
@@ -214,6 +214,31 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     assert!(matches!(receipt,Incoming::Result{status,..} if status=="succeeded"));
     let disk: serde_json::Value =
         serde_json::from_slice(&std::fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert_eq!(disk["gui"]["font_size"], 20);
+
+    // Recovery remains a Go-owned preference, even though the GUI selected
+    // the executable before a working IPC connection was available.
+    assert!(hello.supports("player_recovery"));
+    write_request(
+        peer.get_mut(),
+        &Request::SetPreference {
+            key: "gui.neoviolet_path",
+            value: player.clone().into(),
+        },
+        "recovery-live",
+    )
+    .await
+    .unwrap();
+    let _=live_message(&mut peer,|frame| matches!(frame,Incoming::Preferences{preferences,..} if preferences.gui.neoviolet_path.as_deref()==Some(player.as_str()))).await;
+    let recovered_path = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="recovery-live"),
+    )
+    .await;
+    assert!(matches!(recovered_path,Incoming::Result{status,..} if status=="succeeded"));
+    let disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert_eq!(disk["gui"]["neoviolet_path"], player);
     assert_eq!(disk["gui"]["font_size"], 20);
 
     write_request(peer.get_mut(), &Request::DesktopLyrics(true), "")
@@ -526,6 +551,13 @@ async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values(
                 error: None,
             },
             "",
+        ),
+        (
+            Request::SetPreference {
+                key: "gui.neoviolet_path",
+                value: "/Applications/Neo Violet 雪/neoviolet".into(),
+            },
+            "recovered-player",
         ),
     ];
     for (index, (request, id)) in commands.into_iter().enumerate() {

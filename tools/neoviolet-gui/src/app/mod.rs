@@ -7,6 +7,7 @@ mod native;
 mod player;
 mod preferences;
 mod preferences_feedback;
+mod recovery;
 mod startup;
 #[cfg(test)]
 mod tests;
@@ -46,6 +47,7 @@ pub struct App {
     running_player_path: Option<String>,
     preference_writes: preferences::Writes,
     picker: Option<startup::Picker>,
+    recovery: recovery::Recovery,
     handshake: ipc::Handshake,
     connection_epoch: u64,
     request_sequence: u64,
@@ -109,6 +111,11 @@ pub enum Message {
     Dismiss,
     ConfirmQuit,
     Restart,
+    ChoosePlayer,
+    PlayerChosen {
+        generation: u64,
+        result: Result<Option<PathBuf>, String>,
+    },
     QuitDeadline,
     DismissNotice,
     RefreshState,

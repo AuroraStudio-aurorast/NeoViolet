@@ -42,7 +42,7 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the raw TUI build version), and capabilities
-// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker","preferences_feedback"].
+// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker","preferences_feedback","player_recovery"].
 // Product versions never gate
 // protocol compatibility. Optional libopenmpt_version identifies the runtime-loaded
 // library and is omitted when the library is unavailable; it is not the build lock version.
@@ -80,6 +80,10 @@
 // initial, stale and previous-connection feedback never replaces a save result.
 // A failed GUI update does not roll back the saved config. Window chrome and
 // player executable can remain restart_required across unrelated preference saves.
+// player_recovery permits set_preference for gui.neoviolet_path, validated as
+// an executable by Go before saving. A GUI may temporarily launch a user-chosen
+// player when its configured path no longer works, then submit this preference
+// after readiness and a full preferences snapshot. The GUI never writes it itself.
 // set_preference accepts key gui.font_size, desktop_lyrics.enabled or
 // desktop_lyrics.locked plus a JSON value. It persists asynchronously and sends
 // a terminal result only after saving; errors leave live preferences unchanged.
@@ -204,5 +208,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker", "preferences_feedback"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker", "preferences_feedback", "player_recovery"}}
 }

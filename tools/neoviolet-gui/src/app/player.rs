@@ -75,6 +75,7 @@ impl App {
         match event {
             ipc::Event::Connected(sender) => {
                 self.connection_epoch += 1;
+                self.recovery.attempted = false;
                 self.preferences_revision = 0;
                 self.preferences_acknowledged = 0;
                 self.preferences_tasks = 0;

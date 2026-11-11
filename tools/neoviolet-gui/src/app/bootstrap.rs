@@ -60,6 +60,7 @@ impl App {
             running_player_path: None,
             preference_writes: Default::default(),
             picker: None,
+            recovery: Default::default(),
             handshake: Default::default(),
             connection_epoch: 0,
             request_sequence: 0,
@@ -105,7 +106,12 @@ impl App {
         self.closing = false;
         self.lyrics.clear();
         self.session += 1;
-        self.running_player_path = self.config.neoviolet_path.clone();
+        self.recovery.attempted = false;
+        self.running_player_path = self
+            .recovery
+            .path
+            .clone()
+            .or_else(|| self.config.neoviolet_path.clone());
         let executable = launch::player(self.running_player_path.as_deref());
         let mut environment = self.environment.clone();
         environment.extend([
@@ -139,7 +145,7 @@ impl App {
             Err(error) => {
                 self.running = false;
                 self.dialog = Some(Dialog::Error(format!(
-                    "Could not start {}: {error}\nCheck neoviolet_path in the GUI settings.",
+                    "Could not start {}: {error}\nChoose the NeoViolet player executable to recover.",
                     executable.display()
                 )));
                 lyrics
@@ -196,6 +202,7 @@ impl App {
             self.family = Box::leak(config.monospace_font.clone().into_boxed_str());
         }
         self.config = config;
+        self.reconcile_recovery_path();
         let decorations = self.titlebar.system_decorations;
         self.titlebar.configure(&self.config);
         self.titlebar.system_decorations = decorations;

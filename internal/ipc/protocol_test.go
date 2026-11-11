@@ -63,9 +63,13 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	if requests[4].Section != "desktop_lyrics" || requests[5].Key != "gui.font_size" || string(requests[5].Value) != "20" {
 		t.Fatal("preference requests lost")
 	}
-	feedback := requests[len(requests)-1]
+	feedback := requests[len(requests)-2]
 	if feedback.Type != "preferences_applied" || feedback.Revision != 2 || feedback.RequestID != "" || !reflect.DeepEqual(feedback.RestartRequired, []string{"gui.neoviolet_path"}) {
 		t.Fatal("application feedback lost its revision or restart keys")
+	}
+	recovery := requests[len(requests)-1]
+	if recovery.Key != "gui.neoviolet_path" || recovery.RequestID != "recovered-player" {
+		t.Fatal("player recovery path request lost")
 	}
 	if requests[3].Type != "open_settings" || requests[3].RequestID != "settings" {
 		t.Fatal("settings navigation request was lost")
