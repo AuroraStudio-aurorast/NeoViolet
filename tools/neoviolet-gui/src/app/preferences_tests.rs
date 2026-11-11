@@ -209,3 +209,70 @@ fn queued_zoom_survives_a_native_picker_until_input_returns() {
         matches!(receiver.try_recv().unwrap().request,ipc::Request::SetPreference{value,..} if value==18)
     );
 }
+
+#[test]
+fn preference_timeout_preserves_queued_quit_and_ignores_late_results() {
+    for accepted in [false, true] {
+        let mut app = ready();
+        app.handshake
+            .capabilities
+            .extend(["results".into(), "request_quit".into()]);
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(8);
+        app.connection = Some(sender);
+        let _ = app.action(Action::ZoomIn);
+        let first = receiver.try_recv().unwrap();
+        let _ = app.action(Action::ZoomIn);
+        let _ = app.action(Action::Quit);
+        if accepted {
+            let _ = app.command_result(first.id.clone(), "accepted".into(), String::new());
+        }
+        assert!(
+            receiver.try_recv().is_err(),
+            "quit must initially wait for the save"
+        );
+        let _ = app.update(Message::RequestTimeout {
+            session: app.session,
+            epoch: app.connection_epoch,
+            id: first.id.clone(),
+            accepted,
+        });
+        assert!(
+            matches!(
+                receiver.try_recv().unwrap().request,
+                ipc::Request::CheckQuit
+            ),
+            "save timeout dropped the queued Quit"
+        );
+        assert!(
+            app.notice
+                .as_ref()
+                .is_some_and(|text| text.contains("did not confirm"))
+        );
+        assert!(!app.has_pending_preferences());
+        let _ = app.command_result(first.id, "succeeded".into(), String::new());
+        assert!(
+            receiver.try_recv().is_err(),
+            "late result replayed the cancelled zoom or Quit"
+        );
+    }
+}
+
+#[test]
+fn preference_timeout_without_quit_only_clears_pending_intents() {
+    let mut app = ready();
+    app.handshake.capabilities.push("results".into());
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(8);
+    app.connection = Some(sender);
+    let _ = app.action(Action::ZoomIn);
+    let first = receiver.try_recv().unwrap();
+    let _ = app.action(Action::ZoomIn);
+    let _ = app.update(Message::RequestTimeout {
+        session: app.session,
+        epoch: app.connection_epoch,
+        id: first.id,
+        accepted: false,
+    });
+    assert!(!app.has_pending_preferences());
+    assert!(receiver.try_recv().is_err());
+    assert!(!app.closing);
+}

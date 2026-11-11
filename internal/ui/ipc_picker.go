@@ -63,7 +63,14 @@ func (m *Model) openFilePicker(purpose string, field int, start string) tea.Cmd 
 
 func (m *Model) filePicked(message ipc.Message) tea.Cmd {
 	p := m.ipcPicker
-	if p == nil || (p.validating && message.Status != "cancelled") || p.session != m.ipcSession || p.id != message.RequestID || p.purpose != message.Purpose || m.ipcPickerID != p.id {
+	// PTY Escape or Quit can invalidate Go's request before the GUI has
+	// received pick_file. Its later completion still needs a terminal receipt
+	// so the physical chooser can return input ownership to the terminal.
+	if p == nil || p.id != message.RequestID {
+		m.ipcResult(m.ipcSession, message.RequestID, "cancelled", "")
+		return nil
+	}
+	if (p.validating && message.Status != "cancelled") || p.session != m.ipcSession || p.id != message.RequestID || p.purpose != message.Purpose || m.ipcPickerID != p.id {
 		return nil
 	}
 	switch message.Status {

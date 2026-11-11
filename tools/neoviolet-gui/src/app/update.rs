@@ -47,8 +47,8 @@ impl App {
                     && self.requests.get(&id) == Some(&accepted)
                 {
                     self.requests.remove(&id);
-                    self.cancel_preference(&id);
-                    self.notice = Some("The player did not confirm the action in time. Check playback before trying again.".into());
+                    self.notice=Some("The player did not confirm the action in time. Check playback before trying again.".into());
+                    return self.preference_result(&id, "cancelled");
                 }
             }
             Message::PreferencesLyrics {

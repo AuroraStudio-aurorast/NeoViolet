@@ -187,17 +187,6 @@ impl App {
         }
     }
 
-    pub(super) fn cancel_preference(&mut self, id: &str) {
-        if self
-            .preference_writes
-            .active
-            .as_ref()
-            .is_some_and(|(active, _, _)| active == id)
-        {
-            self.preference_writes = Default::default();
-        }
-    }
-
     pub(super) fn open_lyrics_settings(&mut self) -> Task<Message> {
         if self.dialog.is_some() {
             return Task::none();

@@ -228,3 +228,34 @@ fn programmatic_cancel_requires_both_physical_completion_and_go_ack() {
         assert!(app.picker.is_none());
     }
 }
+
+#[test]
+fn preference_timeout_during_native_picker_still_resumes_queued_quit() {
+    let (mut app, mut receiver) = ready_picker();
+    app.handshake.capabilities.extend([
+        "settings_preferences".into(),
+        "results".into(),
+        "request_quit".into(),
+    ]);
+    let _ = app.action(Action::ZoomIn);
+    let first = receiver.try_recv().unwrap();
+    let _ = app.setup_picker("audio".into(), "pending-audio".into());
+    let _ = app.window_action(Action::Quit);
+    assert!(
+        matches!(receiver.try_recv().unwrap().request,ipc::Request::FilePicked{status,..} if status=="cancelled")
+    );
+    let _ = app.update(Message::RequestTimeout {
+        session: app.session,
+        epoch: app.connection_epoch,
+        id: first.id,
+        accepted: false,
+    });
+    assert!(matches!(
+        receiver.try_recv().unwrap().request,
+        ipc::Request::CheckQuit
+    ));
+    assert!(
+        app.picker.is_some(),
+        "physical native dialog must keep owning input"
+    );
+}

@@ -103,6 +103,9 @@
 // GUI advertises settings_file_picker only when it can host these chooser kinds.
 // A dialog and asynchronous selection validation belong to one authenticated
 // connection; disconnection, supersession and shutdown invalidate late replies.
+// A late file_picked for a request no longer owned by Go receives cancelled
+// without changing state. This includes PTY Escape or Quit overtaking native
+// completion; repeated late cancellation is acknowledged so GUI input can resume.
 //
 // The lyrics payload describes each line as Prefix followed by its display
 // sub-lines (Parts when it has any, otherwise Text). Words carries the timings

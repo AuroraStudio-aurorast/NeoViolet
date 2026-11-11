@@ -338,6 +338,48 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
         }
     }
 
+    // The PTY can cancel before the GUI even sees pick_file. A following
+    // :save snapshot is a barrier proving Go consumed Ctrl+G before the late
+    // native completion returns on TCP; no sleep or scheduling assumption.
+    terminal.handle(iced_term::Command::ProxyToBackend(
+        iced_term::BackendCommand::Write(b":open\r\x07:save\r".to_vec()),
+    ));
+    let early = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::PickFile{purpose,..} if purpose=="audio"),
+    )
+    .await;
+    let Incoming::PickFile { request_id, .. } = early else {
+        unreachable!()
+    };
+    let _ = live_message(&mut peer, |frame| {
+        matches!(frame, Incoming::Preferences { .. })
+    })
+    .await;
+    for status in ["selected", "cancelled"] {
+        write_request(
+            peer.get_mut(),
+            &Request::FilePicked {
+                purpose: "audio".into(),
+                request_id: request_id.clone(),
+                status: status.into(),
+                path: (status == "selected").then(|| broken.clone()),
+                error: None,
+            },
+            "",
+        )
+        .await
+        .unwrap();
+        let receipt = live_message(
+            &mut peer,
+            |frame| matches!(frame,Incoming::Result{request_id:id,..} if id==&request_id),
+        )
+        .await;
+        assert!(
+            matches!(receipt,Incoming::Result{status,..} if status=="cancelled"),
+            "late completion must return GUI input without loading the file"
+        );
+    }
     // Settings selections cross the real startup host but remain drafts until :save.
     let bank = directory.path().join("a bank 雪.sf2");
     std::fs::write(&bank, b"fixture").unwrap();
