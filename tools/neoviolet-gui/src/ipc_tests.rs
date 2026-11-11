@@ -116,6 +116,24 @@ async fn truncated_frames_are_errors() {
 }
 
 #[cfg(unix)]
+async fn live_connect(
+    endpoint: &std::path::Path,
+    directory: &std::path::Path,
+) -> (BufReader<tokio::net::TcpStream>, Handshake) {
+    tokio::time::timeout(Duration::from_secs(10), discover(endpoint))
+        .await
+        .unwrap_or_else(|error| {
+            let log = std::fs::read_to_string(directory.join("neoviolet.log"))
+                .unwrap_or_else(|read_error| format!("No startup log: {read_error}"));
+            panic!(
+                "TUI IPC startup failed at {}: {error}\n{log}",
+                endpoint.display()
+            );
+        })
+        .expect("real TUI authentication acknowledgement")
+}
+
+#[cfg(unix)]
 #[tokio::test]
 #[ignore = "requires the built TUI; run make test/gui-ipc"]
 async fn live_tui_acknowledges_and_exits_on_gui_request() {
@@ -134,6 +152,10 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
                 env: std::collections::HashMap::from([
                     ("TERM_PROGRAM".into(), "neoviolet-gui".into()),
                     ("TERM".into(), "xterm-256color".into()),
+                    (
+                        "TMPDIR".into(),
+                        directory.path().to_string_lossy().into_owned(),
+                    ),
                     ("NEOVIOLET_FONT".into(), "monospace".into()),
                     (
                         "XDG_CONFIG_HOME".into(),
@@ -151,11 +173,8 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     )
     .expect("start real TUI in a PTY without a GUI window");
     let pid = terminal.child_process_id().unwrap();
-    let port = std::env::temp_dir().join(format!("neoviolet-ipc-{pid}"));
-    let (mut peer, hello) = tokio::time::timeout(Duration::from_secs(10), discover(&port))
-        .await
-        .expect("TUI must start IPC without a desktop window")
-        .expect("real authentication acknowledgement");
+    let port = directory.path().join(format!("neoviolet-ipc-{pid}"));
+    let (mut peer, hello) = live_connect(&port, directory.path()).await;
     assert!(
         !hello.version.trim().is_empty(),
         "the running player must identify its build"
@@ -705,6 +724,10 @@ async fn first_run_wizard(can_pick: bool) {
                 env: std::collections::HashMap::from([
                     ("TERM_PROGRAM".into(), "neoviolet-gui".into()),
                     ("TERM".into(), "xterm-256color".into()),
+                    (
+                        "TMPDIR".into(),
+                        directory.path().to_string_lossy().into_owned(),
+                    ),
                     ("NEOVIOLET_FONT".into(), "Menlo".into()),
                     (
                         "XDG_CONFIG_HOME".into(),
@@ -722,11 +745,8 @@ async fn first_run_wizard(can_pick: bool) {
     )
     .unwrap();
     let pid = terminal.child_process_id().unwrap();
-    let endpoint = std::env::temp_dir().join(format!("neoviolet-ipc-{pid}"));
-    let (mut peer, hello) = tokio::time::timeout(Duration::from_secs(10), discover(&endpoint))
-        .await
-        .unwrap()
-        .unwrap();
+    let endpoint = directory.path().join(format!("neoviolet-ipc-{pid}"));
+    let (mut peer, hello) = live_connect(&endpoint, directory.path()).await;
     assert!(hello.supports("startup") && hello.supports("file_picker"));
     live_message(&mut peer, |message| {
         matches!(
