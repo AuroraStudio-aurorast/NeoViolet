@@ -1,5 +1,4 @@
-use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +7,9 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub monospace_font: String,
     pub font_size: u32,
+    #[serde(skip)]
     pub window_width: u32,
+    #[serde(skip)]
     pub window_height: u32,
     pub opacity: f32,
     pub neoviolet_path: Option<String>,
@@ -16,9 +17,8 @@ pub struct Config {
     pub menu_bar: bool,
     pub system_decorations: bool,
     pub minimize_button: bool,
+    #[serde(skip)]
     pub desktop_lyrics: crate::lyrics::Preferences,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, toml::Value>,
 }
 
 impl Default for Config {
@@ -41,7 +41,6 @@ impl Default for Config {
             system_decorations: false,
             minimize_button: true,
             desktop_lyrics: crate::lyrics::Preferences::default(),
-            extra: BTreeMap::new(),
         }
     }
 }
@@ -61,33 +60,24 @@ pub fn directory() -> PathBuf {
 
 impl Config {
     pub fn load() -> (Self, Option<String>) {
-        let path = directory().join("neoviolet_gui.toml");
-        match std::fs::read_to_string(&path) {
-            Ok(contents) => match toml::from_str::<Self>(&contents) {
-                Ok(mut config) => {
-                    config.normalize();
-                    (config, None)
-                }
-                Err(error) => (
-                    Self::default(),
-                    Some(format!("Could not read GUI settings: {error}")),
-                ),
-            },
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                let config = Self::default();
-                let warning = config.save().err();
-                (config, warning)
-            }
-            Err(error) => (
-                Self::default(),
-                Some(format!("Could not open GUI settings: {error}")),
-            ),
-        }
+        Self::load_from(&directory())
     }
 
-    fn normalize(&mut self) {
+    fn load_from(root: &Path) -> (Self, Option<String>) {
+        let (preferences, mut warning) = read_json::<Preferences>(&root.join("config.json"));
+        let mut config = preferences.gui;
+        config.desktop_lyrics = preferences.desktop_lyrics;
+        let (state, state_warning) = read_json::<LocalState>(&root.join("gui-state.json"));
+        warning = warning.or(state_warning);
+        config.window_width = state.main_window.width;
+        config.window_height = state.main_window.height;
+        config.desktop_lyrics.position = state.desktop_lyrics.position;
+        config.normalize();
+        (config, warning)
+    }
+
+    pub(crate) fn normalize(&mut self) {
         self.desktop_lyrics.normalize();
-        self.extra.remove("theme");
         self.font_size = self.font_size.clamp(8, 48);
         self.window_width = self.window_width.clamp(480, 7680);
         self.window_height = self.window_height.clamp(320, 4320);
@@ -101,60 +91,97 @@ impl Config {
         }
     }
 
+    pub(crate) fn preserve_window_state(&mut self, current: &Self) {
+        self.window_width = current.window_width;
+        self.window_height = current.window_height;
+        self.desktop_lyrics.position = current.desktop_lyrics.position;
+    }
+
     pub fn save(&self) -> Result<(), String> {
-        let directory = directory();
-        std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
-        let contents = toml::to_string_pretty(self).map_err(|error| error.to_string())?;
-        let temporary = directory.join(format!("neoviolet_gui.{}.tmp", std::process::id()));
-        std::fs::write(&temporary, contents).map_err(|error| error.to_string())?;
-        std::fs::rename(temporary, directory.join("neoviolet_gui.toml"))
-            .map_err(|error| error.to_string())
+        self.save_to(&directory())
+    }
+
+    fn save_to(&self, root: &Path) -> Result<(), String> {
+        std::fs::create_dir_all(root).map_err(|error| error.to_string())?;
+        let state = LocalState {
+            main_window: MainWindow {
+                width: self.window_width,
+                height: self.window_height,
+            },
+            desktop_lyrics: LyricsState {
+                position: self.desktop_lyrics.position,
+            },
+        };
+        let contents = serde_json::to_vec_pretty(&state).map_err(|error| error.to_string())?;
+        let temporary = root.join(format!(".gui-state.{}.tmp", std::process::id()));
+        let result = (|| {
+            use std::io::Write;
+            let mut file = std::fs::File::create(&temporary).map_err(|error| error.to_string())?;
+            file.write_all(&contents)
+                .map_err(|error| error.to_string())?;
+            file.sync_all().map_err(|error| error.to_string())?;
+            drop(file);
+            std::fs::rename(&temporary, root.join("gui-state.json"))
+                .map_err(|error| error.to_string())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(temporary);
+        }
+        result
+    }
+}
+
+// This is the Go-owned config projection, also used by the IPC snapshot.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(default)]
+pub struct Preferences {
+    pub gui: Config,
+    pub desktop_lyrics: crate::lyrics::Preferences,
+}
+
+#[derive(Default, Deserialize, Serialize)]
+#[serde(default)]
+struct LocalState {
+    main_window: MainWindow,
+    desktop_lyrics: LyricsState,
+}
+#[derive(Deserialize, Serialize)]
+#[serde(default)]
+struct MainWindow {
+    width: u32,
+    height: u32,
+}
+impl Default for MainWindow {
+    fn default() -> Self {
+        Self {
+            width: 1000,
+            height: 700,
+        }
+    }
+}
+#[derive(Default, Deserialize, Serialize)]
+#[serde(default)]
+struct LyricsState {
+    position: Option<crate::lyrics::Position>,
+}
+
+fn read_json<T: serde::de::DeserializeOwned + Default>(path: &Path) -> (T, Option<String>) {
+    match std::fs::read(path) {
+        Ok(data) => match serde_json::from_slice(&data) {
+            Ok(value) => (value, None),
+            Err(error) => (
+                T::default(),
+                Some(format!("Could not read {}: {error}", path.display())),
+            ),
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (T::default(), None),
+        Err(error) => (
+            T::default(),
+            Some(format!("Could not open {}: {error}", path.display())),
+        ),
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn settings_keep_unknown_sections_and_clamp_invalid_dimensions() {
-        let mut config: Config = toml::from_str(
-            "font_size = 1000\nwindow_width = 0\nopacity = nan\n[desktop_lyrics]\nenabled = false\n",
-        ).unwrap();
-        config.normalize();
-        assert_eq!(config.font_size, 48);
-        assert_eq!(config.window_width, 480);
-        assert_eq!(config.opacity, 1.0);
-        let saved = toml::to_string(&config).unwrap();
-        assert!(saved.contains("[desktop_lyrics]"));
-        assert!(saved.contains("enabled = false"));
-    }
-
-    #[test]
-    fn legacy_light_theme_is_discarded_and_new_settings_remain_dark_only() {
-        let mut config: Config = toml::from_str("theme = 'light'\nfont_size = 18\n").unwrap();
-        config.normalize();
-        let saved = toml::to_string(&config).unwrap();
-        assert!(!saved.contains("theme"));
-        assert_eq!(config.font_size, 18);
-    }
-
-    #[test]
-    fn lyric_preferences_normalize_invalid_values_and_preserve_unknown_keys() {
-        let mut config: Config = toml::from_str(
-            "[desktop_lyrics]\nfont_size = 999\nopacity = nan\nadditional_lines = false\nnext_line = true\nlegacy_value = 'keep'\n[desktop_lyrics.position]\nx = inf\ny = 0.0\n",
-        ).unwrap();
-        config.normalize();
-        assert_eq!(config.desktop_lyrics.font_size, 48);
-        assert_eq!(config.desktop_lyrics.opacity, 1.0);
-        assert!(config.desktop_lyrics.position.is_none());
-        let saved = toml::to_string(&config).unwrap();
-        let restored: Config = toml::from_str(&saved).unwrap();
-        assert!(!restored.desktop_lyrics.additional_lines);
-        assert!(restored.desktop_lyrics.next_line);
-        assert_eq!(
-            restored.desktop_lyrics.extra["legacy_value"].as_str(),
-            Some("keep")
-        );
-    }
-}
+#[path = "config_tests.rs"]
+mod tests;

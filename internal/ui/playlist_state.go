@@ -61,6 +61,9 @@ func (m *Model) loadPlaylists() tea.Cmd {
 		if err == nil {
 			path = filepath.Join(dir, "playlists.json")
 			lists, err = playlist.Load(path)
+			if err == nil {
+				fillPlaylistDurations(lists)
+			}
 		}
 		return playlistsLoadedMsg{generation: generation, path: path, lists: lists, unavailable: playlistAvailability(lists), err: err}
 	}

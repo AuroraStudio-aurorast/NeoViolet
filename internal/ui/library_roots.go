@@ -40,7 +40,7 @@ func (m *Model) updateLibraryRoots(msg tea.KeyPressMsg) tea.Cmd {
 	case "down", "j":
 		p.rootCursor = max(0, min(len(p.draft.Library.Roots)-1, p.rootCursor+1))
 	case "a":
-		return m.openFileBrowser("directory", p.cursors[3], "")
+		return m.openFilePicker("directory", p.cursors[3], "")
 	case "d":
 		roots := slices.Clone(p.draft.Library.Roots)
 		if len(roots) > 0 {

@@ -100,6 +100,59 @@ func (s *Song) Compile(rate int32) (*Timeline, error) {
 	return t, nil
 }
 
+// Duration returns the playback duration at rate, including the renderer's
+// fixed release tail, without materializing the event timeline.
+func (s *Song) Duration(rate int32) (time.Duration, error) {
+	numerator, denominator, err := timingRatio(s.division, rate)
+	if err != nil {
+		return 0, err
+	}
+	var tick, frame, remainder uint64
+	// #nosec G115 -- sample rate is validated positive and bounded by timingRatio; SMPTE high byte intentionally encodes a signed frame rate.
+	maxFrame := uint64(math.MaxInt64/int64(time.Second)) * uint64(rate)
+	advance := func(next uint64) error {
+		if next < tick {
+			return errors.New("unordered timeline")
+		}
+		hi, lo := bits.Mul64(next-tick, numerator)
+		lo, carry := bits.Add64(lo, remainder, 0)
+		hi += carry
+		if hi >= denominator {
+			return errors.New("timeline overflow")
+		}
+		q, r := bits.Div64(hi, lo, denominator)
+		if q > maxFrame-frame {
+			return errors.New("timeline duration overflow")
+		}
+		frame += q
+		remainder = r
+		tick = next
+		return nil
+	}
+	for _, tempo := range s.tempos {
+		if err = advance(tempo.tick); err != nil {
+			return 0, err
+		}
+		if s.division&0x8000 == 0 {
+			// #nosec G115 -- sample rate is validated by timingRatio.
+			numerator = uint64(tempo.tempo) * uint64(rate)
+		}
+	}
+	if err = advance(s.end); err != nil {
+		return 0, err
+	}
+	if frame != 0 || len(s.Events) > 0 {
+		// #nosec G115 -- sample rate is validated positive by timingRatio.
+		tail := uint64(rate) * 2
+		if frame+tail > maxFrame {
+			return 0, errors.New("tail duration overflow")
+		}
+		frame += tail
+	}
+	// #nosec G115 -- frame is bounded by maxFrame above.
+	return FramesDuration(int64(frame), rate), nil
+}
+
 // FramesDuration avoids multiplication overflow for API positions.
 func FramesDuration(frame int64, rate int32) time.Duration {
 	if frame <= 0 || rate <= 0 {

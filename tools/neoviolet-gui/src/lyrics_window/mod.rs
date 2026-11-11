@@ -1,7 +1,6 @@
-//! Native lyrics and settings windows; playback remains in the TUI.
+//! Native lyrics overlay and toolbar; settings and playback remain in the TUI.
 mod controls;
 mod geometry;
-mod settings;
 mod update;
 mod view;
 
@@ -20,7 +19,6 @@ const TOOLBAR_OFFSET: f32 = 80.0;
 #[derive(Debug, Clone)]
 pub enum Event {
     Opened(window::Id),
-    SettingsOpened(window::Id),
     Ready,
     #[cfg(target_os = "macos")]
     Capture(window::Id, u64),
@@ -32,7 +30,6 @@ pub enum Event {
     Linked(window::Id, bool),
     Visible(bool),
     Settings,
-    CloseSettings,
     ResetPosition,
     Hover(bool),
     ToolbarHover(bool),
@@ -41,11 +38,6 @@ pub enum Event {
     DragEnded,
     PlayPause,
     Locked(bool),
-    FontSize(f32),
-    Opacity(f32),
-    Highlight(Highlight),
-    AdditionalLines(bool),
-    NextLine(bool),
 }
 
 #[derive(Default)]
@@ -54,7 +46,6 @@ pub struct Overlay {
     pub playback: Option<bool>,
     pub window: Option<window::Id>,
     pub toolbar_window: Option<window::Id>,
-    pub settings_window: Option<window::Id>,
     hovered: bool,
     toolbar_hovered: bool,
     toolbar_visible: bool,

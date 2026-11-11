@@ -36,6 +36,12 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		if m.ipcServer != nil && event.Session == m.ipcServer.Session() {
 			m.ipcSession = event.Session
 			m.ipcAudioPicker = false
+			m.ipcSettingsPicker = false
+			m.clearNativePicker()
+			m.ipcPreferences = false
+			m.ipcPreferencesFeedback = false
+			m.ipcPreferencesPending = 0
+			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
 			m.ipcRevision = 0
 			m.pushIPCState(true)
@@ -43,8 +49,17 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		}
 	case "disconnected":
 		if event.Session == m.ipcSession {
+			if m.ipcPreferencesPending != 0 && m.configSave == nil {
+				m.Info.SetSuccess("Configuration saved; GUI will update after reconnect", m.Config.Error.Duration)
+			}
 			m.ipcSession = 0
 			m.ipcAudioPicker = false
+			m.ipcSettingsPicker = false
+			m.clearNativePicker()
+			m.ipcPreferences = false
+			m.ipcPreferencesFeedback = false
+			m.ipcPreferencesPending = 0
+			m.ipcPreferencesRevision = 0
 			m.ipcPickerID = ""
 		}
 		if m.ipcPendingOpen != nil && m.ipcPendingOpen.session == event.Session {
@@ -57,7 +72,7 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 		cmd, err := m.ipcRequest(event.Message)
 		if err != nil {
 			m.ipcResult(event.Session, event.Message.RequestID, "failed", err.Error())
-		} else if event.Message.Type != "open" && event.Message.Type != "file_picked" {
+		} else if event.Message.Type != "open" && event.Message.Type != "file_picked" && event.Message.Type != "set_preference" {
 			m.ipcResult(event.Session, event.Message.RequestID, "succeeded", "")
 		}
 		if event.Message.Type == "quit" {
@@ -76,14 +91,30 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 			return nil, fmt.Errorf("unsupported GUI client")
 		}
 		m.ipcAudioPicker = slices.Contains(message.Capabilities, "audio_file_picker")
+		m.ipcSettingsPicker = slices.Contains(message.Capabilities, "settings_file_picker")
+		m.ipcPreferences = slices.Contains(message.Capabilities, "settings_preferences")
+		m.ipcPreferencesFeedback = slices.Contains(message.Capabilities, "preferences_feedback")
+		m.pushGUIPreferences()
+	case "preferences_applied":
+		return nil, m.preferencesApplied(message)
 	case "file_picked":
-		return m.audioPicked(message), nil
+		return m.filePicked(message), nil
 	case "request_quit":
 		return nil, m.requestGUIQuit()
 	case "quit":
 		return nil, nil
 	case "get_state":
 		m.pushIPCState(true)
+		m.pushGUIPreferences()
+	case "open_picker":
+		if message.Purpose != "audio" || !m.ipcAudioPicker || m.pages == nil || m.pages.editor != nil || m.pages.picker != "" || m.pages.browser != nil || m.pages.rootEditor || m.pages.quitSettings || m.pages.deletePlaylist != "" || m.UI.Mode == ModeCommand {
+			return nil, fmt.Errorf("finish the current input before opening a file chooser")
+		}
+		return m.openFilePicker("audio", -1, ""), nil
+	case "open_settings":
+		return nil, m.openSettingsSection(message.Section)
+	case "set_preference":
+		return m.saveGUIPreference(message)
 	case "open":
 		if !validOpenLocation(message.Path) {
 			return nil, fmt.Errorf("invalid or unsupported audio source: %s", message.Path)
@@ -150,6 +181,7 @@ func (m *Model) finishIPCOpen(status, message string) {
 
 // requestGUIQuit decides from live Go state; a paused track still needs confirmation.
 func (m *Model) requestGUIQuit() error {
+	m.clearNativePicker()
 	if m.confirmSettingsQuit() {
 		return nil
 	}

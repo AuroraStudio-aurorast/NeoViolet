@@ -1,6 +1,4 @@
 //! Lyric display data derived from the MIT TUI's IPC contract.
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -228,9 +226,8 @@ pub struct Preferences {
     pub additional_lines: bool,
     pub next_line: bool,
     pub locked: bool,
+    #[serde(skip)]
     pub position: Option<Position>,
-    #[serde(flatten)]
-    pub extra: BTreeMap<String, toml::Value>,
 }
 
 impl Default for Preferences {
@@ -244,7 +241,6 @@ impl Default for Preferences {
             next_line: false,
             locked: false,
             position: None,
-            extra: BTreeMap::new(),
         }
     }
 }

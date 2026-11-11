@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 )
 
 // ProbeInfo describes a local file without initializing output or synthesizers.
@@ -66,7 +68,19 @@ func (fd *Decoder) Probe(ctx context.Context, path string) (ProbeInfo, error) {
 		}
 		probeTrailingTags(r, &result.Metadata)
 	case ".ape":
+		probeAPE(r, &result)
 		probeTrailingTags(r, &result.Metadata)
+	case ".mid", ".midi":
+		var err error
+		if valid, err = probeMIDI(ctx, file, &result); err != nil {
+			return result, err
+		}
+	default:
+		if synth.OpenmptSupportsExtension(ext) {
+			if err := probeTracker(ctx, file, stat.Size(), &result); err != nil {
+				return result, err
+			}
+		}
 	}
 	if r.err != nil {
 		return result, r.err
@@ -227,6 +241,11 @@ func probeFormat(b []byte) string {
 	n := len(b)
 	switch {
 	case n >= 3 && string(b[:3]) == "ID3":
+		for _, p := range id3Probes {
+			if ext, ok := p(b, n); ok {
+				return ext
+			}
+		}
 		return ".mp3"
 	case n >= 2 && b[0] == 255 && b[1]&0xe0 == 0xe0:
 		for _, p := range mpegProbes {

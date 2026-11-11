@@ -97,10 +97,10 @@ func (m *Model) ipcEvent(event ipc.Event) tea.Cmd {
 			m.result(message.RequestID, "succeeded", "")
 			return nil
 		case "file_picked":
-			if message.Purpose != "soundfont" {
+			if message.Purpose != "soundfont" || m.setup == nil {
 				break
 			}
-			if m.setup == nil || !m.native || message.RequestID != m.pickerID || m.pickerID == "" {
+			if !m.native || message.RequestID != m.pickerID || m.pickerID == "" {
 				return nil
 			}
 			m.pickerID = ""

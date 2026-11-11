@@ -18,9 +18,12 @@ impl App {
         };
         let closing = self.closing;
         let available = self.actions_available();
+        let finishing_preferences = self.finishing_preferences();
         let requests = requests.into_iter().filter(|request| {
             (!closing || matches!(request, ipc::Request::Quit))
                 && (available
+                    || (finishing_preferences
+                        && matches!(request, ipc::Request::SetPreference { .. }))
                     || matches!(
                         request,
                         ipc::Request::Quit
@@ -34,7 +37,10 @@ impl App {
         while let Some(request) = requests.next() {
             if matches!(
                 request,
-                ipc::Request::CheckQuit | ipc::Request::Quit | ipc::Request::FilePicked { .. }
+                ipc::Request::CheckQuit
+                    | ipc::Request::Quit
+                    | ipc::Request::FilePicked { .. }
+                    | ipc::Request::PreferencesApplied { .. }
             ) {
                 let command = ipc::Command {
                     request,
@@ -53,10 +59,8 @@ impl App {
                                     sender.send(command),
                                 )
                                 .await
-                                .map_err(|_| "The player is busy. Try closing again.".to_string())?
-                                .map_err(|_| {
-                                    "The player connection closed. Try closing again.".to_string()
-                                })
+                                .map_err(|_| "The player is busy. Try again.".to_string())?
+                                .map_err(|_| "The player connection closed. Try again.".to_string())
                             },
                             move |result| Message::LifecycleSent {
                                 session,
@@ -66,8 +70,7 @@ impl App {
                         ));
                     }
                     Err(_) => {
-                        self.notice =
-                            Some("The player connection closed. Try closing again.".into());
+                        self.notice = Some("The player connection closed. Try again.".into());
                     }
                 }
                 continue;
@@ -169,7 +172,7 @@ impl App {
             }
             _ => {}
         }
-        Task::none()
+        self.preference_result(&id, &status)
     }
 
     pub(super) fn apply_snapshot(&mut self, state: ipc::PlaybackState) -> Task<Message> {
@@ -191,8 +194,6 @@ impl App {
             return Task::none();
         }
         self.lyrics.playback = state.has_track.then_some(state.playing);
-        // The desktop window is GUI-owned; its explicit preference wins at each
-        // connection. Runtime changes in the TUI arrive through desktop_lyrics.
         self.playback = Some(state);
         Task::none()
     }

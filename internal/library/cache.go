@@ -11,8 +11,8 @@ import (
 	"sync"
 )
 
-// Version 2 invalidates metadata stored with the old APE-over-ID3 precedence.
-const cacheVersion = 2
+// Version 5 invalidates metadata stored before APE duration probing.
+const cacheVersion = 5
 
 var cacheWriteMu sync.Mutex
 

@@ -121,10 +121,7 @@ func runLrc(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 // Without a path, a capable GUI hosts the picker; standalone uses the TUI browser.
 func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	if inv.Rest == "" {
-		if m.ipcAudioPicker && m.ipcSession != 0 {
-			return m, m.requestAudioPicker()
-		}
-		return m, m.openFileBrowser("audio", -1, "")
+		return m, m.openFilePicker("audio", -1, "")
 	}
 	// Rest (not strings.Join(Parts[1:], " ")) so a file name with two adjacent
 	// spaces survives; trailing whitespace is dropped because a dragged file

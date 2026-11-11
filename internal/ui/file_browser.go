@@ -46,6 +46,9 @@ func (m *Model) openFileBrowser(purpose string, field int, start string) tea.Cmd
 		if purpose == "soundfont" && m.pages.draft.SoundfontPath != "" {
 			start = filepath.Dir(m.pages.draft.SoundfontPath)
 		}
+		if purpose == "player_binary" && m.pages.draft.GUI.NeovioletPath != "" {
+			start = filepath.Dir(m.pages.draft.GUI.NeovioletPath)
+		}
 		if purpose == "audio" && m.Audio.Player != nil && !remoteAudioLocation(m.Audio.Player.Path()) {
 			start = filepath.Dir(m.Audio.Player.Path())
 		}
@@ -112,6 +115,9 @@ func (m *Model) fileBrowserLocation(target string) tea.Cmd {
 			if purpose == "soundfont" && result.err == nil {
 				_, result.err = parseSetting(pageSetting{key: "soundfont_path"}, absolute)
 			}
+			if purpose == "player_binary" {
+				result.err = validatePlayerBinary(absolute)
+			}
 			return result
 		}
 		result.directory = true
@@ -144,6 +150,10 @@ func readBrowserDirectory(path, purpose string) ([]browserEntry, error) {
 		}
 		if purpose == "soundfont" {
 			allowed = strings.EqualFold(filepath.Ext(entry.Name()), ".sf2")
+		}
+		if purpose == "player_binary" && regular {
+			info, err := os.Stat(full)
+			allowed = err == nil && isPlayerBinary(full, info)
 		}
 		if !directory && (!regular || !allowed) {
 			continue
@@ -193,7 +203,7 @@ func (m *Model) applyFileBrowser(msg fileBrowserMsg) tea.Cmd {
 		m.pages.editor = nil
 		return nil
 	}
-	if b.purpose == "soundfont" {
+	if b.purpose == "soundfont" || b.purpose == "player_binary" {
 		if err := m.pages.applyDraftValue(b.field, msg.target); err != nil {
 			b.err = err.Error()
 			return nil

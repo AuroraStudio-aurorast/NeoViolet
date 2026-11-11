@@ -17,6 +17,7 @@ pub enum Action {
     DesktopLyrics,
     LyricsSettings,
     UnlockLyrics,
+    ResetLyricsPosition,
 }
 
 impl Action {
@@ -29,6 +30,7 @@ impl Action {
                 | Self::DesktopLyrics
                 | Self::LyricsSettings
                 | Self::UnlockLyrics
+                | Self::ResetLyricsPosition
         )
     }
 

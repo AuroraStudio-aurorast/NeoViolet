@@ -3,6 +3,7 @@
 /apecli
 /apecli.exe
 config.json
+gui-state.json
 history.txt
 *.log
 caches/

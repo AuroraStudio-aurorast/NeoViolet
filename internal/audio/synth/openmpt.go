@@ -68,6 +68,32 @@ func OpenmptSupportedFormats() []string {
 	return append([]string(nil), openmptFormats.list...)
 }
 
+// OpenmptSupportsExtension reports whether libopenmpt advertises ext. It uses
+// the same cached list as OpenmptSupportedFormats and is safe to call for every
+// scanned file; an unavailable library supports nothing here.
+func OpenmptSupportsExtension(ext string) bool {
+	api := ensureOpenmptLib()
+	if api == nil {
+		return false
+	}
+	ext = strings.TrimPrefix(strings.ToLower(ext), ".")
+	if ext == "" {
+		return false
+	}
+
+	openmptFormats.mu.Lock()
+	defer openmptFormats.mu.Unlock()
+	if openmptFormats.list == nil {
+		openmptFormats.list = queryOpenmptFormats(api)
+	}
+	for _, supported := range openmptFormats.list {
+		if supported == ext {
+			return true
+		}
+	}
+	return false
+}
+
 // queryOpenmptFormats asks the library for its extension list.
 func queryOpenmptFormats(api *openmptAPI) []string {
 	exts := api.getSupportedExtensions()

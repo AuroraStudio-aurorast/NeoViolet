@@ -9,14 +9,18 @@
 //
 // GUI → TUI message types:
 //
-//	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker"]}
-//	{"type": "file_picked", "purpose":"soundfont|audio", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
+//	{"type":"preferences_applied","revision":2,"status":"applied|restart_required|failed","restart_required":["gui.system_decorations"],"error":"..."}
+//
+//	{"type": "client_hello", "client":"neoviolet-gui", "protocol":1, "capabilities":["file_picker","audio_file_picker","settings_preferences","settings_file_picker","preferences_feedback"]}
+//	{"type": "file_picked", "purpose":"soundfont|audio|library_directory|player_binary", "request_id":"...", "status":"selected|cancelled|failed", "path":"..."}
 //	{"type": "open", "path": "/path/to/file or https://example.com/audio.mp3"}
 //	{"type": "desktop_lyrics", "enable": true|false}
 //	{"type": "play"} | {"type": "pause"} — idempotent playback control
 //	{"type": "seek", "position": 12.3} — absolute seconds, clamped to duration
 //	{"type": "set_volume", "volume": 0.5} — 0..1, including zero
 //	{"type": "get_state"} — request a full snapshot
+//	{"type": "open_picker", "purpose":"audio"} — ask Go to request the native audio chooser
+//	{"type": "open_settings"} — focus the TUI Settings page, retaining drafts
 //	{"type": "play_pause"}                  — toggle play/pause
 //	{"type": "request_quit"}                — ask Go whether confirmation is needed
 //	{"type": "quit"}                        — confirmed GUI close, clean up and exit
@@ -24,7 +28,7 @@
 // TUI → GUI message types:
 //
 //	{"type": "phase", "phase":"starting|wizard|initial_loading|ready"}
-//	{"type": "pick_file", "purpose":"soundfont|audio", "request_id":"..."}
+//	{"type": "pick_file", "purpose":"soundfont|audio|library_directory|player_binary", "request_id":"..."}
 //	{"type": "hello"}                       — authentication succeeded
 //	{"type": "desktop_lyrics", "enable": true|false} — synchronize overlay visibility
 //	{"type": "quit", "dialog": true}     — loaded track or load in progress; show confirmation
@@ -38,7 +42,7 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the raw TUI build version), and capabilities
-// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker"].
+// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker","preferences_feedback","player_recovery"].
 // Product versions never gate
 // protocol compatibility. Optional libopenmpt_version identifies the runtime-loaded
 // library and is omitted when the library is unavailable; it is not the build lock version.
@@ -48,8 +52,9 @@
 // phase on connection and on transitions; only ready enables application actions.
 // Initial load failure also reaches ready, allowing recovery; runtime replacements
 // do not re-enter initial_loading. A pick_file request and its file_picked reply
-// are scoped to one connection and request_id. Purpose soundfont is wizard-only,
-// with .sf2 validation in Go. Purpose audio is ready-only, requires the GUI
+// are scoped to one connection and request_id. Startup soundfont selection is
+// wizard-only, with .sf2 validation in Go; settings_file_picker adds its runtime
+// counterpart below. Purpose audio is ready-only, requires the GUI
 // audio_file_picker capability, and uses Go audio-path validation and loading.
 // Cancellation retains the current SoundFont or track.
 // state messages carry a state object: track_id (accepted load generation),
@@ -59,6 +64,48 @@
 // A snapshot is sent after authentication and on changes regardless of lyrics.
 // Progress is limited to 4 Hz; discrete changes are pushed immediately.
 // Unknown message types fail explicitly when request_id is present.
+// settings_navigation advertises open_settings. Navigation fails explicitly
+// while an editor, picker, confirmation or save owns the input; it never
+// discards that interaction. It does not change playback or save the draft.
+// settings_preferences adds optional open_settings section (gui|desktop_lyrics),
+// and preferences snapshots: {type:"preferences",revision:1,preferences:{gui:{...},desktop_lyrics:{...}}}.
+// Revisions increase within a connection. A client advertising settings_preferences
+// receives a full snapshot on negotiation/get_state and after successful saves,
+// never on playback ticks. GUI bootstrap reads these same sections from config.json;
+// only Go writes preferences. GUI writes geometry separately in gui-state.json.
+// preferences_feedback adds GUI acknowledgment after applying a preference
+// revision. It carries no request_id and receives no receipt of its own. The TUI
+// distinguishes disk save success from applied, restart_required and failed GUI
+// updates. Only the most recent pending saved revision may update its notice;
+// initial, stale and previous-connection feedback never replaces a save result.
+// A failed GUI update does not roll back the saved config. Window chrome and
+// player executable can remain restart_required across unrelated preference saves.
+// player_recovery permits set_preference for gui.neoviolet_path, validated as
+// an executable by Go before saving. A GUI may temporarily launch a user-chosen
+// player when its configured path no longer works, then submit this preference
+// after readiness and a full preferences snapshot. The GUI never writes it itself.
+// set_preference accepts key gui.font_size, desktop_lyrics.enabled or
+// desktop_lyrics.locked plus a JSON value. It persists asynchronously and sends
+// a terminal result only after saving; errors leave live preferences unchanged.
+// An active save/editor or conflicting dirty field rejects the request.
+// Window chrome and player path apply on the next GUI/player launch.
+// settings_file_picker extends pick_file/file_picked with ready-only purposes
+// soundfont, library_directory and player_binary. The startup wizard retains
+// its own SoundFont flow; replies are routed to the owner of their request ID.
+// Selected settings paths are validated by Go and update only the current draft.
+// Every runtime picker reply receives a terminal result. Audio success acknowledges load
+// dispatch; settings success acknowledges the validated draft update, not saving.
+// Cancellation receives result(cancelled). A capable GUI keeps terminal input
+// suspended until this acknowledgment, since PTY and TCP delivery are independent.
+// Cancellation preserves it; a failed native chooser falls back to the TUI browser.
+// GUI open_picker {purpose:"audio"} asks Go to initiate the same ready-only audio
+// chooser used by Home and :open. Its result acknowledges dispatch, not playback.
+// GUI advertises settings_file_picker only when it can host these chooser kinds.
+// A dialog and asynchronous selection validation belong to one authenticated
+// connection; disconnection, supersession and shutdown invalidate late replies.
+// A late file_picked for a request no longer owned by Go receives cancelled
+// without changing state. This includes PTY Escape or Quit overtaking native
+// completion; repeated late cancellation is acknowledged so GUI input can resume.
 //
 // The lyrics payload describes each line as Prefix followed by its display
 // sub-lines (Parts when it has any, otherwise Text). Words carries the timings
@@ -69,28 +116,37 @@
 package ipc
 
 import (
+	"encoding/json"
+
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/version"
 )
 
 // Message is a JSON message exchanged between TUI and GUI over IPC.
 type Message struct {
-	Type              string         `json:"type"`
-	Client            string         `json:"client,omitempty"`
-	Phase             string         `json:"phase,omitempty"`
-	Purpose           string         `json:"purpose,omitempty"`
-	RequestID         string         `json:"request_id,omitempty"`
-	Version           string         `json:"version,omitempty"`
-	LibopenmptVersion string         `json:"libopenmpt_version,omitempty"`
-	Protocol          int            `json:"protocol,omitempty"`
-	Capabilities      []string       `json:"capabilities,omitempty"`
-	Status            string         `json:"status,omitempty"`
-	Error             string         `json:"error,omitempty"`
-	Position          *float64       `json:"position,omitempty"`
-	Volume            *float64       `json:"volume,omitempty"`
-	State             *PlaybackState `json:"state,omitempty"`
-	Path              string         `json:"path,omitempty"`
-	Dialog            *bool          `json:"dialog,omitempty"` // quit: true=show dialog, false=quit now
+	RestartRequired   []string        `json:"restart_required,omitempty"`
+	Section           string          `json:"section,omitempty"`
+	Key               string          `json:"key,omitempty"`
+	Value             json.RawMessage `json:"value,omitempty"`
+	Revision          uint64          `json:"revision,omitempty"`
+	Preferences       *Preferences    `json:"preferences,omitempty"`
+	Type              string          `json:"type"`
+	Client            string          `json:"client,omitempty"`
+	Phase             string          `json:"phase,omitempty"`
+	Purpose           string          `json:"purpose,omitempty"`
+	RequestID         string          `json:"request_id,omitempty"`
+	Version           string          `json:"version,omitempty"`
+	LibopenmptVersion string          `json:"libopenmpt_version,omitempty"`
+	Protocol          int             `json:"protocol,omitempty"`
+	Capabilities      []string        `json:"capabilities,omitempty"`
+	Status            string          `json:"status,omitempty"`
+	Error             string          `json:"error,omitempty"`
+	Position          *float64        `json:"position,omitempty"`
+	Volume            *float64        `json:"volume,omitempty"`
+	State             *PlaybackState  `json:"state,omitempty"`
+	Path              string          `json:"path,omitempty"`
+	Dialog            *bool           `json:"dialog,omitempty"` // quit: true=show dialog, false=quit now
 
 	// desktop_lyrics: enable/disable streaming
 	Enable *bool `json:"enable,omitempty"`
@@ -100,6 +156,12 @@ type Message struct {
 	Elapsed float64         `json:"elapsed,omitempty"` // seconds
 	Title   string          `json:"title,omitempty"`
 	Artist  string          `json:"artist,omitempty"`
+}
+
+// Preferences is the complete Go-owned GUI projection; it excludes geometry.
+type Preferences struct {
+	GUI           config.GUIConfig           `json:"gui"`
+	DesktopLyrics config.DesktopLyricsConfig `json:"desktop_lyrics"`
 }
 
 // LyricLineJSON is a single lyric line serialized for IPC.
@@ -149,5 +211,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker", "preferences_feedback", "player_recovery"}}
 }

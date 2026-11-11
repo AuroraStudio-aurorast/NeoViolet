@@ -140,6 +140,71 @@ fn long_errors_keep_the_restart_action_clickable_at_the_minimum_window_size() {
 }
 
 #[test]
+fn stopped_player_keyboard_can_reach_program_recovery_without_changing_default() {
+    use iced::keyboard::{Key, key::Named};
+    let mut focus = Navigation::default();
+    let error = Dialog::Error("missing player".into());
+    assert!(matches!(
+        focus.key(&error, false, &Key::Named(Named::Enter), false),
+        Some(Message::Restart)
+    ));
+    focus.key(&error, false, &Key::Named(Named::Tab), true);
+    assert!(matches!(
+        focus.key(&error, false, &Key::Named(Named::Enter), false),
+        Some(Message::ChoosePlayer)
+    ));
+}
+
+#[test]
+fn long_player_failure_keeps_recovery_action_clickable_in_minimum_window() {
+    let dialog = Dialog::Error("The configured player is unavailable. ".repeat(100));
+    let size = Size::new(480.0, 320.0);
+    let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+        iced::Font::DEFAULT,
+        14.0.into(),
+    ));
+    let navigation = Navigation::default();
+    let view = iced::widget::stack![
+        iced::widget::button("Terminal")
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .on_press(Message::ConfirmQuit),
+        overlay(&dialog, "test", None, false, &navigation)
+    ];
+    let mut ui = iced_runtime::UserInterface::build(
+        view,
+        size,
+        iced_runtime::user_interface::Cache::new(),
+        &mut renderer,
+    );
+    let mut clipboard = iced::advanced::clipboard::Null;
+    let mut messages = Vec::new();
+    let position = Point::new(280.0, 259.0);
+    let events = [
+        iced::Event::Mouse(mouse::Event::CursorMoved { position }),
+        iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+        iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+    ];
+    let _ = ui.update(
+        &events,
+        mouse::Cursor::Available(position),
+        &mut renderer,
+        &mut clipboard,
+        &mut messages,
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| matches!(message, Message::ChoosePlayer))
+    );
+    assert!(
+        !messages
+            .iter()
+            .any(|message| matches!(message, Message::ConfirmQuit | Message::Restart))
+    );
+}
+
+#[test]
 fn online_dialog_leaves_text_keys_to_input_and_tabs_through_field_and_actions() {
     use iced::keyboard::{Key, key::Named};
     let dialog = Dialog::OpenOnlineAudio {

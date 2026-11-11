@@ -7,6 +7,7 @@ impl App {
     pub(super) fn update_inner(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::Ready => {}
+            Message::RestoreTerminalFocus => return self.focus(),
             Message::FlushPending { session, epoch } => {
                 if self.actions_available()
                     && !self.closing
@@ -34,10 +35,45 @@ impl App {
             } => {
                 if session == self.session
                     && epoch == self.connection_epoch
+                    && self
+                        .picker
+                        .as_ref()
+                        .is_some_and(|picker| picker.waiting_reply(&id))
+                {
+                    return self.picker_reply_timeout();
+                }
+                if session == self.session
+                    && epoch == self.connection_epoch
                     && self.requests.get(&id) == Some(&accepted)
                 {
                     self.requests.remove(&id);
-                    self.notice = Some("The player did not confirm the action in time. Check playback before trying again.".into());
+                    self.notice=Some("The player did not confirm the action in time. Check playback before trying again.".into());
+                    return self.preference_result(&id, "cancelled");
+                }
+            }
+            Message::PreferencesLyrics {
+                session,
+                epoch,
+                event,
+            } => {
+                let task = self.lyrics_event(event);
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && self.preferences_tasks > 0
+                {
+                    return self.track_preferences_task(task);
+                }
+                return task;
+            }
+            Message::PreferencesWorkDone { session, epoch } => {
+                if session == self.session
+                    && epoch == self.connection_epoch
+                    && self.preferences_tasks > 0
+                {
+                    self.preferences_tasks -= 1;
+                    if self.preferences_tasks == 0 {
+                        return self.acknowledge_preferences();
+                    }
                 }
             }
             Message::MainOpened => {
@@ -157,7 +193,11 @@ impl App {
                     } else {
                         Vec::new()
                     };
-                    return Task::batch([self.focus(), self.send_all(requests)]);
+                    return Task::batch([
+                        self.focus(),
+                        self.send_all(requests),
+                        self.save_recovery_path(),
+                    ]);
                 } else if matches!(self.dialog, Some(Dialog::About)) {
                     self.dialog = Some(Dialog::Error(
                         "The player is not running. Restart it or close this window.".into(),
@@ -169,6 +209,7 @@ impl App {
                     return Task::none();
                 }
                 self.closing = true;
+                self.preference_writes = Default::default();
                 self.dialog = None;
                 self.pending.clear();
                 self.requests.clear();
@@ -184,7 +225,14 @@ impl App {
                 return self.finish_quit();
             }
             Message::QuitDeadline => return self.finish_quit(),
+            Message::ChoosePlayer => return self.choose_player(),
+            Message::PlayerChosen { generation, result } => {
+                return self.player_chosen(generation, result);
+            }
             Message::Restart => {
+                if !self.basic_actions_available() {
+                    return Task::none();
+                }
                 let (config, warning) = config::Config::load();
                 return self.restart_with_config(config, warning);
             }

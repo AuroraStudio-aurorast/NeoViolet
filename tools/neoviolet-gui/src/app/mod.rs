@@ -5,6 +5,9 @@ mod desktop_events;
 mod integration;
 mod native;
 mod player;
+mod preferences;
+mod preferences_feedback;
+mod recovery;
 mod startup;
 #[cfg(test)]
 mod tests;
@@ -63,7 +66,13 @@ pub struct App {
     pub connection_error: Option<String>,
     startup: startup::Stage,
     lyrics_restored: bool,
+    preferences_revision: u64,
+    preferences_acknowledged: u64,
+    preferences_tasks: usize,
+    running_player_path: Option<String>,
+    preference_writes: preferences::Writes,
     picker: Option<startup::Picker>,
+    recovery: recovery::Recovery,
     handshake: ipc::Handshake,
     connection_epoch: u64,
     request_sequence: u64,
@@ -77,7 +86,7 @@ pub struct App {
     modifiers: Modifiers,
     exit_code: Option<i32>,
     closing: bool,
-    save_settings: bool,
+    save_state: bool,
     environment: std::collections::HashMap<String, String>,
 }
 
@@ -97,6 +106,15 @@ pub enum Message {
     Native(window::Id, iced::Event),
     Lyrics(lyrics_window::Event),
     Titlebar(titlebar::Message),
+    PreferencesLyrics {
+        session: u64,
+        epoch: u64,
+        event: lyrics_window::Event,
+    },
+    PreferencesWorkDone {
+        session: u64,
+        epoch: u64,
+    },
     Ready,
     MainOpened,
     MainConfigured,
@@ -121,9 +139,15 @@ pub enum Message {
     Dismiss,
     ConfirmQuit,
     Restart,
+    ChoosePlayer,
+    PlayerChosen {
+        generation: u64,
+        result: Result<Option<PathBuf>, String>,
+    },
     QuitDeadline,
     DismissNotice,
     RefreshState,
+    RestoreTerminalFocus,
     FlushPending {
         session: u64,
         epoch: u64,

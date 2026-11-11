@@ -73,7 +73,6 @@ var (
 	selNumberWithInt      objc.SEL
 	selNumberWithDouble   objc.SEL
 	selSetValueForKey     objc.SEL
-	selArrayWithObject    objc.SEL
 
 	selSharedApplication         objc.SEL
 	selSetActivationPolicy       objc.SEL
@@ -86,14 +85,13 @@ var (
 	selNotificationCenter      objc.SEL
 	selAddObserverSelectorName objc.SEL
 
-	selDefaultCenter         objc.SEL
-	selSetNowPlayingInfo     objc.SEL
-	selSetPlaybackState      objc.SEL
-	selSharedCommandCenter   objc.SEL
-	selAddTargetAction       objc.SEL
-	selRemoveTarget          objc.SEL
-	selSetPreferredIntervals objc.SEL
-	selInterval              objc.SEL
+	selDefaultCenter       objc.SEL
+	selSetNowPlayingInfo   objc.SEL
+	selSetPlaybackState    objc.SEL
+	selSharedCommandCenter objc.SEL
+	selAddTargetAction     objc.SEL
+	selRemoveTarget        objc.SEL
+	selSetEnabled          objc.SEL
 
 	selDataWithBytes objc.SEL
 	selInitWithData  objc.SEL
@@ -110,7 +108,6 @@ var (
 	_handlerSels = struct {
 		play, pause, stop, toggle objc.SEL
 		next, prev, changePos     objc.SEL
-		skipBackward, skipForward objc.SEL
 		sleep, wake               objc.SEL
 	}{}
 
@@ -126,7 +123,6 @@ var (
 	classNSString               objc.Class
 	classNSNumber               objc.Class
 	classNSMutableDictionary    objc.Class
-	classNSArray                objc.Class
 	classNSData                 objc.Class
 	classNSImage                objc.Class
 	classNSApplication          objc.Class
@@ -191,7 +187,6 @@ func registerObjCRuntime() error {
 	selNumberWithInt = objc.RegisterName("numberWithInt:")
 	selNumberWithDouble = objc.RegisterName("numberWithDouble:")
 	selSetValueForKey = objc.RegisterName("setValue:forKey:")
-	selArrayWithObject = objc.RegisterName("arrayWithObject:")
 
 	selSharedApplication = objc.RegisterName("sharedApplication")
 	selSetActivationPolicy = objc.RegisterName("setActivationPolicy:")
@@ -210,8 +205,7 @@ func registerObjCRuntime() error {
 	selSharedCommandCenter = objc.RegisterName("sharedCommandCenter")
 	selAddTargetAction = objc.RegisterName("addTarget:action:")
 	selRemoveTarget = objc.RegisterName("removeTarget:")
-	selSetPreferredIntervals = objc.RegisterName("setPreferredIntervals:")
-	selInterval = objc.RegisterName("interval")
+	selSetEnabled = objc.RegisterName("setEnabled:")
 
 	selDataWithBytes = objc.RegisterName("dataWithBytes:length:")
 	selInitWithData = objc.RegisterName("initWithData:")
@@ -234,8 +228,6 @@ func registerObjCRuntime() error {
 	_handlerSels.next = objc.RegisterName("handleNextTrackCommand:")
 	_handlerSels.prev = objc.RegisterName("handlePreviousTrackCommand:")
 	_handlerSels.changePos = objc.RegisterName("handleChangePlaybackPositionCommand:")
-	_handlerSels.skipBackward = objc.RegisterName("handleSkipBackwardCommand:")
-	_handlerSels.skipForward = objc.RegisterName("handleSkipForwardCommand:")
 	_handlerSels.sleep = objc.RegisterName("handleWillSleepOrPowerOff:")
 	_handlerSels.wake = objc.RegisterName("handleDidWake:")
 
@@ -247,7 +239,6 @@ func registerObjCRuntime() error {
 	classNSString = objc.GetClass("NSString")
 	classNSNumber = objc.GetClass("NSNumber")
 	classNSMutableDictionary = objc.GetClass("NSMutableDictionary")
-	classNSArray = objc.GetClass("NSArray")
 	classNSData = objc.GetClass("NSData")
 	classNSImage = objc.GetClass("NSImage")
 	classNSApplication = objc.GetClass("NSApplication")
@@ -269,8 +260,6 @@ func registerObjCRuntime() error {
 			{Cmd: _handlerSels.next, Fn: handleNext},
 			{Cmd: _handlerSels.prev, Fn: handlePrev},
 			{Cmd: _handlerSels.changePos, Fn: handleChangePos},
-			{Cmd: _handlerSels.skipBackward, Fn: handleSkipBackward},
-			{Cmd: _handlerSels.skipForward, Fn: handleSkipForward},
 			{Cmd: _handlerSels.sleep, Fn: handleSleep},
 			{Cmd: _handlerSels.wake, Fn: handleWake},
 		},

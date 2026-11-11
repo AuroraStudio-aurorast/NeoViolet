@@ -337,13 +337,19 @@ type Model struct {
 	ipcSession uint64
 	guiHosted  bool
 
-	ipcAudioPicker    bool
-	ipcPickerID       string
-	ipcPickerSequence uint64
-	ipcPendingOpen    *ipcOpenRequest
-	ipcLastState      ipc.PlaybackState
-	ipcLastPush       time.Time
-	ipcRevision       uint64
+	ipcPreferences         bool
+	ipcPreferencesFeedback bool
+	ipcPreferencesPending  uint64
+	ipcPreferencesRevision uint64
+	ipcAudioPicker         bool
+	ipcSettingsPicker      bool
+	ipcPicker              *nativePicker
+	ipcPickerID            string
+	ipcPickerSequence      uint64
+	ipcPendingOpen         *ipcOpenRequest
+	ipcLastState           ipc.PlaybackState
+	ipcLastPush            time.Time
+	ipcRevision            uint64
 
 	ipcLastSeekRevision uint64
 

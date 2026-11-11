@@ -44,9 +44,7 @@ Other options: neoviolet --help\n\
 GUI settings: {}\n\n\
 Example: neoviolet-gui --vol 50 song.flac",
         env!("CARGO_PKG_VERSION"),
-        crate::config::directory()
-            .join("neoviolet_gui.toml")
-            .display(),
+        crate::config::directory().join("config.json").display(),
     )
 }
 
