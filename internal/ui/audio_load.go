@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -15,9 +16,10 @@ import (
 // audioLoad owns a prepared player until the UI accepts it. Cancellation also
 // releases a result already queued in Bubble Tea, where it may never be handled.
 type audioLoad struct {
-	mu       sync.Mutex
-	canceled bool
-	player   audio.AudioPlayer
+	mu            sync.Mutex
+	canceled      bool
+	cancelRequest context.CancelFunc
+	player        audio.AudioPlayer
 }
 
 func (l *audioLoad) cancel() {
@@ -26,9 +28,14 @@ func (l *audioLoad) cancel() {
 	}
 	l.mu.Lock()
 	l.canceled = true
+	cancel := l.cancelRequest
+	l.cancelRequest = nil
 	player := l.player
 	l.player = nil
 	l.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	if player != nil {
 		_ = player.Close()
 	}
@@ -41,6 +48,7 @@ func (l *audioLoad) take() bool {
 		return false
 	}
 	l.player = nil
+	l.cancelRequest = nil // Accepted playback now owns its request lifetime.
 	return true
 }
 
@@ -64,7 +72,8 @@ func (l *audioLoad) deliver(msg tea.Msg) tea.Msg {
 
 func (m *Model) startAudioLoad(path string) tea.Cmd {
 	m.pendingLoad.cancel()
-	load := &audioLoad{}
+	ctx, cancel := context.WithCancel(context.Background())
+	load := &audioLoad{cancelRequest: cancel}
 	m.pendingLoad = load
 	generation := m.loadGeneration
 	sfPath, backend := m.Config.SoundfontPath, m.Config.TrackerBackend
@@ -76,7 +85,7 @@ func (m *Model) startAudioLoad(path string) tea.Cmd {
 			return nil
 		}
 		fmt.Fprint(os.Stdout, "\033]9;4;3;0\a")
-		return load.deliver(loadAudio(path, sfPath, backend, generation))
+		return load.deliver(loadAudioContext(ctx, path, sfPath, backend, generation))
 	}
 }
 
@@ -90,8 +99,12 @@ func discardAudioLoaded(msg AudioLoadedMsg) {
 	}
 }
 
-func loadAudio(filePath, sfPath, trackerBackend string, generation int) (result tea.Msg) {
-	logger.Info("Loading audio file", "path", filePath)
+func loadAudio(filePath, sfPath, trackerBackend string, generation int) tea.Msg {
+	return loadAudioContext(context.Background(), filePath, sfPath, trackerBackend, generation)
+}
+
+func loadAudioContext(ctx context.Context, filePath, sfPath, trackerBackend string, generation int) (result tea.Msg) {
+	logger.Info("Loading audio file", "path", audio.RedactSource(filePath))
 	player := audio.NewPlayer()
 	defer func() {
 		if _, loaded := result.(AudioLoadedMsg); !loaded {
@@ -108,8 +121,8 @@ func loadAudio(filePath, sfPath, trackerBackend string, generation int) (result 
 		return loadAudioFromStdin(player, generation)
 	}
 
-	if err := player.Open(filePath); err != nil {
-		logger.Error("Failed to load audio", "path", filePath, "err", err)
+	if err := player.OpenContext(ctx, filePath); err != nil {
+		logger.Error("Failed to load audio", "path", audio.RedactSource(filePath), "err", err)
 		return AudioLoadFailedMsg{Message: fmt.Sprintf("Failed to load audio: %v", err), Timer: 180, Generation: generation}
 	}
 	return AudioLoadedMsg{Player: player, Path: filePath, Generation: generation}

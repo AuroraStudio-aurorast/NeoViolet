@@ -203,3 +203,113 @@ fn long_player_failure_keeps_recovery_action_clickable_in_minimum_window() {
             .any(|message| matches!(message, Message::ConfirmQuit | Message::Restart))
     );
 }
+
+#[test]
+fn online_dialog_leaves_text_keys_to_input_and_tabs_through_field_and_actions() {
+    use iced::keyboard::{Key, key::Named};
+    let dialog = Dialog::OpenOnlineAudio {
+        url: String::new(),
+        error: None,
+    };
+    let mut navigation = Navigation::default();
+    assert!(
+        navigation
+            .key(&dialog, true, &Key::Named(Named::Space), false)
+            .is_none()
+    );
+    assert!(
+        navigation
+            .key(&dialog, true, &Key::Named(Named::Enter), false)
+            .is_none()
+    );
+    navigation.key(&dialog, true, &Key::Named(Named::Tab), false);
+    assert!(matches!(
+        navigation.key(&dialog, true, &Key::Named(Named::Enter), false),
+        Some(Message::Dismiss)
+    ));
+    navigation.key(&dialog, true, &Key::Named(Named::Tab), false);
+    assert!(matches!(
+        navigation.key(&dialog, true, &Key::Named(Named::Enter), false),
+        Some(Message::SubmitOnlineAudio)
+    ));
+    navigation.key(&dialog, true, &Key::Named(Named::Tab), false);
+    assert!(!navigation.visible());
+}
+
+#[test]
+fn online_audio_dialog_keeps_open_clickable_at_minimum_size() {
+    use iced::advanced::widget::Operation;
+    #[derive(Default)]
+    struct OpenBounds(Option<iced::Rectangle>);
+    impl Operation for OpenBounds {
+        fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn Operation)) {
+            operate(self);
+        }
+        fn text(&mut self, _: Option<&iced::widget::Id>, bounds: iced::Rectangle, text: &str) {
+            if text == "Open" {
+                self.0 = Some(bounds);
+            }
+        }
+    }
+    for font in [iced::Font::DEFAULT, iced::Font::MONOSPACE] {
+        for error in [
+            None,
+            Some("Enter a valid HTTP or HTTPS audio URL.".to_owned()),
+        ] {
+            let dialog = Dialog::OpenOnlineAudio {
+                url: "https://audio.example.test/a.mp3".to_owned(),
+                error,
+            };
+            let size = Size::new(480.0, 320.0);
+            let mut renderer =
+                iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(font, 14.0.into()));
+            let navigation = Navigation::default();
+            let view = iced::widget::stack![
+                iced::widget::button("Terminal")
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .on_press(Message::ConfirmQuit),
+                overlay(&dialog, "test", None, true, &navigation),
+            ];
+            let mut ui = iced_runtime::UserInterface::build(
+                view,
+                size,
+                iced_runtime::user_interface::Cache::new(),
+                &mut renderer,
+            );
+            let mut clipboard = iced::advanced::clipboard::Null;
+            let mut messages = Vec::new();
+            // Find the laid-out label instead of assuming a platform's font metrics.
+            let mut open = OpenBounds::default();
+            ui.operate(&renderer, &mut open);
+            let bounds = open.0.expect("Open must be present in the dialog");
+            assert!(
+                bounds.is_within(&iced::Rectangle::with_size(size)),
+                "Open fell outside the minimum window: {bounds:?}"
+            );
+            let position = bounds.center();
+            let events = [
+                iced::Event::Mouse(mouse::Event::CursorMoved { position }),
+                iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+                iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+            ];
+            let _ = ui.update(
+                &events,
+                mouse::Cursor::Available(position),
+                &mut renderer,
+                &mut clipboard,
+                &mut messages,
+            );
+            assert!(
+                messages
+                    .iter()
+                    .any(|message| matches!(message, Message::SubmitOnlineAudio))
+            );
+            assert!(
+                !messages
+                    .iter()
+                    .any(|message| matches!(message, Message::ConfirmQuit))
+            );
+        }
+    }
+}

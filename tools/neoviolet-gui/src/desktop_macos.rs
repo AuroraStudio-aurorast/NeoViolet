@@ -144,7 +144,13 @@ impl Desktop {
         );
         let unlock_item = MenuItem::with_id("unlock_lyrics", "Unlock Desktop Lyrics", false, None);
         for (label, entries) in [
-            ("File", vec![("open", "Open File…", Some(Code::KeyO))]),
+            (
+                "File",
+                vec![
+                    ("open", "Open File…", Some(Code::KeyO)),
+                    ("open_online_audio", "Open Online Audio…", None),
+                ],
+            ),
             (
                 "Edit",
                 vec![
@@ -234,6 +240,7 @@ impl Desktop {
                 "preferences" => Action::Preferences,
                 "quit" => Action::Quit,
                 "open" => Action::Open,
+                "open_online_audio" => Action::OpenOnlineAudio,
                 "copy" => Action::Copy,
                 "paste" => Action::Paste,
                 "zoom_in" => Action::ZoomIn,

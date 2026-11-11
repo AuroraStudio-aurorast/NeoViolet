@@ -116,8 +116,8 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 	case "set_preference":
 		return m.saveGUIPreference(message)
 	case "open":
-		if !isValidAudioPath(message.Path) {
-			return nil, fmt.Errorf("invalid or unsupported audio file: %s", message.Path)
+		if !validOpenLocation(message.Path) {
+			return nil, fmt.Errorf("invalid or unsupported audio source: %s", message.Path)
 		}
 		_, cmd := handleLoadTrack(m, LoadTrackMsg{Path: message.Path})
 		m.ipcPendingOpen = &ipcOpenRequest{id: message.RequestID, session: m.ipcSession}

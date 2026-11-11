@@ -1,5 +1,5 @@
 //! Message routing and application lifecycle decisions.
-use super::{App, Dialog, Message};
+use super::{App, Dialog, Message, online_audio_url_is_valid};
 use crate::{config, desktop, ipc};
 use iced::{Task, window};
 
@@ -129,6 +129,11 @@ impl App {
                 ]);
             }
             Message::Pasted(Some(text)) => {
+                if let Some(Dialog::OpenOnlineAudio { url, error }) = &mut self.dialog {
+                    *url = text.trim().to_owned();
+                    *error = None;
+                    return iced::widget::operation::focus("online-audio-url");
+                }
                 if self.basic_actions_available()
                     && self.dialog.is_none()
                     && self.running
@@ -138,6 +143,28 @@ impl App {
                 }
             }
             Message::Pasted(None) => {}
+            Message::OnlineAudioURLChanged(value) => {
+                if let Some(Dialog::OpenOnlineAudio { url, error }) = &mut self.dialog {
+                    *url = value;
+                    *error = None;
+                }
+            }
+            Message::SubmitOnlineAudio => {
+                if !self.actions_available() {
+                    return Task::none();
+                }
+                let Some(Dialog::OpenOnlineAudio { url, error }) = &mut self.dialog else {
+                    return Task::none();
+                };
+                let value = url.trim().to_owned();
+                if !online_audio_url_is_valid(&value) {
+                    *error = Some("Enter a valid HTTP or HTTPS audio URL.".into());
+                    return iced::widget::operation::focus("online-audio-url");
+                }
+                self.dialog = None;
+                let open = self.open(std::path::PathBuf::from(value));
+                return Task::batch([open, self.focus()]);
+            }
             Message::Sent(Err(error)) => {
                 self.dialog = Some(Dialog::Error(error));
                 return self.reveal_main();

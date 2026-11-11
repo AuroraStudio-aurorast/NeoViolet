@@ -395,3 +395,29 @@ func TestSavedWriteFailureCancelsConcurrentSaveAndQuit(t *testing.T) {
 		})
 	}
 }
+
+func TestSavedRemoteSourcesAreRedactedOnlyForDisplay(t *testing.T) {
+	m := savedFixture(t)
+	// #nosec G101 -- deliberately fake credentials exercise presentation redaction.
+	url := "HTTPS://user:password@audio.test/a.mp3?token=private-secret"
+	list := playlist.List{ID: "remote", Name: "Online", Tracks: []library.Track{{Path: url}}}
+	m.playlists.lists = []playlist.List{list}
+	m.playlists.unavailable = playlistAvailability(m.playlists.lists)
+	if issue := m.playlists.unavailable[url]; issue != "" {
+		t.Fatalf("remote URL marked unavailable: %s", issue)
+	}
+	m.pages.collection = 0
+	m.pages.saved = true
+	m.pages.detail = true
+	c := newPageCanvas(180, 24, m)
+	m.renderCollections(c, true)
+	display := c.String()
+	for _, secret := range []string{"user:", "password", "private-secret", "token="} {
+		if strings.Contains(display, secret) {
+			t.Fatalf("playlist display exposes %s", secret)
+		}
+	}
+	if m.playlists.lists[0].Tracks[0].Path != url {
+		t.Fatal("redaction changed operational URL")
+	}
+}

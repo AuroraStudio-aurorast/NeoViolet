@@ -135,7 +135,8 @@ func validate(lists []List) error {
 	return nil
 }
 func isURL(path string) bool {
-	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
+	scheme, _, ok := strings.Cut(path, "://")
+	return ok && (strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https"))
 }
 func validateReference(path string) error {
 	if path == "" || path == "-" || path == "stdin" {

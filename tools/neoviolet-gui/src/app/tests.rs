@@ -631,3 +631,83 @@ mod settings_integration_tests;
 
 #[path = "recovery_tests.rs"]
 mod recovery_tests;
+
+#[test]
+fn stale_online_submit_does_not_dismiss_a_different_dialog() {
+    let mut app = app();
+    app.dialog = Some(Dialog::Quit);
+    let _ = app.update(Message::SubmitOnlineAudio);
+    assert!(matches!(app.dialog, Some(Dialog::Quit)));
+}
+
+#[tokio::test]
+async fn online_audio_action_focuses_url_field() {
+    use iced::advanced::widget::operation::Focusable;
+    use iced::futures::StreamExt;
+    #[derive(Default)]
+    struct Focus(bool);
+    impl Focusable for Focus {
+        fn is_focused(&self) -> bool {
+            self.0
+        }
+        fn focus(&mut self) {
+            self.0 = true;
+        }
+        fn unfocus(&mut self) {
+            self.0 = false;
+        }
+    }
+    let mut app = app();
+    app.dialog = None;
+    let task = app.action(Action::OpenOnlineAudio);
+    let target = iced::widget::Id::new("online-audio-url");
+    let mut focus = Focus::default();
+    if let Some(mut actions) = iced_runtime::task::into_stream(task) {
+        while let Some(action) = actions.next().await {
+            if let iced_runtime::Action::Widget(mut op) = action {
+                op.focusable(Some(&target), iced::Rectangle::default(), &mut focus);
+            }
+        }
+    }
+    assert!(focus.0, "opening online audio must focus the URL field");
+}
+
+#[cfg(not(target_os = "windows"))]
+#[tokio::test]
+async fn online_audio_submission_restores_terminal_focus() {
+    use iced::advanced::widget::operation::Focusable;
+    use iced::futures::StreamExt;
+    #[derive(Default)]
+    struct Focus(bool);
+    impl Focusable for Focus {
+        fn is_focused(&self) -> bool {
+            self.0
+        }
+        fn focus(&mut self) {
+            self.0 = true;
+        }
+        fn unfocus(&mut self) {
+            self.0 = false;
+        }
+    }
+    let mut app = app();
+    app.terminal = Some(Terminal::new(2, settings::Settings::default()).unwrap());
+    let target = app.terminal.as_ref().unwrap().widget_id().clone();
+    app.dialog = Some(Dialog::OpenOnlineAudio {
+        url: "https://audio.example.test/a.mp3".into(),
+        error: None,
+    });
+    let task = app.update(Message::SubmitOnlineAudio);
+    let mut focus = Focus::default();
+    if let Some(mut actions) = iced_runtime::task::into_stream(task) {
+        while let Some(action) = actions.next().await {
+            if let iced_runtime::Action::Widget(mut op) = action {
+                op.focusable(Some(&target), iced::Rectangle::default(), &mut focus);
+            }
+        }
+    }
+    assert!(
+        focus.0,
+        "successful URL submission must restore terminal focus"
+    );
+}

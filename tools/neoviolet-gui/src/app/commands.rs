@@ -72,6 +72,15 @@ impl App {
                     }),
                 );
             }
+            Action::OpenOnlineAudio => {
+                self.dialog = Some(Dialog::OpenOnlineAudio {
+                    url: String::new(),
+                    error: None,
+                });
+                return self
+                    .reveal_main()
+                    .chain(iced::widget::operation::focus("online-audio-url"));
+            }
             Action::Preferences => {
                 if self.dialog.is_some() {
                     return Task::none();
