@@ -319,6 +319,10 @@ pub fn configure_main(
             let appearance = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua });
             window.setAppearance(appearance.as_deref());
             NSApplication::sharedApplication(marker).setAppearance(appearance.as_deref());
+            let touchbar_sender = sender.clone();
+            super::touch_bar::install(id, &window, move |event| {
+                let _ = touchbar_sender.send(Event::TouchBar(event));
+            });
             super::chrome::install(id, view, &window, f64::from(crate::titlebar::HEIGHT));
             super::chrome::on_title_inset(id, move |inset| {
                 let _ = sender.send(Event::TitleInset(id, inset));

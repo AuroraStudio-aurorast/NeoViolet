@@ -44,6 +44,10 @@ tempfile = "3"
 name = "native_chrome"
 harness = false
 
+[[test]]
+name = "native_touchbar"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = "thin"
