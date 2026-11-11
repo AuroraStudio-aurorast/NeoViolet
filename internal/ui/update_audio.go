@@ -92,8 +92,8 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 		m.Audio.CurrentSong = msg.Player.Title()
 		logger.Info("Audio loaded", "title", msg.Player.Title(), "artist", msg.Player.Artist())
 	} else {
-		m.Audio.CurrentSong = filepath.Base(msg.Path)
-		logger.Info("Audio loaded (no tags)", "file", filepath.Base(msg.Path))
+		m.Audio.CurrentSong = filepath.Base(audio.RedactSource(msg.Path))
+		logger.Info("Audio loaded (no tags)", "file", filepath.Base(audio.RedactSource(msg.Path)))
 	}
 	if msg.Player.Artist() != "" {
 		m.Audio.Artist = msg.Player.Artist()
@@ -121,7 +121,11 @@ func handleAudioLoaded(m *Model, msg AudioLoadedMsg) (tea.Model, tea.Cmd) {
 	if m.Config.Lyrics.Enabled {
 		preferred := m.preferredLyricFormat
 		m.preferredLyricFormat = ""
-		data, err := lyrics.FindAndParsePreferred(msg.Path, m.Config.Lyrics.FormatPriority, preferred)
+		var data *lyrics.Data
+		var err error
+		if !remoteAudioLocation(msg.Path) {
+			data, err = lyrics.FindAndParsePreferred(msg.Path, m.Config.Lyrics.FormatPriority, preferred)
+		}
 		if err != nil {
 			m.Error.Set(fmt.Sprintf("Failed to parse lyrics: %v", err), 180)
 		} else if data != nil {
@@ -192,7 +196,7 @@ func (m *Model) loadTrackAnimation(path string) tea.Cmd {
 	m.heldTrackAnimation = false
 	m.Anim.Close()
 	m.animRequested = false
-	if !follow {
+	if !follow || remoteAudioLocation(path) {
 		return nil
 	}
 	plan := m.layoutPlan()

@@ -2,8 +2,11 @@ package ui
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -117,5 +120,73 @@ func TestOpenLongURLHistoryRecallPreservesWholeCommand(t *testing.T) {
 	handleCommandModeKeyPress(m, tea.KeyPressMsg{Code: tea.KeyUp})
 	if got := m.Components.CommandInput.Value(); got != command {
 		t.Fatalf("recalled %d characters, want %d", len(got), len(command))
+	}
+}
+
+func TestLongURLPasteWithoutTrailingCommandSpace(t *testing.T) {
+	url := "https://audio.example.test/a.mp3?token=" + strings.Repeat("x", 300)
+	for _, name := range []string{"open", "load", "e"} {
+		for _, whole := range []bool{false, true} {
+			m := commandModeModel(t, name)
+			payload := url
+			if whole {
+				m = commandModeModel(t, "")
+				payload = name + " " + url
+			}
+			handlePaste(m, payload)
+			if got, want := m.Components.CommandInput.Value(), name+" "+url; got != want {
+				t.Errorf("%s whole=%v: pasted %q, want full %d-character command", name, whole, got, len(want))
+			}
+		}
+	}
+}
+
+func TestLongURLPasteAfterCommandCompletion(t *testing.T) {
+	m := commandModeModel(t, "op")
+	cycleCompletion(m, 1)
+	url := "https://audio.example.test/a.mp3?token=" + strings.Repeat("x", 300)
+	handlePaste(m, url)
+	if got, want := m.Components.CommandInput.Value(), "open "+url; got != want {
+		t.Fatalf("pasted %q, want full completed command", got)
+	}
+}
+
+type remoteDisplayPlayer struct{ mockPlayer }
+
+func (*remoteDisplayPlayer) Title() string { return "audio.example.test/track.mp3" }
+
+func TestRemoteLoadedTrackSkipsLocalLyricSidecars(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("TMPDIR", dir)
+	if err := logger.Init(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = logger.Close() })
+	m, _ := currentTrackModel()
+	m.Config.Lyrics.Enabled = true
+	m.Config.Lyrics.FormatPriority = []string{"embedded", "lrc"}
+	source := "https://audio.example.test/track.mp3?token=private-success-secret"
+	player := &remoteDisplayPlayer{mockPlayer{path: source}}
+	handleAudioLoaded(m, AudioLoadedMsg{Player: player, Path: source, Generation: m.loadGeneration})
+	// #nosec G304 -- reads only the logger fixture in this test's private temp directory.
+	contents, err := os.ReadFile(filepath.Join(dir, "neoviolet.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(contents), "private-success-secret") {
+		t.Fatalf("local sidecar lookup leaked remote source: %s", contents)
+	}
+}
+
+func TestRemoteQueueFormatOmitsQueryAndKeepsSource(t *testing.T) {
+	m := setupModel()
+	source := "https://audio.example.test/track.mp3?token=private-secret"
+	m.acceptQueueTrack(source)
+	track := m.session.entries[0].track
+	if track.Path != source {
+		t.Fatal("operational source was redacted")
+	}
+	if track.Format != "MP3" {
+		t.Fatalf("queue format = %q, want MP3", track.Format)
 	}
 }

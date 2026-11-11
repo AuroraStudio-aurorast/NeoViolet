@@ -265,7 +265,7 @@ func syncCommandInputLimit(m *Model) {
 		value := m.Components.CommandInput.Value()
 		fields := strings.Fields(value)
 		if len(fields) > 0 {
-			if spec, ok := commandLookup(fields[0]); ok && spec.Name == "open" && (len(fields) > 1 || strings.TrimSpace(value) != value) {
+			if spec, ok := commandLookup(fields[0]); ok && spec.Name == "open" {
 				limit = openLimit
 			}
 		}
@@ -309,6 +309,7 @@ func acceptCompletion(m *Model, index int) {
 	// The written value is the segment's text now: the next cycle replaces it.
 	m.completionSeg = segment{Index: seg.Index, Prefix: value, Start: seg.Start, End: end}
 	m.completionIndex = index
+	syncCommandInputLimit(m)
 	syncGhostSuggestions(m)
 	// The written value changes the row budget by itself, not only through the
 	// ghost suggestion the budget reads off it, and the candidate it reads is the
