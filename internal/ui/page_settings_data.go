@@ -8,7 +8,7 @@ type pageSetting struct {
 	options                     []string
 }
 
-var pageSettingGroups = [...]string{"Library & Playback", "Lyrics", "Appearance", "Playback Engines", "Animation", "Advanced"}
+var pageSettingGroups = [...]string{"Library & Playback", "Lyrics", "Appearance", "Playback Engines", "Animation", "GUI", "Desktop Lyrics", "Advanced"}
 
 func samplePageSettings() []pageSetting {
 	fields := []pageSetting{
@@ -30,20 +30,35 @@ func samplePageSettings() []pageSetting {
 		{group: 4, key: "anim.auto", label: "Auto-play sidecar", value: "Off", options: []string{"Off", "On"}},
 		{group: 4, key: "anim.photosensitivity.mode", label: "Flash check", value: "either", options: []string{"either", "declared", "off"}},
 		{group: 4, key: "anim.power.warn_below", label: "Low battery warning", value: "20%"},
-		{group: 5, key: "lyrics.panel.width", label: "Panel width", value: "auto"},
-		{group: 5, key: "lyrics.panel.context_lines", label: "Context lines", value: "Fill available rows"},
-		{group: 5, key: "lyrics.scroll_speed", label: "Scroll speed", value: "6 ticks"},
-		{group: 5, key: "lyrics.fetch.base_url", label: "Service URL", value: "https://lrclib.net"},
-		{group: 5, key: "lyrics.fetch.timeout", label: "Request timeout", value: "10 s"},
-		{group: 5, key: "lyrics.fetch.security", label: "Security", value: "strict", options: []string{"strict", "basic"}},
-		{group: 5, key: "lyrics.fetch.insecure_tls", label: "Allow insecure TLS", value: "Off", options: []string{"Off", "On"}},
-		{group: 5, key: "progress_bar.fill", label: "Progress characters", value: "▮ ▯"},
-		{group: 5, key: "progress_bar.scaled", label: "Scaled progress", value: "Off", options: []string{"Off", "On"}},
-		{group: 5, key: "volume_bar.fill", label: "Volume characters", value: "▰ ▱"},
-		{group: 5, key: "volume_bar.width", label: "Volume width", value: "16 columns"},
-		{group: 5, key: "tick_rate", label: "UI tick rate", value: "30 / s"},
-		{group: 5, key: "command_history.max", label: "History limit", value: "50 commands"},
-		{group: 5, key: "error.duration", label: "Message duration", value: "90 ticks"},
+		{group: 5, key: "gui.monospace_font", label: "Terminal font"},
+		{group: 5, key: "gui.font_size", label: "Terminal font size"},
+		{group: 5, key: "gui.opacity", label: "Terminal opacity"},
+		{group: 5, key: "gui.zoom_via_scroll", label: "Scroll to zoom", options: []string{"Off", "On"}},
+		{group: 5, key: "gui.menu_bar", label: "Window menu bar", options: []string{"Off", "On"}},
+		{group: 5, key: "gui.minimize_button", label: "Minimize button", options: []string{"Off", "On"}},
+		{group: 5, key: "gui.system_decorations", label: "System chrome (reopen GUI)", options: []string{"Off", "On"}},
+		{group: 5, key: "gui.neoviolet_path", label: "Player path (next launch)", kind: "file"},
+		{group: 6, key: "desktop_lyrics.enabled", label: "Desktop lyrics", options: []string{"On", "Off"}},
+		{group: 6, key: "desktop_lyrics.font_size", label: "Desktop font size"},
+		{group: 6, key: "desktop_lyrics.opacity", label: "Desktop opacity"},
+		{group: 6, key: "desktop_lyrics.highlight", label: "Highlight color", options: []string{"violet", "white"}},
+		{group: 6, key: "desktop_lyrics.additional_lines", label: "Translation / extra lines", options: []string{"On", "Off"}},
+		{group: 6, key: "desktop_lyrics.next_line", label: "Preview next line", options: []string{"Off", "On"}},
+		{group: 6, key: "desktop_lyrics.locked", label: "Lock desktop lyrics", options: []string{"Off", "On"}},
+		{group: 7, key: "lyrics.panel.width", label: "Panel width", value: "auto"},
+		{group: 7, key: "lyrics.panel.context_lines", label: "Context lines", value: "Fill available rows"},
+		{group: 7, key: "lyrics.scroll_speed", label: "Scroll speed", value: "6 ticks"},
+		{group: 7, key: "lyrics.fetch.base_url", label: "Service URL", value: "https://lrclib.net"},
+		{group: 7, key: "lyrics.fetch.timeout", label: "Request timeout", value: "10 s"},
+		{group: 7, key: "lyrics.fetch.security", label: "Security", value: "strict", options: []string{"strict", "basic"}},
+		{group: 7, key: "lyrics.fetch.insecure_tls", label: "Allow insecure TLS", value: "Off", options: []string{"Off", "On"}},
+		{group: 7, key: "progress_bar.fill", label: "Progress characters", value: "▮ ▯"},
+		{group: 7, key: "progress_bar.scaled", label: "Scaled progress", value: "Off", options: []string{"Off", "On"}},
+		{group: 7, key: "volume_bar.fill", label: "Volume characters", value: "▰ ▱"},
+		{group: 7, key: "volume_bar.width", label: "Volume width", value: "16 columns"},
+		{group: 7, key: "tick_rate", label: "UI tick rate", value: "30 / s"},
+		{group: 7, key: "command_history.max", label: "History limit", value: "50 commands"},
+		{group: 7, key: "error.duration", label: "Message duration", value: "90 ticks"},
 	}
 	for i := range fields {
 		fields[i].initial = fields[i].value

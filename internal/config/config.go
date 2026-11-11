@@ -152,6 +152,8 @@ func (a AccentConfig) IsEnabled() bool {
 
 // Config is the root user configuration, persisted as JSON.
 type Config struct {
+	GUI             GUIConfig            `json:"gui"`
+	DesktopLyrics   DesktopLyricsConfig  `json:"desktop_lyrics"`
 	Library         LibraryConfig        `json:"library"`
 	IconTheme       string               `json:"icon_theme"`
 	DefaultVolume   float64              `json:"default_volume"`
@@ -174,6 +176,8 @@ type Config struct {
 // value changed (so the caller can decide to re-save).
 func (c *Config) Normalize() bool {
 	orig := *c
+	c.GUI.normalize()
+	c.DesktopLyrics.normalize()
 	if c.DefaultVolume < 0 || c.DefaultVolume > 1.0 {
 		if c.DefaultVolume < 0 {
 			c.DefaultVolume = 0
@@ -242,7 +246,7 @@ func (c *Config) Normalize() bool {
 		f.Timeout != orig.Lyrics.Fetch.Timeout ||
 		f.Security != orig.Lyrics.Fetch.Security ||
 		f.InsecureTLS != orig.Lyrics.Fetch.InsecureTLS
-	return volumeChanged || fetchChanged || panelChanged || animChanged || c.TrackSwitchMode != orig.TrackSwitchMode
+	return c.GUI != orig.GUI || c.DesktopLyrics != orig.DesktopLyrics || volumeChanged || fetchChanged || panelChanged || animChanged || c.TrackSwitchMode != orig.TrackSwitchMode
 }
 
 // normalizeLyricsPanel clamps the panel settings into their documented ranges.
@@ -298,6 +302,8 @@ func isPrivateHost(host string) bool {
 // DefaultConfig returns the built-in default configuration.
 func DefaultConfig() Config {
 	return Config{
+		GUI:             defaultGUI(),
+		DesktopLyrics:   defaultDesktopLyrics(),
 		IconTheme:       "nerd",
 		DefaultVolume:   1.0,
 		VolumeStep:      0.1,

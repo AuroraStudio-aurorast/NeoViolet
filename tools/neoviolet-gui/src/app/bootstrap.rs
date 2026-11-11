@@ -12,7 +12,7 @@ impl App {
         warning: Option<String>,
         desktop: Result<desktop::Desktop, String>,
     ) -> (Self, Task<Message>) {
-        let save_settings = warning.is_none();
+        let save_state = warning.is_none();
         let warning = warning.or_else(|| desktop.as_ref().err().cloned());
         let family = Box::leak(config.monospace_font.clone().into_boxed_str());
         #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -22,7 +22,7 @@ impl App {
         let (main_window, open_main) = window::open(window::Settings {
             size: iced::Size::new(config.window_width as f32, config.window_height as f32),
             min_size: Some(iced::Size::new(480.0, 320.0)),
-            transparent: config.opacity < 1.0,
+            transparent: true,
             decorations: window_decorations,
             #[cfg(target_os = "macos")]
             platform_specific: window::settings::PlatformSpecific {
@@ -54,7 +54,13 @@ impl App {
             connection_error: None,
             startup: Default::default(),
             lyrics_restored: false,
+            preferences_revision: 0,
+            preferences_acknowledged: 0,
+            preferences_tasks: 0,
+            running_player_path: None,
+            preference_writes: Default::default(),
             picker: None,
+            recovery: Default::default(),
             handshake: Default::default(),
             connection_epoch: 0,
             request_sequence: 0,
@@ -68,7 +74,7 @@ impl App {
             modifiers: Modifiers::empty(),
             exit_code: None,
             closing: false,
-            save_settings,
+            save_state,
             environment: launch::environment(),
         };
         app.titlebar.configure(&app.config);
@@ -86,6 +92,10 @@ impl App {
         self.notice = None;
         self.connection_error = None;
         self.handshake = Default::default();
+        self.preferences_revision = 0;
+        self.preferences_acknowledged = 0;
+        self.preferences_tasks = 0;
+        self.preference_writes = Default::default();
         self.startup = Default::default();
         self.lyrics_restored = false;
         self.titlebar.commands_disabled = true;
@@ -96,7 +106,13 @@ impl App {
         self.closing = false;
         self.lyrics.clear();
         self.session += 1;
-        let executable = launch::player(self.config.neoviolet_path.as_deref());
+        self.recovery.attempted = false;
+        self.running_player_path = self
+            .recovery
+            .path
+            .clone()
+            .or_else(|| self.config.neoviolet_path.clone());
+        let executable = launch::player(self.running_player_path.as_deref());
         let mut environment = self.environment.clone();
         environment.extend([
             ("TERM".into(), "xterm-256color".into()),
@@ -129,7 +145,7 @@ impl App {
             Err(error) => {
                 self.running = false;
                 self.dialog = Some(Dialog::Error(format!(
-                    "Could not start {}: {error}\nCheck neoviolet_path in the GUI settings.",
+                    "Could not start {}: {error}\nChoose the NeoViolet player executable to recover.",
                     executable.display()
                 )));
                 lyrics
@@ -154,8 +170,6 @@ impl App {
     pub fn title_for_window(&self, id: window::Id) -> String {
         if id == self.main_window {
             self.title()
-        } else if Some(id) == self.lyrics.settings_window {
-            "Desktop Lyrics Settings".into()
         } else {
             "NeoViolet Lyrics".into()
         }
@@ -179,14 +193,20 @@ impl App {
 
     pub(super) fn restart_with_config(
         &mut self,
-        config: config::Config,
+        mut config: config::Config,
         warning: Option<String>,
     ) -> Task<Message> {
+        config.preserve_window_state(&self.config);
+
         if self.config.monospace_font != config.monospace_font {
             self.family = Box::leak(config.monospace_font.clone().into_boxed_str());
         }
         self.config = config;
-        self.save_settings = warning.is_none();
+        self.reconcile_recovery_path();
+        let decorations = self.titlebar.system_decorations;
+        self.titlebar.configure(&self.config);
+        self.titlebar.system_decorations = decorations;
+        self.save_state = warning.is_none();
         self.dialog = warning.map(Dialog::Error);
         self.arguments = launch::arguments(std::iter::empty());
         self.pending.clear();

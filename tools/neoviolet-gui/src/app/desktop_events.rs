@@ -7,7 +7,6 @@ fn lyrics_lifecycle_event(event: &lyrics_window::Event) -> bool {
     matches!(
         event,
         lyrics_window::Event::Opened(_)
-            | lyrics_window::Event::SettingsOpened(_)
             | lyrics_window::Event::Ready
             | lyrics_window::Event::Sized(..)
             | lyrics_window::Event::ToolbarRequested(..)
@@ -78,7 +77,7 @@ impl App {
                 }
             }
             desktop::Event::Reopen => {
-                return self.reveal_main();
+                return self.reveal_main().chain(self.focus());
             }
         }
         Task::none()
@@ -94,11 +93,23 @@ impl App {
             && lyrics_lifecycle_event(&event);
         if !self.actions_available() && !picker_lifecycle {
             return match event {
-                lyrics_window::Event::Opened(id) | lyrics_window::Event::SettingsOpened(id) => {
-                    window::close(id)
-                }
+                lyrics_window::Event::Opened(id) => window::close(id),
                 _ => Task::none(),
             };
+        }
+        if matches!(&event, lyrics_window::Event::Settings) {
+            return self.open_lyrics_settings();
+        }
+        if self.handshake.supports("settings_preferences") {
+            match &event {
+                lyrics_window::Event::Visible(enable) => {
+                    return self.send_preference("desktop_lyrics.enabled", (*enable).into());
+                }
+                lyrics_window::Event::Locked(locked) => {
+                    return self.send_preference("desktop_lyrics.locked", (*locked).into());
+                }
+                _ => {}
+            }
         }
         if matches!(&event, lyrics_window::Event::PlayPause) {
             return self.toggle_playback();
@@ -107,8 +118,6 @@ impl App {
             lyrics_window::Event::Opened(id) if self.lyrics.contains(*id) => Some(*id),
             _ => None,
         };
-        let closed_settings = matches!(&event, lyrics_window::Event::CloseSettings)
-            && self.lyrics.settings_window.is_some();
         let native_setup = if let Some(id) = opened {
             self.desktop.as_ref().map_or_else(Task::none, |desktop| {
                 desktop.configure_lyrics_window(id).map(|_| Message::Ready)
@@ -120,9 +129,7 @@ impl App {
         Task::batch([
             native_setup.chain(task.map(Message::Lyrics)),
             self.send_all(request.into_iter().collect()),
-            if opened.is_some() {
-                window::gain_focus(self.lyrics.settings_window.unwrap_or(self.main_window))
-            } else if closed_settings {
+            if opened.is_some() && self.terminal_input_available() {
                 window::gain_focus(self.main_window)
             } else {
                 Task::none()

@@ -278,6 +278,9 @@ func insertPathAtCursor(m *Model, p string) {
 // too). In command mode the paths go into the line at the cursor; in normal
 // mode an audio file starts playing and anything else is ignored in silence.
 func handlePaste(m *Model, content string) (tea.Model, tea.Cmd) {
+	if m.ipcPickerID != "" {
+		return m, nil
+	}
 	if m.pageOwnsInput() {
 		if m.pages.editor != nil {
 			var cmd tea.Cmd

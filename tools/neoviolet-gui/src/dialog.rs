@@ -30,10 +30,18 @@ impl Navigation {
         use iced::keyboard::{Key, key::Named};
         let actions = match dialog {
             Dialog::Quit => vec![Message::Dismiss, Message::ConfirmQuit],
-            Dialog::Error(_) if !running => vec![Message::ConfirmQuit, Message::Restart],
+            Dialog::Error(_) if !running => vec![
+                Message::ConfirmQuit,
+                Message::ChoosePlayer,
+                Message::Restart,
+            ],
             _ => vec![Message::Dismiss],
         };
-        let default = usize::from(matches!(dialog, Dialog::Error(_)) && !running);
+        let default = if matches!(dialog, Dialog::Error(_)) && !running {
+            actions.len() - 1
+        } else {
+            0
+        };
         let current = self.selected.unwrap_or(default).min(actions.len() - 1);
         match key {
             Key::Named(Named::Tab) => {
@@ -117,7 +125,8 @@ pub fn overlay<'a>(
             } else {
                 row![
                     action("Close", Message::ConfirmQuit, Tone::Neutral, 0),
-                    action("Restart", Message::Restart, Tone::Primary, 1),
+                    action("Choose player…", Message::ChoosePlayer, Tone::Neutral, 1),
+                    action("Restart", Message::Restart, Tone::Primary, 2),
                 ]
             },
             432,
@@ -262,7 +271,11 @@ fn action(
         .center_y(Length::Fill),
     )
     .padding([0, 14])
-    .width(if label == "Close player" { 112 } else { 84 })
+    .width(if label == "Close player" || label == "Choose player…" {
+        112
+    } else {
+        84
+    })
     .height(34)
     .on_press(message)
     .style(move |_, status| {

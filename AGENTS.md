@@ -64,7 +64,9 @@ also runs `govulncheck`, which has no local target.
     apecli (Rust)         optional APE decoder subprocess, stdin → PCM stdout
 
 - **Two separate programs** joined by PTY + TCP IPC (loopback, random port, token in a temp file).
-  The GUI owns no playback decisions; IPC snapshots are display-only.
+  The GUI owns no playback decisions; IPC snapshots are read-only projections of Go state.
+  Go alone saves user preferences, including GUI and desktop lyrics settings; the GUI saves
+  window geometry separately in `gui-state.json` and reads `config.json` only for bootstrap.
   The TUI must run standalone: anything that needs the GUI attached is a bug.
 - IPC message types are defined in the `internal/ipc` package comment — that is the contract; add
   a variant there first.

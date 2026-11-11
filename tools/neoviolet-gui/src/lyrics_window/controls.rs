@@ -1,5 +1,5 @@
 //! Floating lyrics toolbar and shared control styling.
-use iced::widget::{button, column, container, mouse_area, row, slider, space, text, tooltip};
+use iced::widget::{button, column, container, mouse_area, row, space, text, tooltip};
 use iced::{Color, Element, Length, Point};
 
 use super::{Event, Overlay, Preferences};
@@ -96,17 +96,6 @@ pub(super) fn control_style(selected: bool, status: button::Status) -> button::S
         },
         ..Default::default()
     }
-}
-
-pub(super) fn slider_style(theme: &iced::Theme, status: slider::Status) -> slider::Style {
-    let mut style = slider::default(theme, status).with_circular_handle(5.0);
-    style.rail.width = 3.0;
-    style.rail.backgrounds = (
-        Color::from_rgb8(176, 153, 213).into(),
-        Color::from_rgb8(68, 62, 76).into(),
-    );
-    style.handle.background = Color::from_rgb8(217, 200, 247).into();
-    style
 }
 
 #[derive(Clone, Copy)]

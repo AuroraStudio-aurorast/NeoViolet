@@ -226,23 +226,14 @@ func TestExecuteCommandLrcAgentWithoutLyrics(t *testing.T) {
 }
 
 func TestExecuteCommandLrcDesktopToggles(t *testing.T) {
-	m := setupModel()
-	setCommand(m, "lrc desktop")
-	executeCommand(m)
-	if !m.DesktopLyricsEnabled {
-		t.Error("DesktopLyricsEnabled = false, want true")
-	}
-	if got := m.Info.Message; got != "Desktop lyrics: enabled" {
-		t.Errorf("Info = %q, want %q", got, "Desktop lyrics: enabled")
-	}
-
-	setCommand(m, "lrc desktop")
-	executeCommand(m)
-	if m.DesktopLyricsEnabled {
-		t.Error("DesktopLyricsEnabled = true, want false")
-	}
-	if got := m.Info.Message; got != "Desktop lyrics: disabled" {
-		t.Errorf("Info = %q, want %q", got, "Desktop lyrics: disabled")
+	m := wiredSettingsModel(t)
+	initial := m.DesktopLyricsEnabled
+	for _, want := range []bool{!initial, initial} {
+		_, cmd := runLrcDesktop(m, invocation{})
+		completeSettingsCmd(t, m, cmd)
+		if m.DesktopLyricsEnabled != want || m.Config.DesktopLyrics.Enabled != want {
+			t.Fatal("desktop preference not applied after save")
+		}
 	}
 }
 

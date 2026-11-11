@@ -8,6 +8,9 @@ use std::path::PathBuf;
 
 impl App {
     pub(super) fn action(&mut self, action: Action) -> Task<Message> {
+        if matches!(action, Action::Quit) {
+            return self.dispatch_action(action);
+        }
         if !self.basic_actions_available()
             || (action.requires_player() && !self.actions_available())
         {
@@ -28,16 +31,32 @@ impl App {
         match action {
             Action::DesktopLyrics => {
                 return self.update(Message::Lyrics(lyrics_window::Event::Visible(
-                    !self.config.desktop_lyrics.enabled,
+                    !self
+                        .intended_preference("desktop_lyrics.enabled")
+                        .and_then(serde_json::Value::as_bool)
+                        .unwrap_or(self.config.desktop_lyrics.enabled),
                 )));
             }
             Action::LyricsSettings => {
                 return self.update(Message::Lyrics(lyrics_window::Event::Settings));
             }
+            Action::ResetLyricsPosition => {
+                return self.update(Message::Lyrics(lyrics_window::Event::ResetPosition));
+            }
             Action::UnlockLyrics => {
                 return self.update(Message::Lyrics(lyrics_window::Event::Locked(false)));
             }
             Action::Open => {
+                if self.ipc_connected && self.handshake.supports("settings_file_picker") {
+                    if self.dialog.is_some() {
+                        return Task::none();
+                    }
+                    return Task::batch([
+                        self.send_all(vec![ipc::Request::OpenPicker]),
+                        self.reveal_main()
+                            .chain(Task::done(Message::RestoreTerminalFocus)),
+                    ]);
+                }
                 return self.reveal_main().chain(
                     window::run(self.main_window, |parent| {
                         rfd::AsyncFileDialog::new()
@@ -54,6 +73,24 @@ impl App {
                 );
             }
             Action::Preferences => {
+                if self.dialog.is_some() {
+                    return Task::none();
+                }
+                if self.ipc_connected && self.handshake.supports("settings_navigation") {
+                    if !self.actions_available() {
+                        self.notice = Some("Finish setup before opening Settings.".into());
+                        return self.reveal_main().chain(self.focus());
+                    }
+                    return Task::batch([
+                        self.send_all(vec![if self.handshake.supports("settings_preferences") {
+                            ipc::Request::OpenSettingsSection("gui")
+                        } else {
+                            ipc::Request::OpenSettings
+                        }]),
+                        self.reveal_main()
+                            .chain(Task::done(Message::RestoreTerminalFocus)),
+                    ]);
+                }
                 let directory = self
                     .playback
                     .as_ref()
@@ -82,14 +119,19 @@ impl App {
                 if self.closing {
                     return Task::none();
                 }
+                let cancel = self.cancel_native_picker();
+                if self.has_pending_preferences() {
+                    self.preference_writes.quit = true;
+                    return Task::batch([cancel, self.flush_preference()]);
+                }
                 if !self.running {
                     return self.finish_quit();
                 }
                 if self.ipc_connected && self.handshake.supports("request_quit") {
-                    return self.send_all(vec![ipc::Request::CheckQuit]);
+                    return Task::batch([cancel, self.send_all(vec![ipc::Request::CheckQuit])]);
                 }
                 self.dialog = Some(Dialog::Quit);
-                return self.reveal_main();
+                return Task::batch([cancel, self.reveal_main()]);
             }
             Action::Copy => {
                 if self.dialog.is_none()
@@ -100,11 +142,19 @@ impl App {
             }
             Action::Paste => return iced::clipboard::read().map(Message::Pasted),
             Action::ZoomIn | Action::ZoomOut | Action::ZoomReset => {
-                self.config.font_size = match action {
-                    Action::ZoomIn => (self.config.font_size + 2).min(48),
-                    Action::ZoomOut => self.config.font_size.saturating_sub(2).max(8),
+                let current = self
+                    .intended_preference("gui.font_size")
+                    .and_then(serde_json::Value::as_u64)
+                    .map_or(self.config.font_size, |size| size as u32);
+                let size = match action {
+                    Action::ZoomIn => (current + 2).min(48),
+                    Action::ZoomOut => current.saturating_sub(2).max(8),
                     _ => 14,
                 };
+                if self.handshake.supports("settings_preferences") {
+                    return self.send_preference("gui.font_size", size.into());
+                }
+                self.config.font_size = size;
                 let font = self.font();
                 if let Some(terminal) = &mut self.terminal {
                     terminal.handle(iced_term::Command::ChangeFont(font));
@@ -150,18 +200,27 @@ impl App {
     }
 
     pub(super) fn finish_quit(&mut self) -> Task<Message> {
-        if self.save_settings
+        self.closing = true;
+        self.recovery.picker = false;
+        self.recovery.generation += 1;
+        if self.save_state
             && let Err(error) = self.config.save()
         {
-            eprintln!("NeoViolet GUI: settings were not saved: {error}");
+            eprintln!("NeoViolet GUI: window state was not saved: {error}");
         }
         self.terminal = None;
         iced::exit()
     }
 
-    pub(super) fn focus(&self) -> Task<Message> {
-        if self.dialog.is_none()
+    pub(crate) fn terminal_input_available(&self) -> bool {
+        self.running
+            && self.basic_actions_available()
+            && self.dialog.is_none()
             && !self.titlebar.visible()
+    }
+
+    pub(super) fn focus(&self) -> Task<Message> {
+        if self.terminal_input_available()
             && let Some(terminal) = &self.terminal
         {
             return TerminalView::focus(terminal.widget_id().clone());

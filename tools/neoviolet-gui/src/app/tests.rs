@@ -88,7 +88,13 @@ fn app() -> App {
         connection_error: None,
         startup: super::startup::Stage::Legacy,
         lyrics_restored: false,
+        preferences_revision: 0,
+        preferences_acknowledged: 0,
+        preferences_tasks: 0,
+        running_player_path: None,
+        preference_writes: Default::default(),
         picker: None,
+        recovery: Default::default(),
         handshake: Default::default(),
         connection_epoch: 0,
         request_sequence: 0,
@@ -102,7 +108,7 @@ fn app() -> App {
         modifiers: Modifiers::empty(),
         exit_code: None,
         closing: false,
-        save_settings: false,
+        save_state: false,
         environment: Default::default(),
     }
 }
@@ -205,7 +211,6 @@ fn secondary_windows_cannot_resize_or_quit_the_main_player() {
     let overlay = window::Id::unique();
     let settings = window::Id::unique();
     app.lyrics.window = Some(overlay);
-    app.lyrics.settings_window = Some(settings);
     let _ = app.update(Message::Native(
         overlay,
         iced::Event::Window(window::Event::Resized(iced::Size::new(880.0, 240.0))),
@@ -218,7 +223,7 @@ fn secondary_windows_cannot_resize_or_quit_the_main_player() {
         settings,
         iced::Event::Window(window::Event::CloseRequested),
     ));
-    assert!(app.lyrics.settings_window.is_none());
+    assert_eq!(app.lyrics.window, Some(overlay));
     assert!(app.config.desktop_lyrics.enabled);
     let _ = app.update(Message::Native(
         overlay,
@@ -515,7 +520,7 @@ async fn file_picker_completion_realigns_the_main_chrome_and_restores_terminal_f
         app.pending.clear();
         app.terminal = Some(Terminal::new(2, settings::Settings::default()).unwrap());
         let secondary = window::Id::unique();
-        app.lyrics.settings_window = Some(secondary);
+        app.lyrics.toolbar_window = Some(secondary);
         let (sender, mut receiver) = mpsc::channel(4);
         app.connection = Some(sender);
         let task = app.update(Message::Picked(picked.clone()));
@@ -592,6 +597,10 @@ mod integration_tests;
 #[path = "startup_tests.rs"]
 mod startup_tests;
 
+#[cfg(not(target_os = "windows"))]
+#[path = "focus_navigation_tests.rs"]
+mod focus_navigation_tests;
+
 #[cfg(unix)]
 #[path = "terminal_background_tests.rs"]
 mod terminal_background_tests;
@@ -610,3 +619,15 @@ fn measured_title_insets_only_apply_to_the_main_window() {
     )));
     assert_eq!(app.titlebar.mac_title_inset, Some(86.0));
 }
+
+#[path = "preferences_tests.rs"]
+mod preferences_tests;
+
+#[path = "picker_integration_tests.rs"]
+mod picker_integration_tests;
+
+#[path = "settings_integration_tests.rs"]
+mod settings_integration_tests;
+
+#[path = "recovery_tests.rs"]
+mod recovery_tests;

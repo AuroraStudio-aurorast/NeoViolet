@@ -20,7 +20,7 @@ fn gui_help_exits_without_creating_settings_or_starting_the_player() {
         let help = String::from_utf8(output.stdout).unwrap();
         assert!(help.starts_with("NeoViolet GUI "));
         assert!(help.contains("Usage:"));
-        assert!(help.contains("neoviolet_gui.toml"));
+        assert!(help.contains("config.json"));
         assert!(help.contains("--vol PERCENT"));
         assert!(
             !configuration.exists(),

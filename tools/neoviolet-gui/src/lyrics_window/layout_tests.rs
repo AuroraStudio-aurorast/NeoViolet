@@ -211,57 +211,6 @@ fn word_sweep_changes_pixels_without_shifting_english_or_bilingual_layout() {
 }
 
 #[test]
-fn settings_groups_fit_at_the_default_size_and_footer_stays_outside_scroll_content() {
-    use iced::advanced::{layout, widget};
-    #[derive(Default)]
-    struct Bounds(Vec<(iced::Rectangle, iced::Rectangle)>);
-    impl widget::Operation for Bounds {
-        fn traverse(&mut self, operate: &mut dyn FnMut(&mut dyn widget::Operation)) {
-            operate(self);
-        }
-        fn scrollable(
-            &mut self,
-            _: Option<&widget::Id>,
-            bounds: iced::Rectangle,
-            content: iced::Rectangle,
-            _: iced::Vector,
-            _: &mut dyn widget::operation::Scrollable,
-        ) {
-            self.0.push((bounds, content));
-        }
-    }
-    let overlay = Overlay::default();
-    let preferences = Preferences::default();
-    let renderer =
-        iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(Font::DEFAULT, 14.0.into()));
-    let size = Size::new(320.0, 520.0);
-    let mut view = overlay.settings_view(&preferences);
-    let mut tree = widget::Tree::new(&view);
-    let layout =
-        view.as_widget_mut()
-            .layout(&mut tree, &renderer, &layout::Limits::new(size, size));
-    let mut bounds = Bounds::default();
-    view.as_widget_mut().operate(
-        &mut tree,
-        layout::Layout::new(&layout),
-        &renderer,
-        &mut bounds,
-    );
-    assert_eq!(bounds.0.len(), 1);
-    let (viewport, content) = bounds.0[0];
-    assert!(
-        content.height <= viewport.height + 0.5,
-        "settings content {} exceeds {}",
-        content.height,
-        viewport.height
-    );
-    assert!(
-        viewport.y + viewport.height < size.height - 55.0,
-        "footer must be separate from scrolling preferences"
-    );
-}
-
-#[test]
 fn ordinary_bilingual_lyrics_fit_below_tooltip_space_without_scrollbars() {
     use iced::advanced::{layout, widget};
     #[derive(Default)]

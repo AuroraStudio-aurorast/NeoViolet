@@ -32,6 +32,19 @@ pub enum Request {
     Seek(f64),
     SetVolume(f64),
     GetState,
+    OpenSettings,
+    OpenPicker,
+    PreferencesApplied {
+        revision: u64,
+        status: &'static str,
+        restart_required: Vec<&'static str>,
+        error: Option<String>,
+    },
+    OpenSettingsSection(&'static str),
+    SetPreference {
+        key: &'static str,
+        value: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -47,6 +60,10 @@ pub enum Incoming {
     },
     State {
         state: PlaybackState,
+    },
+    Preferences {
+        revision: u64,
+        preferences: crate::config::Preferences,
     },
     Result {
         request_id: String,
@@ -235,7 +252,7 @@ async fn authenticate(
         Some(Incoming::Hello(hello)) if hello.protocol <= 1 => {
             if hello.supports("startup") {
                 peer.get_mut().write_all(
-                    b"{\"type\":\"client_hello\",\"client\":\"neoviolet-gui\",\"protocol\":1,\"capabilities\":[\"file_picker\",\"audio_file_picker\"]}\n"
+                    b"{\"type\":\"client_hello\",\"client\":\"neoviolet-gui\",\"protocol\":1,\"capabilities\":[\"file_picker\",\"audio_file_picker\",\"settings_preferences\",\"settings_file_picker\",\"preferences_feedback\"]}\n"
                 ).await.map_err(|error| error.to_string())?;
             }
             Ok((peer, hello))
@@ -300,6 +317,29 @@ async fn write_request<W: AsyncWrite + Unpin>(
         Request::Seek(position) => serde_json::json!({"type": "seek", "position":position}),
         Request::SetVolume(volume) => serde_json::json!({"type": "set_volume", "volume":volume}),
         Request::GetState => serde_json::json!({"type": "get_state"}),
+        Request::OpenSettings => serde_json::json!({"type": "open_settings"}),
+        Request::OpenPicker => serde_json::json!({"type":"open_picker","purpose":"audio"}),
+        Request::PreferencesApplied {
+            revision,
+            status,
+            restart_required,
+            error,
+        } => {
+            let mut frame = serde_json::json!({"type":"preferences_applied","revision":revision,"status":status});
+            if !restart_required.is_empty() {
+                frame["restart_required"] = serde_json::json!(restart_required);
+            }
+            if let Some(error) = error {
+                frame["error"] = error.clone().into();
+            }
+            frame
+        }
+        Request::OpenSettingsSection(section) => {
+            serde_json::json!({"type":"open_settings","section":section})
+        }
+        Request::SetPreference { key, value } => {
+            serde_json::json!({"type":"set_preference","key":key,"value":value})
+        }
     };
     if !id.is_empty() {
         value["request_id"] = id.into();

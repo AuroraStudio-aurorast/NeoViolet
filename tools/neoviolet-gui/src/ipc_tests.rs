@@ -129,7 +129,7 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
         700,
         iced_term::settings::Settings {
             backend: iced_term::settings::BackendSettings {
-                program: player,
+                program: player.clone(),
                 args: vec!["--xdg-config".into()],
                 env: std::collections::HashMap::from([
                     ("TERM_PROGRAM".into(), "neoviolet-gui".into()),
@@ -161,6 +161,86 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
         "the running player must identify its build"
     );
     assert!(hello.supports("request_quit"));
+    assert!(hello.supports("settings_navigation"));
+    assert!(hello.supports("settings_preferences"));
+    let first = live_message(&mut peer, |frame| {
+        matches!(frame, Incoming::Preferences { .. })
+    })
+    .await;
+    assert!(
+        matches!(first,Incoming::Preferences{revision:1,preferences} if preferences.gui.font_size==14)
+    );
+    write_request(peer.get_mut(), &Request::OpenSettings, "settings")
+        .await
+        .unwrap();
+    let navigation = live_message(
+        &mut peer,
+        |frame| matches!(frame, Incoming::Result { request_id, .. } if request_id == "settings"),
+    )
+    .await;
+    assert!(matches!(navigation, Incoming::Result { status, .. } if status == "succeeded"));
+    write_request(
+        peer.get_mut(),
+        &Request::SetPreference {
+            key: "gui.font_size",
+            value: 20.into(),
+        },
+        "font-live",
+    )
+    .await
+    .unwrap();
+    let saved=live_message(&mut peer,|frame| matches!(frame,Incoming::Preferences{preferences,..} if preferences.gui.font_size==20)).await;
+    let Incoming::Preferences { revision, .. } = saved else {
+        unreachable!()
+    };
+    assert!(revision > 1);
+    write_request(
+        peer.get_mut(),
+        &Request::PreferencesApplied {
+            revision,
+            status: "applied",
+            restart_required: Vec::new(),
+            error: None,
+        },
+        "",
+    )
+    .await
+    .unwrap();
+    let receipt = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="font-live"),
+    )
+    .await;
+    assert!(matches!(receipt,Incoming::Result{status,..} if status=="succeeded"));
+    let disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert_eq!(disk["gui"]["font_size"], 20);
+
+    // Recovery remains a Go-owned preference, even though the GUI selected
+    // the executable before a working IPC connection was available.
+    assert!(hello.supports("player_recovery"));
+    write_request(
+        peer.get_mut(),
+        &Request::SetPreference {
+            key: "gui.neoviolet_path",
+            value: player.clone().into(),
+        },
+        "recovery-live",
+    )
+    .await
+    .unwrap();
+    let _=live_message(&mut peer,|frame| matches!(frame,Incoming::Preferences{preferences,..} if preferences.gui.neoviolet_path.as_deref()==Some(player.as_str()))).await;
+    let recovered_path = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id,..} if request_id=="recovery-live"),
+    )
+    .await;
+    assert!(matches!(recovered_path,Incoming::Result{status,..} if status=="succeeded"));
+    let disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert_eq!(disk["gui"]["neoviolet_path"], player);
+    assert_eq!(disk["gui"]["font_size"], 20);
+
     write_request(peer.get_mut(), &Request::DesktopLyrics(true), "")
         .await
         .unwrap();
@@ -227,7 +307,7 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
             peer.get_mut(),
             &Request::FilePicked {
                 purpose: "audio".into(),
-                request_id,
+                request_id: request_id.clone(),
                 status: status.into(),
                 path: (status == "selected").then(|| broken.clone()),
                 error: None,
@@ -236,6 +316,14 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
         )
         .await
         .unwrap();
+        if status == "cancelled" {
+            let result = live_message(
+                &mut peer,
+                |frame| matches!(frame,Incoming::Result{request_id:id,..} if id==&request_id),
+            )
+            .await;
+            assert!(matches!(result,Incoming::Result{status,..} if status=="cancelled"));
+        }
         if status == "selected" {
             live_message(
                 &mut peer,
@@ -249,6 +337,120 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
             .await;
         }
     }
+
+    // The PTY can cancel before the GUI even sees pick_file. A following
+    // :save snapshot is a barrier proving Go consumed Ctrl+G before the late
+    // native completion returns on TCP; no sleep or scheduling assumption.
+    terminal.handle(iced_term::Command::ProxyToBackend(
+        iced_term::BackendCommand::Write(b":open\r\x07:save\r".to_vec()),
+    ));
+    let early = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::PickFile{purpose,..} if purpose=="audio"),
+    )
+    .await;
+    let Incoming::PickFile { request_id, .. } = early else {
+        unreachable!()
+    };
+    let _ = live_message(&mut peer, |frame| {
+        matches!(frame, Incoming::Preferences { .. })
+    })
+    .await;
+    for status in ["selected", "cancelled"] {
+        write_request(
+            peer.get_mut(),
+            &Request::FilePicked {
+                purpose: "audio".into(),
+                request_id: request_id.clone(),
+                status: status.into(),
+                path: (status == "selected").then(|| broken.clone()),
+                error: None,
+            },
+            "",
+        )
+        .await
+        .unwrap();
+        let receipt = live_message(
+            &mut peer,
+            |frame| matches!(frame,Incoming::Result{request_id:id,..} if id==&request_id),
+        )
+        .await;
+        assert!(
+            matches!(receipt,Incoming::Result{status,..} if status=="cancelled"),
+            "late completion must return GUI input without loading the file"
+        );
+    }
+    // Settings selections cross the real startup host but remain drafts until :save.
+    let bank = directory.path().join("a bank 雪.sf2");
+    std::fs::write(&bank, b"fixture").unwrap();
+    terminal.handle(iced_term::Command::ProxyToBackend(
+        iced_term::BackendCommand::Write(b"4\r".to_vec()),
+    ));
+    let pick = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::PickFile{purpose,..} if purpose=="soundfont"),
+    )
+    .await;
+    let Incoming::PickFile { request_id, .. } = pick else {
+        unreachable!()
+    };
+    write_request(
+        peer.get_mut(),
+        &Request::FilePicked {
+            purpose: "soundfont".into(),
+            request_id: request_id.clone(),
+            status: "selected".into(),
+            path: Some(bank.clone()),
+            error: None,
+        },
+        "",
+    )
+    .await
+    .unwrap();
+    let result = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::Result{request_id:id,..} if id==&request_id),
+    )
+    .await;
+    assert!(matches!(result,Incoming::Result{status,..} if status=="succeeded"));
+    let disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert_eq!(disk["soundfont_path"], "");
+    terminal.handle(iced_term::Command::ProxyToBackend(
+        iced_term::BackendCommand::Write(b":save\r".to_vec()),
+    ));
+    let _ = live_message(&mut peer, |frame| {
+        matches!(frame, Incoming::Preferences { .. })
+    })
+    .await;
+    let disk: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(config.join("config.json")).unwrap()).unwrap();
+    assert_eq!(disk["soundfont_path"], bank.to_string_lossy().as_ref());
+    // GUI Open is authorized by Go and uses the same scoped audio chooser.
+    write_request(peer.get_mut(), &Request::OpenPicker, "menu-open")
+        .await
+        .unwrap();
+    let pick = live_message(
+        &mut peer,
+        |frame| matches!(frame,Incoming::PickFile{purpose,..} if purpose=="audio"),
+    )
+    .await;
+    let Incoming::PickFile { request_id, .. } = pick else {
+        unreachable!()
+    };
+    write_request(
+        peer.get_mut(),
+        &Request::FilePicked {
+            purpose: "audio".into(),
+            request_id,
+            status: "cancelled".into(),
+            path: None,
+            error: None,
+        },
+        "",
+    )
+    .await
+    .unwrap();
     drop(peer);
     let (mut recovered, hello) = tokio::time::timeout(Duration::from_secs(5), discover(&port))
         .await
@@ -370,6 +572,35 @@ async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values(
         (Request::SetVolume(0.0), "mute"),
         (Request::Seek(0.0), "rewind"),
         (Request::Open("/music/a \"song\" 雪.flac".into()), "open"),
+        (Request::OpenSettings, "settings"),
+        (
+            Request::OpenSettingsSection("desktop_lyrics"),
+            "lyrics-settings",
+        ),
+        (
+            Request::SetPreference {
+                key: "gui.font_size",
+                value: 20.into(),
+            },
+            "font",
+        ),
+        (Request::OpenPicker, "chooser"),
+        (
+            Request::PreferencesApplied {
+                revision: 2,
+                status: "restart_required",
+                restart_required: vec!["gui.neoviolet_path"],
+                error: None,
+            },
+            "",
+        ),
+        (
+            Request::SetPreference {
+                key: "gui.neoviolet_path",
+                value: "/Applications/Neo Violet 雪/neoviolet".into(),
+            },
+            "recovered-player",
+        ),
     ];
     for (index, (request, id)) in commands.into_iter().enumerate() {
         let mut data = Vec::new();
@@ -645,4 +876,55 @@ async fn handshake_library_version_is_optional_and_preserves_runtime_value() {
         assert_eq!(hello.version, "dev");
         assert_eq!(hello.libopenmpt_version, expected_library);
     }
+}
+
+#[test]
+fn preference_fixture_keeps_authoritative_sections_and_revision() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../internal/ipc/testdata/protocol.json")).unwrap();
+    let Incoming::Preferences {
+        revision,
+        preferences,
+    } = serde_json::from_value(fixture["preferences"].clone()).unwrap()
+    else {
+        panic!("preferences discarded")
+    };
+    assert_eq!(revision, 2);
+    assert_eq!(preferences.gui.font_size, 20);
+    assert!(!preferences.desktop_lyrics.enabled);
+    assert_eq!(preferences.desktop_lyrics.font_size, 28);
+    assert_eq!(preferences.desktop_lyrics.opacity, 0.6);
+}
+
+#[tokio::test]
+async fn settings_picker_fixture_keeps_folder_and_executable_purposes() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("../../../internal/ipc/testdata/protocol.json")).unwrap();
+    let Incoming::PickFile {
+        purpose,
+        request_id,
+    } = serde_json::from_value(fixture["settings_pick_file"].clone()).unwrap()
+    else {
+        panic!("folder request lost")
+    };
+    assert_eq!(purpose, "library_directory");
+    assert_eq!(request_id, "library-1");
+    let mut wire = Vec::new();
+    write_request(
+        &mut wire,
+        &Request::FilePicked {
+            purpose: "player_binary".into(),
+            request_id: "binary-1".into(),
+            status: "selected".into(),
+            path: Some("/Applications/Neo Violet 雪/neoviolet".into()),
+            error: None,
+        },
+        "",
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&wire).unwrap(),
+        fixture["settings_file_picked"]
+    );
 }

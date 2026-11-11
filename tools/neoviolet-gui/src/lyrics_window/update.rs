@@ -1,5 +1,5 @@
 //! Lyrics window events and preference updates.
-use iced::{Point, Size, Task, window};
+use iced::{Point, Task, window};
 
 use crate::ipc::Request;
 
@@ -21,8 +21,6 @@ impl Overlay {
                 | Event::Drag
                 | Event::PlayPause
                 | Event::Settings
-                | Event::SettingsOpened(_)
-                | Event::CloseSettings
         );
         #[cfg(not(target_os = "macos"))]
         let visual_change = false;
@@ -126,8 +124,7 @@ impl Overlay {
                 self.toolbar_window = Some(id);
                 open.map(Event::Opened)
             }
-            Event::SettingsOpened(id) if self.settings_window == Some(id) => Task::none(),
-            Event::Opened(id) | Event::SettingsOpened(id) => window::close(id),
+            Event::Opened(id) => window::close(id),
             Event::Visible(enable) => {
                 preferences.enabled = enable;
                 self.hovered = false;
@@ -144,27 +141,7 @@ impl Overlay {
                     Some(Request::DesktopLyrics(enable)),
                 );
             }
-            Event::Settings => {
-                if let Some(id) = self.settings_window {
-                    window::gain_focus(id)
-                } else {
-                    let (id, open) = window::open(window::Settings {
-                        size: Size::new(320.0, 520.0),
-                        position: window::Position::Centered,
-                        resizable: false,
-                        minimizable: false,
-                        exit_on_close_request: false,
-                        level: window::Level::AlwaysOnTop,
-                        ..Default::default()
-                    });
-                    self.settings_window = Some(id);
-                    open.map(Event::SettingsOpened)
-                }
-            }
-            Event::CloseSettings => self
-                .settings_window
-                .take()
-                .map_or_else(Task::none, window::close),
+            Event::Settings => Task::none(),
             Event::ResetPosition => {
                 preferences.position = None;
                 self.hovered = false;
@@ -253,26 +230,6 @@ impl Overlay {
                 self.sync_toolbar(locked)
             }
             Event::PlayPause => return (Task::none(), Some(Request::PlayPause)),
-            Event::FontSize(size) => {
-                preferences.font_size = size.round() as u32;
-                Task::none()
-            }
-            Event::Opacity(opacity) => {
-                preferences.opacity = opacity;
-                Task::none()
-            }
-            Event::Highlight(highlight) => {
-                preferences.highlight = highlight;
-                Task::none()
-            }
-            Event::AdditionalLines(enable) => {
-                preferences.additional_lines = enable;
-                Task::none()
-            }
-            Event::NextLine(enable) => {
-                preferences.next_line = enable;
-                Task::none()
-            }
             Event::Ready | Event::Drag => Task::none(),
         };
         preferences.normalize();

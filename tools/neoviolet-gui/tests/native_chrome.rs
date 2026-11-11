@@ -301,10 +301,11 @@ fn check_startup_player_menu() {
     let quit = MenuItem::with_id("quit", "Quit", true, None);
     let settings = MenuItem::with_id("lyrics_settings", "Lyrics Settings", true, None);
     let unlock = MenuItem::with_id("unlock_lyrics", "Unlock Lyrics", true, None);
+    let reset = MenuItem::with_id("reset_lyrics_position", "Reset Lyrics Position", true, None);
     let lyrics = CheckMenuItem::with_id("desktop_lyrics", "Desktop Lyrics", true, true, None);
     nested
         .append_items(&[
-            &open, &about, &zoom, &copy, &quit, &settings, &unlock, &lyrics,
+            &open, &about, &zoom, &copy, &quit, &settings, &unlock, &lyrics, &reset,
         ])
         .unwrap();
     menu.append(&nested).unwrap();
@@ -321,6 +322,7 @@ fn check_startup_player_menu() {
             "Lyrics Settings",
             "Unlock Lyrics",
             "Desktop Lyrics",
+            "Reset Lyrics Position",
         ]
         .contains(&title.as_str())
         {
@@ -335,10 +337,13 @@ fn check_startup_player_menu() {
             && !settings.is_enabled()
             && !unlock.is_enabled()
             && !lyrics.is_enabled()
+            && !reset.is_enabled()
     );
     assert!(about.is_enabled() && zoom.is_enabled() && copy.is_enabled() && quit.is_enabled());
     startup_menu::set_player_commands(&menu, true, false);
-    assert!(open.is_enabled() && settings.is_enabled() && lyrics.is_enabled());
+    assert!(
+        open.is_enabled() && settings.is_enabled() && lyrics.is_enabled() && reset.is_enabled()
+    );
     assert!(
         !unlock.is_enabled(),
         "lyrics lock controls need an active overlay"

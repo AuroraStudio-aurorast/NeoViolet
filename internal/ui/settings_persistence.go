@@ -14,6 +14,9 @@ import (
 )
 
 type configSaveJob struct {
+	receipt        *ipcOpenRequest
+	preserveDraft  bool
+	saveDraft      bool
 	snapshot       config.Config
 	changed        map[string]bool
 	volumeRevision uint64
@@ -46,7 +49,14 @@ func (p *pageState) initSettings(cfg config.Config) {
 }
 
 func (m *Model) saveSettings(quit bool) tea.Cmd {
+	if m.ipcPickerID != "" {
+		m.Info.Set("Finish or cancel the file chooser before saving", 90)
+		return nil
+	}
 	if m.configSave != nil {
+		if m.configSave.preserveDraft {
+			m.configSave.saveDraft = true
+		}
 		if quit {
 			m.configSave.quit = true
 		}
@@ -75,6 +85,10 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 	if !changed["default_volume"] {
 		candidate.DefaultVolume = m.Audio.Volume
 	}
+	return m.startConfigSave(candidate, changed, quit)
+}
+
+func (m *Model) startConfigSave(candidate config.Config, changed map[string]bool, quit bool) tea.Cmd {
 	previousVolume := m.volumeSave
 	job := &configSaveJob{snapshot: candidate, changed: changed, volumeRevision: m.volumeRevision, quit: quit, pendingVolume: m.volumeSavePending || previousVolume != nil}
 	m.volumeSave = nil
@@ -89,6 +103,9 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 		var err error
 		if job.changed["soundfont_path"] {
 			_, err = parseSetting(pageSetting{key: "soundfont_path"}, job.snapshot.SoundfontPath)
+		}
+		if err == nil && job.changed["gui.neoviolet_path"] && job.snapshot.GUI.NeovioletPath != "" {
+			_, err = validateNativePath("player_binary", job.snapshot.GUI.NeovioletPath)
 		}
 		if err == nil && job.changed["library.roots"] {
 			err = validateLibraryRoots(job.snapshot.Library.Roots)
@@ -108,6 +125,9 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 	m.configSave = nil
 	if msg.err != nil {
 		m.Info.Visible = false
+		if r := msg.job.receipt; r != nil {
+			m.ipcResult(r.session, r.id, "failed", msg.err.Error())
+		}
 		m.Error.Set(fmt.Sprintf("Save failed: %v", msg.err), max(90, m.Config.Error.Duration))
 		m.volumeSavePending = m.volumeSavePending || msg.job.pendingVolume
 		return nil
@@ -119,8 +139,29 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 		m.Audio.SetVolume(cfg.DefaultVolume)
 	}
 	m.applySavedSettings(cfg, msg.job.changed)
-	m.pages.initSettings(cfg)
-	m.Info.SetSuccess("Configuration saved", max(90, m.Config.Error.Duration))
+	if msg.job.preserveDraft {
+		draft, changed := configValues(m.pages.draft), m.pages.changed
+		formats, enabled := m.pages.formats, m.pages.enabled
+		m.pages.initSettings(cfg)
+		for i, f := range m.pages.settings {
+			if changed[f.key] {
+				_ = m.pages.applyDraftValue(i, settingValue(draft, f.key))
+			}
+		}
+		if changed["lyrics.format_priority"] {
+			m.pages.formats, m.pages.enabled = formats, enabled
+		}
+	} else {
+		m.pages.initSettings(cfg)
+	}
+	revision := m.pushGUIPreferences()
+	if r := msg.job.receipt; r != nil {
+		m.ipcResult(r.session, r.id, "succeeded", "")
+	}
+	m.Info.SetSuccess(m.settingsSavedNotice(msg.job.changed, revision), max(90, m.Config.Error.Duration))
+	if msg.job.saveDraft {
+		return m.saveSettings(msg.job.quit)
+	}
 	if msg.job.quit {
 		if m.playlists.save != nil {
 			m.playlists.save.quit = true
@@ -145,16 +186,22 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 // Shutdown joins the sole settings writer before the CLI's final volume save.
 // The worker owns only an immutable snapshot; all model changes stay here.
 func (m *Model) flushSettingsSave() {
-	if m.configSave == nil {
-		return
+	for m.configSave != nil {
+		job := m.configSave
+		msg := job.run()
+		job.quit = false
+		_ = m.finishSettingsSave(msg)
 	}
-	job := m.configSave
-	msg := job.run()
-	job.quit = false
-	_ = m.finishSettingsSave(msg)
 }
 func (m *Model) applySavedSettings(cfg config.Config, changed map[string]bool) {
 	*m.Config = cfg
+	if changed["desktop_lyrics.enabled"] {
+		m.setDesktopLyricsEnabled(cfg.DesktopLyrics.Enabled)
+		if m.ipcServer != nil && !m.ipcPreferences {
+			enabled := cfg.DesktopLyrics.Enabled
+			_ = m.ipcServer.SendJSON(ipc.Message{Type: "desktop_lyrics", Enable: &enabled})
+		}
+	}
 	switch cfg.IconTheme {
 	case "emoji":
 		m.Icons = EmojiIcons

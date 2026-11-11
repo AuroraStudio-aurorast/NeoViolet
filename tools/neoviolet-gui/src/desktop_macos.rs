@@ -165,6 +165,7 @@ impl Desktop {
                     ),
                     ("lyrics_settings", "Desktop Lyrics Settings…", None),
                     ("unlock_lyrics", "Unlock Desktop Lyrics", None),
+                    ("reset_lyrics_position", "Reset Lyrics Position", None),
                 ],
             ),
         ] {
@@ -242,6 +243,7 @@ impl Desktop {
                 "desktop_lyrics" => Action::DesktopLyrics,
                 "lyrics_settings" => Action::LyricsSettings,
                 "unlock_lyrics" => Action::UnlockLyrics,
+                "reset_lyrics_position" => Action::ResetLyricsPosition,
                 _ => return,
             };
             let _ = sender.send(Event::Action(action));

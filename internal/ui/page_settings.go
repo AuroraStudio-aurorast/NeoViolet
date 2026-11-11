@@ -47,7 +47,7 @@ func (p *pageState) renderSettings(c *pageCanvas, focused bool) {
 	}
 	c.pair(0, 1, w-2, "Settings", status)
 	current := p.settings[p.cursors[3]]
-	c.dim(1, 1, fmt.Sprintf("%d / 6  %s", current.group+1, pageSettingGroups[current.group]))
+	c.dim(1, 1, fmt.Sprintf("%d / %d  %s", current.group+1, len(pageSettingGroups), pageSettingGroups[current.group]))
 	c.rule(2, 1, w-2)
 	rows, selected := p.settingRows()
 	available := listCapacity(h, 3, 1, 1)
@@ -69,7 +69,7 @@ func (p *pageState) renderSettings(c *pageCanvas, focused bool) {
 			c.highlight(y, 1, w-2)
 		}
 	}
-	c.dim(h-1, 1, "Enter Edit · s Save · 1-6 Group · r Default")
+	c.dim(h-1, 1, "Enter Edit · s Save · 1-8 Group · r Default")
 }
 
 func (p *pageState) jumpGroup(group int) {
