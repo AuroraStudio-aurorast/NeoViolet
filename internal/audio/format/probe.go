@@ -67,6 +67,11 @@ func (fd *Decoder) Probe(ctx context.Context, path string) (ProbeInfo, error) {
 		probeTrailingTags(r, &result.Metadata)
 	case ".ape":
 		probeTrailingTags(r, &result.Metadata)
+	case ".mid", ".midi":
+		var err error
+		if valid, err = probeMIDI(ctx, file, &result); err != nil {
+			return result, err
+		}
 	}
 	if r.err != nil {
 		return result, r.err
