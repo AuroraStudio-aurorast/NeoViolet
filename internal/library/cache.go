@@ -11,8 +11,8 @@ import (
 	"sync"
 )
 
-// Version 4 invalidates metadata stored before tracker duration probing.
-const cacheVersion = 4
+// Version 5 invalidates metadata stored before APE duration probing.
+const cacheVersion = 5
 
 var cacheWriteMu sync.Mutex
 

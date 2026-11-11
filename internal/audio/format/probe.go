@@ -68,6 +68,7 @@ func (fd *Decoder) Probe(ctx context.Context, path string) (ProbeInfo, error) {
 		}
 		probeTrailingTags(r, &result.Metadata)
 	case ".ape":
+		probeAPE(r, &result)
 		probeTrailingTags(r, &result.Metadata)
 	case ".mid", ".midi":
 		var err error
@@ -240,6 +241,11 @@ func probeFormat(b []byte) string {
 	n := len(b)
 	switch {
 	case n >= 3 && string(b[:3]) == "ID3":
+		for _, p := range id3Probes {
+			if ext, ok := p(b, n); ok {
+				return ext
+			}
+		}
 		return ".mp3"
 	case n >= 2 && b[0] == 255 && b[1]&0xe0 == 0xe0:
 		for _, p := range mpegProbes {

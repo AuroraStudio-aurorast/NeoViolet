@@ -47,3 +47,20 @@ func TestFillPlaylistDurationsForLegacyTrackerEntry(t *testing.T) {
 		t.Fatalf("duration = %v, want a positive duration", got)
 	}
 }
+
+func TestFillPlaylistDurationsForLegacyAPEEntry(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "test_ape.ape"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "track.ape")
+	// #nosec G703 -- the path is a test temporary directory, not user input.
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	lists := []playlist.List{{Tracks: []library.Track{{Path: path, Title: "track.ape"}}}}
+	fillPlaylistDurations(lists)
+	if got := lists[0].Tracks[0].Duration; got != 2*time.Second {
+		t.Fatalf("duration = %v, want 2s", got)
+	}
+}

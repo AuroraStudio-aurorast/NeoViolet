@@ -11,9 +11,9 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/playlist"
 )
 
-// fillPlaylistDurations repairs synthetic entries saved before the probe knew
-// their duration. Only zero-length local references are opened; the result
-// remains in memory until the playlist is saved again.
+// fillPlaylistDurations repairs synthetic and APE entries saved before the
+// probe knew their duration. Only zero-length local references are opened; the
+// result remains in memory until the playlist is saved again.
 func fillPlaylistDurations(lists []playlist.List) {
 	decoder := format.NewDecoder()
 	probed := map[string]time.Duration{}
@@ -21,7 +21,7 @@ func fillPlaylistDurations(lists []playlist.List) {
 		tracks := lists[i].Tracks
 		for j := range tracks {
 			track := &tracks[j]
-			if track.Duration > 0 || !syntheticPlaylistPath(track.Path) {
+			if track.Duration > 0 || !probePlaylistPath(track.Path) {
 				continue
 			}
 			if duration, ok := probed[track.Path]; ok {
@@ -38,9 +38,10 @@ func fillPlaylistDurations(lists []playlist.List) {
 	}
 }
 
-func syntheticPlaylistPath(path string) bool {
+func probePlaylistPath(path string) bool {
 	if strings.Contains(path, "://") {
 		return false
 	}
-	return audio.IsSyntheticFormat(strings.ToLower(filepath.Ext(path)))
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".ape" || audio.IsSyntheticFormat(ext)
 }
