@@ -155,7 +155,7 @@ pub fn overlay<'a>(
             "Open Online Audio",
             Mark::Music,
             column![
-                paragraph("Enter a direct HTTP or HTTPS link to an audio file."),
+                paragraph("Enter a direct HTTP or HTTPS audio file URL. The file is downloaded before playback; live streams are not supported."),
                 text_input("https://example.com/audio.mp3", url)
                     .id("online-audio-url")
                     .on_input(Message::OnlineAudioURLChanged)

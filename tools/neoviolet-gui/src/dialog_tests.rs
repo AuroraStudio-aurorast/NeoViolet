@@ -235,3 +235,60 @@ fn online_dialog_leaves_text_keys_to_input_and_tabs_through_field_and_actions() 
     navigation.key(&dialog, true, &Key::Named(Named::Tab), false);
     assert!(!navigation.visible());
 }
+
+#[test]
+fn online_audio_dialog_keeps_open_clickable_at_minimum_size() {
+    for error in [
+        None,
+        Some("Enter a valid HTTP or HTTPS audio URL.".to_owned()),
+    ] {
+        let dialog = Dialog::OpenOnlineAudio {
+            url: "https://audio.example.test/a.mp3".to_owned(),
+            error,
+        };
+        let size = Size::new(480.0, 320.0);
+        let mut renderer = iced::Renderer::Secondary(iced_tiny_skia::Renderer::new(
+            iced::Font::DEFAULT,
+            14.0.into(),
+        ));
+        let navigation = Navigation::default();
+        let view = iced::widget::stack![
+            iced::widget::button("Terminal")
+                .width(Length::Fill)
+                .height(Length::Fill)
+                .on_press(Message::ConfirmQuit),
+            overlay(&dialog, "test", None, true, &navigation),
+        ];
+        let mut ui = iced_runtime::UserInterface::build(
+            view,
+            size,
+            iced_runtime::user_interface::Cache::new(),
+            &mut renderer,
+        );
+        let mut clipboard = iced::advanced::clipboard::Null;
+        let mut messages = Vec::new();
+        let position = Point::new(400.0, 259.0);
+        let events = [
+            iced::Event::Mouse(mouse::Event::CursorMoved { position }),
+            iced::Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left)),
+            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)),
+        ];
+        let _ = ui.update(
+            &events,
+            mouse::Cursor::Available(position),
+            &mut renderer,
+            &mut clipboard,
+            &mut messages,
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|message| matches!(message, Message::SubmitOnlineAudio))
+        );
+        assert!(
+            !messages
+                .iter()
+                .any(|message| matches!(message, Message::ConfirmQuit))
+        );
+    }
+}

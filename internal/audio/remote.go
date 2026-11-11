@@ -18,6 +18,9 @@ import (
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/logger"
 )
 
+// Remote audio is cached as a finite file, matching the stdin size limit.
+const maxRemoteAudioSize int64 = 500 * 1024 * 1024
+
 func isURL(path string) bool {
 	u, err := url.Parse(path)
 	return err == nil && u.Hostname() != "" && (strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https"))
@@ -93,6 +96,7 @@ type remoteReadSeeker struct {
 	size         int64
 	pos          int64
 	written      int64
+	maxSize      int64
 	err          error
 	downloadDone bool
 	closed       bool
@@ -101,12 +105,12 @@ type remoteReadSeeker struct {
 	cond         *sync.Cond
 }
 
-func newRemoteReadSeeker(resp *http.Response) (*remoteReadSeeker, error) {
-	parent := context.Background()
-	if resp.Request != nil {
-		parent = resp.Request.Context()
+func newRemoteReadSeeker(resp *http.Response, maxSize int64) (*remoteReadSeeker, error) {
+	if resp.ContentLength > maxSize {
+		_ = resp.Body.Close()
+		return nil, fmt.Errorf("remote audio exceeds %d byte cache limit", maxSize)
 	}
-	ctx, cancel := context.WithCancel(parent)
+	ctx, cancel := context.WithCancel(context.Background())
 	// Use a private temp directory so other local users cannot read cached audio.
 	tempDir, err := os.MkdirTemp("", "neoviolet-*")
 	if err != nil {
@@ -130,10 +134,10 @@ func newRemoteReadSeeker(resp *http.Response) (*remoteReadSeeker, error) {
 		tempDir:   tempDir,
 		size:      resp.ContentLength,
 		done:      make(chan struct{}),
+		maxSize:   maxSize,
 	}
 	r.cond = sync.NewCond(&r.mu)
 	go r.download()
-	go func() { <-ctx.Done(); _ = r.Close() }()
 	return r, nil
 }
 
@@ -155,8 +159,13 @@ func (r *remoteReadSeeker) download() {
 				r.mu.Unlock()
 				return
 			}
-			_, werr := r.cacheFile.WriteAt(buf[:n], r.written)
-			r.written += int64(n)
+			if int64(n) > r.maxSize-r.written {
+				r.mu.Unlock()
+				r.setError(fmt.Errorf("remote audio exceeds %d byte cache limit", r.maxSize))
+				return
+			}
+			written, werr := r.cacheFile.WriteAt(buf[:n], r.written)
+			r.written += int64(written)
 			r.cond.Broadcast()
 			r.mu.Unlock()
 			if werr != nil {
@@ -187,6 +196,25 @@ func (r *remoteReadSeeker) setError(err error) {
 	r.cond.Broadcast()
 	r.mu.Unlock()
 	_ = r.body.Close()
+}
+
+// waitDownload keeps all network reads in the background loading phase. Decoders
+// see a complete, seekable file, so playback never waits on network bytes.
+func (r *remoteReadSeeker) waitDownload(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-r.done:
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return io.ErrClosedPipe
+	}
+	return r.err
 }
 
 func (r *remoteReadSeeker) Read(p []byte) (int, error) {
@@ -282,6 +310,20 @@ func (r *remoteReadSeeker) Close() error {
 	return nil
 }
 
+type remoteRequestError struct{ cause error }
+
+func (e *remoteRequestError) Error() string {
+	if errors.Is(e.cause, context.Canceled) {
+		return "HTTP GET cancelled"
+	}
+	var timeout net.Error
+	if errors.As(e.cause, &timeout) && timeout.Timeout() {
+		return "HTTP GET timed out"
+	}
+	return "HTTP GET failed; check the URL, connection, TLS or redirects"
+}
+func (e *remoteRequestError) Unwrap() error { return e.cause }
+
 func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -317,27 +359,18 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	// feature of remote playback; the URL comes from the user's own input.
 	resp, err := client.Do(request)
 	if err != nil {
-		var requestError *url.Error
-		if errors.As(err, &requestError) {
-			safeError := *requestError
-			safeError.URL = RedactSource(safeError.URL)
-			err = &safeError
-		}
-		return fmt.Errorf("HTTP GET: %w", err)
+		// Wrapped redirect errors may contain a server's full Location URL.
+		// Keep the cause for errors.Is/As, but never expose its text to logs/UI.
+		return &remoteRequestError{cause: err}
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
 		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
 	}
 
-	if ext == "" {
+	if !format.IsSupportedExt(ext) {
 		ext = format.MIMETypeToExt(resp.Header.Get("Content-Type"))
 	}
-	if ext == "" {
-		_ = resp.Body.Close()
-		return fmt.Errorf("cannot detect audio format from URL or Content-Type")
-	}
-
 	if isSyntheticFormat(ext) {
 		_ = resp.Body.Close()
 		return fmt.Errorf("remote playback of %s format is not supported", ext)
@@ -346,12 +379,30 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	// Release the previous track before opening the next one.
 	_ = p.closeStreamer()
 
-	rrs, err := newRemoteReadSeeker(resp)
+	rrs, err := newRemoteReadSeeker(resp, maxRemoteAudioSize)
 	if err != nil {
 		return err
 	}
 
-	streamer, format, err := p.decoder.DecodeFromReader(rrs, ext)
+	if err := rrs.waitDownload(ctx); err != nil {
+		_ = rrs.Close()
+		return fmt.Errorf("download remote audio: %w", err)
+	}
+	// The complete cached file supports content probing even for script URLs,
+	// redirects and mislabeled extensions, and never blocks on network I/O.
+	detected, detectErr := p.decoder.DetectFormatByMagic(rrs.cacheFile)
+	if detectErr == nil {
+		ext = detected
+	}
+	if isSyntheticFormat(ext) {
+		_ = rrs.Close()
+		return fmt.Errorf("remote playback of %s format is not supported", ext)
+	}
+	if ext == "" {
+		_ = rrs.Close()
+		return fmt.Errorf("cannot detect remote audio format")
+	}
+	streamer, format, err := p.decoder.DecodeFromReader(rrs.cacheFile, ext)
 	if err != nil {
 		_ = rrs.Close()
 		return err
@@ -373,6 +424,11 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	}
 	p.title = display
 	p.artist = ""
+	// Playback now depends only on the local cache. Release the HTTP request.
+	cancel()
+	p.remoteMu.Lock()
+	p.remoteCancel = nil
+	p.remoteMu.Unlock()
 	opened = true
 
 	return nil

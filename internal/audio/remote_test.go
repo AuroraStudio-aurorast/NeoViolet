@@ -65,7 +65,7 @@ func TestRemoteHTTPClientLimitsConnectionSetupWithoutBodyDeadline(t *testing.T) 
 func TestRemoteReaderCloseWakesBlockedRead(t *testing.T) {
 	body, writer := io.Pipe()
 	defer func() { _ = writer.Close() }()
-	reader, err := newRemoteReadSeeker(&http.Response{Body: body, ContentLength: -1})
+	reader, err := newRemoteReadSeeker(&http.Response{Body: body, ContentLength: -1}, maxRemoteAudioSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestRemoteRequestErrorRedactsSecrets(t *testing.T) {
 func TestRemoteReaderCloseWakesSeekEnd(t *testing.T) {
 	body, writer := io.Pipe()
 	defer func() { _ = writer.Close() }()
-	reader, err := newRemoteReadSeeker(&http.Response{Body: body, ContentLength: -1})
+	reader, err := newRemoteReadSeeker(&http.Response{Body: body, ContentLength: -1}, maxRemoteAudioSize)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,5 +170,23 @@ func TestRemotePlayerCloseCancelsStalledOpen(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Open did not stop after Close")
+	}
+}
+
+func TestRemoteRedirectErrorRedactsNestedURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "/bad%zz.mp3?token=redirect-secret")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer server.Close()
+	player := NewPlayer()
+	err := player.Open(server.URL + "/audio.mp3?token=original-secret")
+	if err == nil {
+		t.Fatal("malformed redirect was accepted")
+	}
+	for _, secret := range []string{"redirect-secret", "original-secret"} {
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("request error exposes %q: %v", secret, err)
+		}
 	}
 }
