@@ -17,6 +17,7 @@ func samplePageSettings() []pageSetting {
 		{group: 0, key: "volume_step", label: "Volume step", value: "10%"},
 		{group: 0, key: "seek_step", label: "Seek step", value: "5 s"},
 		{group: 0, key: "track_switch_mode", label: "Track switch", value: "on_success", options: []string{"on_success", "immediate"}},
+		{group: 0, key: "mediactl.enabled", label: "System integration (restart)", value: "On", options: []string{"On", "Off"}},
 		{group: 1, key: "lyrics.enabled", label: "Show lyrics", value: "On", options: []string{"On", "Off"}},
 		{group: 1, key: "lyrics.fetch.enabled", label: "Online lyrics", value: "On", options: []string{"On", "Off"}},
 		{group: 1, key: "lyrics.panel.mode", label: "Panel mode", value: "auto", options: []string{"auto", "on", "off"}},

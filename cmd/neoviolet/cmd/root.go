@@ -66,22 +66,23 @@ func runRoot(_ *cobra.Command, args []string) error {
 		seekDuration = time.Duration(flagSeek) * time.Second
 	}
 
-	// Run everything inside runWithOSMedia so that on macOS the first-run wizard
-	// and main program share the same NSApplication context. Running the wizard
-	// before MacOSRun may leave the terminal in a state that interferes with the
-	// AppKit event loop, preventing the main UI from rendering.
-	return runWithOSMedia(func() error {
-		needsWizard := !config.Exists()
-		defaults := config.DefaultConfig()
-		cfg := &defaults
-		if !needsWizard {
-			var err error
-			cfg, err = config.Load()
-			if err != nil {
-				logger.Warn("Failed to load config", "err", err)
-			}
+	// Read preferences before deciding whether macOS needs its AppKit context.
+	needsWizard := !config.Exists()
+	defaults := config.DefaultConfig()
+	cfg := &defaults
+	if !needsWizard {
+		var err error
+		cfg, err = config.Load()
+		if err != nil {
+			logger.Warn("Failed to load config", "err", err)
 		}
+	}
+	// Keep the startup decision fixed when settings are saved during playback.
+	mediaCtlEnabled := cfg.MediaCtl.Enabled
 
+	// When enabled, the wizard and player must share one NSApplication context.
+	// Running the wizard before MacOSRun can interfere with AppKit's event loop.
+	return runWithOSMedia(mediaCtlEnabled, func() error {
 		// Sweep expired online-lyrics cache files at startup (best effort).
 		go func() {
 			if dir, err := config.CacheDir(); err == nil {
@@ -98,23 +99,25 @@ func runRoot(_ *cobra.Command, args []string) error {
 		// Bridge OS media control commands (MPRIS on Linux, NowPlaying on macOS) into BubbleTea messages.
 		// MediaCtl is initialized lazily after the program starts to avoid AppKit interaction issues
 		// when the first-run wizard runs before the main program on macOS.
-		go func() {
-			mc, err := mediactl.New()
-			if err != nil {
-				logger.Warn("mediactl: deferred new failed", "err", err)
-				return
-			}
-			cmdChan, err := mc.Start()
-			if err != nil {
-				logger.Error("mediactl: start failed", "err", err)
-				return
-			}
-			// Hand the controller to the event loop (thread-safe via p.Send)
-			p.Send(neoviolet.MediaCtlReadyMsg{Controller: mc})
-			for cmd := range cmdChan {
-				p.Send(neoviolet.MediaCtlMsg{Command: cmd})
-			}
-		}()
+		if mediaCtlEnabled {
+			go func() {
+				mc, err := mediactl.New()
+				if err != nil {
+					logger.Warn("mediactl: deferred new failed", "err", err)
+					return
+				}
+				cmdChan, err := mc.Start()
+				if err != nil {
+					logger.Error("mediactl: start failed", "err", err)
+					return
+				}
+				// Hand the controller to the event loop (thread-safe via p.Send)
+				p.Send(neoviolet.MediaCtlReadyMsg{Controller: mc})
+				for cmd := range cmdChan {
+					p.Send(neoviolet.MediaCtlMsg{Command: cmd})
+				}
+			}()
+		}
 
 		// Start stdin listener for runtime track loading via pipe input
 		go neoviolet.StdinListener(p)

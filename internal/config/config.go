@@ -155,6 +155,7 @@ type Config struct {
 	GUI             GUIConfig            `json:"gui"`
 	DesktopLyrics   DesktopLyricsConfig  `json:"desktop_lyrics"`
 	Library         LibraryConfig        `json:"library"`
+	MediaCtl        MediaCtlConfig       `json:"mediactl"`
 	IconTheme       string               `json:"icon_theme"`
 	DefaultVolume   float64              `json:"default_volume"`
 	VolumeStep      float64              `json:"volume_step"`
@@ -304,6 +305,7 @@ func DefaultConfig() Config {
 	return Config{
 		GUI:             defaultGUI(),
 		DesktopLyrics:   defaultDesktopLyrics(),
+		MediaCtl:        MediaCtlConfig{Enabled: true},
 		IconTheme:       "nerd",
 		DefaultVolume:   1.0,
 		VolumeStep:      0.1,
