@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/synth"
 )
 
 // ProbeInfo describes a local file without initializing output or synthesizers.
@@ -71,6 +73,12 @@ func (fd *Decoder) Probe(ctx context.Context, path string) (ProbeInfo, error) {
 		var err error
 		if valid, err = probeMIDI(ctx, file, &result); err != nil {
 			return result, err
+		}
+	default:
+		if synth.OpenmptSupportsExtension(ext) {
+			if err := probeTracker(ctx, file, stat.Size(), &result); err != nil {
+				return result, err
+			}
 		}
 	}
 	if r.err != nil {

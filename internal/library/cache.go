@@ -11,8 +11,8 @@ import (
 	"sync"
 )
 
-// Version 3 invalidates metadata stored before MIDI duration probing.
-const cacheVersion = 3
+// Version 4 invalidates metadata stored before tracker duration probing.
+const cacheVersion = 4
 
 var cacheWriteMu sync.Mutex
 

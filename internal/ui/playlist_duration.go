@@ -6,13 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/playlist"
 )
 
-// fillPlaylistDurations repairs MIDI entries saved before the probe learned to
-// read SMF tracks. Only zero-length local MIDI references are opened; the
-// result remains in memory until the playlist is saved again.
+// fillPlaylistDurations repairs synthetic entries saved before the probe knew
+// their duration. Only zero-length local references are opened; the result
+// remains in memory until the playlist is saved again.
 func fillPlaylistDurations(lists []playlist.List) {
 	decoder := format.NewDecoder()
 	probed := map[string]time.Duration{}
@@ -20,7 +21,7 @@ func fillPlaylistDurations(lists []playlist.List) {
 		tracks := lists[i].Tracks
 		for j := range tracks {
 			track := &tracks[j]
-			if track.Duration > 0 || !midiPlaylistPath(track.Path) {
+			if track.Duration > 0 || !syntheticPlaylistPath(track.Path) {
 				continue
 			}
 			if duration, ok := probed[track.Path]; ok {
@@ -37,10 +38,9 @@ func fillPlaylistDurations(lists []playlist.List) {
 	}
 }
 
-func midiPlaylistPath(path string) bool {
+func syntheticPlaylistPath(path string) bool {
 	if strings.Contains(path, "://") {
 		return false
 	}
-	ext := strings.ToLower(filepath.Ext(path))
-	return ext == ".mid" || ext == ".midi"
+	return audio.IsSyntheticFormat(strings.ToLower(filepath.Ext(path)))
 }
