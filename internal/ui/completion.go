@@ -137,6 +137,12 @@ func candidatesFor(ctx completionContext) []candidate {
 			return nil
 		}
 		switch spec.Name {
+		case "mode":
+			return filterCandidates([]candidate{
+				{Value: config.PlaybackOrder, Desc: "Play in queue order"},
+				{Value: config.PlaybackRepeatOne, Desc: "Repeat the current track"},
+				{Value: config.PlaybackShuffle, Desc: "Shuffle the session queue"},
+			}, ctx.Seg.Prefix)
 		case "lrc":
 			return filterCandidates(lrcSubcommandCandidates(), ctx.Seg.Prefix)
 		case "open":

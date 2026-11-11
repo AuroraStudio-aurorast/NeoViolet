@@ -24,7 +24,8 @@ func shortHelpBindings(m *Model) []key.Binding {
 		}
 		bindings = append(bindings, tabs)
 	case FocusFooter:
-		if m.Audio.Player != nil {
+		bindings = append(bindings, keys.PlaybackMode)
+		if m.Audio.Player != nil && m.UI.Width >= 80 {
 			seek := keys.SeekForward
 			seek.SetHelp("←/→", "seek")
 			bindings = append(bindings, seek)

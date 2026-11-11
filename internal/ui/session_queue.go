@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/config"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 )
 
@@ -19,6 +20,7 @@ type sessionQueue struct {
 	entries                         []queueEntry
 	current, detached, detachedNext uint64 // detached identifies playback removed from entries.
 	removed                         *queueRemoval
+	shuffle                         shuffleState
 }
 type queueRemoval struct {
 	entry       queueEntry
@@ -27,6 +29,7 @@ type queueRemoval struct {
 	pending     *queueLoadIntent
 }
 type queueLoadIntent struct {
+	shuffle      *shuffleState
 	detachedNext uint64
 	detached     bool
 	generation   int
@@ -81,6 +84,9 @@ func queueIndex(entries []queueEntry, id uint64) int {
 	return -1
 }
 func (m *Model) stepQueue(delta int) tea.Cmd {
+	if m.playbackMode() == config.PlaybackShuffle {
+		return m.stepShuffleQueue(delta)
+	}
 	entries, current := m.session.entries, m.session.current
 	detachedNext := m.session.detachedNext
 	replacement := false
@@ -147,6 +153,7 @@ func (m *Model) acceptQueueTrack(path string) {
 		}
 		track.Album = m.Audio.Album
 	}
+	m.acceptShuffleTrack(intent)
 	m.queueEnded = false
 	m.pages.cursors[1] = max(0, queueIndex(m.session.entries, m.session.current))
 }
@@ -250,6 +257,9 @@ func (m *Model) advanceQueueAtEnd() tea.Cmd {
 	if err != nil {
 		m.Error.Set(fmt.Sprintf("Playback failed: %v", err), 120)
 		return nil
+	}
+	if m.playbackMode() == config.PlaybackRepeatOne && queueIndex(m.session.entries, m.session.current) >= 0 {
+		return m.repeatQueueEntry()
 	}
 	cmd := m.stepQueue(1)
 	if cmd == nil {

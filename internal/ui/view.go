@@ -123,38 +123,7 @@ func renderFooter(m *Model, plan layoutPlan) string {
 		footerTextStyle.Render(timeDisplay),
 	)
 
-	whiteStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
-	prevText := whiteStyle.Render(m.Icons.Prev)
-	playPauseText := whiteStyle.Render(icon)
-	nextText := whiteStyle.Render(m.Icons.Next)
-	statusLine := lipgloss.JoinHorizontal(lipgloss.Left,
-		prevText,
-		" ",
-		playPauseText,
-		" ",
-		nextText,
-	)
-	volumeStyle, volumeModel := volumeAppearance(m)
-	volumeLabel := volumeStyle.Render(m.Icons.Volume + " ")
-	volumeBar := volumeModel.ViewAs(m.Audio.Volume)
-	volumeSection := lipgloss.JoinHorizontal(lipgloss.Left,
-		volumeLabel,
-		volumeBar,
-	)
-
-	// Combine play/pause icon (left) and volume section (right-aligned) on one line
-	availableWidth := plan.Width - 2
-	playWidth := lipgloss.Width(statusLine)
-	volumeWidth := lipgloss.Width(volumeSection)
-	spaceCount := availableWidth - playWidth - volumeWidth
-	if spaceCount < 1 {
-		spaceCount = 1
-	}
-	volumeLine := lipgloss.JoinHorizontal(lipgloss.Left,
-		statusLine,
-		strings.Repeat(" ", spaceCount),
-		volumeSection,
-	)
+	volumeLine := renderPlaybackControls(m, icon, plan.Width-2)
 
 	// Lyric rendering (one_line mode): at most one row, marquee-scrolled. When
 	// the panel is shown the footer has no lyric row at all.

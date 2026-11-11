@@ -16,6 +16,9 @@ type IconSet struct {
 	Music       string
 	LyricFilled string
 	LyricEmpty  string
+	Order       string
+	RepeatOne   string
+	Shuffle     string
 }
 
 // NerdIcons is the Nerd Font icon set.
@@ -34,6 +37,9 @@ var NerdIcons = IconSet{
 	Music:       "\uf001",
 	LyricFilled: "\u25cf",
 	LyricEmpty:  "\u25cb",
+	Order:       "\U000f0411",
+	RepeatOne:   "\U000f0458",
+	Shuffle:     "\U000f049d",
 }
 
 // FallbackIcons is the basic-Unicode icon set used when no icon font is available.
@@ -52,6 +58,9 @@ var FallbackIcons = IconSet{
 	Music:       "",
 	LyricFilled: "\u25cf",
 	LyricEmpty:  "\u25cb",
+	Order:       "\u2192",
+	RepeatOne:   "\u21bb1",
+	Shuffle:     "\u21c4",
 }
 
 // EmojiIcons is the emoji icon set.
@@ -70,4 +79,7 @@ var EmojiIcons = IconSet{
 	Music:       "\U0001f3b5",
 	LyricFilled: "\U0001f7e2",
 	LyricEmpty:  "\u26aa",
+	Order:       "\U0001f4cb",
+	RepeatOne:   "\U0001f502",
+	Shuffle:     "\U0001f500",
 }

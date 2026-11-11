@@ -24,6 +24,7 @@ import (
 
 // Global key bindings
 var keys = KeyMap{
+	PlaybackMode: key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "mode")),
 	TabNext: key.NewBinding(
 		key.WithKeys("]", "n"),
 		key.WithHelp("]", "next tab"),

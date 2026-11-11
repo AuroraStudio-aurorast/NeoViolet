@@ -5,3 +5,10 @@ const (
 	TrackSwitchOnSuccess = "on_success"
 	TrackSwitchImmediate = "immediate"
 )
+
+// Playback modes choose the next entry after a track finishes.
+const (
+	PlaybackOrder     = "order"
+	PlaybackRepeatOne = "repeat_one"
+	PlaybackShuffle   = "shuffle"
+)
