@@ -25,7 +25,8 @@ fn check() {
     use objc2::MainThreadOnly;
     use objc2_app_kit::{
         NSApplication, NSBackingStoreType, NSButton, NSCustomTouchBarItem, NSGroupTouchBarItem,
-        NSTouchBarItemIdentifierFlexibleSpace, NSWindow, NSWindowStyleMask,
+        NSTouchBarItemIdentifierFixedSpaceSmall, NSTouchBarItemIdentifierFlexibleSpace, NSWindow,
+        NSWindowStyleMask,
     };
     use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
     use touchbar::{Command, Context, State};
@@ -79,6 +80,8 @@ fn check() {
             // SAFETY: This public AppKit identifier is valid on all supported versions.
             unsafe { NSTouchBarItemIdentifierFlexibleSpace }.to_string(),
             "neoviolet.touchbar.lyrics".to_string(),
+            // SAFETY: This public AppKit identifier is valid on all supported versions.
+            unsafe { NSTouchBarItemIdentifierFixedSpaceSmall }.to_string(),
         ],
         "only the complete transport group may be positioned in the top-level bar"
     );

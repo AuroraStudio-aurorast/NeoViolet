@@ -10,7 +10,8 @@ use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAccessibility, NSButton, NSButtonType, NSCustomTouchBarItem, NSGroupTouchBarItem, NSImage,
     NSTouchBar, NSTouchBarDelegate, NSTouchBarItem, NSTouchBarItemIdentifier,
-    NSTouchBarItemIdentifierFlexibleSpace, NSWindow, NSWindowWillCloseNotification,
+    NSTouchBarItemIdentifierFixedSpaceSmall, NSTouchBarItemIdentifierFlexibleSpace, NSWindow,
+    NSWindowWillCloseNotification,
 };
 use objc2_foundation::{
     MainThreadMarker, NSArray, NSNotification, NSNotificationCenter, NSObject, NSObjectProtocol,
@@ -272,6 +273,9 @@ pub fn install(id: iced::window::Id, window: &NSWindow, emit: impl Fn(Event) + '
         2,
         unsafe { NSTouchBarItemIdentifierFlexibleSpace }.to_owned(),
     );
+    // Leave the native button bezel inside the remote bar's clipping boundary.
+    // SAFETY: The standard AppKit identifier is available on all supported versions.
+    identifiers.push(unsafe { NSTouchBarItemIdentifierFixedSpaceSmall }.to_owned());
     bar.setDefaultItemIdentifiers(&NSArray::from_retained_slice(&identifiers));
     // Center the whole group; a standalone principal playback button splits the seek pair.
     bar.setPrincipalItemIdentifier(Some(&NSString::from_str("neoviolet.touchbar.transport")));

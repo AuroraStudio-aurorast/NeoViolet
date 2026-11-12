@@ -144,11 +144,18 @@ pub fn check(window: &NSWindow, bar: &NSTouchBar, marker: MainThreadMarker) {
     );
     let right_gap =
         group_view.bounds().size.width - lyrics_frame.origin.x - lyrics_frame.size.width;
-    // AppKit's standard flexible spacer can let the native bezel overdraw the
-    // content edge by a few points; the prior centered Lyrics left a 353pt gap.
+    let visible = lyrics_view.visibleRect();
+    let bounds = lyrics_view.bounds();
     assert!(
-        right_gap.abs() <= 8.0,
-        "lyrics must align with the right edge, gap={right_gap}"
+        (visible.origin.x - bounds.origin.x).abs() < 0.1
+            && (visible.origin.y - bounds.origin.y).abs() < 0.1
+            && (visible.size.width - bounds.size.width).abs() < 0.1
+            && (visible.size.height - bounds.size.height).abs() < 0.1,
+        "the entire lyrics button must be visible: bounds={bounds:?}, visible={visible:?}"
+    );
+    assert!(
+        (0.0..=8.0).contains(&right_gap),
+        "lyrics must remain right-aligned inside the bar, gap={right_gap}"
     );
     let playback_center = rects[1].origin.x + rects[1].size.width / 2.0;
     assert!(
