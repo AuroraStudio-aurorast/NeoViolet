@@ -92,6 +92,8 @@ impl Overlay {
         let (id, open) = window::open(window::Settings {
             size: self.size,
             position,
+            // macOS presents the configured native window without changing key focus.
+            visible: !cfg!(target_os = "macos"),
             decorations: false,
             transparent: true,
             resizable: false,

@@ -1,5 +1,8 @@
 //! Real AppKit controls and target/action callbacks, exercised on the main thread.
 #[cfg(target_os = "macos")]
+#[path = "native_touchbar/focus.rs"]
+mod focus;
+#[cfg(target_os = "macos")]
 #[path = "../src/desktop_touchbar_macos.rs"]
 mod native;
 #[cfg(target_os = "macos")]
@@ -156,6 +159,9 @@ fn check() {
     }
 
     sidecar::check(&window, &bar, marker);
+    if std::env::var_os("NEOVIOLET_TEST_LYRICS_FOCUS").is_some() {
+        focus::run(&window, &bar, marker);
+    }
     state.can_play = false;
     state.can_seek = false;
     state.available = false;

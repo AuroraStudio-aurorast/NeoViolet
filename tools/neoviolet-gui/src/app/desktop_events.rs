@@ -121,9 +121,16 @@ impl App {
             _ => None,
         };
         let native_setup = if let Some(id) = opened {
-            self.desktop.as_ref().map_or_else(Task::none, |desktop| {
-                desktop.configure_lyrics_window(id).map(|_| Message::Ready)
-            })
+            let configure = self.desktop.as_ref().map_or_else(
+                || {
+                    #[cfg(target_os = "macos")]
+                    return desktop::configure_lyrics_without_menu(id);
+                    #[cfg(not(target_os = "macos"))]
+                    Task::none()
+                },
+                |desktop| desktop.configure_lyrics_window(id),
+            );
+            configure.map(|_| Message::Ready)
         } else {
             Task::none()
         };
@@ -131,7 +138,7 @@ impl App {
         Task::batch([
             native_setup.chain(task.map(Message::Lyrics)),
             self.send_all(request.into_iter().collect()),
-            if opened.is_some() && self.terminal_input_available() {
+            if !cfg!(target_os = "macos") && opened.is_some() && self.terminal_input_available() {
                 window::gain_focus(self.main_window)
             } else {
                 Task::none()

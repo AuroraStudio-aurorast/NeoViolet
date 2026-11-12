@@ -184,3 +184,9 @@ pub fn sync_touchbar(id: iced::window::Id, state: crate::touchbar::State) -> ice
         iced::Task::none()
     }
 }
+
+/// macOS windows start hidden even if native menu installation failed.
+#[cfg(target_os = "macos")]
+pub fn configure_lyrics_without_menu(id: iced::window::Id) -> iced::Task<()> {
+    macos::configure_lyrics_window(id, None)
+}

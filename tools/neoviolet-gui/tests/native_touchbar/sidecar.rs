@@ -174,5 +174,6 @@ pub fn check(window: &NSWindow, bar: &NSTouchBar, marker: MainThreadMarker) {
     println!(
         "Sidecar presentation: centered transport, right-aligned lyrics (gap={right_gap}): {rects:?}"
     );
+    super::focus::check(window, bar, marker);
     window.orderOut(None);
 }
