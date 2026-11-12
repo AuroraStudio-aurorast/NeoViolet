@@ -87,6 +87,10 @@ impl App {
                 ]);
             }
             Message::MainConfigured => {
+                #[cfg(any(target_os = "macos", test))]
+                {
+                    self.touchbar.native = None;
+                }
                 return desktop::chrome_input(
                     self.main_window,
                     self.titlebar.visible() || self.dialog.is_some(),

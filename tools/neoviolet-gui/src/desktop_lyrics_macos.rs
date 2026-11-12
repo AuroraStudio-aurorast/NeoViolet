@@ -2,6 +2,11 @@
 use objc2_app_kit::{NSWindow, NSWindowOrderingMode};
 use objc2_foundation::{NSPoint, NSRect, NSSize};
 
+/// Show a hidden, configured overlay without winit's activating set_visible path.
+pub fn show(window: &NSWindow) {
+    window.orderFront(None);
+}
+
 pub fn attach(lyrics: &NSWindow, toolbar: &NSWindow, offset: f64) {
     detach(lyrics);
     // SAFETY: Both windows are live, main-thread AppKit objects. The toolbar owns

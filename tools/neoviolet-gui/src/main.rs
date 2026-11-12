@@ -15,6 +15,8 @@ mod lyrics_hit_test;
 mod lyrics_text;
 mod lyrics_window;
 mod titlebar;
+#[cfg(any(target_os = "macos", test))]
+mod touchbar;
 mod view;
 
 fn main() -> iced::Result {
