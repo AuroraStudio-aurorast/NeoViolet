@@ -15,34 +15,76 @@ GUI_ASSETS="$PROJECT_ROOT/tools/neoviolet-gui/assets"
 APP_NAME="NeoViolet"
 BUNDLE_ID="org.aurorast.neovioletgui"
 
-VERSION="${VERSION:-$(git -C "$PROJECT_ROOT" describe --tags --always --dirty 2>/dev/null || echo "0.1.0")}"
-BUILD="${BUILD:-$(git -C "$PROJECT_ROOT" rev-list --count HEAD 2>/dev/null || echo "1")}"
-APP_DIR="$PROJECT_ROOT/dist/${APP_NAME}.app"
+: "${VERSION:?use make package/osxappbundle to supply VERSION}"
+: "${BUILD:?use make package/osxappbundle to supply BUILD}"
+: "${MACOS_MIN:?use make package/osxappbundle to supply MACOS_MIN}"
+: "${PACKAGE_INPUT_DIR:?missing PACKAGE_INPUT_DIR}"
+: "${PACKAGE_OUTPUT_DIR:?missing PACKAGE_OUTPUT_DIR}"
+: "${LIBOPENMPT_DYLIB:?missing LIBOPENMPT_DYLIB; run make deps/openmpt/macos or set its path}"
+INPUT_DIR="$(cd "$PACKAGE_INPUT_DIR" && pwd -P)"
+for bin in neoviolet-gui neoviolet apecli; do
+    if [[ ! -f "$INPUT_DIR/$bin" ]]; then
+        echo "error: missing input: $INPUT_DIR/$bin" >&2
+        exit 1
+    fi
+    lipo "$INPUT_DIR/$bin" -verify_arch arm64 x86_64
+done
+if [[ ! -f "$LIBOPENMPT_DYLIB" ]]; then
+    echo "error: missing libopenmpt: $LIBOPENMPT_DYLIB; run make deps/openmpt/macos or set LIBOPENMPT_DYLIB" >&2
+    exit 1
+fi
+lipo "$LIBOPENMPT_DYLIB" -verify_arch arm64 x86_64
+# Prebuilt releases embed their decoders. Reject a Homebrew/MacPorts dependency
+# that would make the bundle work only on the packaging machine.
+load_commands="$(otool -arch all -l "$LIBOPENMPT_DYLIB")"
+dependencies="$(printf '%s\n' "$load_commands" | awk '
+    $1 == "cmd" { load = ($2 ~ /^LC_(LOAD|LOAD_WEAK|REEXPORT|LOAD_UPWARD)_DYLIB$/) }
+    load && $1 == "name" { print $2; load = 0 }
+')"
+while IFS= read -r dependency; do
+    case "$dependency" in
+        '' | /usr/lib/* | /System/Library/*) ;;
+        *) echo "error: libopenmpt has a non-system dependency: $dependency" >&2; exit 1 ;;
+    esac
+done <<< "$dependencies"
+
+mkdir -p "$PACKAGE_OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$PACKAGE_OUTPUT_DIR" && pwd -P)"
+FINAL_APP_DIR="$OUTPUT_DIR/${APP_NAME}.app"
+tmp="$(mktemp -d "$OUTPUT_DIR/.neoviolet-bundle.XXXXXX")"
+cleanup() {
+    status=$?
+    trap - EXIT
+    if [[ -e "$tmp/old" && ! -e "$FINAL_APP_DIR" ]]; then
+        if ! mv "$tmp/old" "$FINAL_APP_DIR"; then
+            echo "error: could not restore bundle; previous bundle is at $tmp/old" >&2
+            exit 1
+        fi
+    fi
+    rm -rf "$tmp"
+    exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+APP_DIR="$tmp/new"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
+FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 SIGN_IDENTITY="${SIGN_IDENTITY:--}"
-# The Makefile owns the minimum macOS version; read it from there so the icon
-# pipeline, the plist and the binaries cannot drift apart.
-MACOS_MIN="${MACOS_MIN:-$(sed -n 's/^MACOS_MIN ?= //p' "$PROJECT_ROOT/Makefile")}"
-MACOS_MIN="${MACOS_MIN:-13.0}"
 
 ICON_SRC="$GUI_ASSETS/NeoViolet.icon"
 ICON_NAME="NeoViolet"
 PRE_COMPILED="$GUI_ASSETS/pre-compiled"
 
-# ── Build ──────────────────────────────────────────────────────────────────
-echo "Building (make build/macos) …"
-cd "$PROJECT_ROOT"
-make build/macos
-
 # ── Bundle skeleton ────────────────────────────────────────────────────────
-rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 
 for bin in neoviolet-gui neoviolet apecli; do
-    cp "$PROJECT_ROOT/$bin" "$MACOS_DIR/"
+    cp "$INPUT_DIR/$bin" "$MACOS_DIR/"
 done
+cp "$LIBOPENMPT_DYLIB" "$FRAMEWORKS_DIR/libopenmpt.0.dylib"
 
 cp "$PROJECT_ROOT/tools/neoviolet-gui/LICENSE" "$RESOURCES_DIR/LICENSE-GUI-MIT"
 cp "$PROJECT_ROOT/tools/apecli/LICENSE"       "$RESOURCES_DIR/LICENSE-MIT"
@@ -202,6 +244,7 @@ printf 'APPL????' > "$CONTENTS_DIR/PkgInfo"
 
 # ── Code-sign ──────────────────────────────────────────────────────────────
 if command -v codesign >/dev/null 2>&1; then
+  codesign --force --sign "$SIGN_IDENTITY" "$FRAMEWORKS_DIR/libopenmpt.0.dylib" >/dev/null
   codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR" >/dev/null
 
   if codesign -d --entitlements :- "$APP_DIR" 2>/dev/null | grep -q "com.apple.security.app-sandbox"; then
@@ -210,4 +253,8 @@ if command -v codesign >/dev/null 2>&1; then
   fi
 fi
 
-echo "$APP_DIR"
+if [[ -e "$FINAL_APP_DIR" ]]; then
+    mv "$FINAL_APP_DIR" "$tmp/old"
+fi
+mv "$APP_DIR" "$FINAL_APP_DIR"
+echo "$FINAL_APP_DIR"

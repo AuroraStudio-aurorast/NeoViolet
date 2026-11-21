@@ -91,6 +91,9 @@ jobs:
       - name: Line length gate
         if: matrix.os == 'ubuntu-latest'
         run: make check/linelength
+      - name: Build script syntax
+        if: matrix.os == 'ubuntu-latest'
+        run: make check/shell
 
   security:
     name: govulncheck
@@ -121,6 +124,7 @@ jobs:
     timeout-minutes: 60
     env:
       CGO_ENABLED: 0
+      REQUIRE_RUST: 1
       GOOS: ${{ matrix.os == 'macos' && 'darwin' || 'linux' }}
     strategy:
       fail-fast: false
@@ -179,6 +183,16 @@ jobs:
             export GOARCH=${{ matrix.goarch }}
             make build
           fi
+      - name: Package macOS app bundle
+        if: matrix.os == 'macos'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          make deps/openmpt/macos
+          make package/osxappbundle
+          codesign --verify --deep --strict "dist/NeoViolet.app"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/NeoViolet.app" dist/NeoViolet-GUI-macos-universal.zip
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -187,6 +201,7 @@ jobs:
             neoviolet
             apecli
             neoviolet-gui
+            dist/*.zip
           if-no-files-found: error
 
   windows:
@@ -195,6 +210,7 @@ jobs:
     timeout-minutes: 60
     env:
       CGO_ENABLED: 0
+      REQUIRE_RUST: 1
       GOOS: windows
     strategy:
       fail-fast: false
@@ -269,16 +285,16 @@ jobs:
               "workflow once with publish enabled."
             exit 1
           fi
-          mkdir -p dist
-          gh release download "$tag" -p "$asset" -p "${asset}.sha256" -D dist
-          expected=$(awk '{print $1}' "dist/${asset}.sha256")
-          actual=$(sha256sum "dist/${asset}" | awk '{print $1}')
+          mkdir -p .build/windows-deps
+          gh release download "$tag" -p "$asset" -p "${asset}.sha256" -D .build/windows-deps
+          expected=$(awk '{print $1}' ".build/windows-deps/${asset}.sha256")
+          actual=$(sha256sum ".build/windows-deps/${asset}" | awk '{print $1}')
           if [ "$expected" != "$actual" ]; then
             echo "::error::checksum mismatch for $asset"
             exit 1
           fi
-          rm -f "dist/${asset}.sha256"
-          mv "dist/${asset}" dist/libopenmpt.dll
+          rm -f ".build/windows-deps/${asset}.sha256"
+          mv ".build/windows-deps/${asset}" .build/windows-deps/libopenmpt.dll
       - name: Build binary
         run: |
           set -eux
@@ -286,41 +302,11 @@ jobs:
           rustc --version
           export GOARCH=${{ matrix.goarch }}
           make build
-      - name: Collect DLLs
+      - name: Package executables and DLLs
         run: |
           set -eux
-          mkdir -p dist
-          cp neoviolet.exe dist/
-          cp apecli.exe dist/ 2>/dev/null || true
-          cp neoviolet-gui.exe dist/ 2>/dev/null || true
-          BIN_DIR="/${{ matrix.env_prefix }}/bin"
-          # Windows reports these names in lower case, so the match has to be
-          # case-insensitive or the list silently stops applying.
-          SYSTEM_DLLS="^(kernel32|ntdll|user32|gdi32|advapi32|shell32|ole32|msvcrt|vcruntime|(api|ext)-ms-win-[a-z0-9-]*|ucrtbase|ws2_32|iphlpapi|setupapi|crypt32|bcrypt|bcryptprimitives|psapi|winmm|version|combase|rpcrt4|shlwapi|oleaut32|imm32|msctf|comctl32|d3d11|dcomp|dwmapi|dwrite|dxgi|icu(uc|in)?|kernel\.appcore|windows\.storage)\.dll$"
-          declare -A seen
-          # The Rust binaries link the C++ runtime from this toolchain, so copy
-          # every non-Windows import. libopenmpt needs only the C runtime, so
-          # it does not seed the walk.
-          to_process=("neoviolet.exe" "neoviolet-gui.exe" "apecli.exe")
-          while [ ${#to_process[@]} -gt 0 ]; do
-            current="${to_process[0]}"
-            to_process=("${to_process[@]:1}")
-            deps=$(objdump -p "$current" | grep "DLL Name" | awk '{print $3}' \
-              | sort -u)
-            for dll in $deps; do
-              if [[ "${dll,,}" =~ $SYSTEM_DLLS ]] || [[ -v seen[$dll] ]]; then
-                continue
-              fi
-              seen["$dll"]=1
-              SRC="${BIN_DIR}/${dll}"
-              if [ -f "$SRC" ]; then
-                cp "$SRC" dist/
-                to_process+=("$SRC")
-              else
-                echo "Skipping (not found in $BIN_DIR): $dll"
-              fi
-            done
-          done
+          make package/windows WINDOWS_DLL_DIR="/${{ matrix.env_prefix }}/bin" \
+            LIBOPENMPT_DLL="$PWD/.build/windows-deps/libopenmpt.dll"
           ls -lh dist/
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
