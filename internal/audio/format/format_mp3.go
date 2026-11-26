@@ -28,11 +28,48 @@ func decodeMP3(rc io.ReadCloser) (beep.StreamSeekCloser, beep.Format, error) {
 	if !ok {
 		return mp3.Decode(rc)
 	}
-	tagStart, trailing := mp3TrailingTagStart(rs)
-	if !trailing {
-		return mp3.Decode(rc)
+	if tagStart, trailing := mp3TrailingTagStart(rs); trailing {
+		rc = &audioBoundedReader{rs: rs, closer: rc, limit: tagStart}
 	}
-	return mp3.Decode(&audioBoundedReader{rs: rs, closer: rc, limit: tagStart})
+	stream, format, err := mp3.Decode(rc)
+	if err != nil {
+		return nil, format, err
+	}
+	return &mp3Stream{StreamSeekCloser: stream, length: stream.Len()}, format, nil
+}
+
+// go-mp3 tries to decode a frame even when seeking to the end of the stream.
+// Represent that position without asking the decoder to read past the audio.
+type mp3Stream struct {
+	beep.StreamSeekCloser
+	length int
+	atEnd  bool
+}
+
+func (s *mp3Stream) Seek(position int) error {
+	if s.length > 0 && position == s.length {
+		s.atEnd = true
+		return nil
+	}
+	if err := s.StreamSeekCloser.Seek(position); err != nil {
+		return err
+	}
+	s.atEnd = false
+	return nil
+}
+
+func (s *mp3Stream) Position() int {
+	if s.atEnd {
+		return s.length
+	}
+	return s.StreamSeekCloser.Position()
+}
+
+func (s *mp3Stream) Stream(samples [][2]float64) (int, bool) {
+	if s.atEnd {
+		return 0, false
+	}
+	return s.StreamSeekCloser.Stream(samples)
 }
 
 // mp3TrailingTagStart returns the offset at which trailing ID3v1 or APEv2

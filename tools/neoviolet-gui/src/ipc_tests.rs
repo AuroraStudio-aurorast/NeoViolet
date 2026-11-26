@@ -219,6 +219,7 @@ async fn live_tui_acknowledges_and_exits_on_gui_request() {
     // Recovery remains a Go-owned preference, even though the GUI selected
     // the executable before a working IPC connection was available.
     assert!(hello.supports("player_recovery"));
+    assert!(hello.supports("track_playback"));
     write_request(
         peer.get_mut(),
         &Request::SetPreference {
@@ -570,7 +571,13 @@ async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values(
     assert!(!state.playing);
     let commands = [
         (Request::SetVolume(0.0), "mute"),
-        (Request::Seek(0.0), "rewind"),
+        (
+            Request::SeekRelative {
+                track_id: 0,
+                delta: 0.0,
+            },
+            "rewind",
+        ),
         (Request::Open("/music/a \"song\" 雪.flac".into()), "open"),
         (Request::OpenSettings, "settings"),
         (
@@ -601,13 +608,14 @@ async fn cross_language_fixture_keeps_snapshot_metadata_and_zero_command_values(
             },
             "recovered-player",
         ),
+        (Request::PlayPauseTrack(3), "toggle-track"),
     ];
     for (index, (request, id)) in commands.into_iter().enumerate() {
         let mut data = Vec::new();
         write_request(&mut data, &request, id).await.unwrap();
         let actual: serde_json::Value = serde_json::from_slice(&data).unwrap();
         for (key, expected) in fixture["requests"][index].as_object().unwrap() {
-            if key == "volume" || key == "position" {
+            if key == "volume" || key == "delta" {
                 assert_eq!(actual[key].as_f64(), expected.as_f64());
             } else {
                 assert_eq!(&actual[key], expected);

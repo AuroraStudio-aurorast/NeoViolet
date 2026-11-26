@@ -1,6 +1,6 @@
 use super::*;
 
-fn connected() -> (App, mpsc::Receiver<ipc::Command>) {
+pub(super) fn connected() -> (App, mpsc::Receiver<ipc::Command>) {
     let mut app = app();
     app.dialog = None;
     app.pending.clear();

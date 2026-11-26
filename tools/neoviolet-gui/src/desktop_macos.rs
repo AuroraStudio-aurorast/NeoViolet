@@ -319,6 +319,10 @@ pub fn configure_main(
             let appearance = NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua });
             window.setAppearance(appearance.as_deref());
             NSApplication::sharedApplication(marker).setAppearance(appearance.as_deref());
+            let touchbar_sender = sender.clone();
+            super::touch_bar::install(id, &window, move |event| {
+                let _ = touchbar_sender.send(Event::TouchBar(event));
+            });
             super::chrome::install(id, view, &window, f64::from(crate::titlebar::HEIGHT));
             super::chrome::on_title_inset(id, move |inset| {
                 let _ = sender.send(Event::TitleInset(id, inset));
@@ -380,33 +384,42 @@ pub fn align_main_controls(id: iced::window::Id) -> iced::Task<()> {
 
 impl Desktop {
     pub fn configure_lyrics_window(&self, id: iced::window::Id) -> iced::Task<()> {
-        let sender = self.sender.clone();
-        iced::window::run(id, move |window| {
-            use iced::window::raw_window_handle::RawWindowHandle;
-            use objc2_app_kit::{NSView, NSWindowCollectionBehavior};
-
-            let Some(_marker) = MainThreadMarker::new() else {
-                return;
-            };
-            let Ok(handle) = window.window_handle() else {
-                return;
-            };
-            let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
-                return;
-            };
-            // SAFETY: Iced invokes this callback on the window thread while the handle is alive.
-            let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
-            if let Some(window) = view.window() {
-                super::hit_test::install(id, &window, sender);
-                window.setExcludedFromWindowsMenu(true);
-                window.setHasShadow(false);
-                window.setHidesOnDeactivate(false);
-                window.setCollectionBehavior(
-                    NSWindowCollectionBehavior::CanJoinAllSpaces
-                        | NSWindowCollectionBehavior::FullScreenAuxiliary
-                        | NSWindowCollectionBehavior::IgnoresCycle,
-                );
-            }
-        })
+        configure_lyrics_window(id, Some(self.sender.clone()))
     }
+}
+
+pub(super) fn configure_lyrics_window(
+    id: iced::window::Id,
+    sender: Option<mpsc::UnboundedSender<Event>>,
+) -> iced::Task<()> {
+    iced::window::run(id, move |window| {
+        use iced::window::raw_window_handle::RawWindowHandle;
+        use objc2_app_kit::{NSView, NSWindowCollectionBehavior};
+
+        let Some(_marker) = MainThreadMarker::new() else {
+            return;
+        };
+        let Ok(handle) = window.window_handle() else {
+            return;
+        };
+        let RawWindowHandle::AppKit(handle) = handle.as_raw() else {
+            return;
+        };
+        // SAFETY: Iced invokes this callback on the window thread while the handle is alive.
+        let view = unsafe { handle.ns_view.cast::<NSView>().as_ref() };
+        if let Some(window) = view.window() {
+            if let Some(sender) = sender {
+                super::hit_test::install(id, &window, sender);
+            }
+            window.setExcludedFromWindowsMenu(true);
+            window.setHasShadow(false);
+            window.setHidesOnDeactivate(false);
+            window.setCollectionBehavior(
+                NSWindowCollectionBehavior::CanJoinAllSpaces
+                    | NSWindowCollectionBehavior::FullScreenAuxiliary
+                    | NSWindowCollectionBehavior::IgnoresCycle,
+            );
+            super::lyrics::show(&window);
+        }
+    })
 }

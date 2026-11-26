@@ -17,11 +17,12 @@
 //	{"type": "desktop_lyrics", "enable": true|false}
 //	{"type": "play"} | {"type": "pause"} — idempotent playback control
 //	{"type": "seek", "position": 12.3} — absolute seconds, clamped to duration
+//	{"type": "seek_relative", "track_id": 3, "delta": -15} — signed seconds from the current position
 //	{"type": "set_volume", "volume": 0.5} — 0..1, including zero
 //	{"type": "get_state"} — request a full snapshot
 //	{"type": "open_picker", "purpose":"audio"} — ask Go to request the native audio chooser
 //	{"type": "open_settings"} — focus the TUI Settings page, retaining drafts
-//	{"type": "play_pause"}                  — toggle play/pause
+//	{"type": "play_pause"}                  — toggle play/pause, with optional track_id
 //	{"type": "request_quit"}                — ask Go whether confirmation is needed
 //	{"type": "quit"}                        — confirmed GUI close, clean up and exit
 //
@@ -42,7 +43,9 @@
 // Commands without request_id remain compatible and receive no result.
 //
 // hello includes protocol:1, version (the raw TUI build version), and capabilities
-// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker","preferences_feedback","player_recovery"].
+// ["results","state","playback","request_quit","startup","file_picker","audio_file_picker","settings_navigation","settings_preferences","settings_file_picker","preferences_feedback","player_recovery","track_playback"].
+// track_playback supports seek_relative and honors track_id on play_pause.
+// Requests scoped to a track fail if it is no longer current or a track is loading.
 // Product versions never gate
 // protocol compatibility. Optional libopenmpt_version identifies the runtime-loaded
 // library and is omitted when the library is unavailable; it is not the build lock version.
@@ -142,6 +145,8 @@ type Message struct {
 	Capabilities      []string        `json:"capabilities,omitempty"`
 	Status            string          `json:"status,omitempty"`
 	Error             string          `json:"error,omitempty"`
+	TrackID           *int            `json:"track_id,omitempty"`
+	Delta             *float64        `json:"delta,omitempty"`
 	Position          *float64        `json:"position,omitempty"`
 	Volume            *float64        `json:"volume,omitempty"`
 	State             *PlaybackState  `json:"state,omitempty"`
@@ -211,5 +216,5 @@ type PlaybackState struct {
 
 // Hello identifies the running TUI and its independent wire capabilities.
 func Hello() Message {
-	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker", "preferences_feedback", "player_recovery"}}
+	return Message{Type: "hello", Protocol: 1, Version: version.Version, LibopenmptVersion: synth.OpenmptVersion(), Capabilities: []string{"results", "state", "playback", "request_quit", "startup", "file_picker", "audio_file_picker", "settings_navigation", "settings_preferences", "settings_file_picker", "preferences_feedback", "player_recovery", "track_playback"}}
 }

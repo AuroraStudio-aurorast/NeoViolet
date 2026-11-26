@@ -11,6 +11,8 @@ mod recovery;
 mod startup;
 #[cfg(test)]
 mod tests;
+#[cfg(any(target_os = "macos", test))]
+mod touchbar;
 mod update;
 
 use crate::{config, desktop, dialog, ipc, lyrics_window, titlebar};
@@ -37,6 +39,8 @@ pub struct App {
     pub desktop: Option<desktop::Desktop>,
     pub ipc_connected: bool,
     pub playback: Option<ipc::PlaybackState>,
+    #[cfg(any(target_os = "macos", test))]
+    touchbar: touchbar::State,
     pub notice: Option<String>,
     pub connection_error: Option<String>,
     startup: startup::Stage,
@@ -196,6 +200,13 @@ impl App {
                 self.actions_available(),
                 self.config.desktop_lyrics.enabled,
             );
+        }
+        #[cfg(any(target_os = "macos", test))]
+        {
+            let touchbar = self.sync_touchbar();
+            if touchbar.units() > 0 {
+                task = Task::batch([task, touchbar]);
+            }
         }
         if (menu || modal.is_some()) != (self.titlebar.visible() || self.dialog.is_some())
             || fullscreen != self.titlebar.fullscreen

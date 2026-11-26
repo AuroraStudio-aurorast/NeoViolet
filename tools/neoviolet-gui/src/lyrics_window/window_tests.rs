@@ -358,3 +358,41 @@ async fn frames_received_during_opening_are_sized_after_the_window_is_ready() {
     let _ = overlay.update(event, &mut preferences);
     assert_eq!(overlay.size, expected);
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn macos_lyrics_and_toolbar_start_hidden_until_native_setup() {
+    use iced::futures::StreamExt;
+    let mut overlay = Overlay::default();
+    let mut preferences = Preferences {
+        enabled: true,
+        ..Default::default()
+    };
+    let task = overlay.show(&preferences);
+    let mut stream = iced_runtime::task::into_stream(task).unwrap();
+    match stream.next().await.unwrap() {
+        iced_runtime::Action::Window(window::Action::Open(_, settings, _)) => {
+            assert!(
+                !settings.visible,
+                "visible creation lets winit activate the lyric window"
+            );
+        }
+        _ => panic!("show must create a lyric window"),
+    }
+    overlay.locating = true;
+    let root = overlay.window.unwrap();
+    let (task, _) = overlay.update(
+        Event::ToolbarRequested(root, Some(Point::ORIGIN), overlay.size),
+        &mut preferences,
+    );
+    let mut stream = iced_runtime::task::into_stream(task).unwrap();
+    match stream.next().await.unwrap() {
+        iced_runtime::Action::Window(window::Action::Open(_, settings, _)) => {
+            assert!(
+                !settings.visible,
+                "the transparent toolbar must not activate either"
+            );
+        }
+        _ => panic!("the lyric window must create its toolbar"),
+    }
+}

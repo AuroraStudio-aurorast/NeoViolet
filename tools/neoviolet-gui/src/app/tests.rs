@@ -84,6 +84,8 @@ fn app() -> App {
         desktop: None,
         ipc_connected: false,
         playback: None,
+        #[cfg(any(target_os = "macos", test))]
+        touchbar: Default::default(),
         notice: None,
         connection_error: None,
         startup: super::startup::Stage::Legacy,
@@ -631,3 +633,6 @@ mod settings_integration_tests;
 
 #[path = "recovery_tests.rs"]
 mod recovery_tests;
+
+#[path = "touchbar_tests.rs"]
+mod touchbar_tests;

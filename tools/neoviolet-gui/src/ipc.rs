@@ -27,9 +27,15 @@ pub enum Request {
     CheckQuit,
     DesktopLyrics(bool),
     PlayPause,
+    #[cfg(any(target_os = "macos", test))]
+    PlayPauseTrack(u64),
     Play,
     Pause,
-    Seek(f64),
+    #[cfg(any(target_os = "macos", test))]
+    SeekRelative {
+        track_id: u64,
+        delta: f64,
+    },
     SetVolume(f64),
     GetState,
     OpenSettings,
@@ -312,9 +318,16 @@ async fn write_request<W: AsyncWrite + Unpin>(
             serde_json::json!({"type": "desktop_lyrics", "enable": enable})
         }
         Request::PlayPause => serde_json::json!({"type": "play_pause"}),
+        #[cfg(any(target_os = "macos", test))]
+        Request::PlayPauseTrack(track_id) => {
+            serde_json::json!({"type": "play_pause", "track_id": track_id})
+        }
         Request::Play => serde_json::json!({"type": "play"}),
         Request::Pause => serde_json::json!({"type": "pause"}),
-        Request::Seek(position) => serde_json::json!({"type": "seek", "position":position}),
+        #[cfg(any(target_os = "macos", test))]
+        Request::SeekRelative { track_id, delta } => {
+            serde_json::json!({"type": "seek_relative", "track_id": track_id, "delta": delta})
+        }
         Request::SetVolume(volume) => serde_json::json!({"type": "set_volume", "volume":volume}),
         Request::GetState => serde_json::json!({"type": "get_state"}),
         Request::OpenSettings => serde_json::json!({"type": "open_settings"}),
