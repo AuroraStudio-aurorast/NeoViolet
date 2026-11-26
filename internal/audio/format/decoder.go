@@ -126,14 +126,9 @@ func detectFormatFromBuf(buf []byte, n int, sourceName string) (string, error) {
 		logger.Debug("Detected format: MP3 (ID3)", "source", sourceName)
 		return ".mp3", nil
 	case n >= 2 && buf[0] == 0xFF && (buf[1]&0xE0) == 0xE0:
-		for _, p := range mpegProbes {
-			if ext, ok := p(buf, n); ok {
-				logger.Debug("Detected format: "+ext+" (sync)", "source", sourceName)
-				return ext, nil
-			}
-		}
-		logger.Debug("Detected format: MP3 (sync)", "source", sourceName)
-		return ".mp3", nil
+		ext := detectMPEGBySync(buf, n)
+		logger.Debug("Detected format: "+ext+" (sync)", "source", sourceName)
+		return ext, nil
 	case n >= 12 && string(buf[0:4]) == "RIFF" && string(buf[8:12]) == "WAVE":
 		logger.Debug("Detected format: WAV", "source", sourceName)
 		return ".wav", nil
@@ -177,6 +172,15 @@ func detectFormatFromBuf(buf []byte, n int, sourceName string) (string, error) {
 	}
 }
 
+func detectMPEGBySync(buf []byte, n int) string {
+	for _, probe := range mpegProbes {
+		if ext, ok := probe(buf, n); ok {
+			return ext
+		}
+	}
+	return ".mp3"
+}
+
 // DetectFormatByMagic reads the file header and returns the detected extension.
 func (fd *Decoder) DetectFormatByMagic(file *os.File) (string, error) {
 	originalPos, err := file.Seek(0, io.SeekCurrent)
@@ -191,6 +195,21 @@ func (fd *Decoder) DetectFormatByMagic(file *os.File) (string, error) {
 		return "", err
 	}
 
+	// The tag may contain cover art well beyond the header probe. Seek past it
+	// to identify the underlying MPEG layer or APE signature without reading it.
+	if n >= 10 && string(buffer[:3]) == "ID3" {
+		if offset := id3AudioOffset(buffer[:10]); offset+4 > n {
+			var header [4]byte
+			if _, err := file.ReadAt(header[:], originalPos+int64(offset)); err == nil {
+				switch {
+				case string(header[:]) == "MAC ":
+					return ".ape", nil
+				case header[0] == 0xff && header[1]&0xe0 == 0xe0:
+					return detectMPEGBySync(header[:], len(header)), nil
+				}
+			}
+		}
+	}
 	return detectFormatFromBuf(buffer, n, file.Name())
 }
 
@@ -202,14 +221,22 @@ func (fd *Decoder) DetectFormatFromBytes(data []byte) (string, error) {
 	return detectFormatFromBuf(buffer, n, "stdin")
 }
 
+// id3AudioOffset returns the byte after an ID3v2 tag and its optional v2.4 footer.
+func id3AudioOffset(buf []byte) int {
+	size := int(probeSynchsafe(buf[6:10]))
+	if buf[3] == 4 && buf[5]&0x10 != 0 {
+		size += 10
+	}
+	return 10 + size
+}
+
 // detectMPEGBehindID3 skips past an ID3v2 header and checks the underlying
 // MPEG frame to distinguish MP2 (Layer II) from MP3 (Layer III).
 func detectMPEGBehindID3(buf []byte, n int) string {
 	if n < 10 {
 		return ""
 	}
-	tagSize := int(buf[6])<<21 | int(buf[7])<<14 | int(buf[8])<<7 | int(buf[9])
-	pastID3 := 10 + tagSize
+	pastID3 := id3AudioOffset(buf)
 	if pastID3+2 > n {
 		return ""
 	}

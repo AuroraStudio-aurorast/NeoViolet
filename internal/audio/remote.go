@@ -21,20 +21,23 @@ import (
 // Remote audio is cached as a finite file, matching the stdin size limit.
 const maxRemoteAudioSize int64 = 500 * 1024 * 1024
 
-func isURL(path string) bool {
-	u, err := url.Parse(path)
-	return err == nil && u.Hostname() != "" && (strings.EqualFold(u.Scheme, "http") || strings.EqualFold(u.Scheme, "https"))
+// LooksLikeRemoteSource recognizes HTTP(S) input even if the URL is malformed.
+func LooksLikeRemoteSource(source string) bool {
+	scheme, _, ok := strings.Cut(strings.TrimSpace(source), "://")
+	return ok && (strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https"))
 }
 
 // RedactSource removes remote URL credentials, query parameters and fragments
 // before a source is shown to the user or written to logs. Local paths pass
 // through unchanged.
 func RedactSource(source string) string {
-	u, err := url.Parse(source)
-	if err != nil || (!strings.EqualFold(u.Scheme, "http") && !strings.EqualFold(u.Scheme, "https")) {
+	if !LooksLikeRemoteSource(source) {
 		return source
 	}
-	u.Scheme = strings.ToLower(u.Scheme)
+	u, err := url.Parse(source)
+	if err != nil || u.Hostname() == "" {
+		return "(invalid HTTP(S) URL)"
+	}
 	u.User = nil
 	u.RawQuery = ""
 	u.ForceQuery = false
@@ -61,7 +64,17 @@ func newRemoteHTTPClient() *http.Client {
 	transport.TLSHandshakeTimeout = 15 * time.Second
 	transport.ResponseHeaderTimeout = 30 * time.Second
 	transport.ExpectContinueTimeout = 1 * time.Second
-	return &http.Client{Transport: transport}
+	return &http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			// Keep the default redirect limit, but never forward the previous URL.
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			req.Header.Del("Referer")
+			return nil
+		},
+	}
 }
 
 // remoteConn bounds a stalled read without imposing a total download deadline.
@@ -330,10 +343,9 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	logger.Info("Opening remote audio", "url", RedactSource(urlStr))
 
 	u, err := url.Parse(urlStr)
-	if err != nil {
-		return fmt.Errorf("parse URL: %w", err)
+	if err != nil || u.Hostname() == "" {
+		return errors.New("invalid HTTP(S) audio URL")
 	}
-	u.Scheme = strings.ToLower(u.Scheme)
 	urlStr = u.String()
 
 	ext := strings.ToLower(filepath.Ext(u.Path))
@@ -353,7 +365,7 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	// #nosec G704 -- the user explicitly chose this HTTP(S) audio URL for playback.
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, urlStr, nil)
 	if err != nil {
-		return fmt.Errorf("create remote request: %w", err)
+		return &remoteRequestError{cause: err}
 	}
 	// #nosec G704 -- fetching a user-supplied remote audio URL is the core
 	// feature of remote playback; the URL comes from the user's own input.
@@ -365,7 +377,7 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+		return fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
 	if !format.IsSupportedExt(ext) {
@@ -402,7 +414,7 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 		_ = rrs.Close()
 		return fmt.Errorf("cannot detect remote audio format")
 	}
-	streamer, format, err := p.decoder.DecodeFromReader(rrs.cacheFile, ext)
+	streamer, format, err := p.decoder.DecodeCachedAudio(ctx, rrs.cacheFile, ext)
 	if err != nil {
 		_ = rrs.Close()
 		return err
@@ -412,6 +424,12 @@ func (p *Player) openURL(ctx context.Context, urlStr string) error {
 		_ = streamer.Close()
 		_ = rrs.Close()
 		return fmt.Errorf("speaker init failed: %w", err)
+	}
+
+	if err := ctx.Err(); err != nil {
+		_ = streamer.Close()
+		_ = rrs.Close()
+		return err
 	}
 
 	logger.Info("Remote audio opened", "url", RedactSource(urlStr), "format", format.SampleRate)

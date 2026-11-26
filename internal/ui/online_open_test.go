@@ -190,3 +190,42 @@ func TestRemoteQueueFormatOmitsQueryAndKeepsSource(t *testing.T) {
 		t.Fatalf("queue format = %q, want MP3", track.Format)
 	}
 }
+
+func TestInvalidOnlineOpenDoesNotEchoURL(t *testing.T) {
+	const source = "https://audio.example.test/bad%zz.mp3?token=private-value"
+	m := setupModel()
+	_, cmd := runOpen(m, invocation{Rest: source})
+	if cmd != nil || m.Error.Message == "" || strings.Contains(m.Error.Message, "private-value") {
+		t.Fatal("TUI must reject malformed URLs without echoing credentials")
+	}
+	m, conn, decoder := ipcModel(t)
+	requestIPC(t, m, conn, `{"type":"open","request_id":"bad-url","path":"`+source+`"}`)
+	result := readIPC(t, decoder, "result", "bad-url")
+	message, _ := result["error"].(string)
+	if result["status"] != "failed" || message == "" || strings.Contains(message, "private-value") {
+		t.Fatal("IPC must reject malformed URLs without echoing credentials")
+	}
+}
+
+func TestOnlineOpenHistoryKeepsSignedURLInSessionOnly(t *testing.T) {
+	cfgDir := historyTestSetup(t)
+	m := setupModel()
+	const plain = "open https://audio.example.test/song.mp3"
+	const signed = "e https://audio.example.test/song.mp3?token=private-value"
+	for _, command := range []string{plain, signed} {
+		setCommand(m, command)
+		executeCommand(m)
+	}
+	m.pendingLoad.cancel()
+	if len(m.CommandHistory) != 2 || m.CommandHistory[1] != signed {
+		t.Fatal("signed command should remain available within the session")
+	}
+	// #nosec G304 -- history path is in the test's private config directory.
+	data, err := os.ReadFile(filepath.Join(cfgDir, "history.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(data)) != plain {
+		t.Fatal("the disk history should contain only the unsigned URL")
+	}
+}

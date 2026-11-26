@@ -149,7 +149,7 @@ func (p *Player) OpenContext(ctx context.Context, path string) error {
 	p.cancelRemote()
 	logger.Debug("Player.Open", "path", RedactSource(path))
 
-	if isURL(path) {
+	if LooksLikeRemoteSource(path) {
 		return p.openURL(ctx, path)
 	}
 

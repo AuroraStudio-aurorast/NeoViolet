@@ -24,8 +24,7 @@ func init() {
 		if n < 10 {
 			return "", false
 		}
-		tagSize := int(buf[6])<<21 | int(buf[7])<<14 | int(buf[8])<<7 | int(buf[9])
-		pastID3 := 10 + tagSize
+		pastID3 := id3AudioOffset(buf)
 		if pastID3+4 <= n && string(buf[pastID3:pastID3+4]) == "MAC " {
 			return ".ape", true
 		}

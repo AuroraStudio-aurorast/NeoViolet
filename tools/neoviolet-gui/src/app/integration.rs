@@ -157,7 +157,17 @@ impl App {
         match status.as_str() {
             "accepted" => {
                 self.requests.insert(id.clone(), true);
-                return self.request_timeout(id, true);
+                // Loading an audio file may outlast the acknowledgement window.
+                // The player sends a final result even when another open supersedes it.
+                if self
+                    .preference_writes
+                    .active
+                    .as_ref()
+                    .is_some_and(|(active, _, _)| active == &id)
+                {
+                    return self.request_timeout(id, true);
+                }
+                return Task::none();
             }
             "succeeded" | "cancelled" => {
                 self.requests.remove(&id);

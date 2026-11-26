@@ -11,20 +11,20 @@ import (
 	"time"
 )
 
-func TestIsURLAcceptsHTTPSSchemesCaseInsensitively(t *testing.T) {
+func TestRemoteSourceRecognizesHTTPSSchemesCaseInsensitively(t *testing.T) {
 	for _, value := range []string{
 		"http://audio.example.test/track.mp3",
 		"https://audio.example.test/track.mp3",
 		"HTTP://audio.example.test/track.mp3",
 		"HtTpS://audio.example.test/track.mp3",
 	} {
-		if !isURL(value) {
-			t.Errorf("isURL(%q) = false, want true", value)
+		if !LooksLikeRemoteSource(value) {
+			t.Errorf("LooksLikeRemoteSource(%q) = false, want true", value)
 		}
 	}
 	for _, value := range []string{"/music/track.mp3", "ftp://audio.example.test/track.mp3"} {
-		if isURL(value) {
-			t.Errorf("isURL(%q) = true, want false", value)
+		if LooksLikeRemoteSource(value) {
+			t.Errorf("LooksLikeRemoteSource(%q) = true, want false", value)
 		}
 	}
 }
@@ -188,5 +188,42 @@ func TestRemoteRedirectErrorRedactsNestedURL(t *testing.T) {
 		if strings.Contains(err.Error(), secret) {
 			t.Errorf("request error exposes %q: %v", secret, err)
 		}
+	}
+}
+
+func TestMalformedRemoteSourceRedactsCredentials(t *testing.T) {
+	const source = "HTTPS://audio.example.test/bad%zz.mp3?token=private-value"
+	if strings.Contains(RedactSource(source), "private-value") {
+		t.Fatal("malformed remote source leaked its query")
+	}
+	if err := NewPlayer().Open(source); err == nil || strings.Contains(err.Error(), "private-value") {
+		t.Fatal("opening a malformed source must fail without echoing its query")
+	}
+}
+
+func TestRemoteRedirectOmitsReferer(t *testing.T) {
+	destination := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Referer() != "" {
+			t.Error("remote audio redirect sent a Referer")
+		}
+		if r.URL.Query().Get("token") != "destination-value" {
+			t.Error("redirect destination query was changed")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer destination.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, destination.URL+"/track?token=destination-value", http.StatusFound)
+	}))
+	defer source.Close()
+	client := newRemoteHTTPClient()
+	defer client.CloseIdleConnections()
+	resp, err := client.Get(source.URL + "/track?token=source-value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("redirect status = %d, want %d", resp.StatusCode, http.StatusNoContent)
 	}
 }

@@ -1,6 +1,7 @@
 package apestream
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strconv"
@@ -37,8 +38,8 @@ func newApeCLIBackend(binary string) *apeCLIBackend {
 
 func (b *apeCLIBackend) Name() string { return "apecli" }
 
-func (b *apeCLIBackend) Open(path string, seekSamples int) (*StreamInfo, error) {
-	return b.open(path, seekSamples)
+func (b *apeCLIBackend) Open(ctx context.Context, path string, seekSamples int) (*StreamInfo, error) {
+	return b.open(ctx, path, seekSamples)
 }
 
 func (b *apeCLIBackend) Read(p []float64) (int, error) { return b.read(p) }
@@ -49,7 +50,7 @@ func (b *apeCLIBackend) Close() error { return b.close() }
 
 // startPipe launches apecli for path, validates its APEP header and hands the
 // still unread PCM stream to the reader goroutine.
-func (b *apeCLIBackend) startPipe(path string, seekSamples int) (*pipeStream, *StreamInfo, error) {
+func (b *apeCLIBackend) startPipe(ctx context.Context, path string, seekSamples int) (*pipeStream, *StreamInfo, error) {
 	args := make([]string, 0, 3)
 	if seekSamples >= 0 {
 		args = append(args, "--seek", strconv.Itoa(seekSamples))
@@ -67,7 +68,7 @@ func (b *apeCLIBackend) startPipe(path string, seekSamples int) (*pipeStream, *S
 	// Read the 28-byte header before the PCM reader starts, so the header is
 	// never mistaken for samples.
 	var hdr apeCLIHeader
-	if err := readWithTimeout(stdout, &hdr, pipeHeaderTimeout); err != nil {
+	if err := readWithTimeout(ctx, stdout, &hdr, pipeHeaderTimeout); err != nil {
 		stopProcess(cmd, stdout)
 		return nil, nil, fmt.Errorf("apecli read header: %w", err)
 	}

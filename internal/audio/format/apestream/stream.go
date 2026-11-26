@@ -1,6 +1,7 @@
 package apestream
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -32,7 +33,7 @@ type Backend interface {
 	Name() string
 	// Open opens an APE file and prepares the stream. seekSamples < 0 means
 	// start from the beginning.
-	Open(path string, seekSamples int) (*StreamInfo, error)
+	Open(ctx context.Context, path string, seekSamples int) (*StreamInfo, error)
 	// Read fills p with interleaved float64 samples (L/R pairs). Returns the
 	// number of frames written. It is called from a single goroutine and may
 	// block until the decoder produces more samples.
@@ -62,6 +63,14 @@ type Streamer struct {
 // Decode opens an APE file and returns a beep.StreamSeekCloser. It tries each
 // available backend in priority order: apecli (Rust binary), ffmpeg, mac.
 func Decode(_ *os.File, path string) (*Streamer, beep.Format, error) {
+	return DecodeContext(context.Background(), path)
+}
+
+// DecodeContext cancels backend setup without tying playback to the context.
+func DecodeContext(ctx context.Context, path string) (*Streamer, beep.Format, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, beep.Format{}, err
+	}
 	backends, problems := probeBackends()
 	if len(backends) == 0 {
 		return nil, beep.Format{}, noBackendError(problems)
@@ -75,7 +84,11 @@ func Decode(_ *os.File, path string) (*Streamer, beep.Format, error) {
 
 	for _, b := range backends {
 		logger.Debug("ape: trying backend", "name", b.Name())
-		info, err = b.Open(path, -1)
+		info, err = b.Open(ctx, path, -1)
+		if cancelErr := ctx.Err(); cancelErr != nil {
+			_ = b.Close()
+			return nil, beep.Format{}, cancelErr
+		}
 		if err == nil {
 			streamer = &Streamer{
 				Core: streamcore.Core{

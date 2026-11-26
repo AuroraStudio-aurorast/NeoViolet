@@ -196,3 +196,28 @@ func TestRemoteCacheRejectsOversizedBodies(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteMP2BehindLongID3Tag(t *testing.T) {
+	mp2, err := os.ReadFile("../../testdata/test_mp2.mp2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ID3v2.3 tag with 2048 bytes of padding before the MPEG frames.
+	body := make([]byte, 10+2048, 10+2048+len(mp2))
+	copy(body, "ID3\x03\x00\x00\x00\x00\x10\x00")
+	body = append(body, mp2...)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		_, _ = w.Write(body)
+	}))
+	defer server.Close()
+	for _, path := range []string{"/track.mp2", "/download"} {
+		player := remoteTestPlayer(t)
+		if err := player.Open(server.URL + path); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		if player.Duration() <= 0 {
+			t.Fatalf("%s: no decoded audio", path)
+		}
+	}
+}

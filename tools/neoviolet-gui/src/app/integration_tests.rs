@@ -99,7 +99,8 @@ fn open_receipts_track_acceptance_and_report_failures_without_blocking_terminal_
     let _ = app.send_all(vec![ipc::Request::Open("broken.flac".into())]);
     let command = receiver.try_recv().unwrap();
     assert_eq!(app.requests.get(&command.id), Some(&false));
-    let _ = app.command_result(command.id.clone(), "accepted".into(), String::new());
+    let task = app.command_result(command.id.clone(), "accepted".into(), String::new());
+    assert!(iced_runtime::task::into_stream(task).is_none());
     let _ = app.update(Message::RequestTimeout {
         session: 2,
         epoch: app.connection_epoch,

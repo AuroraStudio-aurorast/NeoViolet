@@ -2,6 +2,7 @@ package apestream
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -28,15 +29,15 @@ type macBackend struct {
 
 func (b *macBackend) Name() string { return "mac" }
 
-func (b *macBackend) Open(path string, seekSamples int) (*StreamInfo, error) {
+func (b *macBackend) Open(ctx context.Context, path string, seekSamples int) (*StreamInfo, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.path = path
 
-	return b.decodeToMemory(path, seekSamples)
+	return b.decodeToMemory(ctx, path, seekSamples)
 }
 
-func (b *macBackend) decodeToMemory(path string, seekSamples int) (*StreamInfo, error) {
+func (b *macBackend) decodeToMemory(ctx context.Context, path string, seekSamples int) (*StreamInfo, error) {
 	tempDir, err := os.MkdirTemp("", "neoviolet-mac-*")
 	if err != nil {
 		return nil, fmt.Errorf("mac temp dir: %w", err)
@@ -47,7 +48,7 @@ func (b *macBackend) decodeToMemory(path string, seekSamples int) (*StreamInfo, 
 
 	// Decode APE → WAV using the official mac tool.
 	// #nosec G204 -- "mac" is a fixed binary name; path/tempWAV are user-supplied but quoted by exec.
-	cmd := exec.Command("mac", path, tempWAV, "-d")
+	cmd := exec.CommandContext(ctx, "mac", path, tempWAV, "-d")
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		_ = os.RemoveAll(tempDir)
@@ -118,9 +119,16 @@ func (b *macBackend) decodeToMemory(path string, seekSamples int) (*StreamInfo, 
 
 	// Read PCM data into memory.
 	pcmRaw := make([]byte, dataSize)
-	if _, err := io.ReadFull(wavFile, pcmRaw); err != nil {
-		_ = os.RemoveAll(tempDir)
-		return nil, fmt.Errorf("mac read pcm: %w", err)
+	for offset := 0; offset < len(pcmRaw); {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		end := min(offset+64*1024, len(pcmRaw))
+		if _, err := io.ReadFull(wavFile, pcmRaw[offset:end]); err != nil {
+			_ = os.RemoveAll(tempDir)
+			return nil, fmt.Errorf("mac read pcm: %w", err)
+		}
+		offset = end
 	}
 
 	// Convert to float64.
@@ -168,7 +176,7 @@ func (b *macBackend) Seek(samples int) error {
 		logger.Debug("mac cleanup during seek", "err", err)
 	}
 
-	_, err := b.decodeToMemory(b.path, samples)
+	_, err := b.decodeToMemory(context.Background(), b.path, samples)
 	return err
 }
 

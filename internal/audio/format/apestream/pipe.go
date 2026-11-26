@@ -2,6 +2,7 @@ package apestream
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os/exec"
@@ -240,7 +241,7 @@ func stopProcess(cmd *exec.Cmd, stdout io.ReadCloser) {
 
 // pipeStarter builds a fresh generation for a file, starting at seekSamples
 // decoded frames (negative means from the beginning).
-type pipeStarter func(path string, seekSamples int) (*pipeStream, *StreamInfo, error)
+type pipeStarter func(ctx context.Context, path string, seekSamples int) (*pipeStream, *StreamInfo, error)
 
 // pipeOwner is the shared state machine of a subprocess-backed Backend: it owns
 // the current generation and serialises Open/Seek/Close against each other,
@@ -252,12 +253,12 @@ type pipeOwner struct {
 	start   pipeStarter
 }
 
-func (o *pipeOwner) open(path string, seekSamples int) (*StreamInfo, error) {
+func (o *pipeOwner) open(ctx context.Context, path string, seekSamples int) (*StreamInfo, error) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 
 	o.path = path
-	s, info, err := o.start(path, seekSamples)
+	s, info, err := o.start(ctx, path, seekSamples)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +282,7 @@ func (o *pipeOwner) seek(samples int) error {
 	defer o.mu.Unlock()
 
 	o.stopLocked()
-	s, _, err := o.start(o.path, samples)
+	s, _, err := o.start(context.Background(), o.path, samples)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package apestream
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -23,8 +24,8 @@ func newFFmpegBackend() *ffmpegBackend {
 
 func (b *ffmpegBackend) Name() string { return "ffmpeg" }
 
-func (b *ffmpegBackend) Open(path string, seekSamples int) (*StreamInfo, error) {
-	return b.open(path, seekSamples)
+func (b *ffmpegBackend) Open(ctx context.Context, path string, seekSamples int) (*StreamInfo, error) {
+	return b.open(ctx, path, seekSamples)
 }
 
 func (b *ffmpegBackend) Read(p []float64) (int, error) { return b.read(p) }
@@ -36,8 +37,8 @@ func (b *ffmpegBackend) Close() error { return b.close() }
 // startFFmpegPipe probes the file, launches ffmpeg and returns the running
 // generation. ffmpeg writes s16le PCM, so the decoded samples are always
 // 16-bit regardless of the file's native depth.
-func startFFmpegPipe(path string, seekSamples int) (*pipeStream, *StreamInfo, error) {
-	info, err := probeFFmpegMetadata(path)
+func startFFmpegPipe(ctx context.Context, path string, seekSamples int) (*pipeStream, *StreamInfo, error) {
+	info, err := probeFFmpegMetadata(ctx, path)
 	if err != nil {
 		return nil, nil, fmt.Errorf("ffmpeg probe: %w", err)
 	}
@@ -75,7 +76,7 @@ func startFFmpegPipe(path string, seekSamples int) (*pipeStream, *StreamInfo, er
 }
 
 // probeFFmpegMetadata runs ffprobe to extract audio properties of the APE file.
-func probeFFmpegMetadata(path string) (*StreamInfo, error) {
+func probeFFmpegMetadata(ctx context.Context, path string) (*StreamInfo, error) {
 	args := []string{
 		"-v", "quiet",
 		"-print_format", "json",
@@ -85,7 +86,7 @@ func probeFFmpegMetadata(path string) (*StreamInfo, error) {
 	}
 	// #nosec G204 -- ffprobe is a fixed binary name; args are a fixed flag set
 	// plus the user's own audio path (with a "--" separator).
-	cmd := exec.Command("ffprobe", args...)
+	cmd := exec.CommandContext(ctx, "ffprobe", args...)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("ffprobe: %w", err)
