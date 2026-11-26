@@ -19,7 +19,7 @@ impl App {
             && !self.titlebar.visible();
         let snapshot = self.playback.as_ref();
         let can_play = available
-            && self.handshake.supports("playback")
+            && self.handshake.supports("track_playback")
             && snapshot.is_some_and(|state| state.has_track && !state.loading);
         NativeState {
             context: Context {
@@ -41,16 +41,18 @@ impl App {
         if event.context != state.context || !state.allows(event.command) {
             return Task::none();
         }
-        match event.command {
-            Command::Open => self.action(Action::Open),
-            Command::PlayPause => self.toggle_playback(),
-            Command::Lyrics => self.action(Action::DesktopLyrics),
-            Command::SeekBy(offset) => {
-                let snapshot = self.playback.as_ref().expect("validated track");
-                let position = (snapshot.position + offset).clamp(0.0, snapshot.duration);
-                self.send_all(vec![ipc::Request::Seek(position)])
+        let request = match event.command {
+            Command::Open => return self.action(Action::Open),
+            Command::Lyrics => return self.action(Action::DesktopLyrics),
+            Command::PlayPause => {
+                ipc::Request::PlayPauseTrack(state.context.track_id.expect("validated track"))
             }
-        }
+            Command::SeekBy(delta) => ipc::Request::SeekRelative {
+                track_id: state.context.track_id.expect("validated track"),
+                delta,
+            },
+        };
+        self.send_all(vec![request])
     }
 
     pub(super) fn sync_touchbar(&mut self) -> Task<Message> {

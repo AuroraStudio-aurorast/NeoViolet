@@ -54,7 +54,7 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	if err := json.Unmarshal(fixture["requests"], &requests); err != nil {
 		t.Fatal(err)
 	}
-	if requests[0].Volume == nil || *requests[0].Volume != 0 || requests[1].Position == nil || *requests[1].Position != 0 {
+	if requests[0].Volume == nil || *requests[0].Volume != 0 || requests[1].Delta == nil || *requests[1].Delta != 0 || requests[1].TrackID == nil || *requests[1].TrackID != 0 {
 		t.Fatal("explicit zero was lost")
 	}
 	if requests[2].Path != "/music/a \"song\" 雪.flac" {
@@ -63,11 +63,11 @@ func TestCrossLanguageProtocolFixturePreservesZerosAndPaths(t *testing.T) {
 	if requests[4].Section != "desktop_lyrics" || requests[5].Key != "gui.font_size" || string(requests[5].Value) != "20" {
 		t.Fatal("preference requests lost")
 	}
-	feedback := requests[len(requests)-2]
+	feedback := requests[len(requests)-3]
 	if feedback.Type != "preferences_applied" || feedback.Revision != 2 || feedback.RequestID != "" || !reflect.DeepEqual(feedback.RestartRequired, []string{"gui.neoviolet_path"}) {
 		t.Fatal("application feedback lost its revision or restart keys")
 	}
-	recovery := requests[len(requests)-1]
+	recovery := requests[len(requests)-2]
 	if recovery.Key != "gui.neoviolet_path" || recovery.RequestID != "recovered-player" {
 		t.Fatal("player recovery path request lost")
 	}

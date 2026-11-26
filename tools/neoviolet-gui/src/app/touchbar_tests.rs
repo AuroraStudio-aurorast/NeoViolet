@@ -4,6 +4,7 @@ use crate::touchbar::{Command, Event};
 
 fn playing() -> (App, mpsc::Receiver<ipc::Command>) {
     let (mut app, receiver) = connected();
+    app.handshake.capabilities.push("track_playback".into());
     app.config.desktop_lyrics.enabled = false;
     let _ = app.apply_snapshot(ipc::PlaybackState {
         revision: 1,
@@ -27,38 +28,35 @@ fn press(app: &mut App, command: Command) {
 }
 
 #[test]
-fn touchbar_pause_waits_for_the_go_snapshot() {
+fn touchbar_sends_each_toggle_and_waits_for_the_go_snapshot() {
     let (mut app, mut receiver) = playing();
-    press(&mut app, Command::PlayPause);
-    assert!(matches!(
-        receiver.try_recv().unwrap().request,
-        ipc::Request::Pause
-    ));
+    for _ in 0..2 {
+        press(&mut app, Command::PlayPause);
+        assert!(matches!(
+            receiver.try_recv().unwrap().request,
+            ipc::Request::PlayPauseTrack(3)
+        ));
+    }
     assert!(app.touchbar_state().playing);
     let _ = app.apply_snapshot(ipc::PlaybackState {
         revision: 2,
         track_id: 3,
         has_track: true,
         playing: false,
-        volume: 0.6,
         ..Default::default()
     });
     assert!(!app.touchbar_state().playing);
-    press(&mut app, Command::PlayPause);
-    assert!(matches!(
-        receiver.try_recv().unwrap().request,
-        ipc::Request::Play
-    ));
 }
 
 #[test]
-fn touchbar_seek_clamps_to_the_track_and_never_changes_the_snapshot() {
+fn touchbar_sends_relative_offsets_without_changing_the_snapshot() {
     let (mut app, mut receiver) = playing();
-    for (offset, expected) in [(-15.0, 0.0), (15.0, 25.0), (100.0, 60.0)] {
+    for offset in [15.0, 15.0, -15.0] {
         press(&mut app, Command::SeekBy(offset));
-        assert!(
-            matches!(receiver.try_recv().unwrap().request, ipc::Request::Seek(value) if value == expected)
-        );
+        assert!(matches!(
+            receiver.try_recv().unwrap().request,
+            ipc::Request::SeekRelative { track_id: 3, delta } if delta == offset
+        ));
     }
     for offset in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         press(&mut app, Command::SeekBy(offset));
@@ -81,7 +79,10 @@ fn touchbar_rechecks_readiness_loading_modals_and_capabilities() {
             1 => app.ipc_connected = false,
             2 => app.closing = true,
             3 => app.playback.as_mut().unwrap().loading = true,
-            4 => app.handshake.capabilities.retain(|cap| cap != "playback"),
+            4 => app
+                .handshake
+                .capabilities
+                .retain(|cap| cap != "track_playback"),
             5 => app.startup = super::super::startup::Stage::AwaitingPhase,
             _ => {
                 app.titlebar.update(titlebar::Message::ToggleMenu);
