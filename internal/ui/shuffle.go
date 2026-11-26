@@ -59,11 +59,32 @@ func (s *shuffleState) sync(entries []queueEntry, current uint64) {
 			known[id] = true
 		}
 	}
+	previous := len(s.bag)
 	for _, entry := range entries {
 		if !known[entry.id] {
-			// Insert additions at a random position without disturbing prior picks.
-			i := s.random.IntN(len(s.bag) + 1)
-			s.bag = slices.Insert(s.bag, i, entry.id)
+			s.bag = append(s.bag, entry.id)
+		}
+	}
+	if previous == len(s.bag) {
+		return
+	}
+	// Shuffle new entries, then interleave them in one pass without changing
+	// the relative order of the existing bag.
+	s.random.Shuffle(len(s.bag)-previous, func(i, j int) {
+		i, j = i+previous, j+previous
+		s.bag[i], s.bag[j] = s.bag[j], s.bag[i]
+	})
+	if previous == 0 {
+		return
+	}
+	additions := slices.Clone(s.bag[previous:])
+	for old, added := previous, len(additions); added > 0; {
+		if old > 0 && s.random.IntN(old+added) < old {
+			old--
+			s.bag[old+added] = s.bag[old]
+		} else {
+			added--
+			s.bag[old+added] = additions[added]
 		}
 	}
 }
@@ -157,10 +178,19 @@ func (m *Model) stepShuffleQueue(delta int) tea.Cmd {
 	if current == 0 {
 		current = m.session.detached
 	}
+	intent := m.queueIntent
+	if current == 0 && intent == nil {
+		// Immediate switching may unload a track before a candidate fails.
+		// Its last heard entry is still the shuffle navigation anchor.
+		current = m.session.shuffle.heard
+		if current == 0 {
+			return nil
+		}
+	}
 	state := m.session.shuffle.clone()
 	state.init(current)
 	pendingNew := false
-	if intent := m.queueIntent; intent != nil && intent.generation == m.loadGeneration {
+	if intent != nil && intent.generation == m.loadGeneration {
 		current = intent.entry
 		if intent.replace {
 			entries, replace = intent.replacement, true
@@ -178,6 +208,20 @@ func (m *Model) stepShuffleQueue(delta int) tea.Cmd {
 			}
 			pendingNew = true
 		}
+	}
+	if delta > 0 && !replace && len(m.session.shuffleFailed) > 0 {
+		available := make([]queueEntry, 0, len(entries))
+		for _, entry := range entries {
+			if !m.session.shuffleFailed[entry.id] {
+				available = append(available, entry)
+			}
+		}
+		if len(available) == 0 || (len(available) == 1 && available[0].id == state.heard) {
+			m.session.shuffleFailed = nil
+			m.Info.Set("No other shuffle tracks could be loaded. Press Next to retry.", 120)
+			return nil
+		}
+		entries = available
 	}
 	var id uint64
 	if delta < 0 && pendingNew && state.cursor >= 0 {
@@ -201,6 +245,9 @@ func (m *Model) stepShuffleQueue(delta int) tea.Cmd {
 }
 
 func (m *Model) acceptShuffleTrack(intent *queueLoadIntent) {
+	// A successful load ends the failure streak. Skipped entries can be
+	// retried on a later step without having been added to the history.
+	m.session.shuffleFailed = nil
 	if m.playbackMode() != config.PlaybackShuffle {
 		m.session.shuffle = shuffleState{}
 		return

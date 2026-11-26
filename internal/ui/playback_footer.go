@@ -31,6 +31,13 @@ func renderPlaybackControls(m *Model, playIcon string, width int) string {
 	white := lipgloss.NewStyle().Foreground(lipgloss.Color("15"))
 	transport := white.Render(m.Icons.Prev + " " + playIcon + " " + m.Icons.Next)
 	volumeStyle, volumeModel := volumeAppearance(m)
+	if lipgloss.Width(string(volumeModel.Full)) != 1 {
+		volumeModel.Full = '▰'
+	}
+	if lipgloss.Width(string(volumeModel.Empty)) != 1 {
+		volumeModel.Empty = '▱'
+	}
+	volumeModel.SetWidth(min(volumeModel.Width(), width))
 	volumeLabel := volumeStyle.Render(m.Icons.Volume + " ")
 	volume := volumeLabel + volumeModel.ViewAs(m.Audio.Volume)
 	// Preserve the configured volume width when possible, shortening the mode

@@ -263,6 +263,10 @@ func (m *Model) View() tea.View {
 
 // Helper methods
 func (m *Model) togglePlayback() {
+	if rewind := m.pendingRewind(); rewind != nil {
+		rewind.play = !rewind.play
+		return
+	}
 	if m.Audio.Player == nil {
 		return
 	}
@@ -313,17 +317,22 @@ func (m *Model) buildPlayState() mediactl.PlayState {
 	var cover image.Image
 	if m.Audio.Player != nil {
 		cover = m.Audio.Player.CoverImage()
+	} else if rewind := m.pendingRewind(); rewind != nil {
+		cover = rewind.cover
 	}
+	mode := m.playbackMode()
 	return mediactl.PlayState{
-		Title:    m.Audio.CurrentSong,
-		Artist:   m.Audio.Artist,
-		Album:    m.Audio.Album,
-		Duration: m.Audio.Duration,
-		Position: m.Audio.Elapsed,
-		Playing:  m.Audio.IsPlaying,
-		Volume:   m.Audio.Volume,
-		HasTrack: m.Audio.Player != nil,
-		Cover:    cover,
+		RepeatOne: mode == config.PlaybackRepeatOne,
+		Shuffle:   mode == config.PlaybackShuffle,
+		Title:     m.Audio.CurrentSong,
+		Artist:    m.Audio.Artist,
+		Album:     m.Audio.Album,
+		Duration:  m.Audio.Duration,
+		Position:  m.Audio.Elapsed,
+		Playing:   m.Audio.IsPlaying,
+		Volume:    m.Audio.Volume,
+		HasTrack:  m.hasAudioTrack(),
+		Cover:     cover,
 	}
 }
 

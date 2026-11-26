@@ -5,6 +5,7 @@ import (
 	"io"
 	"os/exec"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,8 +38,8 @@ func TestPipeReadTimeoutAbortsWedgedDecoder(t *testing.T) {
 
 	select {
 	case readErr := <-done:
-		if !errors.Is(readErr, io.EOF) {
-			t.Errorf("read from a stalled decoder = %v, want io.EOF", readErr)
+		if readErr == nil || errors.Is(readErr, io.EOF) || !strings.Contains(readErr.Error(), "timed out") {
+			t.Errorf("read from a stalled decoder = %v, want timeout error", readErr)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("read did not return after the decoder stalled")
@@ -46,5 +47,23 @@ func TestPipeReadTimeoutAbortsWedgedDecoder(t *testing.T) {
 
 	if s.cmd.ProcessState == nil {
 		t.Error("stalled decoder was not reaped")
+	}
+}
+
+func TestPipeDecoderExitFailureIsNotEOF(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("needs a shell subprocess")
+	}
+	cmd := exec.Command("sh", "-c", `printf '\001\000\001\000'; exit 7`)
+	stdout, err := startPipeCmd("fixture", cmd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := newPipeStream(cmd, stdout, &StreamInfo{Channels: 2, BitsPerSample: 16}, 2, 2)
+	defer stream.abort()
+	n, err := stream.read(make([]float64, 8))
+	var exit *exec.ExitError
+	if n != 1 || !errors.As(err, &exit) || exit.ExitCode() != 7 {
+		t.Fatalf("Read = (%d, %v), want one frame and exit status 7", n, err)
 	}
 }

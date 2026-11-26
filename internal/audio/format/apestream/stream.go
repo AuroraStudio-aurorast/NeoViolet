@@ -1,6 +1,7 @@
 package apestream
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -57,6 +58,7 @@ type Streamer struct {
 	backend Backend
 	path    string
 	opMu    sync.Mutex
+	readErr error
 }
 
 // Decode opens an APE file and returns a beep.StreamSeekCloser. It tries each
@@ -169,15 +171,22 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 			continue
 		}
 
+		if s.readErr != nil {
+			return totalFilled, false
+		}
+
 		// Buffer exhausted — read more from the backend
 		s.Buf = s.bufPool(len(samples) * 2) // allocate enough for one read
 		n, err := s.backend.Read(s.Buf)
+		if err != nil && !errors.Is(err, io.EOF) {
+			s.readErr = err
+		}
 		if n > 0 {
 			s.BufSamples = n
 			s.Pos = 0
 			continue
 		}
-		if err != nil && err != io.EOF {
+		if s.readErr != nil {
 			return totalFilled, false
 		}
 		// Real EOF
@@ -190,6 +199,13 @@ func (s *Streamer) Stream(samples [][2]float64) (int, bool) {
 	return totalFilled, true
 }
 
+// Err reports the decoder failure that ended playback.
+func (s *Streamer) Err() error {
+	s.opMu.Lock()
+	defer s.opMu.Unlock()
+	return s.readErr
+}
+
 // bufPool returns a []float64 of at most the given size, reusing a pooled
 // buffer when possible.
 func (s *Streamer) bufPool(n int) []float64 {
@@ -199,6 +215,9 @@ func (s *Streamer) bufPool(n int) []float64 {
 	}
 	return make([]float64, n)
 }
+
+// RewindMayBlock reports that seeking can start an external decoder.
+func (*Streamer) RewindMayBlock() bool { return true }
 
 // Seek moves the stream position to the given sample.
 func (s *Streamer) Seek(samples int) error {
@@ -221,6 +240,7 @@ func (s *Streamer) Seek(samples int) error {
 
 	s.CurrentSample.Store(int64(samples))
 	s.ResetBuffer()
+	s.readErr = nil
 	return nil
 }
 

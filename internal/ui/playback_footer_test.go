@@ -90,3 +90,21 @@ func TestPlaybackModeFooterKeepsNoTrackAndLyricsGeometry(t *testing.T) {
 		}
 	}
 }
+
+func TestPlaybackFooterSanitizesWideVolumeFill(t *testing.T) {
+	m := lyricFooterModel()
+	cfg := m.Config.Clone()
+	cfg.VolumeBar.Fill = []string{"界", "界"}
+	cfg.VolumeBar.Width = 40
+	m.applySavedSettings(cfg, nil)
+	m.Audio.Volume = 1
+	handleResize(m, tea.WindowSizeMsg{Width: 68, Height: 17})
+	plan := m.layoutPlan()
+	footer := renderFooter(m, plan)
+	if lipgloss.Width(footer) != plan.Width || lipgloss.Height(footer) != plan.FooterRows {
+		t.Fatalf("footer is %dx%d, want %dx%d", lipgloss.Width(footer), lipgloss.Height(footer), plan.Width, plan.FooterRows)
+	}
+	if !strings.Contains(stripANSI(footer), "100%") {
+		t.Fatal("footer lost the volume percentage")
+	}
+}

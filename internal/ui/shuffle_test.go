@@ -312,17 +312,16 @@ func TestShuffleRapidNextAndFailureDoNotCommitSkippedHistory(t *testing.T) {
 		m := loadedModeQueue(t, config.PlaybackShuffle)
 		first := m.session.current
 		m.stepQueue(1)
+		failed := m.queueIntent.entry
 		_, _ = m.Update(AudioLoadFailedMsg{Generation: m.loadGeneration, Message: "failed", Timer: 90})
 		if m.session.current != first || m.stepQueue(-1) != nil {
 			t.Fatal("failed request modified accepted history")
 		}
-		seen := map[uint64]bool{first: true}
-		for range 2 {
-			id := shuffleNext(t, m)
-			if seen[id] {
-				t.Fatal("failed request consumed a round entry")
-			}
-			seen[id] = true
+		if next := shuffleNext(t, m); next == first || next == failed {
+			t.Fatal("manual next did not advance to the remaining unplayed entry")
+		}
+		if got := shuffleNext(t, m); got != failed {
+			t.Fatal("a successful load did not make the deferred entry eligible again")
 		}
 	})
 }

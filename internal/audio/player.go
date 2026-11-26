@@ -357,6 +357,14 @@ func (p *Player) Toggle() {
 	}
 }
 
+// RewindMayBlock reports whether an automatic rewind can block on decoder I/O.
+func (p *Player) RewindMayBlock() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	stream, ok := p.streamer.(interface{ RewindMayBlock() bool })
+	return ok && stream.RewindMayBlock()
+}
+
 // Seek jumps to the given playback position.
 func (p *Player) Seek(position time.Duration) error {
 	p.mu.Lock()

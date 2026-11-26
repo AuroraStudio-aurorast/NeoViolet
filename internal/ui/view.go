@@ -93,7 +93,7 @@ func renderFooter(m *Model, plan layoutPlan) string {
 	}
 
 	var songLine string
-	if m.Audio.Player != nil {
+	if m.hasAudioTrack() {
 		artist := m.Audio.Artist
 		if artist == "" || artist == "Unknown Artist" {
 			songLine = m.Audio.CurrentSong

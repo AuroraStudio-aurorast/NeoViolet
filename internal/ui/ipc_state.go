@@ -12,10 +12,12 @@ func (m *Model) pushIPCState(force bool) {
 		return
 	}
 	state := ipc.PlaybackState{TrackID: m.activeGeneration, Title: m.Audio.CurrentSong, Artist: m.Audio.Artist, Album: m.Audio.Album,
-		HasTrack: m.Audio.Player != nil, Playing: m.Audio.IsPlaying, Loading: m.Loading, DesktopLyrics: m.DesktopLyricsEnabled,
+		HasTrack: m.hasAudioTrack(), Playing: m.Audio.IsPlaying, Loading: m.Loading, DesktopLyrics: m.DesktopLyricsEnabled,
 		Duration: m.Audio.Duration.Seconds(), Position: m.Audio.Elapsed.Seconds(), Volume: m.Audio.Volume}
 	if m.Audio.Player != nil {
 		state.Path = m.Audio.Player.Path()
+	} else if rewind := m.pendingRewind(); rewind != nil {
+		state.Path = rewind.path
 	}
 	if dir, err := config.Dir(); err == nil {
 		state.ConfigDir = dir

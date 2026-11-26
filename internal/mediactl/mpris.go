@@ -78,12 +78,19 @@ func rootProps() map[string]dbus.Variant {
 	}
 }
 
+func loopStatus(repeatOne bool) string {
+	if repeatOne {
+		return "Track"
+	}
+	return "None"
+}
+
 func playerProps(s PlayState, trackID string) map[string]dbus.Variant {
 	return map[string]dbus.Variant{
 		"PlaybackStatus": dbus.MakeVariant(playbackStatus(s.Playing, s.HasTrack)),
-		"LoopStatus":     dbus.MakeVariant("None"),
+		"LoopStatus":     dbus.MakeVariant(loopStatus(s.RepeatOne)),
 		"Rate":           dbus.MakeVariant(1.0),
-		"Shuffle":        dbus.MakeVariant(false),
+		"Shuffle":        dbus.MakeVariant(s.Shuffle),
 		"Metadata":       dbus.MakeVariant(buildMetadata(s, trackID)),
 		"Volume":         dbus.MakeVariant(s.Volume),
 		"Position":       dbus.MakeVariant(int64(s.Position / time.Microsecond)),

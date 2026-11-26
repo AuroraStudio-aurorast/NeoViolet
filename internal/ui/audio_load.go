@@ -18,6 +18,7 @@ type audioLoad struct {
 	mu       sync.Mutex
 	canceled bool
 	player   audio.AudioPlayer
+	rewind   *repeatPlayback
 }
 
 func (l *audioLoad) cancel() {
@@ -45,19 +46,24 @@ func (l *audioLoad) take() bool {
 }
 
 func (l *audioLoad) deliver(msg tea.Msg) tea.Msg {
+	var player audio.AudioPlayer
+	switch loaded := msg.(type) {
+	case AudioLoadedMsg:
+		player = loaded.Player
+		loaded.load = l
+		msg = loaded
+	case repeatRewoundMsg:
+		player = loaded.player
+	}
 	l.mu.Lock()
 	if l.canceled {
 		l.mu.Unlock()
-		if loaded, ok := msg.(AudioLoadedMsg); ok {
-			_ = loaded.Player.Close()
+		if player != nil {
+			_ = player.Close()
 		}
 		return nil
 	}
-	if loaded, ok := msg.(AudioLoadedMsg); ok {
-		l.player = loaded.Player
-		loaded.load = l
-		msg = loaded
-	}
+	l.player = player
 	l.mu.Unlock()
 	return msg
 }

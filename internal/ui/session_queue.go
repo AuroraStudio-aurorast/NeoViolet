@@ -21,6 +21,7 @@ type sessionQueue struct {
 	current, detached, detachedNext uint64 // detached identifies playback removed from entries.
 	removed                         *queueRemoval
 	shuffle                         shuffleState
+	shuffleFailed                   map[uint64]bool
 }
 type queueRemoval struct {
 	entry       queueEntry
@@ -158,6 +159,12 @@ func (m *Model) acceptQueueTrack(path string) {
 	m.pages.cursors[1] = max(0, queueIndex(m.session.entries, m.session.current))
 }
 func (m *Model) failQueueLoad() {
+	if intent := m.queueIntent; intent != nil && intent.shuffle != nil && !intent.replace {
+		if m.session.shuffleFailed == nil {
+			m.session.shuffleFailed = make(map[uint64]bool)
+		}
+		m.session.shuffleFailed[intent.entry] = true
+	}
 	m.queueIntent = nil
 	if m.Config.TrackSwitchMode == "immediate" {
 		m.session.current = 0

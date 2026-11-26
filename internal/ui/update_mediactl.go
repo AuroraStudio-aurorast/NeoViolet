@@ -16,6 +16,25 @@ func handleMediaCtlReady(m *Model, msg MediaCtlReadyMsg) (tea.Model, tea.Cmd) {
 }
 
 func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
+	switch msg.Command.Type {
+	case mediactl.CmdNext:
+		return m, m.stepQueue(1)
+	case mediactl.CmdPrev:
+		return m, m.stepQueue(-1)
+	}
+	if rewind := m.pendingRewind(); rewind != nil {
+		switch msg.Command.Type {
+		case mediactl.CmdPlayPause:
+			rewind.play = !rewind.play
+		case mediactl.CmdPlay:
+			rewind.play = true
+		case mediactl.CmdPause, mediactl.CmdStop:
+			rewind.play = false
+		case mediactl.CmdSetVolume:
+			m.setVolume(msg.Command.Volume)
+		}
+		return m, nil
+	}
 	if m.Audio.Player == nil {
 		return m, nil
 	}
@@ -35,10 +54,6 @@ func handleMediaCtlCmd(m *Model, msg MediaCtlMsg) (tea.Model, tea.Cmd) {
 		m.Audio.Player.Pause()
 		m.Audio.IsPlaying = false
 		_ = m.Audio.Player.Seek(0)
-	case mediactl.CmdNext:
-		return m, m.stepQueue(1)
-	case mediactl.CmdPrev:
-		return m, m.stepQueue(-1)
 	case mediactl.CmdSeek:
 		// MPRIS Seek offset is in microseconds
 		offset := time.Duration(msg.Command.Value) * time.Microsecond

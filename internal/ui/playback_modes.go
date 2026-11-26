@@ -61,6 +61,7 @@ func (m *Model) setPlaybackMode(mode string) {
 
 func (m *Model) resetShuffle() {
 	m.session.shuffle = shuffleState{}
+	m.session.shuffleFailed = nil
 	current := m.session.current
 	if current == 0 {
 		current = m.session.detached
@@ -102,6 +103,9 @@ func (m *Model) repeatQueueEntry() tea.Cmd {
 	index := queueIndex(m.session.entries, m.session.current)
 	if index < 0 {
 		return m.stepQueue(1)
+	}
+	if player, ok := m.Audio.Player.(interface{ RewindMayBlock() bool }); ok && player.RewindMayBlock() {
+		return m.rewindInBackground()
 	}
 	m.Audio.Player.Pause()
 	if err := m.Audio.SeekPlayer(0); err != nil {

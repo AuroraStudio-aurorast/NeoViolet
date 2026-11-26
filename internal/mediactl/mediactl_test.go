@@ -179,3 +179,22 @@ func TestValidSetPosition(t *testing.T) {
 		}
 	}
 }
+
+func TestPlayerPropsReflectPlaybackMode(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		loop, shuffle bool
+		status        string
+	}{
+		{name: "order", status: "None"},
+		{name: "repeat one", loop: true, status: "Track"},
+		{name: "shuffle", shuffle: true, status: "None"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			props := playerProps(PlayState{RepeatOne: tc.loop, Shuffle: tc.shuffle}, "/track/1")
+			if props["LoopStatus"].Value() != tc.status || props["Shuffle"].Value() != tc.shuffle {
+				t.Fatalf("unexpected playback mode: LoopStatus=%v, Shuffle=%v", props["LoopStatus"], props["Shuffle"])
+			}
+		})
+	}
+}
