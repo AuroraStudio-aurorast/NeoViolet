@@ -85,6 +85,11 @@ func handleIPCEvent(m *Model, event ipc.Event) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
+	if message.Type == "seek_relative" || (message.Type == "play_pause" && message.TrackID != nil) {
+		if message.TrackID == nil || *message.TrackID != m.activeGeneration || m.Loading || m.Audio.Player == nil {
+			return nil, fmt.Errorf("requested track is no longer available")
+		}
+	}
 	switch message.Type {
 	case "client_hello":
 		if message.Client != "neoviolet-gui" || message.Protocol != 1 {
@@ -148,6 +153,14 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 			return nil, fmt.Errorf("seek failed: %w", err)
 		}
 		m.Audio.UpdatePosition()
+	case "seek_relative":
+		limit := float64(math.MaxInt64) / float64(time.Second)
+		if message.Delta == nil || math.IsNaN(*message.Delta) || math.Abs(*message.Delta) >= limit {
+			return nil, fmt.Errorf("delta must be a valid number of seconds")
+		}
+		if _, err := m.Audio.seekRelative(time.Duration(*message.Delta * float64(time.Second))); err != nil {
+			return nil, fmt.Errorf("seek failed: %w", err)
+		}
 	case "play", "pause", "play_pause":
 		if m.Audio.Player == nil {
 			return nil, fmt.Errorf("no audio loaded")

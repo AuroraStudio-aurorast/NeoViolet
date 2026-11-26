@@ -171,6 +171,32 @@ func TestDecodeMP3TrailingMetadataDoesNotInflateLength(t *testing.T) {
 	}
 }
 
+func TestDecodeMP3SeekToEndAndBack(t *testing.T) {
+	streamer, _, err := decodeMP3(nopCloseReadSeeker{bytes.NewReader(mp3TestFrames(4))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = streamer.Close() }()
+
+	end := streamer.Len()
+	if err := streamer.Seek(end); err != nil {
+		t.Fatalf("seek to end: %v", err)
+	}
+	if got := streamer.Position(); got != end {
+		t.Fatalf("position = %d, want %d", got, end)
+	}
+	var sample [1][2]float64
+	if n, ok := streamer.Stream(sample[:]); n != 0 || ok || streamer.Err() != nil {
+		t.Fatalf("expected clean end, got (%d, %v), err = %v", n, ok, streamer.Err())
+	}
+	if err := streamer.Seek(end - 1); err != nil {
+		t.Fatalf("seek back from end: %v", err)
+	}
+	if n, ok := streamer.Stream(sample[:]); n != 1 || !ok {
+		t.Fatalf("last sample after seeking back = (%d, %v), err = %v", n, ok, streamer.Err())
+	}
+}
+
 func TestDecodeMP3AcceptsNonSeekableReader(t *testing.T) {
 	rc := io.NopCloser(bytes.NewReader(mp3TestFrames(2)))
 	streamer, _, err := decodeMP3(rc)

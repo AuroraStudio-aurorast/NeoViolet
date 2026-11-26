@@ -143,23 +143,30 @@ func (a *AudioState) SeekPlayer(pos time.Duration) error {
 
 // SeekRelative seeks forward or backward by the given delta.
 func (a *AudioState) SeekRelative(delta time.Duration) time.Duration {
+	position, err := a.seekRelative(delta)
+	if err != nil {
+		logger.Warn("Seek failed", "err", err)
+	}
+	return position
+}
+
+func (a *AudioState) seekRelative(delta time.Duration) (time.Duration, error) {
 	if a.Player == nil {
-		return 0
+		return 0, nil
 	}
 	current := a.Player.Position()
-	newPos := current + delta
-	if newPos < 0 {
-		newPos = 0
+	if delta > 0 {
+		delta = min(delta, math.MaxInt64-current)
 	}
-	if a.Duration > 0 && newPos > a.Duration {
-		newPos = a.Duration
+	newPos := max(0, current+delta)
+	if a.Duration > 0 {
+		newPos = min(newPos, a.Duration)
 	}
 	logger.Debug("SeekRelative", "delta", delta, "from", current, "to", newPos)
 	if err := a.SeekPlayer(newPos); err != nil {
-		logger.Warn("Seek failed", "err", err)
-		return current
+		return current, err
 	}
-	return newPos
+	return newPos, nil
 }
 
 // UpdateLyricIndex computes the active lyric line for the current position.

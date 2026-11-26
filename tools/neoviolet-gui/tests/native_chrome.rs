@@ -4,6 +4,10 @@
 mod chrome;
 #[cfg(target_os = "macos")]
 #[path = "../src/desktop_lyrics_macos.rs"]
+#[expect(
+    dead_code,
+    reason = "presentation is exercised by the native_touchbar focus harness"
+)]
 mod lyrics_pair;
 #[cfg(target_os = "macos")]
 #[path = "native_chrome/recovery.rs"]

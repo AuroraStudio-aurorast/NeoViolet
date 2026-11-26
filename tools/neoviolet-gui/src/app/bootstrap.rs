@@ -50,6 +50,8 @@ impl App {
             desktop: desktop.ok(),
             ipc_connected: false,
             playback: None,
+            #[cfg(any(target_os = "macos", test))]
+            touchbar: Default::default(),
             notice: None,
             connection_error: None,
             startup: Default::default(),

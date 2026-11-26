@@ -218,6 +218,60 @@ func TestIPCRejectsCommandsFromAnObsoleteConnection(t *testing.T) {
 	}
 }
 
+func TestIPCTrackPlaybackUsesLivePlayer(t *testing.T) {
+	m, conn, decoder := ipcModel(t)
+	player := &mockPlayer{position: 10 * time.Second, playing: true}
+	m.Audio.Player = player
+	m.Audio.Duration = time.Minute
+	m.activeGeneration = 3
+	for i, step := range []struct {
+		command  string
+		position time.Duration
+		playing  bool
+	}{
+		{`"type":"seek_relative","delta":15`, 25 * time.Second, true},
+		{`"type":"seek_relative","delta":15`, 40 * time.Second, true},
+		{`"type":"seek_relative","delta":30`, time.Minute, true},
+		{`"type":"seek_relative","delta":-30`, 30 * time.Second, true},
+		{`"type":"seek_relative","delta":-45`, 0, true},
+		{`"type":"play_pause"`, 0, false},
+		{`"type":"play_pause"`, 0, true},
+	} {
+		id := fmt.Sprintf("action-%d", i)
+		requestIPC(t, m, conn, fmt.Sprintf(`{%s,"track_id":3,"request_id":%q}`, step.command, id))
+		if result := readIPC(t, decoder, "result", id); result["status"] != "succeeded" {
+			t.Fatalf("%s: %v", id, result)
+		}
+		if player.Position() != step.position || player.IsPlaying() != step.playing {
+			t.Fatalf("%s: position=%v playing=%v, want %v and %v", id, player.Position(), player.IsPlaying(), step.position, step.playing)
+		}
+	}
+}
+
+func TestIPCTrackPlaybackRejectsStaleOrInvalidRequests(t *testing.T) {
+	m, conn, decoder := ipcModel(t)
+	player := &mockPlayer{playing: true}
+	m.Audio.Player = player
+	m.Audio.Duration = time.Minute
+	m.activeGeneration = 4
+	for i, command := range []string{
+		`"type":"play_pause","track_id":3`,
+		`"type":"seek_relative","track_id":3,"delta":15`,
+		`"type":"seek_relative","delta":15`,
+		`"type":"seek_relative","track_id":4`,
+		`"type":"seek_relative","track_id":4,"delta":1e20`,
+	} {
+		id := fmt.Sprintf("invalid-%d", i)
+		requestIPC(t, m, conn, fmt.Sprintf(`{%s,"request_id":%q}`, command, id))
+		if result := readIPC(t, decoder, "result", id); result["status"] != "failed" {
+			t.Errorf("%s was accepted: %v", command, result)
+		}
+	}
+	if player.seekCalled || player.pauseCalled || player.playCalled {
+		t.Fatal("invalid request affected the current track")
+	}
+}
+
 func TestIPCSeekPushesUpdatedSnapshotImmediately(t *testing.T) {
 	m, conn, decoder := ipcModel(t)
 	readIPC(t, decoder, "state", "")

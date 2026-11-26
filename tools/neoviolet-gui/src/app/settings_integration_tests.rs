@@ -277,3 +277,60 @@ async fn lyric_toolbar_completion_does_not_focus_main_while_native_picker_owns_i
         }
     }
 }
+
+#[cfg(target_os = "macos")]
+#[tokio::test]
+async fn opening_lyrics_does_not_request_key_window_changes() {
+    use iced::futures::StreamExt;
+    use iced::window::raw_window_handle::{
+        DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
+    };
+    struct NoNativeWindow;
+    impl HasWindowHandle for NoNativeWindow {
+        fn window_handle(&self) -> Result<WindowHandle<'_>, HandleError> {
+            Err(HandleError::Unavailable)
+        }
+    }
+    impl HasDisplayHandle for NoNativeWindow {
+        fn display_handle(&self) -> Result<DisplayHandle<'_>, HandleError> {
+            Err(HandleError::Unavailable)
+        }
+    }
+    for toolbar_open in [false, true] {
+        let (mut app, _) = feedback_app();
+        let root = window::Id::unique();
+        let toolbar = window::Id::unique();
+        app.lyrics.window = Some(root);
+        app.lyrics.toolbar_window = toolbar_open.then_some(toolbar);
+        let task = app.lyrics_event(lyrics_window::Event::Opened(if toolbar_open {
+            toolbar
+        } else {
+            root
+        }));
+        let mut native_operations = 0;
+        if let Some(mut stream) = iced_runtime::task::into_stream(task) {
+            while let Some(action) = stream.next().await {
+                match action {
+                    iced_runtime::Action::Window(window::Action::GainFocus(_)) => {
+                        panic!("opening lyrics must preserve the current key window")
+                    }
+                    iced_runtime::Action::Window(window::Action::Run(_, callback)) => {
+                        native_operations += 1;
+                        callback(&NoNativeWindow);
+                    }
+                    iced_runtime::Action::Window(window::Action::GetPosition(_, sender)) => {
+                        let _ = sender.send(Some(iced::Point::ORIGIN));
+                    }
+                    iced_runtime::Action::Window(window::Action::GetSize(_, sender)) => {
+                        let _ = sender.send(iced::Size::new(300.0, 50.0));
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(
+            native_operations >= 2,
+            "presentation must run in addition to passthrough, even without desktop menus"
+        );
+    }
+}

@@ -4,9 +4,9 @@ go 1.26.1
 
 require (
 	charm.land/bubbles/v2 v2.2.1
-	charm.land/bubbletea/v2 v2.1.1
+	charm.land/bubbletea/v2 v2.1.2
 	charm.land/huh/v2 v2.0.3
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.1
 	charm.land/log/v2 v2.0.1
 	github.com/EdlinOrg/prominentcolor v1.0.0
 	github.com/WhatDamon/go-amll-ttml-parser v0.0.0-20260918094540-d8fe6ac26bd6
@@ -16,14 +16,14 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/dhowden/tag v0.0.0-20240417053706-3d75831295e8
 	github.com/ebitengine/purego v0.11.3
-	github.com/gen2brain/mpeg v0.6.2
+	github.com/gen2brain/mpeg v0.7.0
 	github.com/godbus/dbus/v5 v5.2.4
 	github.com/gopxl/beep/v2 v2.1.1
 	github.com/gotracker/playback v1.5.0
 	github.com/lucasb-eyer/go-colorful v1.4.1
 	github.com/pion/opus v0.1.0
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/text v0.43.0
+	golang.org/x/text v0.44.0
 )
 
 require (
@@ -63,6 +63,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/xo/terminfo v1.2.0 // indirect
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
-	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 )

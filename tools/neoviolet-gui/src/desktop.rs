@@ -6,6 +6,8 @@ use crate::actions::Action;
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub enum Event {
     Action(Action),
+    #[cfg(any(target_os = "macos", test))]
+    TouchBar(crate::touchbar::Event),
     Files(Vec<PathBuf>),
     Reopen,
     #[cfg(any(target_os = "windows", test))]
@@ -25,6 +27,10 @@ pub enum Event {
 mod macos;
 #[cfg(target_os = "macos")]
 pub use macos::Desktop;
+
+#[cfg(target_os = "macos")]
+#[path = "desktop_touchbar_macos.rs"]
+mod touch_bar;
 
 #[cfg(target_os = "macos")]
 #[path = "desktop_chrome_macos.rs"]
@@ -166,4 +172,21 @@ impl Desktop {
     pub fn subscription(&self) -> iced::Subscription<Event> {
         iced::Subscription::none()
     }
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub fn sync_touchbar(id: iced::window::Id, state: crate::touchbar::State) -> iced::Task<()> {
+    #[cfg(target_os = "macos")]
+    return iced::window::run(id, move |_| touch_bar::sync(id, state));
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (id, state);
+        iced::Task::none()
+    }
+}
+
+/// macOS windows start hidden even if native menu installation failed.
+#[cfg(target_os = "macos")]
+pub fn configure_lyrics_without_menu(id: iced::window::Id) -> iced::Task<()> {
+    macos::configure_lyrics_window(id, None)
 }

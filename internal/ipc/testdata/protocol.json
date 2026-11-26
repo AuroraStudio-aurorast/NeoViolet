@@ -15,7 +15,8 @@
       "settings_preferences",
       "settings_file_picker",
       "preferences_feedback",
-      "player_recovery"
+      "player_recovery",
+      "track_playback"
     ],
     "libopenmpt_version": "0.8.9"
   },
@@ -50,9 +51,10 @@
       "volume": 0
     },
     {
-      "type": "seek",
+      "type": "seek_relative",
       "request_id": "rewind",
-      "position": 0
+      "track_id": 0,
+      "delta": 0
     },
     {
       "type": "open",
@@ -92,6 +94,11 @@
       "key": "gui.neoviolet_path",
       "value": "/Applications/Neo Violet 雪/neoviolet",
       "request_id": "recovered-player"
+    },
+    {
+      "type": "play_pause",
+      "request_id": "toggle-track",
+      "track_id": 3
     }
   ],
   "phase": {
