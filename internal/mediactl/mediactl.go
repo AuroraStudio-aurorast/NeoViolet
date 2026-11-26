@@ -36,15 +36,17 @@ type Command struct {
 
 // PlayState carries the current playback info pushed to the OS.
 type PlayState struct {
-	Title    string
-	Artist   string
-	Album    string
-	Duration time.Duration
-	Position time.Duration
-	Playing  bool
-	Volume   float64     // 0-1; used by Linux MPRIS, ignored elsewhere
-	HasTrack bool        // true when a track is loaded (Linux MPRIS distinguishes Paused/Stopped)
-	Cover    image.Image // nil if no cover art available
+	Title     string
+	Artist    string
+	Album     string
+	Duration  time.Duration
+	Position  time.Duration
+	Playing   bool
+	RepeatOne bool
+	Shuffle   bool
+	Volume    float64     // 0-1; used by Linux MPRIS, ignored elsewhere
+	HasTrack  bool        // true when a track is loaded (Linux MPRIS distinguishes Paused/Stopped)
+	Cover     image.Image // nil if no cover art available
 }
 
 // Controller is the interface each platform backend must implement.

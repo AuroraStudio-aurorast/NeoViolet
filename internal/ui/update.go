@@ -57,6 +57,9 @@ func updateDispatcher(m *Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		return handleAudioLoadFailed(m, msg)
 	case AudioLoadedMsg:
 		return handleAudioLoaded(m, msg)
+	case repeatRewoundMsg:
+		m.finishRepeatRewind(msg)
+		return m, nil
 	case AccentApplyMsg:
 		return handleAccentApply(m, msg)
 	case MediaCtlMsg:

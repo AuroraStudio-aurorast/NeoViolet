@@ -11,16 +11,17 @@ import (
 const volumeSaveDelay = 250 * time.Millisecond
 
 type volumeSaveJob struct {
-	revision uint64
-	run      func() volumeSavedMsg
+	revision     uint64
+	modeRevision uint64
+	run          func() volumeSavedMsg
 }
 type volumeSavedMsg struct {
 	job *volumeSaveJob
 	err error
 }
 
-// Input updates memory immediately; the existing tick coalesces writes after
-// the user stops adjusting, without spawning a timer or writer for every key.
+// Volume and mode changes share this coalesced writer. Input updates memory
+// immediately; the existing tick saves a snapshot after a quiet period.
 func (m *Model) saveVolumeConfig() {
 	if m.Config.DefaultVolume == m.Audio.Volume {
 		return
@@ -35,7 +36,7 @@ func (m *Model) startVolumeSave(now time.Time) tea.Cmd {
 		return nil
 	}
 	snapshot := m.Config.Clone()
-	job := &volumeSaveJob{revision: m.volumeRevision}
+	job := &volumeSaveJob{revision: m.volumeRevision, modeRevision: m.modeRevision}
 	job.run = sync.OnceValue(func() volumeSavedMsg {
 		return volumeSavedMsg{job: job, err: snapshot.Save()}
 	})
@@ -53,10 +54,10 @@ func (m *Model) finishVolumeSave(msg volumeSavedMsg) {
 		m.volumeSavePending = true
 		// Keep the value for the next change, explicit save or shutdown retry.
 		// Do not hammer an unavailable disk on every UI tick.
-		if m.volumeRevision == msg.job.revision {
+		if m.volumeRevision == msg.job.revision && m.modeRevision == msg.job.modeRevision {
 			m.volumeSaveDue = time.Time{}
 		}
-		m.Error.Set(fmt.Sprintf("Volume save failed: %v", msg.err), 90)
+		m.Error.Set(fmt.Sprintf("Playback preferences save failed: %v", msg.err), 90)
 	}
 }
 
@@ -75,7 +76,7 @@ func (m *Model) flushDeferredVolume() {
 	m.Config.DefaultVolume = m.Audio.Volume
 	if err := m.Config.Save(); err != nil {
 		m.volumeSaveDue = time.Time{}
-		m.Error.Set(fmt.Sprintf("Volume save failed: %v", err), 90)
+		m.Error.Set(fmt.Sprintf("Playback preferences save failed: %v", err), 90)
 		return
 	}
 	m.volumeSavePending = false

@@ -2,6 +2,7 @@ package apestream
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -22,7 +23,7 @@ import (
 //   - A pipeStream owns one subprocess generation. Only its readLoop closes
 //     chunkChan, so Read can never wait for a sender that has already left, and
 //     nobody closes a channel another goroutine may still send on.
-//   - abort() kills the process and waits for the reader to stop before reaping.
+//   - abort() kills the process and waits for the reader to reap it.
 //   - Read gives the decoder a bounded amount of time to produce each chunk: a
 //     decoder that stalls must not block its caller (and, through beep's
 //     speaker lock, the whole player) forever.
@@ -44,7 +45,7 @@ const (
 	// is wedged (deadlock, stuck filesystem, killed without closing the pipe).
 	// Waiting forever instead would freeze playback and every later
 	// output detach, so the generation is aborted and playback reports
-	// end of stream.
+	// a decoder error.
 	pipeReadTimeout = 15 * time.Second
 )
 
@@ -62,9 +63,10 @@ type pipeStream struct {
 	bytesPerSample int
 	numChannels    int
 
-	chunkChan chan pcmChunk // closed by readLoop when it stops (sole closer)
-	cancel    chan struct{} // closed by abort to stop the reader early
-	done      chan struct{} // closed by readLoop once it has stopped
+	chunkChan   chan pcmChunk // closed by readLoop when it stops (sole closer)
+	cancel      chan struct{} // closed by abort to stop the reader early
+	done        chan struct{} // closed after the decoder is reaped
+	terminalErr error         // published by closing chunkChan
 
 	// readBuf holds decoded samples not yet handed to the caller. Only the
 	// single Read caller touches it.
@@ -94,14 +96,18 @@ func newPipeStream(cmd *exec.Cmd, stdout io.ReadCloser, info *StreamInfo, bytesP
 	return s
 }
 
-// readLoop decodes the subprocess stdout into float64 chunks until the process
-// ends or the generation is aborted. It owns chunkChan: closing it is how Read
-// learns that no further samples will arrive.
+// readLoop drains stdout before reaping the process. Readers see the terminal
+// error only after all queued samples have been handed off.
 func (s *pipeStream) readLoop() {
-	// Registered in reverse order: chunkChan closes first so blocked readers
-	// wake up, then done signals anyone waiting for the goroutine to exit.
-	defer close(s.done)
-	defer close(s.chunkChan)
+	defer func() {
+		if s.cmd != nil {
+			if err := s.cmd.Wait(); s.terminalErr == nil && err != nil {
+				s.terminalErr = fmt.Errorf("APE decoder exited: %w", err)
+			}
+		}
+		close(s.chunkChan)
+		close(s.done)
+	}()
 
 	frameBytes := s.bytesPerSample * s.numChannels
 	if frameBytes == 0 {
@@ -122,6 +128,9 @@ func (s *pipeStream) readLoop() {
 			}
 		}
 		if err != nil {
+			if n%frameBytes != 0 || (!errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF)) {
+				s.terminalErr = fmt.Errorf("APE decoder PCM: %w", err)
+			}
 			return
 		}
 	}
@@ -150,8 +159,9 @@ func (s *pipeStream) read(p []float64) (int, error) {
 			select {
 			case chunk, ok := <-s.chunkChan:
 				if !ok {
-					// The decoder stopped (EOF or abort). Report what we have rather
-					// than waiting for a sender that will never come.
+					if s.terminalErr != nil {
+						return total / 2, s.terminalErr
+					}
 					break drain
 				}
 				n := copy(p[total:], chunk.data)
@@ -163,7 +173,7 @@ func (s *pipeStream) read(p []float64) (int, error) {
 			case <-timer.C:
 				logger.Warn("ape: decoder stopped producing samples, aborting", "timeout", s.readTimeout)
 				s.abort()
-				break drain
+				return total / 2, fmt.Errorf("APE decoder timed out waiting for samples after %s", s.readTimeout)
 			}
 		}
 	}
@@ -188,15 +198,11 @@ func (s *pipeStream) abort() {
 			_ = s.stdout.Close()
 		}
 
-		// Reap only after the reader has stopped using the pipe: exec.Cmd.Wait
-		// must not run concurrently with a read from the pipe it owns.
+		// The reader reaps the process after it stops using stdout.
 		select {
 		case <-s.done:
 		case <-time.After(pipeAbortTimeout):
 			logger.Debug("ape: decoder pipe reader did not stop in time")
-		}
-		if s.cmd != nil {
-			_ = s.cmd.Wait()
 		}
 	})
 }

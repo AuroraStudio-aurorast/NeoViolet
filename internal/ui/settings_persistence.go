@@ -20,6 +20,7 @@ type configSaveJob struct {
 	snapshot       config.Config
 	changed        map[string]bool
 	volumeRevision uint64
+	modeRevision   uint64
 	run            func() configSavedMsg
 	quit           bool
 	pendingVolume  bool
@@ -90,9 +91,9 @@ func (m *Model) saveSettings(quit bool) tea.Cmd {
 
 func (m *Model) startConfigSave(candidate config.Config, changed map[string]bool, quit bool) tea.Cmd {
 	previousVolume := m.volumeSave
-	job := &configSaveJob{snapshot: candidate, changed: changed, volumeRevision: m.volumeRevision, quit: quit, pendingVolume: m.volumeSavePending || previousVolume != nil}
+	job := &configSaveJob{snapshot: candidate, changed: changed, volumeRevision: m.volumeRevision, modeRevision: m.modeRevision, quit: quit, pendingVolume: m.volumeSavePending || previousVolume != nil}
 	m.volumeSave = nil
-	m.volumeSavePending = false // This snapshot includes the latest remembered volume.
+	m.volumeSavePending = false // This snapshot includes remembered volume and mode.
 	m.configSave = job
 	m.Info.Set("Saving configuration…", max(90, m.Config.Error.Duration))
 	job.run = sync.OnceValue(func() configSavedMsg {
@@ -133,6 +134,9 @@ func (m *Model) finishSettingsSave(msg configSavedMsg) tea.Cmd {
 		return nil
 	}
 	cfg := msg.job.snapshot.Clone()
+	if m.modeRevision != msg.job.modeRevision {
+		cfg.PlaybackMode = m.Config.PlaybackMode
+	}
 	if m.volumeRevision != msg.job.volumeRevision {
 		cfg.DefaultVolume = m.Audio.Volume
 	} else if msg.job.changed["default_volume"] {
@@ -194,6 +198,9 @@ func (m *Model) flushSettingsSave() {
 	}
 }
 func (m *Model) applySavedSettings(cfg config.Config, changed map[string]bool) {
+	if cfg.PlaybackMode != m.Config.PlaybackMode {
+		m.resetShuffle()
+	}
 	*m.Config = cfg
 	if changed["desktop_lyrics.enabled"] {
 		m.setDesktopLyricsEnabled(cfg.DesktopLyrics.Enabled)

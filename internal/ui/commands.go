@@ -70,6 +70,7 @@ var commands = []commandSpec{
 		Run:     runForceQuit,
 	},
 	{Name: "p", Desc: "Toggle play/pause", Run: runPlayPause},
+	{Name: "mode", Args: "[order|repeat_one|shuffle]", Desc: "Show or set playback mode", Run: runMode},
 	{Name: "vol", Args: "<0.0-1.0>", Desc: "Set playback volume", Run: runVolume},
 	{Name: "seek", Args: "<time|+/-offset>", Desc: "Seek within the current track", Run: runSeek},
 	{

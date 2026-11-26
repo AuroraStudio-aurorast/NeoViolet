@@ -95,6 +95,9 @@ func handleNormalModeKeyPress(m *Model, msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 
 	case normMatch(msg, keys.Next):
 		return m, m.stepQueue(1)
+	case normMatch(msg, keys.PlaybackMode):
+		m.cyclePlaybackMode()
+		return m, nil
 
 	case normMatch(msg, keys.Prev):
 		return m, m.stepQueue(-1)

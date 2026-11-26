@@ -134,6 +134,7 @@ type KeyMap struct {
 	Command      key.Binding
 	NormalMode   key.Binding
 	CycleFocus   key.Binding
+	PlaybackMode key.Binding
 }
 
 // ShortHelp returns the key bindings shown in the short help
@@ -150,7 +151,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.CycleFocus, k.TabNext, k.TabPrev},
-		{k.Play, k.Pause, k.Next, k.Prev},
+		{k.Play, k.Pause, k.Next, k.Prev, k.PlaybackMode},
 		{k.VolumeUp, k.VolumeDown, k.SeekForward, k.SeekBackward},
 		{k.Quit, k.Command, k.NormalMode},
 	}
@@ -279,6 +280,7 @@ type Model struct {
 	scanIssues               []string
 	configSave               *configSaveJob
 	volumeRevision           uint64
+	modeRevision             uint64
 	settingsLyricsRevision   uint64
 	volumeSavePending        bool
 	volumeSaveDue            time.Time

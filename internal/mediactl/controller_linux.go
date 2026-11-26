@@ -158,6 +158,13 @@ func (c *linuxController) Update(state PlayState) {
 		changed["PlaybackStatus"] = dbus.MakeVariant(playbackStatus(state.Playing, state.HasTrack))
 	}
 
+	if c.state.RepeatOne != state.RepeatOne {
+		changed["LoopStatus"] = dbus.MakeVariant(loopStatus(state.RepeatOne))
+	}
+	if c.state.Shuffle != state.Shuffle {
+		changed["Shuffle"] = dbus.MakeVariant(state.Shuffle)
+	}
+
 	if !sameTrack || c.state.Volume != state.Volume {
 		changed["Volume"] = dbus.MakeVariant(state.Volume)
 	}

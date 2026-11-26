@@ -162,6 +162,10 @@ func (m *Model) ipcRequest(message ipc.Message) (tea.Cmd, error) {
 			return nil, fmt.Errorf("seek failed: %w", err)
 		}
 	case "play", "pause", "play_pause":
+		if rewind := m.pendingRewind(); rewind != nil {
+			rewind.play = message.Type == "play" || (message.Type == "play_pause" && !rewind.play)
+			return nil, nil
+		}
 		if m.Audio.Player == nil {
 			return nil, fmt.Errorf("no audio loaded")
 		}

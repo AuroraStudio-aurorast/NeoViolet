@@ -164,6 +164,7 @@ type Config struct {
 	SoundfontPath   string               `json:"soundfont_path"`
 	TrackerBackend  string               `json:"tracker_backend"`
 	TrackSwitchMode string               `json:"track_switch_mode"` // on_success | immediate
+	PlaybackMode    string               `json:"playback_mode"`     // order | repeat_one | shuffle
 	Lyrics          LyricsConfig         `json:"lyrics"`
 	Anim            AnimConfig           `json:"anim"`
 	ProgressBar     ProgressBarConfig    `json:"progress_bar"`
@@ -197,6 +198,11 @@ func (c *Config) Normalize() bool {
 	case TrackSwitchOnSuccess, TrackSwitchImmediate:
 	default:
 		c.TrackSwitchMode = TrackSwitchOnSuccess
+	}
+	switch c.PlaybackMode {
+	case PlaybackOrder, PlaybackRepeatOne, PlaybackShuffle:
+	default:
+		c.PlaybackMode = PlaybackOrder
 	}
 
 	f := &c.Lyrics.Fetch
@@ -247,7 +253,7 @@ func (c *Config) Normalize() bool {
 		f.Timeout != orig.Lyrics.Fetch.Timeout ||
 		f.Security != orig.Lyrics.Fetch.Security ||
 		f.InsecureTLS != orig.Lyrics.Fetch.InsecureTLS
-	return c.GUI != orig.GUI || c.DesktopLyrics != orig.DesktopLyrics || volumeChanged || fetchChanged || panelChanged || animChanged || c.TrackSwitchMode != orig.TrackSwitchMode
+	return c.GUI != orig.GUI || c.DesktopLyrics != orig.DesktopLyrics || volumeChanged || fetchChanged || panelChanged || animChanged || c.TrackSwitchMode != orig.TrackSwitchMode || c.PlaybackMode != orig.PlaybackMode
 }
 
 // normalizeLyricsPanel clamps the panel settings into their documented ranges.
@@ -314,6 +320,7 @@ func DefaultConfig() Config {
 		SoundfontPath:   "",
 		TrackerBackend:  "auto",
 		TrackSwitchMode: TrackSwitchOnSuccess,
+		PlaybackMode:    PlaybackOrder,
 		Lyrics: LyricsConfig{
 			Enabled:        true,
 			ScrollSpeed:    6,
