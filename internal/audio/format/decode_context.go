@@ -4,11 +4,16 @@ import (
 	"context"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/gopxl/beep/v2"
 
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/apestream"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio/format/mp2stream"
 )
+
+// Remote MP2 caches the entire decoded stream as stereo float64 samples.
+const maxRemoteMP2PCMBytes = 256 * 1024 * 1024
 
 // DecodeCachedAudio lets cancellation stop decoder setup. After setup, the
 // returned stream owns its reader and no longer depends on the load context.
@@ -19,6 +24,7 @@ func (fd *Decoder) DecodeCachedAudio(ctx context.Context, r io.ReadSeekCloser, e
 	var stream beep.StreamSeekCloser
 	var spec beep.Format
 	var err error
+	ext = strings.ToLower(ext)
 	if file, ok := r.(*os.File); ok && ext == ".ape" {
 		// This decoder opens subprocesses by file path instead of reading r.
 		var ape *apestream.Streamer
@@ -28,7 +34,15 @@ func (fd *Decoder) DecodeCachedAudio(ctx context.Context, r io.ReadSeekCloser, e
 		}
 	} else {
 		reader := &loadingAudioReader{ReadSeekCloser: r, ctx: ctx}
-		stream, spec, err = fd.DecodeFromReader(reader, ext)
+		if ext == ".mp2" {
+			var mp2 *mp2stream.Streamer
+			mp2, spec, err = mp2stream.DecodeMP2WithLimit(reader, maxRemoteMP2PCMBytes)
+			if err == nil {
+				stream = mp2
+			}
+		} else {
+			stream, spec, err = fd.DecodeFromReader(reader, ext)
+		}
 		reader.ctx = nil
 	}
 	if cancelErr := ctx.Err(); cancelErr != nil {

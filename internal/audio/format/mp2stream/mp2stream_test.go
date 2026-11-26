@@ -3,6 +3,7 @@ package mp2stream
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gopxl/beep/v2"
@@ -210,5 +211,44 @@ func TestDecodeMP2_BadFile(t *testing.T) {
 	_, _, err = DecodeMP2(f)
 	if err == nil {
 		t.Error("expected error for bad/empty file")
+	}
+}
+
+func TestDecodeMP2MemoryLimit(t *testing.T) {
+	// #nosec G304 -- the path points to a fixed repo fixture.
+	f, err := os.Open(testFile("test_mp2.mp2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	baseline, _, err := DecodeMP2(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Each sample position retains a pair of float64 values.
+	wantSamples := baseline.Len()
+	budget := wantSamples * 16
+	_ = baseline.Close()
+
+	for _, limit := range []int{1, budget - 1, budget} {
+		stream, _, err := DecodeMP2WithLimit(f, limit)
+		if limit == budget {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stream.Len() != wantSamples {
+				t.Errorf("within budget: decoded %d samples, want %d", stream.Len(), wantSamples)
+			}
+			_ = stream.Close()
+			continue
+		}
+		if stream != nil {
+			_ = stream.Close()
+			t.Errorf("accepted MP2 exceeding the %d-byte budget", limit)
+		}
+		if err == nil || !strings.Contains(err.Error(), "memory limit") {
+			t.Errorf("budget %d: got %v, want decoded memory limit error", limit, err)
+		}
 	}
 }
