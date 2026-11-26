@@ -1,5 +1,5 @@
 //! Compact dialog surfaces; lifecycle and playback actions stay in the application.
-use iced::widget::{button, column, container, opaque, row, rule, scrollable, text};
+use iced::widget::{button, column, container, opaque, row, rule, scrollable, text, text_input};
 use iced::{Border, Color, Element, Font, Length, Padding, Shadow, Theme, Vector};
 
 use crate::app::{Dialog, Message};
@@ -28,6 +28,26 @@ impl Navigation {
         shift: bool,
     ) -> Option<Message> {
         use iced::keyboard::{Key, key::Named};
+        if matches!(dialog, Dialog::OpenOnlineAudio { .. }) {
+            return match key {
+                Key::Named(Named::Tab) => {
+                    self.selected = match (self.selected, shift) {
+                        (None, false) => Some(0),
+                        (Some(0), false) => Some(1),
+                        (None, true) => Some(1),
+                        (Some(1), true) => Some(0),
+                        _ => None,
+                    };
+                    None
+                }
+                Key::Named(Named::Enter | Named::Space) => match self.selected {
+                    Some(0) => Some(Message::Dismiss),
+                    Some(1) => Some(Message::SubmitOnlineAudio),
+                    _ => None,
+                },
+                _ => None,
+            };
+        }
         let actions = match dialog {
             Dialog::Quit => vec![Message::Dismiss, Message::ConfirmQuit],
             Dialog::Error(_) if !running => vec![
@@ -131,6 +151,31 @@ pub fn overlay<'a>(
             },
             432,
         ),
+        Dialog::OpenOnlineAudio { url, error } => (
+            "Open Online Audio",
+            Mark::Music,
+            column![
+                paragraph("Enter a direct HTTP or HTTPS audio file URL. The file is downloaded before playback; live streams are not supported."),
+                text_input("https://example.com/audio.mp3", url)
+                    .id("online-audio-url")
+                    .on_input(Message::OnlineAudioURLChanged)
+                    .on_submit(Message::SubmitOnlineAudio)
+                    .padding([9, 10])
+                    .size(13),
+            ]
+            .push(
+                text(error.as_deref().unwrap_or(""))
+                    .size(12)
+                    .color(Color::from_rgb8(240, 155, 155)),
+            )
+            .spacing(10)
+            .into(),
+            row![
+                action("Cancel", Message::Dismiss, Tone::Neutral, 0),
+                action("Open", Message::SubmitOnlineAudio, Tone::Primary, 1),
+            ],
+            480,
+        ),
     };
     let heading = text(heading)
         .size(18)
@@ -165,7 +210,11 @@ pub fn overlay<'a>(
                 .height(Length::Shrink)
         )
         .width(Length::Fill)
-        .max_height(104),
+        .max_height(if matches!(dialog, Dialog::OpenOnlineAudio { .. }) {
+            150
+        } else {
+            104
+        }),
     ]
     .spacing(16)
     .padding(24);
@@ -211,7 +260,11 @@ pub fn overlay<'a>(
         .padding(1)
         .width(Length::Fill)
         .max_width(width)
-        .max_height(280)
+        .max_height(if matches!(dialog, Dialog::OpenOnlineAudio { .. }) {
+            330
+        } else {
+            280
+        })
         .style(|_| container::Style {
             background: Some(Color::from_rgb8(43, 43, 46).into()),
             text_color: Some(FOREGROUND),

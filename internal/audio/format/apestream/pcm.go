@@ -1,6 +1,7 @@
 package apestream
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -56,8 +57,8 @@ func convertPCMToFloat64(pcm []byte, numChannels, bytesPerSample int, out []floa
 	return out
 }
 
-// readWithTimeout reads a binary value from r with a timeout.
-func readWithTimeout(r io.Reader, v interface{}, timeout time.Duration) error {
+// readWithTimeout reads a binary value until cancellation or a timeout.
+func readWithTimeout(ctx context.Context, r io.Reader, v any, timeout time.Duration) error {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- binary.Read(r, binary.LittleEndian, v)
@@ -65,6 +66,8 @@ func readWithTimeout(r io.Reader, v interface{}, timeout time.Duration) error {
 	select {
 	case err := <-errCh:
 		return err
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-time.After(timeout):
 		return fmt.Errorf("read timed out after %v", timeout)
 	}

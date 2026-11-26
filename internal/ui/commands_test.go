@@ -46,7 +46,7 @@ func TestCommandHint(t *testing.T) {
 	if got := commandLookup0(t, "p").hint(); got != "Toggle play/pause" {
 		t.Errorf("p hint = %q", got)
 	}
-	if got := commandLookup0(t, "open").hint(); got != "<path>  Load an audio file" {
+	if got := commandLookup0(t, "open").hint(); got != "<path|URL>  Load audio from a file or URL" {
 		t.Errorf("open hint = %q", got)
 	}
 }
@@ -136,7 +136,7 @@ func TestCommandInputSuggestionWiring(t *testing.T) {
 		t.Error("ShowSuggestions = false, want true")
 	}
 	if ti.CharLimit != 256 {
-		t.Errorf("CharLimit = %d, want 256", ti.CharLimit)
+		t.Errorf("CharLimit = %d, want 256 for the normal command line", ti.CharLimit)
 	}
 	if got := ti.KeyMap.AcceptSuggestion.Keys(); len(got) != 1 || got[0] != "tab" {
 		t.Errorf("AcceptSuggestion keys = %v, want [tab]", got)

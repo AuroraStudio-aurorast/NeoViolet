@@ -26,6 +26,12 @@ type Streamer struct {
 
 // DecodeMP2 reads an MP2 audio stream and returns a beep.StreamSeekCloser.
 func DecodeMP2(r io.ReadSeeker) (*Streamer, beep.Format, error) {
+	return DecodeMP2WithLimit(r, 0)
+}
+
+// DecodeMP2WithLimit bounds the retained PCM sample bytes during decoding.
+// A limit of zero leaves the sample cache unbounded.
+func DecodeMP2WithLimit(r io.ReadSeeker, maxPCMBytes int) (*Streamer, beep.Format, error) {
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
 		return nil, beep.Format{}, fmt.Errorf("mp2 seek: %w", err)
 	}
@@ -56,24 +62,20 @@ func DecodeMP2(r io.ReadSeeker) (*Streamer, beep.Format, error) {
 	frames := make([]cachedFrame, 0, 512)
 	totalSamples := 0
 
-	fr := toFrame(first, numChannels)
-	totalSamples += fr.samples
-	frames = append(frames, fr)
-
-	for {
-		s := audio.Decode()
-		if s == nil || audio.HasEnded() {
+	const bytesPerSamplePair = 2 * 8 // Two float64 values, including for mono inputs.
+	for samples := first; ; {
+		count := len(samples.Interleaved) / numChannels
+		if count > 0 {
+			if maxPCMBytes > 0 && count > maxPCMBytes/bytesPerSamplePair-totalSamples {
+				return nil, beep.Format{}, fmt.Errorf("mp2: decoded audio exceeds the memory limit (%d bytes of PCM samples)", maxPCMBytes)
+			}
+			frames = append(frames, toFrame(samples, numChannels))
+			totalSamples += count
+		}
+		samples = audio.Decode()
+		if samples == nil || audio.HasEnded() {
 			break
 		}
-		if len(s.Interleaved) == 0 {
-			continue
-		}
-		fr := toFrame(s, numChannels)
-		if fr.samples == 0 {
-			continue
-		}
-		totalSamples += fr.samples
-		frames = append(frames, fr)
 	}
 
 	if len(frames) == 0 {
@@ -97,10 +99,6 @@ func DecodeMP2(r io.ReadSeeker) (*Streamer, beep.Format, error) {
 // widens them to float64 (unlike streamcore.Int16ToFloat64).
 func toFrame(s *mpeg.Samples, numChannels int) cachedFrame {
 	in := s.Interleaved
-	if len(in) == 0 {
-		return cachedFrame{}
-	}
-
 	numSamples := len(in) / numChannels
 	out := make([]float64, numSamples*2)
 

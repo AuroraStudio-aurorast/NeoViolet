@@ -233,6 +233,7 @@ func filterCandidates(cands []candidate, prefix string) []candidate {
 // <enter>, which keeps executing exactly what was typed.
 func syncCompletion(m *Model) {
 	syncGhostSuggestions(m)
+	syncCommandInputLimit(m)
 
 	// The row budget depends on the notice and on the current suggestion, and
 	// the clearing path below (leaving command mode) must still
@@ -250,6 +251,26 @@ func syncCompletion(m *Model) {
 	m.completionSeg = ctx.Seg
 	m.completionCandidates = candidatesFor(ctx)
 	m.completionIndex = -1
+}
+
+// syncCommandInputLimit keeps ordinary commands bounded while allowing the
+// open command and its aliases to accept longer direct URLs and signed links.
+func syncCommandInputLimit(m *Model) {
+	const (
+		defaultLimit = 256
+		openLimit    = 4096
+	)
+	limit := defaultLimit
+	if m.UI.Mode == ModeCommand {
+		value := m.Components.CommandInput.Value()
+		fields := strings.Fields(value)
+		if len(fields) > 0 {
+			if spec, ok := commandLookup(fields[0]); ok && spec.Name == "open" {
+				limit = openLimit
+			}
+		}
+	}
+	m.Components.CommandInput.CharLimit = limit
 }
 
 // acceptCompletion writes the selected candidate into the input line: the text
@@ -288,6 +309,7 @@ func acceptCompletion(m *Model, index int) {
 	// The written value is the segment's text now: the next cycle replaces it.
 	m.completionSeg = segment{Index: seg.Index, Prefix: value, Start: seg.Start, End: end}
 	m.completionIndex = index
+	syncCommandInputLimit(m)
 	syncGhostSuggestions(m)
 	// The written value changes the row budget by itself, not only through the
 	// ghost suggestion the budget reads off it, and the candidate it reads is the

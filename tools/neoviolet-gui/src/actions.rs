@@ -1,6 +1,7 @@
 #[derive(Debug, Clone, Copy)]
 pub enum Action {
     Open,
+    OpenOnlineAudio,
     Preferences,
     About,
     Quit,
@@ -25,6 +26,7 @@ impl Action {
         matches!(
             self,
             Self::Open
+                | Self::OpenOnlineAudio
                 | Self::DesktopLyrics
                 | Self::LyricsSettings
                 | Self::UnlockLyrics

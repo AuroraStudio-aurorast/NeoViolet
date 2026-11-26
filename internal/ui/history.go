@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,7 +53,7 @@ func loadHistory(m *Model) {
 	history := make([]string, 0, len(lines))
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line != "" {
+		if line != "" && canPersistCommand(line) {
 			history = append(history, line)
 		}
 	}
@@ -81,8 +82,14 @@ func saveHistory(m *Model) {
 		return
 	}
 
-	// Write history — newest at bottom
-	data := strings.Join(m.CommandHistory, "\n") + "\n"
+	// Keep commands with URL credentials available only in the current session.
+	var data strings.Builder
+	for _, command := range m.CommandHistory {
+		if canPersistCommand(command) {
+			data.WriteString(command)
+			data.WriteByte('\n')
+		}
+	}
 
 	// Ensure the directory exists
 	dir := filepath.Dir(path)
@@ -92,8 +99,22 @@ func saveHistory(m *Model) {
 		return
 	}
 
-	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(data.String()), 0600); err != nil {
 		logger.Warn("Failed to write history file", "path", path, "err", err)
 		return
 	}
+}
+
+// canPersistCommand skips malformed URLs as well as URLs with credentials.
+func canPersistCommand(command string) bool {
+	inv, ok := parseInvocation(command)
+	if !ok || !remoteAudioLocation(inv.Rest) {
+		return true
+	}
+	spec, known := commandLookup(inv.Name)
+	if !known || spec.Name != "open" {
+		return true
+	}
+	u, err := url.Parse(strings.TrimSpace(inv.Rest))
+	return err == nil && u.Hostname() != "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
 }

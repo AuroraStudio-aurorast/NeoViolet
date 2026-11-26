@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -128,7 +129,13 @@ func (m *Model) acceptQueueTrack(path string) {
 			}
 		}
 	} else {
-		track := library.Track{Path: path, Title: m.Audio.CurrentSong, Artist: m.Audio.Artist, Album: m.Audio.Album, Duration: m.Audio.Duration, Format: strings.ToUpper(strings.TrimPrefix(filepath.Ext(path), "."))}
+		sourcePath := path
+		if remoteAudioLocation(path) {
+			if parsed, err := url.Parse(path); err == nil {
+				sourcePath = parsed.Path
+			}
+		}
+		track := library.Track{Path: path, Title: m.Audio.CurrentSong, Artist: m.Audio.Artist, Album: m.Audio.Album, Duration: m.Audio.Duration, Format: strings.ToUpper(strings.TrimPrefix(filepath.Ext(sourcePath), "."))}
 		entry := m.newQueueEntry(track)
 		m.session.entries = []queueEntry{entry}
 		m.session.current = entry.id

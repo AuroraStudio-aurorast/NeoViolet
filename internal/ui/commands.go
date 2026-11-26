@@ -87,8 +87,8 @@ var commands = []commandSpec{
 	{
 		Name:    "open",
 		Aliases: []string{"load", "e"},
-		Args:    "<path>",
-		Desc:    "Load an audio file",
+		Args:    "<path|URL>",
+		Desc:    "Load audio from a file or URL",
 		Run:     runOpen,
 	},
 }

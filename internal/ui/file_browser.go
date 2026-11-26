@@ -8,8 +8,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 )
 
 type browserEntry struct {
@@ -270,11 +273,11 @@ func (m *Model) updateFileBrowser(msg tea.KeyPressMsg) tea.Cmd {
 }
 
 func remoteAudioLocation(path string) bool {
-	return strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://")
+	return audio.LooksLikeRemoteSource(path)
 }
 func validRemoteAudioLocation(path string) bool {
 	u, err := url.Parse(path)
-	return err == nil && u.Hostname() != "" && (u.Scheme == "http" || u.Scheme == "https")
+	return err == nil && u.Hostname() != "" && strings.IndexFunc(path, unicode.IsSpace) < 0 && (u.Scheme == "http" || u.Scheme == "https")
 }
 func validOpenLocation(path string) bool {
 	if remoteAudioLocation(path) {

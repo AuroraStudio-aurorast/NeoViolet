@@ -68,7 +68,9 @@ fn apply_player_commands(
                 apply_player_commands(children, available, lyrics_enabled, attached.as_deref())
             }
             MenuItemKind::MenuItem(item) => match item.id().as_ref() {
-                "open" | "lyrics_settings" | "reset_lyrics_position" => item.set_enabled(available),
+                "open" | "open_online_audio" | "lyrics_settings" | "reset_lyrics_position" => {
+                    item.set_enabled(available)
+                }
                 "unlock_lyrics" => item.set_enabled(available && lyrics_enabled),
                 _ => {}
             },

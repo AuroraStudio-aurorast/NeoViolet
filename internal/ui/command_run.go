@@ -8,6 +8,7 @@ import (
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 )
 
 // runSave implements ":w" / ":save".
@@ -128,7 +129,7 @@ func runOpen(m *Model, inv invocation) (tea.Model, tea.Cmd) {
 	// arrives as "path "; expandTilde so a completed "~/x.mp3" also opens.
 	path := expandTilde(strings.TrimRightFunc(inv.Rest, unicode.IsSpace))
 	if !validOpenLocation(path) {
-		m.Error.Set("Invalid or unsupported audio file: "+inv.Rest, m.Config.Error.Duration)
+		m.Error.Set("Invalid or unsupported audio source: "+audio.RedactSource(path), m.Config.Error.Duration)
 		return m, nil
 	}
 	return handleLoadTrack(m, LoadTrackMsg{Path: path})

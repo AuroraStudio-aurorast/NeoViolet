@@ -65,6 +65,12 @@ impl MenuGroup {
                         checked: false,
                     },
                     MenuItem {
+                        label: "Open Online Audio…",
+                        shortcut: None,
+                        action: Action::OpenOnlineAudio,
+                        checked: false,
+                    },
+                    MenuItem {
                         label: if platform == Platform::Windows {
                             "Exit"
                         } else {

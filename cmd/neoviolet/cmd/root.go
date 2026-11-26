@@ -18,13 +18,16 @@ import (
 
 // rootCmd is the root CLI command for NeoViolet.
 var rootCmd = &cobra.Command{
-	Use:   "neoviolet [flags] [filepath|-]",
+	Use:   "neoviolet [flags] [filepath|URL|-]",
 	Short: "NeoViolet - a terminal music player",
 	Long: `NeoViolet - a terminal music player
 
 Use "-" as the file path to read audio data from stdin, e.g.:
   cat song.mp3 | neoviolet -
-  curl -sL https://example.com/song.flac | neoviolet -`,
+  curl -sL https://example.com/song.flac | neoviolet -
+
+Open a direct online audio URL with:
+  neoviolet https://example.com/song.flac`,
 	Args: cobra.MaximumNArgs(1),
 	// SilenceErrors lets us control error output in Execute().
 	SilenceErrors: true,

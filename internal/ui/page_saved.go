@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/AuroraStudio-aurorast/neoviolet/internal/audio"
 	"github.com/AuroraStudio-aurorast/neoviolet/internal/library"
 )
 
@@ -81,7 +82,7 @@ func (m *Model) renderCollections(c *pageCanvas, focused bool) {
 		i, y := start+n, top+n
 		title := browserDisplayText(track.Title)
 		if title == "" {
-			title = browserDisplayText(track.Path)
+			title = browserDisplayText(audio.RedactSource(track.Path))
 		}
 		right := trackClock(track)
 		if state.unavailable[track.Path] != "" {
@@ -94,7 +95,7 @@ func (m *Model) renderCollections(c *pageCanvas, focused bool) {
 	}
 	if p.detail && len(current.Tracks) > 0 {
 		track := current.Tracks[min(p.savedTrack, len(current.Tracks)-1)]
-		path := browserDisplayText(track.Path)
+		path := browserDisplayText(audio.RedactSource(track.Path))
 		if reason := state.unavailable[track.Path]; reason != "" {
 			path = reason + ": " + path
 		}

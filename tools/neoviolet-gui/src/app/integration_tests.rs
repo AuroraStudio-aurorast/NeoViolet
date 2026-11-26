@@ -99,7 +99,8 @@ fn open_receipts_track_acceptance_and_report_failures_without_blocking_terminal_
     let _ = app.send_all(vec![ipc::Request::Open("broken.flac".into())]);
     let command = receiver.try_recv().unwrap();
     assert_eq!(app.requests.get(&command.id), Some(&false));
-    let _ = app.command_result(command.id.clone(), "accepted".into(), String::new());
+    let task = app.command_result(command.id.clone(), "accepted".into(), String::new());
+    assert!(iced_runtime::task::into_stream(task).is_none());
     let _ = app.update(Message::RequestTimeout {
         session: 2,
         epoch: app.connection_epoch,
@@ -453,4 +454,25 @@ fn about_shows_raw_player_and_optional_runtime_library_versions() {
             library == Some("0.8.9")
         );
     }
+}
+
+#[test]
+fn online_dialog_submits_exact_signed_url_and_keeps_validation_inline() {
+    let (mut app, mut receiver) = connected();
+    let _ = app.action(Action::OpenOnlineAudio);
+    let _ = app.update(Message::OnlineAudioURLChanged(
+        "ftp://host/audio.mp3".into(),
+    ));
+    let _ = app.update(Message::SubmitOnlineAudio);
+    assert!(receiver.try_recv().is_err());
+    assert!(matches!(
+        app.dialog,
+        Some(Dialog::OpenOnlineAudio { error: Some(_), .. })
+    ));
+    let url = "https://audio.example.test/track.mp3?token=signed%2Fvalue&part=2";
+    let _ = app.update(Message::OnlineAudioURLChanged(url.into()));
+    let _ = app.update(Message::SubmitOnlineAudio);
+    let command = receiver.try_recv().unwrap();
+    assert!(matches!(command.request,ipc::Request::Open(path) if path.as_os_str()==url));
+    assert!(app.dialog.is_none());
 }
